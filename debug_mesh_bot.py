@@ -208,7 +208,8 @@ class DebugMeshBot:
             essential_endpoints = [
                 '/sensor/battery_voltage', '/sensor/battery_current',
                 '/sensor/yield_today', '/sensor/bme280_temperature',
-                '/sensor/bme280_pressure', '/sensor/absolute_humidity'
+                '/sensor/bme280_pressure', '/sensor/absolute_humidity',
+                '/sensor/bme280_humidity', '/sensor/bme280_relative_humidity'
             ]
             
             # Traiter un par un pour limiter la mémoire
@@ -247,8 +248,19 @@ class DebugMeshBot:
                 if 'bme280_pressure' in found_data:
                     parts.append(f"P:{found_data['bme280_pressure']:.0f}")
                 
-                if 'absolute_humidity' in found_data:
-                    parts.append(f"H:({found_data['absolute_humidity']:.1f}g/m³)")
+                # Humidité combinée : relative + absolue
+                humidity_relative = None
+                for humidity_key in ['bme280_humidity', 'bme280_relative_humidity']:
+                    if humidity_key in found_data:
+                        humidity_relative = found_data[humidity_key]
+                        break
+                
+                if humidity_relative is not None:
+                    humidity_str = f"H:{humidity_relative:.0f}%"
+                    if 'absolute_humidity' in found_data:
+                        abs_hum = found_data['absolute_humidity']
+                        humidity_str += f"({abs_hum:.1f}g/m³)"
+                    parts.append(humidity_str)
                 
                 result = " | ".join(parts[:5])
                 
