@@ -80,8 +80,7 @@ class DebugMeshBot:
                 "max_tokens": 32000,
                 "temperature": 0.6,
                 "top_p": 0.95,
-                "top_k": 20,
-                "stop": ["\n\n"]
+                "top_k": 20
             }
             
             print(f"📊 Messages envoyés: {len(data['messages'])} messages")
