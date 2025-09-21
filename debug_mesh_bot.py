@@ -34,70 +34,32 @@ class DebugMeshBot:
             return False
     
     def clean_ai_response(self, content):
-        """Nettoie la réponse de l'IA en supprimant les balises de réflexion et formatage"""
+        """Nettoie la réponse de l'IA en supprimant les balises de réflexion"""
         try:
             print(f"🔧 Contenu original avant nettoyage: '{content}'")
             
-            # Sauvegarder le contenu original au cas où
-            original_content = content
-            
-            # Supprimer toutes les balises de réflexion (insensible à la casse)
+            # Supprimer seulement les balises de réflexion principales
             patterns_to_remove = [
                 r'<think>.*?</think>',
-                r'<thinking>.*?</thinking>', 
-                r'<thought>.*?</thought>',
-                r'<reflection>.*?</reflection>',
-                r'<reasoning>.*?</reasoning>',
-                r'<internal>.*?</internal>'
+                r'<thinking>.*?</thinking>'
             ]
             
             for pattern in patterns_to_remove:
                 content = re.sub(pattern, '', content, flags=re.DOTALL | re.IGNORECASE)
             
-            # Nettoyer les espaces multiples et sauts de ligne
+            # Nettoyer les espaces multiples
             content = re.sub(r'\s+', ' ', content).strip()
             
-            # Supprimer les débuts de phrases vides ou les artefacts
-            content = re.sub(r'^[.\s,;:-]+', '', content)
-            
-            # Si le contenu est vide après nettoyage, essayer d'extraire une info des balises think
-            if not content or len(content.strip()) < 3:
-                print("⚠️ Contenu vide après nettoyage, tentative d'extraction depuis <think>")
-                
-                # Chercher du contenu utile dans les balises think
-                think_match = re.search(r'<think[^>]*>(.*?)</think>', original_content, re.DOTALL | re.IGNORECASE)
-                if think_match:
-                    think_content = think_match.group(1)
-                    
-                    # Extraire des informations factuelles du contenu think
-                    # Chercher des températures, dates, nombres, etc.
-                    temp_match = re.search(r'(\d+[°]?C?)', think_content)
-                    if temp_match:
-                        content = f"Environ {temp_match.group(1)}"
-                    
-                    # Chercher des réponses directes
-                    elif "average" in think_content.lower() and "temperature" in think_content.lower():
-                        # Cas spécifique température
-                        numbers = re.findall(r'(\d+)[°]?C?', think_content)
-                        if numbers:
-                            content = f"Environ {numbers[0]}°C"
-                    
-                    # Autres patterns utiles
-                    elif re.search(r'between (\d+)[°]?-?(\d+)[°]?C?', think_content):
-                        match = re.search(r'between (\d+)[°]?-?(\d+)[°]?C?', think_content)
-                        content = f"Entre {match.group(1)} et {match.group(2)}°C"
-                
-                # Si toujours rien, message par défaut
-                if not content or len(content.strip()) < 3:
-                    content = "Réponse incomplète, reformulez svp."
+            # Si vraiment vide, message simple
+            if not content or len(content.strip()) < 2:
+                content = "Pas de réponse"
             
             print(f"✅ Contenu après nettoyage: '{content}'")
             return content
             
         except Exception as e:
-            print(f"❌ Erreur nettoyage réponse: {e}")
-            # En cas d'erreur, retourner le contenu original tronqué
-            return original_content[:200] if original_content else "Erreur de traitement."
+            print(f"❌ Erreur nettoyage: {e}")
+            return content if content else "Erreur"
     
     def query_llama(self, prompt):
         """Requête au serveur llama avec API de chat et prompt système"""
@@ -115,7 +77,7 @@ class DebugMeshBot:
                         "content": prompt
                     }
                 ],
-                "max_tokens": 2000,
+                "max_tokens": 32000,
                 "temperature": 0.6,
                 "top_p": 0.95,
                 "top_k": 20,
