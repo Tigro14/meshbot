@@ -184,47 +184,147 @@ class DebugMeshBot:
             return error_msg
     
     def parse_esphome_data(self):
-        """Parse l'interface ESPHome pour récupérer les données - Version simple et robuste"""
+        """Parse l'interface ESPHome - Version optimisée basée sur tests"""
+        import time
+        
         try:
             debug_print("Récupération des données ESPHome...")
             
-            # Test connectivité web
-            web_status = "Web-KO"
-            try:
-                response = requests.get(f"http://{ESPHOME_HOST}:{ESPHOME_PORT}/", timeout=8)
-                if response.status_code == 200:
-                    web_status = "Web-OK"
-                else:
-                    web_status = f"Web-{response.status_code}"
-            except requests.exceptions.Timeout:
-                web_status = "Web-Timeout"
-            except requests.exceptions.ConnectionError:
-                web_status = "Web-Unreachable"
-            except Exception:
-                web_status = "Web-Error"
+            # Test connectivité de base
+            response = requests.get(f"http://{ESPHOME_HOST}/", timeout=5)
+            if response.status_code != 200:
+                return "ESPHome inaccessible"
             
-            # Test connectivité API (port 6053)
-            api_status = "API-KO"
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(3)
-                result = sock.connect_ex((ESPHOME_HOST, 6053))
-                sock.close()
+            found_data = {}
+            
+            # Endpoints qui fonctionnent (trouvés lors des tests)
+            working_endpoints = [
+                '/sensor/bme280_temperature', '/sensor/bme280_pressure', 
+                '/sensor/absolute_humidity', '/sensor/battery_voltage', 
+                '/sensor/battery_current', '/sensor/panel_power', 
+                '/sensor/panel_voltage', '/sensor/yield_today', 
+                '/sensor/yield_total', '/sensor/max_power_today', 
+                '/text_sensor/charging_mode', '/text_sensor/error'
+            ]
+            
+            # Essayer aussi l'humidité relative (même si 404 dans le test précédent)
+            working_endpoints.append('/sensor/bme280_humidity')
+            working_endpoints.append('/sensor/bme280_relative_humidity')
+            
+            for endpoint in working_endpoints:
+                try:
+                    url = f"http://{ESPHOME_HOST}{endpoint}"
+                    resp = requests.get(url, timeout=2)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if 'value' in data:
+                            sensor_name = endpoint.split('/')[-1]
+                            found_data[sensor_name] = data['value']
+                except:
+                    continue
+            
+            # Formatage pour Meshtastic avec données BME280 étendues
+            if found_data:
+                parts = []
                 
-                if result == 0:
-                    api_status = "API-OK"
+                # Version 1: Priorité énergétique (batterie + production)
+                energy_parts = []
+                
+                # Combiner tension et courant de batterie dans un format compact
+                if 'battery_voltage' in found_data and 'battery_current' in found_data:
+                    voltage = found_data['battery_voltage']
+                    current = found_data['battery_current']
+                    energy_parts.append(f"{voltage:.1f}V ({current:.2f}A)")
+                elif 'battery_voltage' in found_data:
+                    # Si seulement la tension est disponible
+                    energy_parts.append(f"{found_data['battery_voltage']:.1f}V")
+                elif 'battery_current' in found_data:
+                    # Si seulement le courant est disponible
+                    energy_parts.append(f"{found_data['battery_current']:.2f}A")
+                
+                if 'yield_today' in found_data:
+                    energy_parts.append(f"Today:{found_data['yield_today']:.0f}Wh")
+                
+                # Version 2: Priorité météo (BME280 complet)
+                weather_parts = []
+                if 'bme280_temperature' in found_data:
+                    weather_parts.append(f"T:{found_data['bme280_temperature']:.1f}C")
+                if 'bme280_pressure' in found_data:
+                    # Retirer "hPa" - la valeur ~1000 est reconnaissable
+                    weather_parts.append(f"P:{found_data['bme280_pressure']:.0f}")
+                
+                # Pour l'humidité, essayer les différents noms possibles
+                humidity_value = None
+                for humidity_key in ['bme280_humidity', 'bme280_relative_humidity']:
+                    if humidity_key in found_data:
+                        humidity_value = found_data[humidity_key]
+                        break
+                
+                if humidity_value is not None:
+                    # Combiner humidité relative et absolue dans le même champ
+                    humidity_str = f"H:{humidity_value:.0f}%"
+                    if 'absolute_humidity' in found_data:
+                        abs_hum = found_data['absolute_humidity']
+                        humidity_str += f"({abs_hum:.1f}g/m³)"
+                    weather_parts.append(humidity_str)
+                
+                # Stratégie de formatage intelligent (sans timestamp)
+                # Essayer version complète d'abord
+                all_parts = energy_parts + weather_parts
+                full_result = " | ".join(all_parts)
+                
+                if len(full_result) <= 180:
+                    # Tout rentre, parfait !
+                    result = full_result
+                    debug_print(f"Format complet: {result}")
                 else:
-                    api_status = "API-Closed"
-            except Exception:
-                api_status = "API-Error"
-            
-            # Format compact pour Meshtastic avec timestamp
-            current_time = time.strftime("%H:%M")
-            result = f"{web_status} | {api_status} | {current_time}"
-            
-            debug_print(f"État ESPHome: {result}")
-            return result
-            
+                    # Trop long, versions alternatives
+                    
+                    # Version A: Énergie + température
+                    temp_part = []
+                    if 'bme280_temperature' in found_data:
+                        temp_part = [f"T:{found_data['bme280_temperature']:.1f}C"]
+                    version_a = energy_parts + temp_part
+                    version_a_str = " | ".join(version_a)
+                    
+                    # Version B: Énergie + météo complet (avec humidité combinée)
+                    version_b = energy_parts + weather_parts
+                    version_b_str = " | ".join(version_b)
+                    
+                    # Version C: Météo complète + batterie simplifiée
+                    battery_simple = []
+                    if 'battery_voltage' in found_data:
+                        battery_simple = [f"{found_data['battery_voltage']:.1f}V"]
+                    version_c = battery_simple + weather_parts
+                    version_c_str = " | ".join(version_c)
+                    
+                    # Choisir la meilleure version qui rentre
+                    if len(version_b_str) <= 180:
+                        result = version_b_str
+                        debug_print(f"Format météo complet: {result}")
+                    elif len(version_a_str) <= 180:
+                        result = version_a_str
+                        debug_print(f"Format énergie + température: {result}")
+                    elif len(version_c_str) <= 180:
+                        result = version_c_str
+                        debug_print(f"Format météo + batterie: {result}")
+                    else:
+                        # Fallback: version la plus courte
+                        voltage_part = []
+                        if 'battery_voltage' in found_data:
+                            voltage_part = [f"{found_data['battery_voltage']:.1f}V"]
+                        temp_part = []
+                        if 'bme280_temperature' in found_data:
+                            temp_part = [f"T:{found_data['bme280_temperature']:.1f}C"]
+                        short_parts = voltage_part + temp_part
+                        result = " | ".join(short_parts)
+                        debug_print(f"Format court: {result}")
+                
+                debug_print(f"Données ESPHome formatées ({len(result)} chars): {result}")
+                return result[:180] if len(result) <= 180 else result[:177] + "..."
+            else:
+                return f"ESPHome Online"
+                
         except Exception as e:
             error_print(f"Erreur ESPHome: {e}")
             return f"ESPHome Error: {str(e)[:30]}"
