@@ -76,6 +76,9 @@ class DebugMeshBot:
         self.node_names = {}
         self.update_thread = None
         self._last_node_save = 0
+        # Historique des signaux reçus
+        self.rx_history = {}  # node_id -> {'name': str, 'rssi': int, 'snr': float, 'last_seen': timestamp, 'count': int}
+        self._max_rx_history = 50  # Limiter pour économiser la mémoire
         
     def _get_clean_patterns(self):
         """Initialise les patterns regex une seule fois"""
@@ -208,6 +211,134 @@ class DebugMeshBot:
                             threading.Timer(10.0, lambda: self.save_node_names()).start()
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
+    
+    def update_rx_history(self, packet):
+        """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop)"""
+        try:
+            from_id = packet.get('from')
+            if not from_id or from_id == getattr(getattr(self.interface, 'localNode', None), 'nodeNum', None):
+                return  # Ignorer nos propres messages
+            
+            # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
+            hop_limit = packet.get('hopLimit', 0)
+            hop_start = packet.get('hopStart', 3)  # Valeur par défaut Meshtastic
+            
+            # Calculer le nombre de hops effectués
+            hops_taken = hop_start - hop_limit
+            
+            # Ne traiter que les messages reçus directement (0 hop)
+            if hops_taken > 0:
+                debug_print(f"🔄 Ignoré (relayé {hops_taken} hop): {self.get_node_name(from_id)}")
+                return
+            
+            # Extraire les informations de signal (uniquement pour direct)
+            rssi = packet.get('rssi', 0)
+            snr = packet.get('snr', 0.0)
+            current_time = time.time()
+            
+            # Obtenir le nom du nœud
+            node_name = self.get_node_name(from_id)
+            
+            # Mettre à jour l'historique
+            if from_id in self.rx_history:
+                entry = self.rx_history[from_id]
+                entry['rssi'] = rssi
+                entry['snr'] = snr
+                entry['last_seen'] = current_time
+                entry['count'] += 1
+                entry['name'] = node_name  # Mettre à jour le nom si changé
+            else:
+                self.rx_history[from_id] = {
+                    'name': node_name,
+                    'rssi': rssi,
+                    'snr': snr,
+                    'last_seen': current_time,
+                    'count': 1
+                }
+            
+            # Limiter la taille de l'historique (garder les plus récents)
+            if len(self.rx_history) > self._max_rx_history:
+                # Trier par last_seen et garder les plus récents
+                sorted_entries = sorted(self.rx_history.items(), 
+                                      key=lambda x: x[1]['last_seen'], 
+                                      reverse=True)
+                self.rx_history = dict(sorted_entries[:self._max_rx_history])
+            
+            debug_print(f"📡 RX DIRECT: {node_name} RSSI:{rssi} SNR:{snr:.1f} (0 hop)")
+            
+        except Exception as e:
+            debug_print(f"Erreur mise à jour RX: {e}")
+    
+    def format_rx_report(self):
+        """Formater le rapport des nœuds reçus"""
+        try:
+            if not self.rx_history:
+                return "Aucun nœud reçu récemment"
+            
+            current_time = time.time()
+            recent_nodes = []
+            
+            # Filtrer les nœuds vus dans les dernières 30 minutes
+            for node_id, data in self.rx_history.items():
+                if current_time - data['last_seen'] <= 1800:  # 30 minutes
+                    recent_nodes.append((node_id, data))
+            
+            if not recent_nodes:
+                return "Aucun nœud récent (30min)"
+            
+            # Trier par force du signal (RSSI descendant)
+            recent_nodes.sort(key=lambda x: x[1]['rssi'], reverse=True)
+            
+            # Formater le rapport
+            lines = []
+            lines.append(f"📡 Nœuds DIRECTS ({len(recent_nodes)}):")
+            
+            for node_id, data in recent_nodes[:10]:  # Limiter à 10 pour la taille du message
+                name = data['name'][:12] if len(data['name']) > 12 else data['name']  # Tronquer nom si trop long
+                rssi = data['rssi']
+                snr = data['snr']
+                count = data['count']
+                
+                # Indicateur de qualité basé sur RSSI
+                if rssi >= -80:
+                    signal_icon = "🟢"  # Excellent
+                elif rssi >= -100:
+                    signal_icon = "🟡"  # Bon
+                elif rssi >= -120:
+                    signal_icon = "🟠"  # Faible
+                else:
+                    signal_icon = "🔴"  # Très faible
+                
+                # Temps depuis dernière réception
+                elapsed = int(current_time - data['last_seen'])
+                if elapsed < 60:
+                    time_str = f"{elapsed}s"
+                elif elapsed < 3600:
+                    time_str = f"{elapsed//60}m"
+                else:
+                    time_str = f"{elapsed//3600}h"
+                
+                line = f"{signal_icon} {name}: {rssi}dBm SNR:{snr:.1f} ({count}x) {time_str}"
+                lines.append(line)
+            
+            if len(recent_nodes) > 10:
+                lines.append(f"... et {len(recent_nodes) - 10} autres")
+            
+            result = "\n".join(lines)
+            
+            # Limiter la taille totale du message
+            if len(result) > 500:
+                # Prendre seulement les 5 premiers
+                lines_short = lines[:6]  # Header + 5 nœuds
+                if len(recent_nodes) > 5:
+                    lines_short.append(f"... et {len(recent_nodes) - 5} autres")
+                result = "\n".join(lines_short)
+            
+            return result
+            
+        except Exception as e:
+            error_print(f"Erreur format RX: {e}")
+            return f"Erreur génération rapport RX: {str(e)[:30]}"
     
     def periodic_update_thread(self):
         """Thread de mise à jour périodique"""
@@ -478,7 +609,10 @@ class DebugMeshBot:
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.update_node_from_packet(packet)
             
-            # Filtrer télémétrie
+            # Mise à jour de l'historique RX pour tous les packets
+            self.update_rx_history(packet)
+            
+            # Filtrer télémétrie pour le traitement des commandes
             if 'decoded' in packet:
                 portnum = packet['decoded'].get('portnum', '')
                 if portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP', 'ROUTING_APP']:
@@ -559,6 +693,17 @@ class DebugMeshBot:
                     esphome_data = self.parse_esphome_data()
                     self.log_conversation(sender_id, sender_info, "/power", esphome_data)
                     self.send_response_chunks(esphome_data, sender_id, sender_info)
+                
+                elif message.startswith('/rx'):
+                    if not is_private:
+                        return
+                    
+                    sender_info = self.get_sender_info(sender_id)
+                    info_print(f"RX Report: {sender_info}")
+                    
+                    rx_report = self.format_rx_report()
+                    self.log_conversation(sender_id, sender_info, "/rx", rx_report)
+                    self.send_response_chunks(rx_report, sender_id, sender_info)
             
         except Exception as e:
             error_print(f"Erreur traitement: {e}")
@@ -589,6 +734,10 @@ class DebugMeshBot:
                     info_print("TEST ESPHome:")
                     data = self.parse_esphome_data()
                     info_print(f"→ {data}")
+                elif command == 'rx':
+                    info_print("TEST RX Report:")
+                    report = self.format_rx_report()
+                    info_print(f"→ {report}")
                 elif command == 'nodes':
                     self.list_known_nodes()
                 elif command == 'update':
@@ -612,6 +761,7 @@ class DebugMeshBot:
                     print("  test <prompt>  - Test llama.cpp")
                     print("  bot <question> - Via Meshtastic")
                     print("  power          - Test ESPHome")
+                    print("  rx             - Rapport signaux reçus")
                     print("  nodes          - Lister nœuds connus")
                     print("  update         - Mise à jour base nœuds")
                     print("  save           - Sauvegarder base nœuds")
@@ -661,10 +811,10 @@ class DebugMeshBot:
             
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec noms de nœuds")
-                print("\nCommandes: test, bot, power, nodes, update, save, mem, quit")
+                print("\nCommandes: test, bot, power, rx, nodes, update, save, mem, quit")
                 threading.Thread(target=self.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot' et '/power' avec noms de nœuds")
+                info_print("Bot en service - '/bot', '/power' et '/rx' avec noms de nœuds")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
