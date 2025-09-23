@@ -526,7 +526,45 @@ class DebugMeshBot:
             error_print(f"Erreur format rapport {REMOTE_NODE_NAME}: {e}")
             return f"Erreur récupération {REMOTE_NODE_NAME}: {str(e)[:50]}"
     
-    def _format_node_line(self, node):
+    def send_all_tigrog2_pages(self, sender_id, sender_info):
+        """Envoyer toutes les pages de tigrog2 avec délai entre chaque"""
+        try:
+            # D'abord déterminer le nombre total de pages
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            if not remote_nodes:
+                self.send_single_message("Aucun nœud direct trouvé sur tigrog2", sender_id, sender_info)
+                return
+            
+            # Calculer le nombre de pages
+            sample_line = self._format_node_line(remote_nodes[0] if remote_nodes else {'name': 'Test', 'last_heard': time.time()})
+            header_line = f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) (X/Y):"
+            
+            max_message_size = 180
+            base_overhead = len(header_line) + 20  # Pour page 1 avec header
+            available_space = max_message_size - base_overhead
+            avg_line_size = len(sample_line) + 1
+            
+            nodes_per_page = max(3, available_space // avg_line_size)
+            total_pages = (len(remote_nodes) + nodes_per_page - 1) // nodes_per_page
+            
+            debug_print(f"Envoi de {total_pages} pages à {sender_info}")
+            
+            # Envoyer chaque page avec un délai
+            for page in range(1, total_pages + 1):
+                report = self.format_tigrog2_nodes_report(page)
+                self.send_single_message(report, sender_id, sender_info)
+                
+                # Délai entre les pages (sauf la dernière)
+                if page < total_pages:
+                    time.sleep(3)  # 3 secondes entre chaque page
+                    
+            debug_print(f"Toutes les pages envoyées à {sender_info}")
+            
+        except Exception as e:
+            error_print(f"Erreur envoi pages multiples: {e}")
+            # Fallback: envoyer juste la page 1
+            report = self.format_tigrog2_nodes_report(1)
+            self.send_single_message(report, sender_id, sender_info)
         """Formater une ligne de nœud selon la configuration"""
         # Le nom est déjà le shortName ou longName tronqué depuis get_remote_nodes
         short_name = node['name'][:8] if len(node['name']) > 8 else node['name']
@@ -1028,25 +1066,19 @@ class DebugMeshBot:
                     self.send_response_chunks(esphome_data, sender_id, sender_info)
                 
                 elif message.startswith('/tigrog2'):
-                    # Commande pour voir les nœuds de tigrog2 avec pagination optionnelle
+                    # Commande pour voir les nœuds de tigrog2 - envoie toutes les pages
                     if not is_private:
                         return
                     
-                    # Extraire le numéro de page si fourni
-                    page = 1
-                    parts = message.split()
-                    if len(parts) > 1:
-                        try:
-                            page = int(parts[1])
-                        except ValueError:
-                            page = 1
-                    
                     sender_info = self.get_sender_info(sender_id)
-                    info_print(f"Tigrog2 Nodes Page {page}: {sender_info}")
+                    info_print(f"Tigrog2 All Pages: {sender_info}")
                     
-                    tigrog2_report = self.format_tigrog2_nodes_report(page)
-                    self.log_conversation(sender_id, sender_info, f"/tigrog2 {page}" if page > 1 else "/tigrog2", tigrog2_report)
-                    self.send_response_chunks(tigrog2_report, sender_id, sender_info)
+                    # Envoyer toutes les pages automatiquement
+                    self.send_all_tigrog2_pages(sender_id, sender_info)
+                    
+                    # Log pour la conversation (page 1 seulement pour éviter la duplication)
+                    first_page_report = self.format_tigrog2_nodes_report(1)
+                    self.log_conversation(sender_id, sender_info, "/tigrog2", f"{first_page_report} [+pages suivantes]")
                 
                 elif message.startswith('/rx'):
                     if not is_private:
@@ -1124,18 +1156,43 @@ class DebugMeshBot:
                         info_print(f"Config actuelle - RSSI:{SHOW_RSSI} SNR:{SHOW_SNR} COLLECT:{COLLECT_SIGNAL_METRICS}")
                         info_print("Usage: config <option> <true/false>")
                 elif command.startswith('tigrog2'):
-                    # Test de récupération nœuds tigrog2 avec pagination
+                    # Test de récupération nœuds tigrog2 - support pages individuelles en debug
                     parts = command.split()
-                    page = 1
+                    
                     if len(parts) > 1:
+                        # Page spécifique demandée
                         try:
                             page = int(parts[1])
+                            info_print(f"TEST Tigrog2 Page {page}: {REMOTE_NODE_HOST}")
+                            report = self.format_tigrog2_nodes_report(page)
+                            info_print(f"→ {report}")
                         except ValueError:
-                            page = 1
-                    
-                    info_print(f"TEST Tigrog2 Nodes Page {page}: {REMOTE_NODE_HOST}")
-                    report = self.format_tigrog2_nodes_report(page)
-                    info_print(f"→ {report}")
+                            info_print("Usage: tigrog2 [numéro_page]")
+                    else:
+                        # Toutes les pages en debug aussi
+                        info_print(f"TEST Tigrog2 Toutes Pages: {REMOTE_NODE_HOST}")
+                        
+                        # Simulation d'envoi de toutes les pages
+                        remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+                        if remote_nodes:
+                            sample_line = self._format_node_line(remote_nodes[0])
+                            max_message_size = 180
+                            base_overhead = 60
+                            available_space = max_message_size - base_overhead
+                            avg_line_size = len(sample_line) + 1
+                            nodes_per_page = max(3, available_space // avg_line_size)
+                            total_pages = (len(remote_nodes) + nodes_per_page - 1) // nodes_per_page
+                            
+                            info_print(f"→ {len(remote_nodes)} nœuds, {total_pages} pages à envoyer")
+                            
+                            for page in range(1, total_pages + 1):
+                                report = self.format_tigrog2_nodes_report(page)
+                                info_print(f"→ PAGE {page}:")
+                                info_print(report)
+                                if page < total_pages:
+                                    info_print("  [Délai 3s...]")
+                        else:
+                            info_print("→ Aucun nœud trouvé")
                 elif command.startswith('nodes '):
                     # Test de récupération nœuds distants
                     parts = command.split(' ', 1)
