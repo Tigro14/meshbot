@@ -28,6 +28,10 @@ ESPHOME_PORT = 80
 NODE_NAMES_FILE = "node_names.json"
 NODE_UPDATE_INTERVAL = 300  # 5 minutes
 
+# Configuration nœud distant fixe
+REMOTE_NODE_HOST = "192.168.1.38"
+REMOTE_NODE_NAME = "tigrog2"
+
 # Variable globale pour le mode debug
 DEBUG_MODE = False
 
@@ -353,7 +357,157 @@ class DebugMeshBot:
         except Exception as e:
             debug_print(f"Erreur mise à jour RX: {e}")
     
-    def format_rx_report(self):
+    def get_remote_nodes(self, remote_host, remote_port=4403):
+        """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant"""
+        try:
+            debug_print(f"Connexion au nœud distant {remote_host}...")
+            
+            # Tenter une connexion TCP au nœud distant
+            import meshtastic.tcp_interface
+            remote_interface = meshtastic.tcp_interface.TCPInterface(hostname=remote_host, portNumber=remote_port)
+            
+            # Attendre que les données se chargent
+            time.sleep(2)
+            
+            # Récupérer les nœuds
+            remote_nodes = remote_interface.nodes
+            
+            # Formater les résultats - FILTRER SEULEMENT LES NŒUDS DIRECTS
+            node_list = []
+            for node_id, node_info in remote_nodes.items():
+                try:
+                    if isinstance(node_info, dict):
+                        # VÉRIFIER SI LE NŒUD A ÉTÉ REÇU DIRECTEMENT
+                        # Le critère le plus fiable est hopsAway = 0
+                        hops_away = node_info.get('hopsAway', None)
+                        
+                        # Si hopsAway existe, l'utiliser comme critère principal
+                        if hops_away is not None:
+                            if hops_away > 0:
+                                debug_print(f"Nœud {node_id} ignoré (hopsAway={hops_away})")
+                                continue
+                            else:
+                                debug_print(f"Nœud {node_id} accepté (hopsAway={hops_away})")
+                        else:
+                            # Fallback : utiliser les métriques de signal comme critère
+                            rssi = node_info.get('rssi', 0)
+                            snr = node_info.get('snr', 0.0)
+                            
+                            # Si pas de hopsAway ET pas de métriques RSSI, probablement relayé
+                            if rssi == 0:
+                                debug_print(f"Nœud {node_id} ignoré (pas de hopsAway, pas de RSSI)")
+                                continue
+                        
+                        # Traiter le node_id - peut être string ou int
+                        if isinstance(node_id, str):
+                            if node_id.startswith('!'):
+                                # Format !12345678 - retirer le ! puis convertir hex
+                                clean_id = node_id[1:]
+                                id_int = int(clean_id, 16)
+                            elif node_id.isdigit():
+                                # String numérique décimale
+                                id_int = int(node_id)
+                            else:
+                                # Autres cas, essayer conversion hex directe
+                                id_int = int(node_id, 16)
+                        else:
+                            # Déjà un int
+                            id_int = int(node_id)
+                        rssi = node_info.get('rssi', 0)
+                        snr = node_info.get('snr', 0.0)
+                        name = "Unknown"
+                        if 'user' in node_info and isinstance(node_info['user'], dict):
+                            user = node_info['user']
+                            name = user.get('longName') or user.get('shortName', f"Node-{id_int:08x}")
+                        
+                        last_heard = node_info.get('lastHeard', 0)
+                        
+                        node_list.append({
+                            'id': id_int,
+                            'name': name,
+                            'last_heard': last_heard,
+                            'snr': snr,
+                            'rssi': rssi
+                        })
+                        
+                        debug_print(f"✅ Nœud direct: {name} RSSI:{rssi} SNR:{snr:.1f}")
+                        
+                except Exception as e:
+                    debug_print(f"Erreur traitement nœud {node_id}: {e}")
+                    continue
+            
+            remote_interface.close()
+            debug_print(f"✅ {len(node_list)} nœuds DIRECTS récupérés de {remote_host}")
+            return node_list
+            
+        except Exception as e:
+            error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
+            return []
+    
+    def format_tigrog2_nodes_report(self):
+        """Formater un rapport des nœuds DIRECTS vus par tigrog2"""
+        try:
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            
+            if not remote_nodes:
+                return f"Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
+            
+            # Trier par force du signal (RSSI descendant), puis par dernière réception
+            remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
+            
+            lines = []
+            lines.append(f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) ({len(remote_nodes)}):")
+            
+            for node in remote_nodes[:10]:  # Limiter à 10
+                name = node['name'][:15] if len(node['name']) > 15 else node['name']
+                
+                # Calculer le temps écoulé
+                if node['last_heard'] > 0:
+                    elapsed = int(time.time() - node['last_heard'])
+                    if elapsed < 60:
+                        time_str = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        time_str = f"{elapsed//60}m"
+                    elif elapsed < 86400:
+                        time_str = f"{elapsed//3600}h"
+                    else:
+                        time_str = f"{elapsed//86400}d"
+                else:
+                    time_str = "n/a"
+                
+                # Indicateur de qualité basé sur RSSI (comme pour /rx)
+                rssi = node.get('rssi', 0)
+                if rssi >= -80:
+                    signal_icon = "🟢"  # Excellent
+                elif rssi >= -100:
+                    signal_icon = "🟡"  # Bon
+                elif rssi >= -120:
+                    signal_icon = "🟠"  # Faible
+                elif rssi < -120 and rssi != 0:
+                    signal_icon = "🔴"  # Très faible
+                else:
+                    signal_icon = "📶"  # Signal non mesuré
+                
+                # Construire la ligne avec RSSI et SNR si disponibles
+                signal_info = []
+                if rssi != 0:
+                    signal_info.append(f"{rssi}dBm")
+                if node['snr'] != 0.0:
+                    signal_info.append(f"SNR:{node['snr']:.1f}")
+                
+                signal_str = " ".join(signal_info) if signal_info else ""
+                
+                line = f"{signal_icon} {name} (!{node['id']:08x}) {time_str} {signal_str}".strip()
+                lines.append(line)
+            
+            if len(remote_nodes) > 10:
+                lines.append(f"... et {len(remote_nodes) - 10} autres")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur format rapport {REMOTE_NODE_NAME}: {e}")
+            return f"Erreur récupération {REMOTE_NODE_NAME}: {str(e)[:50]}"
         """Formater le rapport des nœuds reçus"""
         try:
             if not self.rx_history:
@@ -807,6 +961,18 @@ class DebugMeshBot:
                     self.log_conversation(sender_id, sender_info, "/power", esphome_data)
                     self.send_response_chunks(esphome_data, sender_id, sender_info)
                 
+                elif message.startswith('/tigrog2'):
+                    # Commande pour voir les nœuds de tigrog2 (192.168.1.38)
+                    if not is_private:
+                        return
+                    
+                    sender_info = self.get_sender_info(sender_id)
+                    info_print(f"Tigrog2 Nodes: {sender_info}")
+                    
+                    tigrog2_report = self.format_tigrog2_nodes_report()
+                    self.log_conversation(sender_id, sender_info, "/tigrog2", tigrog2_report)
+                    self.send_response_chunks(tigrog2_report, sender_id, sender_info)
+                
                 elif message.startswith('/rx'):
                     if not is_private:
                         return
@@ -860,6 +1026,21 @@ class DebugMeshBot:
                     info_print("TEST RX Report:")
                     report = self.format_rx_report()
                     info_print(f"→ {report}")
+                elif command == 'tigrog2':
+                    # Test de récupération nœuds tigrog2
+                    info_print(f"TEST Tigrog2 Nodes: {REMOTE_NODE_HOST}")
+                    report = self.format_tigrog2_nodes_report()
+                    info_print(f"→ {report}")
+                elif command.startswith('nodes '):
+                    # Test de récupération nœuds distants
+                    parts = command.split(' ', 1)
+                    if len(parts) > 1:
+                        remote_host = parts[1].strip()
+                        info_print(f"TEST Remote Nodes: {remote_host}")
+                        report = self.format_remote_nodes_report(remote_host)
+                        info_print(f"→ {report}")
+                    else:
+                        info_print("Usage: nodes <IP_du_noeud>")
                 elif command == 'nodes':
                     self.list_known_nodes()
                 elif command == 'update':
@@ -888,8 +1069,10 @@ class DebugMeshBot:
                     print("  bot <question> - Via Meshtastic")
                     print("  power          - Test ESPHome")
                     print("  rx             - Rapport signaux reçus")
-                    print("  context        - Voir contextes actifs")
+                    print("  tigrog2        - Nœuds vus par tigrog2")
                     print("  nodes          - Lister nœuds connus")
+                    print("  nodes <IP>     - Nœuds d'un nœud distant")
+                    print("  context        - Voir contextes actifs")
                     print("  update         - Mise à jour base nœuds")
                     print("  save           - Sauvegarder base nœuds")
                     print("  reload         - Recharger base nœuds")
@@ -938,10 +1121,10 @@ class DebugMeshBot:
             
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec noms de nœuds et contexte")
-                print("\nCommandes: test, bot, power, rx, context, nodes, update, save, mem, quit")
+                print("\nCommandes: test, bot, power, rx, tigrog2, nodes, nodes <IP>, context, update, save, mem, quit")
                 threading.Thread(target=self.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot', '/power' et '/rx' avec contexte conversationnel")
+                info_print("Bot en service - '/bot', '/power', '/rx' et '/tigrog2' avec contexte")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
