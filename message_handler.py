@@ -501,7 +501,7 @@ class MessageHandler:
         threading.Thread(target=get_system_info, daemon=True).start()
     
     def handle_my_command(self, sender_id, sender_info):
-        """Gérer la commande /my - infos signal du nœud expéditeur vues par tigrog2"""
+        """Gérer la commande /my - infos signal du nœud expéditeur vues par tigrog2 + analyse route"""
         info_print(f"My: {sender_info}")
         
         import threading
@@ -563,23 +563,35 @@ class MessageHandler:
                         distance_est = self._estimate_distance_from_rssi(rssi)
                         response_lines.append(f"📏 Distance de {REMOTE_NODE_NAME}: ~{distance_est}")
                     
-                    # Info sur la liaison (direct)
-                    response_lines.append(f"🎯 Liaison directe avec {REMOTE_NODE_NAME}")
+                    # ANALYSE DE ROUTE
+                    route_analysis = self._analyze_route_to_sender(sender_id, sender_info)
+                    if route_analysis:
+                        response_lines.append("")  # Ligne vide pour séparer
+                        response_lines.extend(route_analysis)
                     
                     response = "\n".join(response_lines)
                     
                 else:
-                    # Nœud pas trouvé dans les données de tigrog2
+                    # Nœud pas trouvé dans les données de tigrog2 - analyser quand même la route locale
                     response_lines = [
                         f"📡 Signaux vus par {REMOTE_NODE_NAME}:",
-                        f"⚠️ Votre nœud ({sender_info}) non visible",
-                        "",
-                        "Causes possibles:",
-                        f"• Pas de liaison directe avec {REMOTE_NODE_NAME}",
-                        "• Messages uniquement relayés",
-                        "• Nœud pas actif dans les 3 derniers jours",
-                        f"• {REMOTE_NODE_NAME} temporairement inaccessible"
+                        f"⚠️ Votre nœud ({sender_info}) non visible directement",
                     ]
+                    
+                    # Analyser la route locale quand même
+                    route_analysis = self._analyze_route_to_sender(sender_id, sender_info)
+                    if route_analysis:
+                        response_lines.append("")
+                        response_lines.extend(route_analysis)
+                    else:
+                        response_lines.extend([
+                            "",
+                            "Causes possibles:",
+                            f"• Messages relayés vers {REMOTE_NODE_NAME}",
+                            "• Nœud pas actif dans les 3 derniers jours",
+                            f"• {REMOTE_NODE_NAME} temporairement inaccessible"
+                        ])
+                    
                     response = "\n".join(response_lines)
                 
                 self.log_conversation(sender_id, sender_info, "/my", response)
@@ -595,6 +607,116 @@ class MessageHandler:
         
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_remote_signal_info, daemon=True).start()
+    
+    def _analyze_route_to_sender(self, sender_id, sender_info):
+        """Analyser la route probable vers le nœud expéditeur"""
+        try:
+            route_lines = ["🛣️ Analyse de route:"]
+            
+            # 1. Vérifier si on a des données directes localement
+            local_direct = sender_id in self.node_manager.rx_history
+            if local_direct:
+                rx_data = self.node_manager.rx_history[sender_id]
+                local_rssi = rx_data.get('rssi', 0)
+                local_snr = rx_data.get('snr', 0.0)
+                local_count = rx_data.get('count', 0)
+                
+                route_lines.append(f"📍 Bot local: DIRECT ({local_count}x)")
+                if local_rssi != 0:
+                    signal_icon = get_signal_quality_icon(local_rssi)
+                    route_lines.append(f"  {signal_icon} RSSI: {local_rssi}dBm, SNR: {local_snr:.1f}dB")
+                
+                # Comparer avec tigrog2 si disponible
+                return self._compare_routes(route_lines, sender_id, sender_info)
+            
+            # 2. Pas de liaison directe locale - analyser les relays possibles
+            return self._analyze_relay_route(route_lines, sender_id, sender_info)
+            
+        except Exception as e:
+            debug_print(f"Erreur analyse route: {e}")
+            return None
+    
+    def _compare_routes(self, route_lines, sender_id, sender_info):
+        """Comparer les routes locale vs tigrog2"""
+        try:
+            # Récupérer les données tigrog2 si disponibles
+            remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+            tigrog2_data = None
+            
+            for node in remote_nodes:
+                if node['id'] == sender_id:
+                    tigrog2_data = node
+                    break
+            
+            if tigrog2_data:
+                tigrog2_rssi = tigrog2_data.get('rssi', 0)
+                
+                # Données locales
+                rx_data = self.node_manager.rx_history[sender_id]
+                local_rssi = rx_data.get('rssi', 0)
+                
+                route_lines.append(f"📍 {REMOTE_NODE_NAME}: DIRECT")
+                if tigrog2_rssi != 0:
+                    signal_icon = get_signal_quality_icon(tigrog2_rssi)
+                    route_lines.append(f"  {signal_icon} RSSI: {tigrog2_rssi}dBm")
+                
+                # Analyse comparative
+                if local_rssi != 0 and tigrog2_rssi != 0:
+                    diff = abs(local_rssi - tigrog2_rssi)
+                    if diff < 10:
+                        route_lines.append("🎯 Position équidistante des deux")
+                    elif local_rssi > tigrog2_rssi:
+                        route_lines.append(f"📈 Plus proche du bot ({diff}dB diff)")
+                    else:
+                        route_lines.append(f"📈 Plus proche de {REMOTE_NODE_NAME} ({diff}dB diff)")
+                
+                return route_lines
+            else:
+                route_lines.append(f"⚠️ {REMOTE_NODE_NAME}: Pas de liaison directe")
+                route_lines.append("💭 Probablement relayé vers tigrog2")
+                return route_lines
+                
+        except Exception as e:
+            debug_print(f"Erreur comparaison routes: {e}")
+            return route_lines
+    
+    def _analyze_relay_route(self, route_lines, sender_id, sender_info):
+        """Analyser les routes relayées possibles"""
+        try:
+            route_lines.append("⚠️ Bot local: Pas de liaison directe")
+            
+            # Chercher des nœuds intermédiaires probables
+            potential_relays = []
+            
+            # Analyser l'historique RX pour trouver des nœuds forts qui pourraient servir de relay
+            for node_id, rx_data in self.node_manager.rx_history.items():
+                if node_id != sender_id:  # Pas le nœud expéditeur
+                    rssi = rx_data.get('rssi', 0)
+                    if rssi > -100:  # Signal assez fort pour être un bon relay
+                        name = rx_data.get('name', f"Node-{node_id:08x}")
+                        potential_relays.append((name, rssi, rx_data.get('count', 0)))
+            
+            if potential_relays:
+                # Trier par force du signal
+                potential_relays.sort(key=lambda x: x[1], reverse=True)
+                best_relay = potential_relays[0]
+                
+                route_lines.append(f"🔀 Relay probable: {best_relay[0]}")
+                signal_icon = get_signal_quality_icon(best_relay[1])
+                route_lines.append(f"  {signal_icon} {best_relay[0]} → Bot ({best_relay[1]}dBm)")
+                
+                # Estimer la route complète
+                if len(potential_relays) > 1:
+                    route_lines.append(f"🗺️ Autres relays: {len(potential_relays)-1} nœuds")
+            else:
+                route_lines.append("❓ Aucun relay évident détecté")
+                route_lines.append("💭 Route complexe ou nœud distant")
+            
+            return route_lines
+            
+        except Exception as e:
+            debug_print(f"Erreur analyse relay: {e}")
+            return route_lines
     
     def _get_signal_quality_description(self, rssi, snr):
         """Obtenir une description textuelle de la qualité du signal"""

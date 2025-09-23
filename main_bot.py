@@ -194,9 +194,13 @@ class DebugMeshBot:
                 print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
                 print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, config, nodes, context, update, save, mem, quit")
                 
-                # Initialiser et démarrer l'interface debug
-                self.debug_interface = DebugInterface(self)
-                threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
+                # Initialiser et démarrer l'interface debug SEULEMENT si on a un terminal
+                import sys
+                if sys.stdin.isatty():
+                    self.debug_interface = DebugInterface(self)
+                    threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
+                else:
+                    info_print("Pas de terminal détecté - interface debug désactivée")
             else:
                 info_print("Bot en service - '/bot', '/power', '/rx', '/my', '/sys' et '/legend'")
             

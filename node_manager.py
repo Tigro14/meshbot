@@ -90,6 +90,22 @@ class NodeManager:
             
             for node_id, node_info in nodes.items():
                 try:
+                    # Convertir node_id en entier si c'est une string
+                    if isinstance(node_id, str):
+                        if node_id.startswith('!'):
+                            # Format !16fad3dc - retirer le ! puis convertir hex
+                            clean_id = node_id[1:]
+                            node_id_int = int(clean_id, 16)
+                        else:
+                            # Autres formats string
+                            try:
+                                node_id_int = int(node_id, 16)
+                            except ValueError:
+                                node_id_int = int(node_id)  # Fallback décimal
+                    else:
+                        # Déjà un int
+                        node_id_int = int(node_id)
+                    
                     if isinstance(node_info, dict) and 'user' in node_info:
                         user_info = node_info['user']
                         if isinstance(user_info, dict):
@@ -98,12 +114,13 @@ class NodeManager:
                             
                             name = long_name or short_name
                             if name and len(name) > 0:
-                                old_name = self.node_names.get(node_id)
+                                old_name = self.node_names.get(node_id_int)
                                 if old_name != name:
-                                    self.node_names[node_id] = name
-                                    debug_print(f"📝 {node_id:08x}: '{old_name}' -> '{name}'")
+                                    self.node_names[node_id_int] = name
+                                    debug_print(f"🔄 {node_id_int:08x}: '{old_name}' -> '{name}'")
                                     updated_count += 1
                 except Exception as e:
+                    # Utiliser la représentation string pour le debug si conversion échoue
                     debug_print(f"Erreur traitement nœud {node_id}: {e}")
                     continue
             
@@ -148,7 +165,7 @@ class NodeManager:
             
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
             hop_limit = packet.get('hopLimit', 0)
-            hop_start = packet.get('hopStart', 3)  # Valeur par défaut Meshtastic
+            hop_start = packet.get('hopStart', 5)  # Valeur configurée pour ce réseau
             
             # Calculer le nombre de hops effectués
             hops_taken = hop_start - hop_limit
