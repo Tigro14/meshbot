@@ -96,9 +96,9 @@ class MessageHandler:
             "/bot <question>",
             "/power",
             "/rx [page]", 
+            "/my",
             "/sys",
-            "/legend",
-            "/help"
+            "/legend"
         ]
         
         return "\n".join(help_lines)
@@ -432,6 +432,127 @@ class MessageHandler:
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_system_info, daemon=True).start()
     
+    def handle_my_command(self, sender_id, sender_info):
+        """Gérer la commande /my - infos signal du nœud expéditeur"""
+        info_print(f"My: {sender_info}")
+        
+        try:
+            # Chercher les informations de signal pour ce nœud dans l'historique RX
+            if sender_id in self.node_manager.rx_history:
+                rx_data = self.node_manager.rx_history[sender_id]
+                
+                # Construire la réponse avec toutes les infos disponibles
+                response_lines = [f"📡 Vos signaux ({sender_info}):"]
+                
+                # RSSI
+                rssi = rx_data.get('rssi', 0)
+                if rssi != 0:
+                    rssi_icon = get_signal_quality_icon(rssi)
+                    response_lines.append(f"{rssi_icon} RSSI: {rssi}dBm")
+                else:
+                    response_lines.append("📶 RSSI: Non disponible")
+                
+                # SNR
+                snr = rx_data.get('snr', 0.0)
+                if snr != 0:
+                    snr_icon = get_snr_quality_icon(snr)
+                    snr_text = f"SNR: {snr:.1f}dB"
+                    if snr_icon:
+                        snr_text = f"{snr_icon} {snr_text}"
+                    response_lines.append(snr_text)
+                else:
+                    response_lines.append("📊 SNR: Non disponible")
+                
+                # Qualité générale basée sur RSSI + SNR
+                quality_desc = self._get_signal_quality_description(rssi, snr)
+                response_lines.append(f"📈 Qualité: {quality_desc}")
+                
+                # Statistiques de réception
+                count = rx_data.get('count', 0)
+                last_seen = rx_data.get('last_seen', 0)
+                
+                if count > 0:
+                    response_lines.append(f"📊 Messages reçus: {count}")
+                
+                if last_seen > 0:
+                    time_elapsed = format_elapsed_time(last_seen)
+                    response_lines.append(f"⏱️ Dernière réception: {time_elapsed}")
+                
+                # Distance approximative basée sur RSSI (estimation)
+                if rssi != 0 and rssi > -150:
+                    distance_est = self._estimate_distance_from_rssi(rssi)
+                    response_lines.append(f"📏 Distance ~{distance_est}")
+                
+                response = "\n".join(response_lines)
+                
+            else:
+                # Nœud pas dans l'historique RX - peut-être relayé ou première fois
+                response_lines = [
+                    f"📡 Signal ({sender_info}):",
+                    "⚠️ Aucune donnée de signal directe disponible",
+                    "",
+                    "Possible causes:",
+                    "• Message relayé par d'autres nœuds",
+                    "• Premier message de ce nœud",
+                    "• Signal trop faible pour mesure directe"
+                ]
+                response = "\n".join(response_lines)
+            
+            self.log_conversation(sender_id, sender_info, "/my", response)
+            self.send_response_chunks(response, sender_id, sender_info)
+            
+        except Exception as e:
+            error_print(f"Erreur commande /my: {e}")
+            error_response = f"❌ Erreur récupération signaux: {str(e)[:50]}"
+            self.send_single_message(error_response, sender_id, sender_info)
+    
+    def _get_signal_quality_description(self, rssi, snr):
+        """Obtenir une description textuelle de la qualité du signal"""
+        if rssi == 0 and snr == 0:
+            return "Inconnue"
+        
+        # Classification basée sur RSSI principalement
+        if rssi >= -80:
+            return "Excellente"
+        elif rssi >= -100:
+            if snr >= 5:
+                return "Très bonne"
+            else:
+                return "Bonne"
+        elif rssi >= -120:
+            if snr >= 0:
+                return "Correcte"
+            else:
+                return "Faible"
+        elif rssi > -150:
+            if snr >= -5:
+                return "Très faible"
+            else:
+                return "Critique"
+        else:
+            return "Inconnue"
+    
+    def _estimate_distance_from_rssi(self, rssi):
+        """Estimation approximative de distance basée sur RSSI (LoRa 868MHz)"""
+        # Formule approximative : distance = 10^((Tx_Power - RSSI - 32.44 - 20*log10(freq_MHz)) / 20)
+        # Supposons Tx_Power = 20dBm, freq = 868MHz
+        # Simplification pour estimation rapide
+        
+        if rssi >= -80:
+            return "<100m"
+        elif rssi >= -90:
+            return "100-300m" 
+        elif rssi >= -100:
+            return "300m-1km"
+        elif rssi >= -110:
+            return "1-3km"
+        elif rssi >= -120:
+            return "3-10km"
+        elif rssi >= -130:
+            return "10-20km"
+        else:
+            return ">20km"
+    
     def process_text_message(self, packet, decoded, message):
         """Traiter un message texte"""
         sender_id = packet.get('from', 0)
@@ -459,6 +580,8 @@ class MessageHandler:
             self.handle_power_command(sender_id, sender_info)
         elif message.startswith('/rx'):
             self.handle_rx_command(message, sender_id, sender_info)
+        elif message.startswith('/my'):
+            self.handle_my_command(sender_id, sender_info)
         elif message.startswith('/legend'):
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
@@ -468,6 +591,11 @@ class MessageHandler:
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:
-            # Message normal (pas de commande)
-            if DEBUG_MODE:
-                debug_print(f"Message normal reçu: '{message}'")
+            # Commande non reconnue - afficher l'aide au lieu de l'ignorer
+            if message.startswith('/'):
+                info_print(f"Commande inconnue de {sender_info}: '{message}'")
+                self.handle_help_command(sender_id, sender_info)
+            else:
+                # Message normal (pas de commande)
+                if DEBUG_MODE:
+                    debug_print(f"Message normal reçu: '{message}'")
