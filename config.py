@@ -37,5 +37,9 @@ CONTEXT_TIMEOUT = 1800  # 30 minutes
 # Limites messages
 MAX_MESSAGE_SIZE = 180
 
+# Throttling des commandes utilisateurs
+MAX_COMMANDS_PER_WINDOW = 5  # 5 commandes max
+COMMAND_WINDOW_SECONDS = 300  # par tranche de 5 minutes (300s)
+
 # Variables globales d'état
 DEBUG_MODE = False

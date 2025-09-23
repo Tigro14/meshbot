@@ -16,6 +16,9 @@ class MessageHandler:
         self.node_manager = node_manager
         self.context_manager = context_manager
         self.interface = interface
+        
+        # Throttling des commandes utilisateurs
+        self.user_commands = {}  # user_id -> [timestamps des commandes]
     
     def log_conversation(self, sender_id, sender_info, query, response, processing_time=None):
         """Log une conversation complète"""
@@ -75,6 +78,71 @@ class MessageHandler:
                 debug_print(f"Message → {sender_info} (hex format)")
             except Exception as e2:
                 error_print(f"Échec envoi définitif → {sender_info}: {e2}")
+    
+    def check_command_throttling(self, sender_id, sender_info):
+        """Vérifier le throttling des commandes pour un utilisateur"""
+        current_time = time.time()
+        
+        # Nettoyer d'abord les anciennes entrées
+        if sender_id in self.user_commands:
+            # Garder seulement les commandes dans la fenêtre temporelle
+            self.user_commands[sender_id] = [
+                cmd_time for cmd_time in self.user_commands[sender_id]
+                if current_time - cmd_time < COMMAND_WINDOW_SECONDS
+            ]
+        else:
+            self.user_commands[sender_id] = []
+        
+        # Vérifier le nombre de commandes dans la fenêtre
+        command_count = len(self.user_commands[sender_id])
+        
+        if command_count >= MAX_COMMANDS_PER_WINDOW:
+            # Calculer le temps d'attente
+            oldest_command = min(self.user_commands[sender_id])
+            wait_time = int(COMMAND_WINDOW_SECONDS - (current_time - oldest_command))
+            
+            # Envoyer message de throttling
+            throttle_msg = f"⏱️ Limite: {MAX_COMMANDS_PER_WINDOW} cmd/5min. Attendez {wait_time}s"
+            try:
+                self.send_single_message(throttle_msg, sender_id, sender_info)
+            except Exception as e:
+                debug_print(f"Envoi message throttling échoué: {e}")
+            
+            # Logger le throttling
+            info_print(f"THROTTLE: {sender_info} - {command_count}/{MAX_COMMANDS_PER_WINDOW} commandes")
+            return False
+        
+        # Ajouter la commande actuelle
+        self.user_commands[sender_id].append(current_time)
+        
+        # Logger pour debug
+        debug_print(f"Throttling {sender_info}: {command_count + 1}/{MAX_COMMANDS_PER_WINDOW} commandes")
+        return True
+    
+    def cleanup_throttling_data(self):
+        """Nettoyer les données de throttling anciennes (appelé périodiquement)"""
+        current_time = time.time()
+        users_to_remove = []
+        
+        for user_id, command_times in self.user_commands.items():
+            # Nettoyer les commandes anciennes
+            recent_commands = [
+                cmd_time for cmd_time in command_times
+                if current_time - cmd_time < COMMAND_WINDOW_SECONDS
+            ]
+            
+            if recent_commands:
+                self.user_commands[user_id] = recent_commands
+            else:
+                # Plus de commandes récentes, supprimer l'utilisateur
+                users_to_remove.append(user_id)
+        
+        # Supprimer les utilisateurs inactifs
+        for user_id in users_to_remove:
+            del self.user_commands[user_id]
+        
+        if users_to_remove and DEBUG_MODE:
+            debug_print(f"Nettoyage throttling: {len(users_to_remove)} utilisateurs supprimés")
     
     def format_legend(self):
         """Formater la légende des indicateurs colorés - version compacte"""
@@ -465,6 +533,8 @@ class MessageHandler:
                         rssi_icon = get_signal_quality_icon(rssi)
                         response_lines.append(f"{rssi_icon} RSSI: {rssi}dBm")
                     else:
+                        # Debugging: vérifier si le RSSI est vraiment absent ou juste à 0
+                        debug_print(f"RSSI manquant pour {sender_info}: données = {sender_node_data}")
                         response_lines.append("📶 RSSI: Non disponible")
                     
                     # SNR depuis tigrog2

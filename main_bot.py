@@ -140,6 +140,11 @@ class DebugMeshBot:
         
         self.context_manager.cleanup_old_contexts()
         self.node_manager.cleanup_old_rx_history()
+        
+        # Nettoyage des données de throttling
+        if self.message_handler:
+            self.message_handler.cleanup_throttling_data()
+        
         gc.collect()
     
     def start(self):

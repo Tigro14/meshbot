@@ -43,14 +43,21 @@ class RemoteNodesClient:
                             else:
                                 debug_print(f"Nœud {node_id} accepté (hopsAway={hops_away})")
                         else:
-                            # Fallback : utiliser les métriques de signal comme critère
+                            # Fallback : Si pas de hopsAway, être plus tolérant avec RSSI
+                            # Un RSSI peut être 0 pour diverses raisons techniques
                             rssi = node_info.get('rssi', 0)
                             snr = node_info.get('snr', 0.0)
                             
-                            # Si pas de hopsAway ET pas de métriques RSSI, probablement relayé
-                            if rssi == 0:
-                                debug_print(f"Nœud {node_id} ignoré (pas de hopsAway, pas de RSSI)")
+                            # Accepter si on a au moins SNR ou si last_heard récent
+                            last_heard = node_info.get('lastHeard', 0)
+                            current_time = time.time()
+                            is_recent = (current_time - last_heard) < 3600  # 1 heure
+                            
+                            if rssi == 0 and snr == 0.0 and not is_recent:
+                                debug_print(f"Nœud {node_id} ignoré (pas de hopsAway, pas de métriques, pas récent)")
                                 continue
+                            else:
+                                debug_print(f"Nœud {node_id} accepté (RSSI:{rssi}, SNR:{snr}, recent:{is_recent})")
                         
                         # Traiter le node_id - peut être string ou int
                         if isinstance(node_id, str):
