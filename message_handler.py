@@ -95,6 +95,7 @@ class MessageHandler:
             "/bot <question>",
             "/power",
             "/rx [page]", 
+            "/sys",
             "/legend",
             "/help"
         ]
@@ -169,6 +170,210 @@ class MessageHandler:
             error_print(f"Erreur commande /help: {e}")
             self.send_single_message("Erreur génération aide", sender_id, sender_info)
     
+    def handle_rebootg2_command(self, sender_id, sender_info):
+        """Gérer la commande /rebootg2 (non documentée)"""
+        info_print(f"RebootG2: {sender_info}")
+        
+        import subprocess
+        import threading
+        
+        def reboot_and_telemetry():
+            try:
+                # Envoi message de confirmation immédiat
+                self.send_single_message("🔄 Redémarrage tigrog2...", sender_id, sender_info)
+                
+                # Commande 1: Reboot
+                reboot_cmd = [
+                    'meshtastic', 
+                    '--port', '/dev/ttyACM0', 
+                    '--dest', '!16fad3dc', 
+                    '--reboot'
+                ]
+                
+                debug_print(f"Exécution: {' '.join(reboot_cmd)}")
+                result1 = subprocess.run(reboot_cmd, 
+                                       capture_output=True, 
+                                       text=True, 
+                                       timeout=30)
+                
+                if result1.returncode == 0:
+                    info_print("Commande reboot envoyée avec succès")
+                    self.send_single_message("✅ Reboot envoyé, attente 20s...", sender_id, sender_info)
+                else:
+                    error_msg = f"❌ Erreur reboot: {result1.stderr[:50]}"
+                    self.send_single_message(error_msg, sender_id, sender_info)
+                    return
+                
+                # Attendre 20 secondes
+                time.sleep(20)
+                
+                # Commande 2: Request telemetry
+                telemetry_cmd = [
+                    'meshtastic', 
+                    '--port', '/dev/ttyACM0', 
+                    '--dest', '!16fad3dc', 
+                    '--request-telemetry'
+                ]
+                
+                debug_print(f"Exécution: {' '.join(telemetry_cmd)}")
+                result2 = subprocess.run(telemetry_cmd, 
+                                       capture_output=True, 
+                                       text=True, 
+                                       timeout=30)
+                
+                if result2.returncode == 0:
+                    # Parser et formater le résultat de télémétrie
+                    telemetry_output = result2.stdout.strip()
+                    if telemetry_output:
+                        # Extraire les informations pertinentes
+                        response = f"📊 Télémétrie tigrog2:\n{telemetry_output[:200]}"
+                    else:
+                        response = "📊 Télémétrie demandée (pas de données reçues)"
+                    
+                    self.send_response_chunks(response, sender_id, sender_info)
+                    self.log_conversation(sender_id, sender_info, "/rebootg2", response)
+                else:
+                    error_msg = f"❌ Erreur télémétrie: {result2.stderr[:100]}"
+                    self.send_single_message(error_msg, sender_id, sender_info)
+                
+            except subprocess.TimeoutExpired:
+                self.send_single_message("⏱️ Timeout commande meshtastic", sender_id, sender_info)
+            except Exception as e:
+                error_msg = f"❌ Erreur: {str(e)[:100]}"
+                error_print(f"Erreur rebootg2: {e}")
+                self.send_single_message(error_msg, sender_id, sender_info)
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=reboot_and_telemetry, daemon=True).start()
+    
+    def handle_sys_command(self, sender_id, sender_info):
+        """Gérer la commande /sys"""
+        info_print(f"Sys: {sender_info}")
+        
+        import subprocess
+        import threading
+        
+        def get_system_info():
+            try:
+                # Envoi message de confirmation immédiat
+                self.send_single_message("🖥️ Infos système...", sender_id, sender_info)
+                
+                system_info = []
+                
+                # 1. Température CPU (RPI5)
+                try:
+                    # Méthode 1: vcgencmd (Raspberry Pi)
+                    temp_cmd = ['vcgencmd', 'measure_temp']
+                    temp_result = subprocess.run(temp_cmd, 
+                                               capture_output=True, 
+                                               text=True, 
+                                               timeout=5)
+                    
+                    if temp_result.returncode == 0:
+                        temp_output = temp_result.stdout.strip()
+                        # Format: temp=45.1'C
+                        if 'temp=' in temp_output:
+                            temp_value = temp_output.split('=')[1].replace("'C", "°C")
+                            system_info.append(f"🌡️ CPU: {temp_value}")
+                        else:
+                            system_info.append(f"🌡️ CPU: {temp_output}")
+                    else:
+                        # Fallback: lecture du fichier thermal_zone
+                        try:
+                            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                                temp_millis = int(f.read().strip())
+                                temp_celsius = temp_millis / 1000.0
+                                system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
+                        except:
+                            system_info.append("🌡️ CPU: N/A")
+                            
+                except Exception as e:
+                    debug_print(f"Erreur température: {e}")
+                    system_info.append("🌡️ CPU: Error")
+                
+                # 2. Uptime
+                try:
+                    uptime_cmd = ['uptime']
+                    uptime_result = subprocess.run(uptime_cmd, 
+                                                 capture_output=True, 
+                                                 text=True, 
+                                                 timeout=5)
+                    
+                    if uptime_result.returncode == 0:
+                        uptime_output = uptime_result.stdout.strip()
+                        # Nettoyer et simplifier l'output uptime
+                        uptime_clean = uptime_output.replace('  ', ' ')
+                        
+                        # Extraire les parties importantes
+                        parts = uptime_clean.split(',')
+                        if len(parts) >= 3:
+                            # Uptime + load average
+                            uptime_part = parts[0].strip()  # "up X days, Y hours"
+                            load_parts = [p.strip() for p in parts[-3:]]  # derniers 3 éléments (load avg)
+                            
+                            # Formater de manière compacte
+                            if 'up' in uptime_part:
+                                up_info = uptime_part.split('up')[1].strip()
+                                system_info.append(f"⏱️ Up: {up_info}")
+                            
+                            # Load average (simplifier)
+                            load_info = ', '.join(load_parts)
+                            if 'load average:' in load_info:
+                                load_values = load_info.split('load average:')[1].strip()
+                                system_info.append(f"📊 Load: {load_values}")
+                        else:
+                            # Fallback: uptime complet mais tronqué
+                            system_info.append(f"⏱️ {uptime_clean[:50]}")
+                    else:
+                        system_info.append("⏱️ Uptime: Error")
+                        
+                except Exception as e:
+                    debug_print(f"Erreur uptime: {e}")
+                    system_info.append("⏱️ Uptime: Error")
+                
+                # 3. Informations mémoire (bonus)
+                try:
+                    # Récupérer info mémoire rapidement
+                    with open('/proc/meminfo', 'r') as f:
+                        meminfo = f.read()
+                    
+                    mem_total = None
+                    mem_available = None
+                    
+                    for line in meminfo.split('\n'):
+                        if line.startswith('MemTotal:'):
+                            mem_total = int(line.split()[1])  # en kB
+                        elif line.startswith('MemAvailable:'):
+                            mem_available = int(line.split()[1])  # en kB
+                    
+                    if mem_total and mem_available:
+                        mem_used = mem_total - mem_available
+                        mem_percent = (mem_used / mem_total) * 100
+                        mem_total_mb = mem_total // 1024
+                        mem_used_mb = mem_used // 1024
+                        
+                        system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
+                        
+                except Exception as e:
+                    debug_print(f"Erreur mémoire: {e}")
+                
+                # Construire la réponse finale
+                if system_info:
+                    response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
+                else:
+                    response = "❌ Impossible de récupérer les infos système"
+                
+                self.send_response_chunks(response, sender_id, sender_info)
+                self.log_conversation(sender_id, sender_info, "/sys", response)
+                
+            except Exception as e:
+                error_msg = f"❌ Erreur système: {str(e)[:100]}"
+                error_print(f"Erreur sys: {e}")
+                self.send_single_message(error_msg, sender_id, sender_info)
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=get_system_info, daemon=True).start()
+    
     def process_text_message(self, packet, decoded, message):
         """Traiter un message texte"""
         sender_id = packet.get('from', 0)
@@ -200,6 +405,10 @@ class MessageHandler:
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
             self.handle_help_command(sender_id, sender_info)
+        elif message.startswith('/rebootg2'):
+            self.handle_rebootg2_command(sender_id, sender_info)
+        elif message.startswith('/sys'):
+            self.handle_sys_command(sender_id, sender_info)
         else:
             # Message normal (pas de commande)
             if DEBUG_MODE:

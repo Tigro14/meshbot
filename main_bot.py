@@ -187,13 +187,13 @@ class DebugMeshBot:
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec architecture modulaire")
                 print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
-                print("\nCommandes: test, bot, power, rx, legend, help, config, nodes, context, update, save, mem, quit")
+                print("\nCommandes: test, bot, power, rx, legend, help, sys, rebootg2, config, nodes, context, update, save, mem, quit")
                 
                 # Initialiser et démarrer l'interface debug
                 self.debug_interface = DebugInterface(self)
                 threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot', '/power', '/rx', '/legend' et '/help' avec contexte")
+                info_print("Bot en service - '/bot', '/power', '/rx', '/sys', '/legend' et '/help'")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
