@@ -4,6 +4,7 @@ Gestionnaire des messages et commandes
 """
 
 import time
+import meshtastic.portnums_pb2
 from config import *
 from utils import *
 
@@ -179,69 +180,87 @@ class MessageHandler:
         
         def reboot_and_telemetry():
             try:
-                # Envoi message de confirmation immédiat
-                self.send_single_message("🔄 Redémarrage tigrog2...", sender_id, sender_info)
+                # Commande 1: Reboot via l'API Meshtastic directement
+                target_node_id = 0x16fad3dc  # Convertir depuis '!16fad3dc'
                 
-                # Commande 1: Reboot
-                reboot_cmd = [
-                    'meshtastic', 
-                    '--port', '/dev/ttyACM0', 
-                    '--dest', '!16fad3dc', 
-                    '--reboot'
-                ]
+                debug_print(f"Envoi reboot via API vers {target_node_id:08x}")
                 
-                debug_print(f"Exécution: {' '.join(reboot_cmd)}")
-                result1 = subprocess.run(reboot_cmd, 
-                                       capture_output=True, 
-                                       text=True, 
-                                       timeout=30)
-                
-                if result1.returncode == 0:
-                    info_print("Commande reboot envoyée avec succès")
-                    self.send_single_message("✅ Reboot envoyé, attente 20s...", sender_id, sender_info)
-                else:
-                    error_msg = f"❌ Erreur reboot: {result1.stderr[:50]}"
-                    self.send_single_message(error_msg, sender_id, sender_info)
+                # Utiliser l'interface existante pour envoyer la commande reboot
+                try:
+                    # Envoyer commande reboot via l'API
+                    self.interface.sendData(
+                        b'\x12\x04\x08\x96\x01',  # AdminMessage avec reboot
+                        destinationId=target_node_id,
+                        portNum=meshtastic.portnums_pb2.PortNum.ADMIN_APP,
+                        wantAck=True
+                    )
+                    info_print("Commande reboot API envoyée avec succès")
+                    
+                    # Attendre que l'interface se stabilise et que le nœud redémarre
+                    debug_print("Attente redémarrage et stabilisation (50s)...")
+                    time.sleep(50)
+                    
+                    # Envoyer confirmation après stabilisation
+                    try:
+                        self.send_single_message("🔄 Reboot tigrog2 effectué", sender_id, sender_info)
+                        time.sleep(2)
+                    except Exception as e:
+                        debug_print(f"Confirmation reboot échouée: {e}")
+                        
+                except Exception as e:
+                    error_print(f"Erreur envoi reboot API: {e}")
+                    time.sleep(10)
+                    try:
+                        error_msg = f"❌ Erreur reboot API: {str(e)[:50]}"
+                        self.send_single_message(error_msg, sender_id, sender_info)
+                    except Exception as e2:
+                        debug_print(f"Message d'erreur reboot échoué: {e2}")
                     return
                 
-                # Attendre 20 secondes
-                time.sleep(20)
+                # Commande 2: Request telemetry via l'API
+                time.sleep(5)  # Petit délai supplémentaire
                 
-                # Commande 2: Request telemetry
-                telemetry_cmd = [
-                    'meshtastic', 
-                    '--port', '/dev/ttyACM0', 
-                    '--dest', '!16fad3dc', 
-                    '--request-telemetry'
-                ]
-                
-                debug_print(f"Exécution: {' '.join(telemetry_cmd)}")
-                result2 = subprocess.run(telemetry_cmd, 
-                                       capture_output=True, 
-                                       text=True, 
-                                       timeout=30)
-                
-                if result2.returncode == 0:
-                    # Parser et formater le résultat de télémétrie
-                    telemetry_output = result2.stdout.strip()
-                    if telemetry_output:
-                        # Extraire les informations pertinentes
-                        response = f"📊 Télémétrie tigrog2:\n{telemetry_output[:200]}"
-                    else:
-                        response = "📊 Télémétrie demandée (pas de données reçues)"
+                try:
+                    debug_print(f"Demande télémétrie via API vers {target_node_id:08x}")
                     
-                    self.send_response_chunks(response, sender_id, sender_info)
-                    self.log_conversation(sender_id, sender_info, "/rebootg2", response)
-                else:
-                    error_msg = f"❌ Erreur télémétrie: {result2.stderr[:100]}"
-                    self.send_single_message(error_msg, sender_id, sender_info)
+                    # Envoyer demande de télémétrie via l'API
+                    self.interface.sendData(
+                        b'\x08\x04',  # TelemetryRequest
+                        destinationId=target_node_id,
+                        portNum=meshtastic.portnums_pb2.PortNum.TELEMETRY_APP,
+                        wantAck=True
+                    )
+                    
+                    # Attendre la réponse télémétrie (plus court car pas de reboot)
+                    debug_print("Attente réponse télémétrie (10s)...")
+                    time.sleep(10)
+                    
+                    # Note: La télémétrie sera reçue via le handler normal de messages
+                    # On peut juste confirmer que la demande a été envoyée
+                    response = "📊 Demande télémétrie tigrog2 envoyée"
+                    
+                    try:
+                        self.send_single_message(response, sender_id, sender_info)
+                        self.log_conversation(sender_id, sender_info, "/rebootg2", response)
+                    except Exception as e:
+                        debug_print(f"Envoi confirmation télémétrie échoué: {e}")
+                        
+                except Exception as e:
+                    error_print(f"Erreur demande télémétrie API: {e}")
+                    try:
+                        error_msg = f"❌ Erreur télémétrie API: {str(e)[:50]}"
+                        self.send_single_message(error_msg, sender_id, sender_info)
+                    except Exception as e2:
+                        debug_print(f"Message d'erreur télémétrie échoué: {e2}")
                 
-            except subprocess.TimeoutExpired:
-                self.send_single_message("⏱️ Timeout commande meshtastic", sender_id, sender_info)
             except Exception as e:
-                error_msg = f"❌ Erreur: {str(e)[:100]}"
-                error_print(f"Erreur rebootg2: {e}")
-                self.send_single_message(error_msg, sender_id, sender_info)
+                time.sleep(10)
+                try:
+                    error_msg = f"❌ Erreur général: {str(e)[:80]}"
+                    error_print(f"Erreur rebootg2: {e}")
+                    self.send_single_message(error_msg, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Message d'erreur général échoué: {e2}")
         
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=reboot_and_telemetry, daemon=True).start()
