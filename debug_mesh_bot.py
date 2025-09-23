@@ -418,22 +418,51 @@ class DebugMeshBot:
                         else:
                             # Déjà un int
                             id_int = int(node_id)
-                        rssi = node_info.get('rssi', 0)
-                        snr = node_info.get('snr', 0.0)
+                        # Récupérer le nom - privilégier shortName
                         name = "Unknown"
+                        short_name = None
                         if 'user' in node_info and isinstance(node_info['user'], dict):
                             user = node_info['user']
-                            name = user.get('longName') or user.get('shortName', f"Node-{id_int:08x}")
+                            short_name = user.get('shortName', '')
+                            long_name = user.get('longName', '')
+                            
+                            # Utiliser shortName en priorité, sinon longName tronqué
+                            if short_name:
+                                name = short_name
+                            elif long_name:
+                                name = long_name[:8]  # Tronquer à 8 caractères
+                            else:
+                                name = f"Node-{id_int:04x}"
                         
                         last_heard = node_info.get('lastHeard', 0)
                         
-                        node_list.append({
+                        # Collecter les métriques de signal si activé
+                        rssi = 0
+                        snr = 0.0
+                        if COLLECT_SIGNAL_METRICS:
+                            rssi = node_info.get('rssi', 0)
+                            snr = node_info.get('snr', 0.0)
+                        
+                        # FILTRE TEMPOREL : ne garder que les nœuds vus dans les 3 derniers jours
+                        current_time = time.time()
+                        three_days_ago = current_time - (3 * 24 * 3600)  # 3 jours en secondes
+                        
+                        if last_heard == 0 or last_heard < three_days_ago:
+                            debug_print(f"Nœud {node_id} ignoré (trop ancien: {last_heard})")
+                            continue
+                        
+                        node_data = {
                             'id': id_int,
                             'name': name,
-                            'last_heard': last_heard,
-                            'snr': snr,
-                            'rssi': rssi
-                        })
+                            'last_heard': last_heard
+                        }
+                        
+                        # Ajouter les métriques si collectées
+                        if COLLECT_SIGNAL_METRICS:
+                            node_data['rssi'] = rssi
+                            node_data['snr'] = snr
+                        
+                        node_list.append(node_data)
                         
                         debug_print(f"✅ Nœud direct: {name} RSSI:{rssi} SNR:{snr:.1f}")
                         
@@ -526,7 +555,163 @@ class DebugMeshBot:
             error_print(f"Erreur format rapport {REMOTE_NODE_NAME}: {e}")
             return f"Erreur récupération {REMOTE_NODE_NAME}: {str(e)[:50]}"
     
-    def send_all_tigrog2_pages(self, sender_id, sender_info):
+    def get_tigrog2_paginated(self, page=1):
+        """Récupérer et formater les nœuds tigrog2 avec pagination simple"""
+        try:
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            
+            if not remote_nodes:
+                return "Aucun nœud direct trouvé sur tigrog2"
+            
+            # Trier
+            if COLLECT_SIGNAL_METRICS:
+                remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
+            else:
+                remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
+            
+            # Calculer la pagination - plus simple
+            nodes_per_page = 8  # Fixe, testé pour fonctionner dans les limites
+            total_nodes = len(remote_nodes)
+            total_pages = (total_nodes + nodes_per_page - 1) // nodes_per_page
+            
+            # Valider page
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+            
+            # Extraire nœuds pour cette page
+            start_idx = (page - 1) * nodes_per_page
+            end_idx = min(start_idx + nodes_per_page, total_nodes)
+            page_nodes = remote_nodes[start_idx:end_idx]
+            
+            # Construire réponse
+            lines = []
+            
+            # Header seulement page 1
+            if page == 1:
+                lines.append(f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) ({total_nodes}):")
+            
+            # Formater chaque nœud
+            for node in page_nodes:
+                short_name = node['name'][:8] if len(node['name']) > 8 else node['name']
+                
+                if node['last_heard'] > 0:
+                    elapsed = int(time.time() - node['last_heard'])
+                    if elapsed < 60:
+                        time_str = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        time_str = f"{elapsed//60}m"
+                    elif elapsed < 86400:
+                        time_str = f"{elapsed//3600}h"
+                    else:
+                        time_str = f"{elapsed//86400}j"
+                else:
+                    time_str = "n/a"
+                
+                # Indicateur de qualité RSSI
+                rssi_icon = "📶"  # Par défaut
+                if COLLECT_SIGNAL_METRICS and 'rssi' in node:
+                    rssi = node['rssi']
+                    if rssi >= -80:
+                        rssi_icon = "🟢"
+                    elif rssi >= -100:
+                        rssi_icon = "🟡"
+                    elif rssi >= -120:
+                        rssi_icon = "🟠"
+                    elif rssi < -120 and rssi != 0:
+                        rssi_icon = "🔴"
+                
+                # Indicateur de qualité SNR
+                snr_icon = ""
+                if COLLECT_SIGNAL_METRICS and 'snr' in node:
+                    snr = node['snr']
+                    if snr >= 10:
+                        snr_icon = "🔵"    # Excellent SNR
+                    elif snr >= 5:
+                        snr_icon = "🟣"    # Bon SNR
+                    elif snr >= 0:
+                        snr_icon = "🟤"    # SNR faible mais positif
+                    elif snr < 0 and snr != 0:
+                        snr_icon = "⚫"    # SNR négatif
+                
+                # Format de base : icône RSSI + icône SNR + nom court + temps
+                line_parts = [rssi_icon]
+                if snr_icon:
+                    line_parts.append(snr_icon)
+                line_parts.extend([short_name, time_str])
+                
+                if SHOW_RSSI and COLLECT_SIGNAL_METRICS and 'rssi' in node and node['rssi'] != 0:
+                    line_parts.append(f"{node['rssi']}dB")
+                
+                if SHOW_SNR and COLLECT_SIGNAL_METRICS and 'snr' in node and node['snr'] != 0:
+                    line_parts.append(f"SNR:{node['snr']:.1f}")
+                
+                lines.append(" ".join(line_parts))
+            
+            # Info pagination si nécessaire
+            if total_pages > 1:
+                lines.append(f"{page}/{total_pages}")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            return f"Erreur tigrog2: {str(e)[:30]}"
+    
+    def format_legend(self):
+        """Formater la légende des indicateurs colorés - version compacte"""
+        legend_lines = [
+            "📶 Indicateurs:",
+            "🟢🔵=excellent",
+            "🟡🟣=bon", 
+            "🟠🟤=faible",
+            "🔴⚫=très faible",
+            "1er=RSSI 2e=SNR"
+        ]
+        
+        return "\n".join(legend_lines)
+    
+    def format_help(self):
+        """Formater l'aide des commandes disponibles - version compacte"""
+        help_lines = [
+            "🤖 Commandes bot:",
+            "/bot <question>",
+            "/power",
+            "/rx", 
+            "/tigrog2 [page]",
+            "/legend",
+            "/help"
+        ]
+        
+        return "\n".join(help_lines)
+    
+    def send_all_tigrog2_pages_simple(self, sender_id, sender_info):
+        """Envoyer toutes les pages tigrog2 de façon simple"""
+        try:
+            # Déterminer nombre de pages
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            if not remote_nodes:
+                self.send_single_message("Aucun nœud direct trouvé sur tigrog2", sender_id, sender_info)
+                return
+            
+            nodes_per_page = 8
+            total_pages = (len(remote_nodes) + nodes_per_page - 1) // nodes_per_page
+            
+            debug_print(f"Envoi {total_pages} pages tigrog2 à {sender_info}")
+            
+            # Envoyer chaque page
+            for page in range(1, total_pages + 1):
+                report = self.get_tigrog2_paginated(page)
+                self.send_single_message(report, sender_id, sender_info)
+                
+                if page < total_pages:
+                    time.sleep(3)
+                    
+        except Exception as e:
+            error_print(f"Erreur envoi pages tigrog2: {e}")
+            # Fallback
+            fallback = self.get_tigrog2_paginated(1)
+            self.send_single_message(fallback, sender_id, sender_info)
         """Envoyer toutes les pages de tigrog2 avec délai entre chaque"""
         try:
             # D'abord déterminer le nombre total de pages
@@ -955,11 +1140,16 @@ class DebugMeshBot:
             self.interface.sendText(message, destinationId=sender_id)
             debug_print(f"Message → {sender_info}")
         except Exception as e1:
+            error_print(f"Échec envoi → {sender_info}: {e1}")
+            # Plus de fallback sur 'dest' car ce paramètre n'existe plus
+            # Essayer d'autres méthodes si nécessaire
             try:
-                self.interface.sendText(message, dest=sender_id)
-                debug_print(f"Message → {sender_info} (alt)")
+                # Tentative avec le format hex string
+                hex_id = f"!{sender_id:08x}"
+                self.interface.sendText(message, destinationId=hex_id)
+                debug_print(f"Message → {sender_info} (hex format)")
             except Exception as e2:
-                error_print(f"Échec envoi → {sender_info}: {e2}")
+                error_print(f"Échec envoi définitif → {sender_info}: {e2}")
     
     def cleanup_cache(self):
         """Nettoyage périodique"""
@@ -983,12 +1173,6 @@ class DebugMeshBot:
             # Mise à jour de l'historique RX pour tous les packets
             self.update_rx_history(packet)
             
-            # Filtrer télémétrie pour le traitement des commandes
-            if 'decoded' in packet:
-                portnum = packet['decoded'].get('portnum', '')
-                if portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP', 'ROUTING_APP']:
-                    return
-            
             # Vérifier si message pour nous
             to_id = packet.get('to', 0)
             from_id = packet.get('from', 0)
@@ -996,25 +1180,37 @@ class DebugMeshBot:
             
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
+                debug_print(f"Mon ID détecté: {my_id:08x}")
+            else:
+                debug_print("ATTENTION: localNode non disponible")
             
-            is_for_me = (to_id == my_id)
-            is_from_me = (from_id == my_id)
+            is_for_me = (to_id == my_id) if my_id else False
+            is_from_me = (from_id == my_id) if my_id else False
+            is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
             
-            if DEBUG_MODE and not (is_for_me or is_from_me):
+            # CORRECTION: Ne filtrer qu'en mode debug ET seulement si ce n'est pas un message texte
+            if DEBUG_MODE:
+                debug_print(f"Packet: From:{from_id:08x} To:{to_id:08x} ForMe:{is_for_me} FromMe:{is_from_me} Broadcast:{is_broadcast}")
+            
+            # Ne traiter que si c'est pour nous, de nous, ou broadcast
+            if not (is_for_me or is_from_me or is_broadcast):
+                if DEBUG_MODE:
+                    debug_print(f"Packet ignoré (pas pour nous)")
                 return
             
-            sender_name = self.get_node_name(from_id)
-            debug_print(f"Packet: From:{sender_name} To:{to_id}")
-            
-            is_private = is_for_me
-            
             if 'decoded' not in packet:
+                if DEBUG_MODE:
+                    debug_print("Packet non décodé")
                 return
             
             decoded = packet['decoded']
             portnum = decoded.get('portnum', '')
             
+            # CORRECTION: Ne filtrer que APRÈS avoir vérifié que c'est un TEXT_MESSAGE_APP
             if portnum == 'TEXT_MESSAGE_APP':
+                sender_name = self.get_node_name(from_id)
+                debug_print(f"Message texte de {sender_name}")
+                
                 message = ""
                 
                 if 'text' in decoded:
@@ -1030,11 +1226,16 @@ class DebugMeshBot:
                         message = str(payload)
                 
                 sender_id = packet.get('from', 0)
-                debug_print(f"Message: '{message}' from {sender_name}")
+                info_print(f"MESSAGE REÇU de {sender_name}: '{message}' (ForMe:{is_for_me})")
+                
+                # Traiter les commandes seulement si c'est pour nous
+                is_private = is_for_me
                 
                 # Commandes
                 if message.startswith('/bot '):
                     if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /bot ignorée (message public)")
                         return
                     
                     prompt = message[5:].strip()
@@ -1056,6 +1257,8 @@ class DebugMeshBot:
                         
                 elif message.startswith('/power'):
                     if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /power ignorée (message public)")
                         return
                     
                     sender_info = self.get_sender_info(sender_id)
@@ -1065,23 +1268,51 @@ class DebugMeshBot:
                     self.log_conversation(sender_id, sender_info, "/power", esphome_data)
                     self.send_response_chunks(esphome_data, sender_id, sender_info)
                 
-                elif message.startswith('/tigrog2'):
-                    # Commande pour voir les nœuds de tigrog2 - envoie toutes les pages
+                elif message.startswith('/tigrog2') or message.startswith('/tigro G2'):
                     if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /tigrog2 ignorée (message public)")
                         return
                     
+                    # Extraire le numéro de page - gérer les deux formats
+                    page = 1
+                    parts = message.split()
+                    
+                    if message.startswith('/tigro G2'):
+                        # Format "/tigro G2 2" - la page est le 3ème élément
+                        if len(parts) >= 3:
+                            try:
+                                page = int(parts[2])
+                                if page < 1:
+                                    page = 1
+                            except ValueError:
+                                page = 1
+                    else:
+                        # Format "/tigrog2 2" - la page est le 2ème élément
+                        if len(parts) > 1:
+                            try:
+                                page = int(parts[1])
+                                if page < 1:
+                                    page = 1
+                            except ValueError:
+                                page = 1
+                    
                     sender_info = self.get_sender_info(sender_id)
-                    info_print(f"Tigrog2 All Pages: {sender_info}")
+                    info_print(f"Tigrog2 Page {page}: {sender_info}")
                     
-                    # Envoyer toutes les pages automatiquement
-                    self.send_all_tigrog2_pages(sender_id, sender_info)
-                    
-                    # Log pour la conversation (page 1 seulement pour éviter la duplication)
-                    first_page_report = self.format_tigrog2_nodes_report(1)
-                    self.log_conversation(sender_id, sender_info, "/tigrog2", f"{first_page_report} [+pages suivantes]")
+                    # Utiliser get_tigrog2_paginated qui fonctionne
+                    try:
+                        report = self.get_tigrog2_paginated(page)
+                        self.log_conversation(sender_id, sender_info, f"/tigrog2 {page}" if page > 1 else "/tigrog2", report)
+                        self.send_single_message(report, sender_id, sender_info)
+                    except Exception as e:
+                        error_msg = f"Erreur tigrog2 page {page}: {str(e)[:50]}"
+                        self.send_single_message(error_msg, sender_id, sender_info)
                 
                 elif message.startswith('/rx'):
                     if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /rx ignorée (message public)")
                         return
                     
                     sender_info = self.get_sender_info(sender_id)
@@ -1090,9 +1321,51 @@ class DebugMeshBot:
                     rx_report = self.format_rx_report()
                     self.log_conversation(sender_id, sender_info, "/rx", rx_report)
                     self.send_response_chunks(rx_report, sender_id, sender_info)
+                
+                elif message.startswith('/legend'):
+                    if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /legend ignorée (message public)")
+                        return
+                    
+                    sender_info = self.get_sender_info(sender_id)
+                    info_print(f"Legend: {sender_info}")
+                    
+                    legend_text = self.format_legend()
+                    self.log_conversation(sender_id, sender_info, "/legend", legend_text)
+                    self.send_response_chunks(legend_text, sender_id, sender_info)
+                
+                elif message.startswith('/help'):
+                    if not is_private:
+                        if DEBUG_MODE:
+                            debug_print("Commande /help ignorée (message public)")
+                        return
+                    
+                    sender_info = self.get_sender_info(sender_id)
+                    info_print(f"Help: {sender_info}")
+                    
+                    try:
+                        help_text = self.format_help()
+                        info_print(f"Help text généré: {len(help_text)} caractères")
+                        self.log_conversation(sender_id, sender_info, "/help", help_text)
+                        self.send_single_message(help_text, sender_id, sender_info)
+                        info_print(f"Help envoyé à {sender_info}")
+                    except Exception as e:
+                        error_print(f"Erreur commande /help: {e}")
+                        self.send_single_message("Erreur génération aide", sender_id, sender_info)
+                else:
+                    # Message normal (pas de commande)
+                    if DEBUG_MODE:
+                        debug_print(f"Message normal reçu: '{message}'")
+            else:
+                # Autres types de packets (télémétrie, etc.) - juste pour debug
+                if DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
+                    debug_print(f"Packet {portnum} de {self.get_node_name(from_id)}")
             
         except Exception as e:
             error_print(f"Erreur traitement: {e}")
+            import traceback
+            error_print(traceback.format_exc())
     
     def interactive_loop(self):
         """Boucle interactive avec gestion des noms"""
@@ -1133,6 +1406,14 @@ class DebugMeshBot:
                     info_print("TEST RX Report:")
                     report = self.format_rx_report()
                     info_print(f"→ {report}")
+                elif command == 'legend':
+                    info_print("TEST Legend:")
+                    legend = self.format_legend()
+                    info_print(f"→ {legend}")
+                elif command == 'help':
+                    info_print("TEST Help:")
+                    help_text = self.format_help()
+                    info_print(f"→ {help_text}")
                 elif command.startswith('config '):
                     # Nouvelle commande pour changer la configuration d'affichage
                     parts = command.split(' ')
@@ -1156,43 +1437,22 @@ class DebugMeshBot:
                         info_print(f"Config actuelle - RSSI:{SHOW_RSSI} SNR:{SHOW_SNR} COLLECT:{COLLECT_SIGNAL_METRICS}")
                         info_print("Usage: config <option> <true/false>")
                 elif command.startswith('tigrog2'):
-                    # Test de récupération nœuds tigrog2 - support pages individuelles en debug
+                    # Test tigrog2 avec pagination
                     parts = command.split()
+                    page = 1
                     
                     if len(parts) > 1:
-                        # Page spécifique demandée
                         try:
                             page = int(parts[1])
-                            info_print(f"TEST Tigrog2 Page {page}: {REMOTE_NODE_HOST}")
-                            report = self.format_tigrog2_nodes_report(page)
-                            info_print(f"→ {report}")
                         except ValueError:
-                            info_print("Usage: tigrog2 [numéro_page]")
-                    else:
-                        # Toutes les pages en debug aussi
-                        info_print(f"TEST Tigrog2 Toutes Pages: {REMOTE_NODE_HOST}")
-                        
-                        # Simulation d'envoi de toutes les pages
-                        remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
-                        if remote_nodes:
-                            sample_line = self._format_node_line(remote_nodes[0])
-                            max_message_size = 180
-                            base_overhead = 60
-                            available_space = max_message_size - base_overhead
-                            avg_line_size = len(sample_line) + 1
-                            nodes_per_page = max(3, available_space // avg_line_size)
-                            total_pages = (len(remote_nodes) + nodes_per_page - 1) // nodes_per_page
-                            
-                            info_print(f"→ {len(remote_nodes)} nœuds, {total_pages} pages à envoyer")
-                            
-                            for page in range(1, total_pages + 1):
-                                report = self.format_tigrog2_nodes_report(page)
-                                info_print(f"→ PAGE {page}:")
-                                info_print(report)
-                                if page < total_pages:
-                                    info_print("  [Délai 3s...]")
-                        else:
-                            info_print("→ Aucun nœud trouvé")
+                            page = 1
+                    
+                    info_print(f"TEST Tigrog2 Page {page}")
+                    try:
+                        report = self.get_tigrog2_paginated(page)
+                        info_print(f"→ {report}")
+                    except Exception as e:
+                        info_print(f"→ Erreur: {e}")
                 elif command.startswith('nodes '):
                     # Test de récupération nœuds distants
                     parts = command.split(' ', 1)
@@ -1231,7 +1491,9 @@ class DebugMeshBot:
                     print("  bot <question> - Via Meshtastic")
                     print("  power          - Test ESPHome")
                     print("  rx             - Rapport signaux reçus")
-                    print("  tigrog2 [page] - Nœuds vus par tigrog2")
+                    print("  legend         - Légende des indicateurs")
+                    print("  help           - Cette aide")
+                    print("  tigrog2 [page] - Nœuds de tigrog2 (page 1-4)")
                     print("  config         - Voir config affichage")
                     print("  config <opt> <true/false> - Changer config")
                     print("  nodes          - Lister nœuds connus")
@@ -1286,10 +1548,10 @@ class DebugMeshBot:
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec noms de nœuds et contexte")
                 print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
-                print("\nCommandes: test, bot, power, rx, tigrog2, config, nodes, context, update, save, mem, quit")
+                print("\nCommandes: test, bot, power, rx, legend, help, tigrog2, config, nodes, context, update, save, mem, quit")
                 threading.Thread(target=self.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot', '/power', '/rx' et '/tigrog2' avec contexte")
+                info_print("Bot en service - '/bot', '/power', '/rx', '/legend', '/help' et '/tigrog2' avec contexte")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
