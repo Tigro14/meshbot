@@ -226,7 +226,7 @@ class DebugMeshBot:
             debug_print(f"Erreur traitement NodeInfo: {e}")
     
     def get_conversation_context(self, node_id):
-        """Récupérer le contexte conversationnel pour un nœud"""
+        """Récupérer le contexte conversationnel pour unoeud"""
         try:
             if node_id not in self.conversation_context:
                 return []
@@ -878,11 +878,11 @@ class DebugMeshBot:
                 error_print(f"Erreur thread mise à jour: {e}")
     
     def list_known_nodes(self):
-        """Lister tous les nœuds connus"""
+        """Lister tous les noeuds connus"""
         if not DEBUG_MODE:
             return
             
-        print(f"\n📋 Nœuds connus ({len(self.node_names)}):")
+        print(f"\n📋 oeuds connus ({len(self.node_names)}):")
         print("-" * 60)
         for node_id, name in sorted(self.node_names.items()):
             print(f"  !{node_id:08x} -> {name}")
@@ -951,7 +951,7 @@ class DebugMeshBot:
             messages = [
                 {
                     "role": "system",
-                    "content": "Tu es un assistant accessible via le réseau Meshtastic en LoRa. Réponds en français, très court, max 200 caractères. Maintiens la continuité de la conversation."
+                    "content": "Tu es un assistant accessible via le réseau Meshtastic en LoRa. Réponds en français, très court, 320 caractères. Maintiens la continuité de la conversation."
                 }
             ]
             
@@ -977,7 +977,7 @@ class DebugMeshBot:
             
             data = {
                 "messages": messages,
-                "max_tokens": 500,
+                "max_tokens": 2000,
                 "temperature": 0.7,  # Légèrement plus élevé pour plus de variété
                 "top_p": 0.95,
                 "top_k": 20
@@ -1082,7 +1082,7 @@ class DebugMeshBot:
                         break
                 
                 if humidity_relative is not None:
-                    humidity_str = f"H:{humidity_relative:.0f}%"
+                    humidity_str = f"HR:{humidity_relative:.0f}%"
                     if 'absolute_humidity' in found_data:
                         abs_hum = found_data['absolute_humidity']
                         humidity_str += f"({abs_hum:.1f}g/m³)"
