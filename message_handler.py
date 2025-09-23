@@ -255,9 +255,6 @@ class MessageHandler:
         
         def get_system_info():
             try:
-                # Envoi message de confirmation immédiat
-                self.send_single_message("🖥️ Infos système...", sender_id, sender_info)
-                
                 system_info = []
                 
                 # 1. Température CPU (RPI5)
