@@ -79,6 +79,10 @@ class DebugMeshBot:
         # Historique des signaux reçus
         self.rx_history = {}  # node_id -> {'name': str, 'rssi': int, 'snr': float, 'last_seen': timestamp, 'count': int}
         self._max_rx_history = 50  # Limiter pour économiser la mémoire
+        # Contexte conversationnel par node
+        self.conversation_context = {}  # node_id -> [{'role': 'user'/'assistant', 'content': str, 'timestamp': float}]
+        self._max_context_messages = 6  # 3 échanges (user + assistant)
+        self._context_timeout = 1800  # 30 minutes
         
     def _get_clean_patterns(self):
         """Initialise les patterns regex une seule fois"""
@@ -189,7 +193,85 @@ class DebugMeshBot:
         
         return f"Node-{node_id:08x}"
     
-    def update_node_from_packet(self, packet):
+    def get_conversation_context(self, node_id):
+        """Récupérer le contexte conversationnel pour un nœud"""
+        try:
+            if node_id not in self.conversation_context:
+                return []
+            
+            current_time = time.time()
+            context = self.conversation_context[node_id]
+            
+            # Filtrer les messages trop anciens
+            valid_context = [
+                msg for msg in context 
+                if current_time - msg['timestamp'] <= self._context_timeout
+            ]
+            
+            # Mettre à jour si des messages ont été supprimés
+            if len(valid_context) != len(context):
+                self.conversation_context[node_id] = valid_context
+                debug_print(f"🧹 Contexte nettoyé pour {self.get_node_name(node_id)}: {len(valid_context)} messages")
+            
+            return valid_context
+            
+        except Exception as e:
+            debug_print(f"Erreur contexte: {e}")
+            return []
+    
+    def add_to_context(self, node_id, role, content):
+        """Ajouter un message au contexte conversationnel"""
+        try:
+            current_time = time.time()
+            
+            if node_id not in self.conversation_context:
+                self.conversation_context[node_id] = []
+            
+            # Ajouter le nouveau message
+            message = {
+                'role': role,
+                'content': content,
+                'timestamp': current_time
+            }
+            
+            self.conversation_context[node_id].append(message)
+            
+            # Limiter la taille du contexte (garder les plus récents)
+            if len(self.conversation_context[node_id]) > self._max_context_messages:
+                self.conversation_context[node_id] = self.conversation_context[node_id][-self._max_context_messages:]
+            
+            debug_print(f"📝 Contexte {self.get_node_name(node_id)}: +{role} ({len(self.conversation_context[node_id])} msgs)")
+            
+        except Exception as e:
+            debug_print(f"Erreur ajout contexte: {e}")
+    
+    def cleanup_old_contexts(self):
+        """Nettoyer les contextes trop anciens"""
+        try:
+            current_time = time.time()
+            nodes_to_remove = []
+            
+            for node_id, context in self.conversation_context.items():
+                # Filtrer les messages valides
+                valid_messages = [
+                    msg for msg in context 
+                    if current_time - msg['timestamp'] <= self._context_timeout
+                ]
+                
+                if not valid_messages:
+                    # Aucun message valide, supprimer le contexte
+                    nodes_to_remove.append(node_id)
+                elif len(valid_messages) != len(context):
+                    # Certains messages expirés, nettoyer
+                    self.conversation_context[node_id] = valid_messages
+            
+            # Supprimer les contextes vides
+            for node_id in nodes_to_remove:
+                del self.conversation_context[node_id]
+                debug_print(f"🗑️ Contexte supprimé: {self.get_node_name(node_id)}")
+                
+        except Exception as e:
+            debug_print(f"Erreur nettoyage contexte: {e}")
         """Mettre à jour la base de nœuds depuis un packet reçu"""
         try:
             if 'decoded' in packet and packet['decoded'].get('portnum') == 'NODEINFO_APP':
@@ -414,28 +496,49 @@ class DebugMeshBot:
             debug_print(f"Erreur nettoyage: {e}")
             return content if content else "Erreur"
     
-    def query_llama(self, prompt):
-        """Requête au serveur llama - version optimisée mémoire"""
+    def query_llama(self, prompt, node_id=None):
+        """Requête au serveur llama avec contexte conversationnel"""
         try:
             requests_module = lazy_import_requests()
             debug_print(f"Envoi à llama: '{prompt[:30]}...'")
             
+            # Construire les messages avec contexte
+            messages = [
+                {
+                    "role": "system",
+                    "content": "Tu es un assistant accessible via le réseau Meshtastic en LoRa. Réponds en français, très court, max 200 caractères. Maintiens la continuité de la conversation."
+                }
+            ]
+            
+            # Ajouter le contexte conversationnel si disponible
+            if node_id:
+                context = self.get_conversation_context(node_id)
+                if context:
+                    debug_print(f"📚 Utilise contexte: {len(context)} messages pour {self.get_node_name(node_id)}")
+                    # Ajouter les messages du contexte (en gardant l'ordre chronologique)
+                    for ctx_msg in context:
+                        messages.append({
+                            "role": ctx_msg['role'],
+                            "content": ctx_msg['content']
+                        })
+                else:
+                    debug_print(f"🆕 Nouvelle conversation pour {self.get_node_name(node_id)}")
+            
+            # Ajouter la nouvelle question
+            messages.append({
+                "role": "user",
+                "content": prompt
+            })
+            
             data = {
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "Réponds en français, très court, max 200 caractères."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_tokens": 500,  # Réduit de 32000 à 500
-                "temperature": 0.6,
+                "messages": messages,
+                "max_tokens": 500,
+                "temperature": 0.7,  # Légèrement plus élevé pour plus de variété
                 "top_p": 0.95,
                 "top_k": 20
             }
+            
+            debug_print(f"📊 Messages envoyés: {len(messages)} (dont {len(messages)-2} contexte)")
             
             start_time = time.time()
             response = requests_module.post(f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1/chat/completions", 
@@ -448,13 +551,18 @@ class DebugMeshBot:
                 result = response.json()
                 content = result['choices'][0]['message']['content'].strip() if 'choices' in result else "Pas de réponse"
                 
+                # Sauvegarder dans le contexte
+                if node_id:
+                    self.add_to_context(node_id, 'user', prompt)
+                    self.add_to_context(node_id, 'assistant', content)
+                
                 # Libérer immédiatement
-                del response, result, data
+                del response, result, data, messages
                 gc.collect()
                 
                 return self.clean_ai_response(content)
             else:
-                del response, data
+                del response, data, messages
                 return "Erreur serveur"
                 
         except Exception as e:
@@ -598,6 +706,9 @@ class DebugMeshBot:
         if len(self._response_cache) > self._max_cache_size:
             items = list(self._response_cache.items())
             self._response_cache = dict(items[-3:])
+        
+        # Nettoyage des contextes anciens
+        self.cleanup_old_contexts()
         gc.collect()
     
     def format_timestamp(self):
@@ -672,7 +783,7 @@ class DebugMeshBot:
                     
                     if prompt:
                         start_time = time.time()
-                        response = self.query_llama(prompt)
+                        response = self.query_llama(prompt, sender_id)  # Passer le node_id pour le contexte
                         end_time = time.time()
                         
                         self.log_conversation(sender_id, sender_info, prompt, response, end_time - start_time)
@@ -753,15 +864,20 @@ class DebugMeshBot:
                         import os
                         process = psutil.Process(os.getpid())
                         memory_mb = process.memory_info().rss / 1024 / 1024
-                        info_print(f"Mémoire: {memory_mb:.1f}MB, Nœuds: {len(self.node_names)}")
+                        active_contexts = len(self.conversation_context)
+                        total_messages = sum(len(ctx) for ctx in self.conversation_context.values())
+                        info_print(f"Mémoire: {memory_mb:.1f}MB, Nœuds: {len(self.node_names)}, Contextes: {active_contexts} ({total_messages} msgs)")
                     except:
-                        info_print(f"Nœuds connus: {len(self.node_names)}")
+                        active_contexts = len(self.conversation_context)
+                        total_messages = sum(len(ctx) for ctx in self.conversation_context.values())
+                        info_print(f"Nœuds: {len(self.node_names)}, Contextes: {active_contexts} ({total_messages} messages)")
                 elif command == 'help':
                     print("Commandes:")
                     print("  test <prompt>  - Test llama.cpp")
                     print("  bot <question> - Via Meshtastic")
                     print("  power          - Test ESPHome")
                     print("  rx             - Rapport signaux reçus")
+                    print("  context        - Voir contextes actifs")
                     print("  nodes          - Lister nœuds connus")
                     print("  update         - Mise à jour base nœuds")
                     print("  save           - Sauvegarder base nœuds")
@@ -810,11 +926,11 @@ class DebugMeshBot:
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
             
             if DEBUG_MODE:
-                info_print("MODE DEBUG avec noms de nœuds")
-                print("\nCommandes: test, bot, power, rx, nodes, update, save, mem, quit")
+                info_print("MODE DEBUG avec noms de nœuds et contexte")
+                print("\nCommandes: test, bot, power, rx, context, nodes, update, save, mem, quit")
                 threading.Thread(target=self.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot', '/power' et '/rx' avec noms de nœuds")
+                info_print("Bot en service - '/bot', '/power' et '/rx' avec contexte conversationnel")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
