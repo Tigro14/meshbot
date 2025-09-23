@@ -180,12 +180,13 @@ class MessageHandler:
         
         def reboot_and_telemetry():
             try:
-                # Commande 1: Reboot via l'API Meshtastic directement
-                target_node_id = 0x16fad3dc  # Convertir depuis '!16fad3dc'
+                # Utiliser la configuration centralisée
+                target_node_id = TIGROG2_NODE_ID
+                target_node_hex = f"!{target_node_id:08x}"
                 
-                debug_print(f"Envoi reboot via API vers {target_node_id:08x}")
+                debug_print(f"Envoi reboot via API vers {target_node_hex}")
                 
-                # Utiliser l'interface existante pour envoyer la commande reboot
+                # Commande 1: Reboot via l'API Meshtastic (fonctionne bien)
                 try:
                     # Méthode plus simple : utiliser la méthode reboot de l'interface
                     if hasattr(self.interface, 'reboot'):
@@ -208,7 +209,7 @@ class MessageHandler:
                     
                     # Envoyer confirmation après stabilisation
                     try:
-                        self.send_single_message("🔄 Reboot tigrog2 effectué", sender_id, sender_info)
+                        self.send_single_message(f"🔄 Reboot {REMOTE_NODE_NAME} effectué", sender_id, sender_info)
                         time.sleep(2)
                     except Exception as e:
                         debug_print(f"Confirmation reboot échouée: {e}")
@@ -223,44 +224,73 @@ class MessageHandler:
                         debug_print(f"Message d'erreur reboot échoué: {e2}")
                     return
                 
-                # Commande 2: Request telemetry via l'API
+                # Commande 2: Request telemetry via commande système (plus fiable)
                 time.sleep(5)  # Petit délai supplémentaire
                 
                 try:
-                    debug_print(f"Demande télémétrie via API vers {target_node_id:08x}")
+                    import subprocess
+                    debug_print("Demande télémétrie via commande système")
                     
-                    # Méthode plus simple : utiliser requestTelemetry si disponible
-                    if hasattr(self.interface, 'requestTelemetry'):
-                        self.interface.requestTelemetry(target_node_id)
-                        info_print("Demande télémétrie API envoyée avec succès")
-                    else:
-                        # Fallback: envoyer un message télémétrie
-                        self.interface.sendData(
-                            b'',  # Message vide pour demande télémétrie
-                            destinationId=target_node_id,
-                            portNum="TELEMETRY_APP",
-                            wantAck=True
-                        )
-                        info_print("Demande télémétrie fallback envoyée")
+                    # Utiliser la configuration centralisée pour le port
+                    telemetry_cmd = [
+                        'meshtastic', 
+                        '--port', SERIAL_PORT, 
+                        '--dest', target_node_hex, 
+                        '--request-telemetry'
+                    ]
                     
-                    # Attendre la réponse télémétrie (plus court car pas de reboot)
-                    debug_print("Attente réponse télémétrie (10s)...")
-                    time.sleep(10)
+                    debug_print(f"Exécution: {' '.join(telemetry_cmd)}")
+                    result = subprocess.run(telemetry_cmd, 
+                                          capture_output=True, 
+                                          text=True, 
+                                          timeout=30)
                     
-                    # Note: La télémétrie sera reçue via le handler normal de messages
-                    # On peut juste confirmer que la demande a été envoyée
-                    response = "📊 Demande télémétrie tigrog2 envoyée"
-                    
-                    try:
-                        self.send_single_message(response, sender_id, sender_info)
-                        self.log_conversation(sender_id, sender_info, "/rebootg2", response)
-                    except Exception as e:
-                        debug_print(f"Envoi confirmation télémétrie échoué: {e}")
+                    if result.returncode == 0:
+                        # Parser et formater le résultat de télémétrie
+                        telemetry_output = result.stdout.strip()
+                        if telemetry_output and len(telemetry_output) > 10:
+                            # Extraire les informations pertinentes et nettoyer
+                            lines = telemetry_output.split('\n')
+                            useful_lines = []
+                            
+                            for line in lines:
+                                line = line.strip()
+                                if line and not line.startswith('Connected to') and not line.startswith('Requesting'):
+                                    # Garder les lignes avec des données utiles
+                                    if any(keyword in line.lower() for keyword in ['voltage', 'current', 'temperature', 'humidity', 'pressure', 'battery']):
+                                        useful_lines.append(line)
+                            
+                            if useful_lines:
+                                response = f"📊 Télémétrie {REMOTE_NODE_NAME}:\n" + "\n".join(useful_lines[:5])  # Max 5 lignes
+                            else:
+                                response = f"📊 Télémétrie {REMOTE_NODE_NAME}:\n{telemetry_output[:150]}"
+                        else:
+                            response = f"📊 Télémétrie {REMOTE_NODE_NAME} (aucune donnée reçue)"
                         
-                except Exception as e:
-                    error_print(f"Erreur demande télémétrie API: {e}")
+                        # Attendre un peu avant d'envoyer la télémétrie
+                        time.sleep(3)
+                        try:
+                            self.send_response_chunks(response, sender_id, sender_info)
+                            self.log_conversation(sender_id, sender_info, "/rebootg2", response)
+                        except Exception as e:
+                            debug_print(f"Envoi télémétrie échoué: {e}")
+                    else:
+                        try:
+                            error_output = result.stderr.strip() if result.stderr else "Erreur inconnue"
+                            error_msg = f"❌ Erreur télémétrie: {error_output[:80]}"
+                            self.send_single_message(error_msg, sender_id, sender_info)
+                        except Exception as e:
+                            debug_print(f"Message d'erreur télémétrie échoué: {e}")
+                        
+                except subprocess.TimeoutExpired:
                     try:
-                        error_msg = f"❌ Erreur télémétrie API: {str(e)[:50]}"
+                        self.send_single_message("⏱️ Timeout demande télémétrie", sender_id, sender_info)
+                    except Exception as e:
+                        debug_print(f"Message timeout télémétrie échoué: {e}")
+                except Exception as e:
+                    error_print(f"Erreur demande télémétrie: {e}")
+                    try:
+                        error_msg = f"❌ Erreur télémétrie: {str(e)[:60]}"
                         self.send_single_message(error_msg, sender_id, sender_info)
                     except Exception as e2:
                         debug_print(f"Message d'erreur télémétrie échoué: {e2}")
