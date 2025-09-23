@@ -220,3 +220,4 @@ class MessageHandler:
             # Message normal (pas de commande)
             if DEBUG_MODE:
                 debug_print(f"Message normal reçu: '{message}'")
+

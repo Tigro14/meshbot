@@ -220,3 +220,4 @@ class DebugMeshBot:
             self.interface.close()
         gc.collect()
         info_print("Bot arrêté")
+
