@@ -4,7 +4,7 @@ Gestionnaire des messages et commandes
 """
 
 import time
-import meshtastic.portnums_pb2
+import meshtastic
 from config import *
 from utils import *
 
@@ -187,14 +187,20 @@ class MessageHandler:
                 
                 # Utiliser l'interface existante pour envoyer la commande reboot
                 try:
-                    # Envoyer commande reboot via l'API
-                    self.interface.sendData(
-                        b'\x12\x04\x08\x96\x01',  # AdminMessage avec reboot
-                        destinationId=target_node_id,
-                        portNum=meshtastic.portnums_pb2.PortNum.ADMIN_APP,
-                        wantAck=True
-                    )
-                    info_print("Commande reboot API envoyée avec succès")
+                    # Méthode plus simple : utiliser la méthode reboot de l'interface
+                    if hasattr(self.interface, 'reboot'):
+                        self.interface.reboot(target_node_id)
+                        info_print("Commande reboot API envoyée avec succès")
+                    else:
+                        # Fallback: envoyer un message admin
+                        admin_msg = {"reboot": True}
+                        self.interface.sendData(
+                            str(admin_msg).encode(),
+                            destinationId=target_node_id,
+                            portNum="ADMIN_APP",
+                            wantAck=True
+                        )
+                        info_print("Commande reboot admin envoyée avec succès")
                     
                     # Attendre que l'interface se stabilise et que le nœud redémarre
                     debug_print("Attente redémarrage et stabilisation (50s)...")
@@ -223,13 +229,19 @@ class MessageHandler:
                 try:
                     debug_print(f"Demande télémétrie via API vers {target_node_id:08x}")
                     
-                    # Envoyer demande de télémétrie via l'API
-                    self.interface.sendData(
-                        b'\x08\x04',  # TelemetryRequest
-                        destinationId=target_node_id,
-                        portNum=meshtastic.portnums_pb2.PortNum.TELEMETRY_APP,
-                        wantAck=True
-                    )
+                    # Méthode plus simple : utiliser requestTelemetry si disponible
+                    if hasattr(self.interface, 'requestTelemetry'):
+                        self.interface.requestTelemetry(target_node_id)
+                        info_print("Demande télémétrie API envoyée avec succès")
+                    else:
+                        # Fallback: envoyer un message télémétrie
+                        self.interface.sendData(
+                            b'',  # Message vide pour demande télémétrie
+                            destinationId=target_node_id,
+                            portNum="TELEMETRY_APP",
+                            wantAck=True
+                        )
+                        info_print("Demande télémétrie fallback envoyée")
                     
                     # Attendre la réponse télémétrie (plus court car pas de reboot)
                     debug_print("Attente réponse télémétrie (10s)...")
