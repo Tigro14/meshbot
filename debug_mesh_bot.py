@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bot Mesh Debug - Version optimisée mémoire avec gestion des noms de nœuds
+Bot Mesh Debug - Version optimisée mémoire avec gestion des noms de nœuds et contexte
 """
 
 import time
@@ -193,6 +193,29 @@ class DebugMeshBot:
         
         return f"Node-{node_id:08x}"
     
+    def update_node_from_packet(self, packet):
+        """Mettre à jour la base de nœuds depuis un packet reçu"""
+        try:
+            if 'decoded' in packet and packet['decoded'].get('portnum') == 'NODEINFO_APP':
+                node_id = packet.get('from')
+                decoded = packet['decoded']
+                
+                if 'user' in decoded and node_id:
+                    user_info = decoded['user']
+                    long_name = user_info.get('longName', '').strip()
+                    short_name = user_info.get('shortName', '').strip()
+                    
+                    name = long_name or short_name
+                    if name and len(name) > 0:
+                        old_name = self.node_names.get(node_id)
+                        if old_name != name:
+                            self.node_names[node_id] = name
+                            debug_print(f"📱 Nouveau: {name} ({node_id:08x})")
+                            # Sauvegarde différée
+                            threading.Timer(10.0, lambda: self.save_node_names()).start()
+        except Exception as e:
+            debug_print(f"Erreur traitement NodeInfo: {e}")
+    
     def get_conversation_context(self, node_id):
         """Récupérer le contexte conversationnel pour un nœud"""
         try:
@@ -272,27 +295,6 @@ class DebugMeshBot:
                 
         except Exception as e:
             debug_print(f"Erreur nettoyage contexte: {e}")
-        """Mettre à jour la base de nœuds depuis un packet reçu"""
-        try:
-            if 'decoded' in packet and packet['decoded'].get('portnum') == 'NODEINFO_APP':
-                node_id = packet.get('from')
-                decoded = packet['decoded']
-                
-                if 'user' in decoded and node_id:
-                    user_info = decoded['user']
-                    long_name = user_info.get('longName', '').strip()
-                    short_name = user_info.get('shortName', '').strip()
-                    
-                    name = long_name or short_name
-                    if name and len(name) > 0:
-                        old_name = self.node_names.get(node_id)
-                        if old_name != name:
-                            self.node_names[node_id] = name
-                            debug_print(f"📱 Nouveau: {name} ({node_id:08x})")
-                            # Sauvegarde différée
-                            threading.Timer(10.0, lambda: self.save_node_names()).start()
-        except Exception as e:
-            debug_print(f"Erreur traitement NodeInfo: {e}")
     
     def update_rx_history(self, packet):
         """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop)"""
@@ -834,8 +836,17 @@ class DebugMeshBot:
                 elif command.startswith('test '):
                     prompt = command[5:]
                     info_print(f"TEST: '{prompt}'")
-                    response = self.query_llama(prompt)
+                    response = self.query_llama(prompt)  # Sans contexte pour les tests
                     info_print(f"→ {response}")
+                elif command == 'context':
+                    # Nouvelle commande pour voir les contextes actifs
+                    info_print("📚 Contextes conversationnels:")
+                    if not self.conversation_context:
+                        info_print("  Aucun contexte actif")
+                    else:
+                        for node_id, context in self.conversation_context.items():
+                            name = self.get_node_name(node_id)
+                            info_print(f"  {name} (!{node_id:08x}): {len(context)} messages")
                 elif command.startswith('bot '):
                     question = command[4:]
                     bot_command = f"/bot {question}"
