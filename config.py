@@ -17,6 +17,7 @@ ESPHOME_PORT = 80
 # Configuration nœuds distants
 REMOTE_NODE_HOST = "192.168.1.38"
 REMOTE_NODE_NAME = "tigrog2"
+TIGROG2_NODE_ID = 0x16fad3dc  # Node ID du tigrog2
 
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
