@@ -524,12 +524,23 @@ class MessageHandler:
                         break
                 
                 if sender_node_data:
+                    # Debug : examiner toutes les données reçues
+                    debug_print(f"Données complètes pour {sender_info}: {sender_node_data}")
+                    
                     # Infos tigrog2 uniquement (source fiable)
                     response_parts = []
                     
                     # RSSI + SNR sur une ligne
                     rssi = sender_node_data.get('rssi', 0)
                     snr = sender_node_data.get('snr', 0.0)
+                    
+                    # Debug spécifique RSSI
+                    debug_print(f"RSSI brut: {rssi} (type: {type(rssi)})")
+                    debug_print(f"SNR brut: {snr} (type: {type(snr)})")
+                    
+                    # Vérifier si RSSI existe mais est None ou autre valeur
+                    rssi_raw = sender_node_data.get('rssi', 'KEY_MISSING')
+                    debug_print(f"RSSI raw value: {rssi_raw}")
                     
                     if rssi != 0 or snr != 0:
                         rssi_icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
