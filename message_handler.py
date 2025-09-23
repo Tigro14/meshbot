@@ -433,78 +433,98 @@ class MessageHandler:
         threading.Thread(target=get_system_info, daemon=True).start()
     
     def handle_my_command(self, sender_id, sender_info):
-        """Gérer la commande /my - infos signal du nœud expéditeur"""
+        """Gérer la commande /my - infos signal du nœud expéditeur vues par tigrog2"""
         info_print(f"My: {sender_info}")
         
-        try:
-            # Chercher les informations de signal pour ce nœud dans l'historique RX
-            if sender_id in self.node_manager.rx_history:
-                rx_data = self.node_manager.rx_history[sender_id]
+        import threading
+        
+        def get_remote_signal_info():
+            try:
+                # Récupérer les nœuds de tigrog2 avec leurs informations de signal
+                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
                 
-                # Construire la réponse avec toutes les infos disponibles
-                response_lines = [f"📡 Vos signaux ({sender_info}):"]
+                if not remote_nodes:
+                    response = f"❌ Impossible de contacter {REMOTE_NODE_NAME} pour vos infos signal"
+                    self.send_single_message(response, sender_id, sender_info)
+                    return
                 
-                # RSSI
-                rssi = rx_data.get('rssi', 0)
-                if rssi != 0:
-                    rssi_icon = get_signal_quality_icon(rssi)
-                    response_lines.append(f"{rssi_icon} RSSI: {rssi}dBm")
+                # Chercher le nœud expéditeur dans les données de tigrog2
+                sender_node_data = None
+                for node in remote_nodes:
+                    if node['id'] == sender_id:
+                        sender_node_data = node
+                        break
+                
+                if sender_node_data:
+                    # Construire la réponse avec les infos de tigrog2
+                    response_lines = [f"📡 Vos signaux vus par {REMOTE_NODE_NAME}:"]
+                    
+                    # RSSI depuis tigrog2
+                    rssi = sender_node_data.get('rssi', 0)
+                    if rssi != 0:
+                        rssi_icon = get_signal_quality_icon(rssi)
+                        response_lines.append(f"{rssi_icon} RSSI: {rssi}dBm")
+                    else:
+                        response_lines.append("📶 RSSI: Non disponible")
+                    
+                    # SNR depuis tigrog2
+                    snr = sender_node_data.get('snr', 0.0)
+                    if snr != 0:
+                        snr_icon = get_snr_quality_icon(snr)
+                        snr_text = f"SNR: {snr:.1f}dB"
+                        if snr_icon:
+                            snr_text = f"{snr_icon} {snr_text}"
+                        response_lines.append(snr_text)
+                    else:
+                        response_lines.append("📊 SNR: Non disponible")
+                    
+                    # Qualité générale basée sur RSSI + SNR
+                    quality_desc = self._get_signal_quality_description(rssi, snr)
+                    response_lines.append(f"📈 Qualité: {quality_desc}")
+                    
+                    # Dernière réception par tigrog2
+                    last_heard = sender_node_data.get('last_heard', 0)
+                    if last_heard > 0:
+                        time_elapsed = format_elapsed_time(last_heard)
+                        response_lines.append(f"⏱️ Dernière réception: {time_elapsed}")
+                    
+                    # Distance approximative basée sur RSSI
+                    if rssi != 0 and rssi > -150:
+                        distance_est = self._estimate_distance_from_rssi(rssi)
+                        response_lines.append(f"📏 Distance de {REMOTE_NODE_NAME}: ~{distance_est}")
+                    
+                    # Info sur la liaison (direct)
+                    response_lines.append(f"🎯 Liaison directe avec {REMOTE_NODE_NAME}")
+                    
+                    response = "\n".join(response_lines)
+                    
                 else:
-                    response_lines.append("📶 RSSI: Non disponible")
+                    # Nœud pas trouvé dans les données de tigrog2
+                    response_lines = [
+                        f"📡 Signaux vus par {REMOTE_NODE_NAME}:",
+                        f"⚠️ Votre nœud ({sender_info}) non visible",
+                        "",
+                        "Causes possibles:",
+                        f"• Pas de liaison directe avec {REMOTE_NODE_NAME}",
+                        "• Messages uniquement relayés",
+                        "• Nœud pas actif dans les 3 derniers jours",
+                        f"• {REMOTE_NODE_NAME} temporairement inaccessible"
+                    ]
+                    response = "\n".join(response_lines)
                 
-                # SNR
-                snr = rx_data.get('snr', 0.0)
-                if snr != 0:
-                    snr_icon = get_snr_quality_icon(snr)
-                    snr_text = f"SNR: {snr:.1f}dB"
-                    if snr_icon:
-                        snr_text = f"{snr_icon} {snr_text}"
-                    response_lines.append(snr_text)
-                else:
-                    response_lines.append("📊 SNR: Non disponible")
+                self.log_conversation(sender_id, sender_info, "/my", response)
+                self.send_response_chunks(response, sender_id, sender_info)
                 
-                # Qualité générale basée sur RSSI + SNR
-                quality_desc = self._get_signal_quality_description(rssi, snr)
-                response_lines.append(f"📈 Qualité: {quality_desc}")
-                
-                # Statistiques de réception
-                count = rx_data.get('count', 0)
-                last_seen = rx_data.get('last_seen', 0)
-                
-                if count > 0:
-                    response_lines.append(f"📊 Messages reçus: {count}")
-                
-                if last_seen > 0:
-                    time_elapsed = format_elapsed_time(last_seen)
-                    response_lines.append(f"⏱️ Dernière réception: {time_elapsed}")
-                
-                # Distance approximative basée sur RSSI (estimation)
-                if rssi != 0 and rssi > -150:
-                    distance_est = self._estimate_distance_from_rssi(rssi)
-                    response_lines.append(f"📏 Distance ~{distance_est}")
-                
-                response = "\n".join(response_lines)
-                
-            else:
-                # Nœud pas dans l'historique RX - peut-être relayé ou première fois
-                response_lines = [
-                    f"📡 Signal ({sender_info}):",
-                    "⚠️ Aucune donnée de signal directe disponible",
-                    "",
-                    "Possible causes:",
-                    "• Message relayé par d'autres nœuds",
-                    "• Premier message de ce nœud",
-                    "• Signal trop faible pour mesure directe"
-                ]
-                response = "\n".join(response_lines)
-            
-            self.log_conversation(sender_id, sender_info, "/my", response)
-            self.send_response_chunks(response, sender_id, sender_info)
-            
-        except Exception as e:
-            error_print(f"Erreur commande /my: {e}")
-            error_response = f"❌ Erreur récupération signaux: {str(e)[:50]}"
-            self.send_single_message(error_response, sender_id, sender_info)
+            except Exception as e:
+                error_print(f"Erreur commande /my: {e}")
+                try:
+                    error_response = f"❌ Erreur récupération signaux {REMOTE_NODE_NAME}: {str(e)[:50]}"
+                    self.send_single_message(error_response, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Envoi erreur /my échoué: {e2}")
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=get_remote_signal_info, daemon=True).start()
     
     def _get_signal_quality_description(self, rssi, snr):
         """Obtenir une description textuelle de la qualité du signal"""
