@@ -1,0 +1,36 @@
+[Unit]
+Description=Bot Meshtastic-Llama
+After=network.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=dietpi
+Group=dialout
+WorkingDirectory=/home/dietpi/bot
+ExecStart=/usr/bin/python3 /home/dietpi/bot/main_script.py
+Restart=always
+RestartSec=10
+
+# Variables d'environnement
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/dietpi
+Environment=HOME=/home/dietpi
+
+# Gestion des logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshtastic-bot
+
+# Sécurité basique
+NoNewPrivileges=true
+SupplementaryGroups=dialout tty
+
+# Limites de ressources
+LimitNOFILE=1024
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
+
