@@ -78,7 +78,7 @@ class MessageHandler:
     def format_legend(self):
         """Formater la légende des indicateurs colorés - version compacte"""
         legend_lines = [
-            "🔶 Indicateurs:",
+            "📶 Indicateurs:",
             "🟢🔵=excellent",
             "🟡🟣=bon", 
             "🟠🟤=faible",
@@ -94,8 +94,7 @@ class MessageHandler:
             "🤖 Commandes bot:",
             "/bot <question>",
             "/power",
-            "/rx", 
-            "/tigrog2 [page]",
+            "/rx [page]", 
             "/legend",
             "/help"
         ]
@@ -128,38 +127,25 @@ class MessageHandler:
         self.log_conversation(sender_id, sender_info, "/power", esphome_data)
         self.send_response_chunks(esphome_data, sender_id, sender_info)
     
-    def handle_tigrog2_command(self, message, sender_id, sender_info):
-        """Gérer la commande /tigrog2"""
-        # Extraire le numéro de page - gérer les deux formats
+    def handle_rx_command(self, message, sender_id, sender_info):
+        """Gérer la commande /rx (anciennement /tigrog2)"""
+        # Extraire le numéro de page
         page = 1
         parts = message.split()
         
-        if message.startswith('/tigro G2'):
-            # Format "/tigro G2 2" - la page est le 3ème élément
-            if len(parts) >= 3:
-                page = validate_page_number(parts[2], 999)
-        else:
-            # Format "/tigrog2 2" - la page est le 2ème élément
-            if len(parts) > 1:
-                page = validate_page_number(parts[1], 999)
+        # Format "/rx 2" - la page est le 2ème élément
+        if len(parts) > 1:
+            page = validate_page_number(parts[1], 999)
         
-        info_print(f"Tigrog2 Page {page}: {sender_info}")
+        info_print(f"RX Page {page}: {sender_info}")
         
         try:
             report = self.remote_nodes_client.get_tigrog2_paginated(page)
-            self.log_conversation(sender_id, sender_info, f"/tigrog2 {page}" if page > 1 else "/tigrog2", report)
+            self.log_conversation(sender_id, sender_info, f"/rx {page}" if page > 1 else "/rx", report)
             self.send_single_message(report, sender_id, sender_info)
         except Exception as e:
-            error_msg = f"Erreur tigrog2 page {page}: {str(e)[:50]}"
+            error_msg = f"Erreur rx page {page}: {str(e)[:50]}"
             self.send_single_message(error_msg, sender_id, sender_info)
-    
-    def handle_rx_command(self, sender_id, sender_info):
-        """Gérer la commande /rx"""
-        info_print(f"RX Report: {sender_info}")
-        
-        rx_report = self.node_manager.format_rx_report()
-        self.log_conversation(sender_id, sender_info, "/rx", rx_report)
-        self.send_response_chunks(rx_report, sender_id, sender_info)
     
     def handle_legend_command(self, sender_id, sender_info):
         """Gérer la commande /legend"""
@@ -208,10 +194,8 @@ class MessageHandler:
             self.handle_bot_command(message, sender_id, sender_info)
         elif message.startswith('/power'):
             self.handle_power_command(sender_id, sender_info)
-        elif message.startswith('/tigrog2') or message.startswith('/tigro G2'):
-            self.handle_tigrog2_command(message, sender_id, sender_info)
         elif message.startswith('/rx'):
-            self.handle_rx_command(sender_id, sender_info)
+            self.handle_rx_command(message, sender_id, sender_info)
         elif message.startswith('/legend'):
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
@@ -220,4 +204,3 @@ class MessageHandler:
             # Message normal (pas de commande)
             if DEBUG_MODE:
                 debug_print(f"Message normal reçu: '{message}'")
-
