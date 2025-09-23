@@ -32,6 +32,11 @@ NODE_UPDATE_INTERVAL = 300  # 5 minutes
 REMOTE_NODE_HOST = "192.168.1.38"
 REMOTE_NODE_NAME = "tigrog2"
 
+# Configuration affichage des métriques de signal
+SHOW_RSSI = False  # Afficher les valeurs RSSI (-85dB)
+SHOW_SNR = False   # Afficher les valeurs SNR (SNR:8.5)
+COLLECT_SIGNAL_METRICS = True  # Collecter RSSI/SNR pour le tri (même si pas affiché)
+
 # Variable globale pour le mode debug
 DEBUG_MODE = False
 
@@ -444,70 +449,131 @@ class DebugMeshBot:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
             return []
     
-    def format_tigrog2_nodes_report(self):
-        """Formater un rapport des nœuds DIRECTS vus par tigrog2"""
+    def format_tigrog2_nodes_report(self, page=1):
+        """Formater un rapport des nœuds DIRECTS vus par tigrog2 avec pagination"""
         try:
             remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
             
             if not remote_nodes:
                 return f"Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
             
-            # Trier par force du signal (RSSI descendant), puis par dernière réception
-            remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
+            # Trier par qualité de signal si disponible, sinon par dernière réception
+            if COLLECT_SIGNAL_METRICS:
+                remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
+            else:
+                remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
             
+            # Calculer la taille moyenne d'une ligne pour déterminer le nombre par page
+            sample_line = self._format_node_line(remote_nodes[0] if remote_nodes else {'name': 'Test', 'last_heard': time.time()})
+            header_line = f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) (X/Y):"
+            footer_line = "Page X/Y - '/tigrog2 X' pour suite"
+            
+            # Taille limite Meshtastic (environ 200 caractères sécurisé)
+            max_message_size = 180
+            base_overhead = len(header_line) + len(footer_line) + 20  # marge sécurité
+            available_space = max_message_size - base_overhead
+            avg_line_size = len(sample_line) + 1  # +1 pour le \n
+            
+            nodes_per_page = max(3, available_space // avg_line_size)  # Minimum 3 nœuds
+            
+            # Calculer la pagination
+            total_nodes = len(remote_nodes)
+            total_pages = (total_nodes + nodes_per_page - 1) // nodes_per_page
+            
+            # Valider la page demandée
+            if page < 1:
+                page = 1
+            elif page > total_pages:
+                page = total_pages
+            
+            # Extraire les nœuds pour cette page
+            start_idx = (page - 1) * nodes_per_page
+            end_idx = min(start_idx + nodes_per_page, total_nodes)
+            page_nodes = remote_nodes[start_idx:end_idx]
+            
+            # Construire le rapport
             lines = []
-            lines.append(f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) ({len(remote_nodes)}):")
             
-            for node in remote_nodes[:10]:  # Limiter à 10
-                name = node['name'][:15] if len(node['name']) > 15 else node['name']
-                
-                # Calculer le temps écoulé
-                if node['last_heard'] > 0:
-                    elapsed = int(time.time() - node['last_heard'])
-                    if elapsed < 60:
-                        time_str = f"{elapsed}s"
-                    elif elapsed < 3600:
-                        time_str = f"{elapsed//60}m"
-                    elif elapsed < 86400:
-                        time_str = f"{elapsed//3600}h"
-                    else:
-                        time_str = f"{elapsed//86400}d"
-                else:
-                    time_str = "n/a"
-                
-                # Indicateur de qualité basé sur RSSI (comme pour /rx)
-                rssi = node.get('rssi', 0)
-                if rssi >= -80:
-                    signal_icon = "🟢"  # Excellent
-                elif rssi >= -100:
-                    signal_icon = "🟡"  # Bon
-                elif rssi >= -120:
-                    signal_icon = "🟠"  # Faible
-                elif rssi < -120 and rssi != 0:
-                    signal_icon = "🔴"  # Très faible
-                else:
-                    signal_icon = "📶"  # Signal non mesuré
-                
-                # Construire la ligne avec RSSI et SNR si disponibles
-                signal_info = []
-                if rssi != 0:
-                    signal_info.append(f"{rssi}dBm")
-                if node['snr'] != 0.0:
-                    signal_info.append(f"SNR:{node['snr']:.1f}")
-                
-                signal_str = " ".join(signal_info) if signal_info else ""
-                
-                line = f"{signal_icon} {name} (!{node['id']:08x}) {time_str} {signal_str}".strip()
+            # Header seulement pour la page 1
+            if page == 1:
+                lines.append(f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} (<3j) ({start_idx+1}-{end_idx}/{total_nodes}):")
+            
+            for node in page_nodes:
+                line = self._format_node_line(node)
                 lines.append(line)
             
-            if len(remote_nodes) > 10:
-                lines.append(f"... et {len(remote_nodes) - 10} autres")
+            # Ajouter info pagination si nécessaire (format simplifié)
+            if total_pages > 1:
+                if page < total_pages:
+                    lines.append(f"{page}/{total_pages}")
+                else:
+                    lines.append(f"{page}/{total_pages}")
             
-            return "\n".join(lines)
+            result = "\n".join(lines)
+            
+            # Vérification finale de taille (sécurité)
+            if len(result) > max_message_size:
+                # Réduction d'urgence : retirer des nœuds
+                reduced_nodes = page_nodes[:max(1, len(page_nodes) - 1)]
+                lines = lines[:len(reduced_nodes) + 1]  # Header + nœuds réduits
+                if total_pages > 1:
+                    lines.append(f"{page}/{total_pages}")
+                result = "\n".join(lines)
+            
+            return result
             
         except Exception as e:
             error_print(f"Erreur format rapport {REMOTE_NODE_NAME}: {e}")
             return f"Erreur récupération {REMOTE_NODE_NAME}: {str(e)[:50]}"
+    
+    def _format_node_line(self, node):
+        """Formater une ligne de nœud selon la configuration"""
+        # Le nom est déjà le shortName ou longName tronqué depuis get_remote_nodes
+        short_name = node['name'][:8] if len(node['name']) > 8 else node['name']
+        
+        # Calculer le temps écoulé
+        if node['last_heard'] > 0:
+            elapsed = int(time.time() - node['last_heard'])
+            if elapsed < 60:
+                time_str = f"{elapsed}s"
+            elif elapsed < 3600:
+                time_str = f"{elapsed//60}m"
+            elif elapsed < 86400:
+                time_str = f"{elapsed//3600}h"
+            else:
+                time_str = f"{elapsed//86400}j"
+        else:
+            time_str = "n/a"
+        
+        # Indicateur de qualité basé sur RSSI si disponible
+        signal_icon = "📶"  # Par défaut
+        if COLLECT_SIGNAL_METRICS and 'rssi' in node:
+            rssi = node['rssi']
+            if rssi >= -80:
+                signal_icon = "🟢"
+            elif rssi >= -100:
+                signal_icon = "🟡"
+            elif rssi >= -120:
+                signal_icon = "🟠"
+            elif rssi < -120 and rssi != 0:
+                signal_icon = "🔴"
+        
+        # Format de base : icône + nom court + temps
+        line_parts = [signal_icon, short_name, time_str]
+        
+        # Ajouter RSSI si activé et disponible
+        if SHOW_RSSI and COLLECT_SIGNAL_METRICS and 'rssi' in node:
+            rssi = node['rssi']
+            if rssi != 0:
+                line_parts.append(f"{rssi}dB")
+        
+        # Ajouter SNR si activé et disponible
+        if SHOW_SNR and COLLECT_SIGNAL_METRICS and 'snr' in node:
+            snr = node['snr']
+            if snr != 0.0:
+                line_parts.append(f"SNR:{snr:.1f}")
+        
+        return " ".join(line_parts)
         """Formater le rapport des nœuds reçus"""
         try:
             if not self.rx_history:
@@ -962,15 +1028,24 @@ class DebugMeshBot:
                     self.send_response_chunks(esphome_data, sender_id, sender_info)
                 
                 elif message.startswith('/tigrog2'):
-                    # Commande pour voir les nœuds de tigrog2 (192.168.1.38)
+                    # Commande pour voir les nœuds de tigrog2 avec pagination optionnelle
                     if not is_private:
                         return
                     
-                    sender_info = self.get_sender_info(sender_id)
-                    info_print(f"Tigrog2 Nodes: {sender_info}")
+                    # Extraire le numéro de page si fourni
+                    page = 1
+                    parts = message.split()
+                    if len(parts) > 1:
+                        try:
+                            page = int(parts[1])
+                        except ValueError:
+                            page = 1
                     
-                    tigrog2_report = self.format_tigrog2_nodes_report()
-                    self.log_conversation(sender_id, sender_info, "/tigrog2", tigrog2_report)
+                    sender_info = self.get_sender_info(sender_id)
+                    info_print(f"Tigrog2 Nodes Page {page}: {sender_info}")
+                    
+                    tigrog2_report = self.format_tigrog2_nodes_report(page)
+                    self.log_conversation(sender_id, sender_info, f"/tigrog2 {page}" if page > 1 else "/tigrog2", tigrog2_report)
                     self.send_response_chunks(tigrog2_report, sender_id, sender_info)
                 
                 elif message.startswith('/rx'):
@@ -1026,10 +1101,40 @@ class DebugMeshBot:
                     info_print("TEST RX Report:")
                     report = self.format_rx_report()
                     info_print(f"→ {report}")
-                elif command == 'tigrog2':
-                    # Test de récupération nœuds tigrog2
-                    info_print(f"TEST Tigrog2 Nodes: {REMOTE_NODE_HOST}")
-                    report = self.format_tigrog2_nodes_report()
+                elif command.startswith('config '):
+                    # Nouvelle commande pour changer la configuration d'affichage
+                    parts = command.split(' ')
+                    if len(parts) >= 3:
+                        option = parts[1].lower()
+                        value = parts[2].lower() == 'true'
+                        
+                        global SHOW_RSSI, SHOW_SNR, COLLECT_SIGNAL_METRICS
+                        if option == 'rssi':
+                            SHOW_RSSI = value
+                            info_print(f"SHOW_RSSI = {SHOW_RSSI}")
+                        elif option == 'snr':
+                            SHOW_SNR = value
+                            info_print(f"SHOW_SNR = {SHOW_SNR}")
+                        elif option == 'collect':
+                            COLLECT_SIGNAL_METRICS = value
+                            info_print(f"COLLECT_SIGNAL_METRICS = {COLLECT_SIGNAL_METRICS}")
+                        else:
+                            info_print("Options: rssi, snr, collect")
+                    else:
+                        info_print(f"Config actuelle - RSSI:{SHOW_RSSI} SNR:{SHOW_SNR} COLLECT:{COLLECT_SIGNAL_METRICS}")
+                        info_print("Usage: config <option> <true/false>")
+                elif command.startswith('tigrog2'):
+                    # Test de récupération nœuds tigrog2 avec pagination
+                    parts = command.split()
+                    page = 1
+                    if len(parts) > 1:
+                        try:
+                            page = int(parts[1])
+                        except ValueError:
+                            page = 1
+                    
+                    info_print(f"TEST Tigrog2 Nodes Page {page}: {REMOTE_NODE_HOST}")
+                    report = self.format_tigrog2_nodes_report(page)
                     info_print(f"→ {report}")
                 elif command.startswith('nodes '):
                     # Test de récupération nœuds distants
@@ -1069,7 +1174,9 @@ class DebugMeshBot:
                     print("  bot <question> - Via Meshtastic")
                     print("  power          - Test ESPHome")
                     print("  rx             - Rapport signaux reçus")
-                    print("  tigrog2        - Nœuds vus par tigrog2")
+                    print("  tigrog2 [page] - Nœuds vus par tigrog2")
+                    print("  config         - Voir config affichage")
+                    print("  config <opt> <true/false> - Changer config")
                     print("  nodes          - Lister nœuds connus")
                     print("  nodes <IP>     - Nœuds d'un nœud distant")
                     print("  context        - Voir contextes actifs")
@@ -1121,7 +1228,8 @@ class DebugMeshBot:
             
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec noms de nœuds et contexte")
-                print("\nCommandes: test, bot, power, rx, tigrog2, nodes, nodes <IP>, context, update, save, mem, quit")
+                print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
+                print("\nCommandes: test, bot, power, rx, tigrog2, config, nodes, context, update, save, mem, quit")
                 threading.Thread(target=self.interactive_loop, daemon=True).start()
             else:
                 info_print("Bot en service - '/bot', '/power', '/rx' et '/tigrog2' avec contexte")
