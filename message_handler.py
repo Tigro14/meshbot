@@ -538,18 +538,32 @@ class MessageHandler:
                     debug_print(f"RSSI brut: {rssi} (type: {type(rssi)})")
                     debug_print(f"SNR brut: {snr} (type: {type(snr)})")
                     
-                    # Vérifier si RSSI existe mais est None ou autre valeur
-                    rssi_raw = sender_node_data.get('rssi', 'KEY_MISSING')
-                    debug_print(f"RSSI raw value: {rssi_raw}")
+                    # Estimation RSSI depuis SNR si RSSI=0
+                    display_rssi = rssi
+                    rssi_estimated = False
                     
-                    if rssi != 0 or snr != 0:
-                        rssi_icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
-                        rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
-                        snr_str = f"SNR:{snr:.1f}" if snr != 0 else "SNR:n/a"
+                    if rssi == 0 and snr != 0:
+                        # Formule empirique : RSSI ≈ -100 + (SNR * 2.5)
+                        # Cette estimation est basée sur des observations terrain LoRa
+                        display_rssi = int(-100 + (snr * 2.5))
+                        rssi_estimated = True
+                        debug_print(f"RSSI estimé depuis SNR: {display_rssi}dBm")
+                    
+                    if display_rssi != 0 or snr != 0:
+                        rssi_icon = get_signal_quality_icon(display_rssi) if display_rssi != 0 else "📶"
+                        
+                        if rssi_estimated:
+                            rssi_str = f"~{display_rssi}dBm"  # ~ pour indiquer estimation
+                        elif display_rssi != 0:
+                            rssi_str = f"{display_rssi}dBm"
+                        else:
+                            rssi_str = "n/a"
+                        
+                        snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
                         response_parts.append(f"{rssi_icon} {rssi_str} {snr_str}")
                     
-                    # Qualité + temps sur une ligne
-                    quality_desc = self._get_signal_quality_description(rssi, snr)
+                    # Qualité + temps sur une ligne (utiliser RSSI estimé pour la qualité)
+                    quality_desc = self._get_signal_quality_description(display_rssi, snr)
                     last_heard = sender_node_data.get('last_heard', 0)
                     if last_heard > 0:
                         time_str = format_elapsed_time(last_heard)
@@ -557,9 +571,9 @@ class MessageHandler:
                     else:
                         response_parts.append(f"📈 {quality_desc}")
                     
-                    # Distance de tigrog2 si disponible
-                    if rssi != 0 and rssi > -150:
-                        distance_est = self._estimate_distance_from_rssi(rssi)
+                    # Distance de tigrog2 si disponible (utiliser RSSI estimé)
+                    if display_rssi != 0 and display_rssi > -150:
+                        distance_est = self._estimate_distance_from_rssi(display_rssi)
                         response_parts.append(f"📏 ~{distance_est} de {REMOTE_NODE_NAME}")
                     
                     # Statut liaison directe avec tigrog2
