@@ -375,7 +375,7 @@ class MessageHandler:
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=reboot_and_telemetry, daemon=True).start()
     
-    def handle_rebootpi_command(self, sender_id, sender_info):
+    def handle_reboot_command(self, sender_id, sender_info):
         """Gérer la commande /reboot - redémarrage du Pi5 (commande cachée)"""
         info_print(f"REBOOT PI5 demandé par: {sender_info}")
         
@@ -404,7 +404,7 @@ class MessageHandler:
                 # Commande de redémarrage système - méthode fichier signal
                 try:
                     # Créer un fichier signal pour le redémarrage
-                    signal_file = '/tmp/rebootpi_requested'
+                    signal_file = '/tmp/reboot_requested'
                     with open(signal_file, 'w') as f:
                         f.write(f"Redémarrage demandé par {sender_info} (!{sender_id:08x})\n")
                         f.write(f"Timestamp: {time.time()}\n")
@@ -438,6 +438,97 @@ class MessageHandler:
         
         # Lancer dans un thread séparé
         threading.Thread(target=reboot_pi5, daemon=True).start()
+    
+    def handle_g2_command(self, sender_id, sender_info):
+        """Gérer la commande /g2 - paramètres de configuration tigrog2 (commande cachée)"""
+        info_print(f"G2 Config: {sender_info}")
+        
+        import threading
+        
+        def get_g2_config():
+            try:
+                # Se connecter à tigrog2 via TCP
+                import meshtastic.tcp_interface
+                
+                debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
+                
+                # Attendre la connexion
+                time.sleep(2)
+                
+                # Récupérer les informations de configuration
+                config_info = []
+                
+                # 1. Informations générales du nœud
+                if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                    local_node = remote_interface.localNode
+                    
+                    # Nom du nœud
+                    if hasattr(local_node, 'shortName'):
+                        config_info.append(f"📡 {local_node.shortName}")
+                    
+                    # ID du nœud
+                    if hasattr(local_node, 'nodeNum'):
+                        config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
+                    
+                    # Version firmware si disponible
+                    if hasattr(local_node, 'firmwareVersion'):
+                        config_info.append(f"📦 FW: {local_node.firmwareVersion}")
+                
+                # 2. Configuration LoRa si accessible
+                try:
+                    # Essayer de récupérer la configuration radio
+                    if hasattr(remote_interface, 'getNode') and hasattr(remote_interface, 'localNode'):
+                        node_info = remote_interface.localNode
+                        if hasattr(node_info, 'radioConfig'):
+                            radio_config = node_info.radioConfig
+                            if hasattr(radio_config, 'modemConfig'):
+                                config_info.append(f"📻 Preset: {radio_config.modemConfig}")
+                except:
+                    debug_print("Configuration radio non accessible")
+                
+                # 3. Statistiques des nœuds
+                nodes_count = len(getattr(remote_interface, 'nodes', {}))
+                config_info.append(f"🗂️ Nœuds: {nodes_count}")
+                
+                # 4. Informations réseau si disponibles
+                try:
+                    nodes = getattr(remote_interface, 'nodes', {})
+                    direct_nodes = 0
+                    for node_id, node_info in nodes.items():
+                        if isinstance(node_info, dict):
+                            hops_away = node_info.get('hopsAway', None)
+                            if hops_away == 0:
+                                direct_nodes += 1
+                    
+                    config_info.append(f"🎯 Direct: {direct_nodes}")
+                except:
+                    debug_print("Statistiques réseau non disponibles")
+                
+                remote_interface.close()
+                
+                # Construire la réponse
+                if config_info:
+                    response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info)
+                else:
+                    response = f"⚠️ {REMOTE_NODE_NAME} config inaccessible"
+                
+                self.log_conversation(sender_id, sender_info, "/g2", response)
+                self.send_response_chunks(response, sender_id, sender_info)
+                
+            except Exception as e:
+                error_msg = f"❌ Erreur config {REMOTE_NODE_NAME}: {str(e)[:50]}"
+                error_print(f"Erreur G2 config: {e}")
+                try:
+                    self.send_single_message(error_msg, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Envoi erreur /g2 échoué: {e2}")
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=get_g2_config, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
         """Gérer la commande /sys"""
@@ -761,6 +852,8 @@ class MessageHandler:
             self.handle_rebootg2_command(sender_id, sender_info)
         elif message.startswith('/rebootpi'):
             self.handle_rebootpi_command(sender_id, sender_info)
+        elif message.startswith('/g2'):
+            self.handle_g2_command(sender_id, sender_info)
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:

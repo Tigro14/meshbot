@@ -137,6 +137,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 ### Commandes cachées (administration)
 - `/rebootpi` - Redémarrage du Pi5 (nécessite configuration)
 - `/rebootg2` - Redémarrage de tigrog2 + télémétrie
+- `/g2` - Configuration et statistiques de tigrog2
 
 ## Configuration
 
