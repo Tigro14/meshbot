@@ -853,7 +853,7 @@ class MessageHandler:
         elif message.startswith('/rebootg2'):
             self.handle_rebootg2_command(sender_id, sender_info)
         elif message.startswith('/rebootpi'):
-            self.handle_rebootpi_command(sender_id, sender_info)
+            self.handle_reboot_command(sender_id, sender_info)  # Utilise l'ancienne méthode
         elif message.startswith('/g2'):
             self.handle_g2_command(sender_id, sender_info)
         elif message.startswith('/sys'):
