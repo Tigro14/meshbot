@@ -41,7 +41,34 @@ class DebugMeshBot:
         
         # Thread de mise à jour
         self.update_thread = None
+   
+    #Fonction à ajouter dans main_bot.py pour intégrer Telegram
+    #Usage dans main_bot.py:
+    # Après l'initialisation des gestionnaires, ajouter:
+    from telegram_integration import integrate_telegram_bridge
     
+    # Dans DebugMeshBot.__init__():
+    self.telegram_integration = None
+    
+    # Dans DebugMeshBot.start(), après l'initialisation du message_handler:
+    try:
+        from telegram_integration import TelegramIntegration
+        self.telegram_integration = TelegramIntegration(
+            self.message_handler,
+            self.node_manager,
+            self.context_manager
+        )
+        self.telegram_integration.start()
+        info_print("✅ Interface Telegram intégrée")
+    except ImportError:
+        debug_print("📱 Module Telegram non disponible")
+    except Exception as e:
+        error_print(f"Erreur intégration Telegram: {e}")
+    
+    # Dans DebugMeshBot.stop():
+    if self.telegram_integration:
+        self.telegram_integration.stop()
+
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
         try:
