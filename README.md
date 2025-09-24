@@ -152,3 +152,4 @@ Le fichier `config.py` contient tous les paramètres configurables :
 - Throttling : 5 commandes par 5 minutes par utilisateur
 - Messages limités à 180 caractères (contrainte LoRa)
 - Nécessite llama.cpp en fonctionnement pour `/bot`
+
