@@ -375,7 +375,7 @@ class MessageHandler:
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=reboot_and_telemetry, daemon=True).start()
     
-    def handle_reboot_command(self, sender_id, sender_info):
+    def handle_rebootpi_command(self, sender_id, sender_info):
         """Gérer la commande /reboot - redémarrage du Pi5 (commande cachée)"""
         info_print(f"REBOOT PI5 demandé par: {sender_info}")
         
@@ -404,7 +404,7 @@ class MessageHandler:
                 # Commande de redémarrage système - méthode fichier signal
                 try:
                     # Créer un fichier signal pour le redémarrage
-                    signal_file = '/tmp/reboot_requested'
+                    signal_file = '/tmp/rebootpi_requested'
                     with open(signal_file, 'w') as f:
                         f.write(f"Redémarrage demandé par {sender_info} (!{sender_id:08x})\n")
                         f.write(f"Timestamp: {time.time()}\n")
