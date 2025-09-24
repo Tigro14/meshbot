@@ -79,6 +79,41 @@ class MessageHandler:
             except Exception as e2:
                 error_print(f"Échec envoi définitif → {sender_info}: {e2}")
     
+    def send_public_message(self, message):
+        """Envoyer un message sur le canal public"""
+        try:
+            # Envoyer en broadcast (destinationId par défaut = broadcast)
+            self.interface.sendText(message)
+            debug_print(f"Message public envoyé: '{message[:50]}...'")
+        except Exception as e:
+            error_print(f"Échec envoi message public: {e}")
+    
+    def _get_short_name(self, node_id):
+        """Obtenir le nom court d'un nœud (shortName ou version tronquée)"""
+        try:
+            # Essayer d'obtenir le shortName depuis l'interface
+            if hasattr(self.interface, 'nodes') and node_id in self.interface.nodes:
+                node_info = self.interface.nodes[node_id]
+                if isinstance(node_info, dict) and 'user' in node_info:
+                    user_info = node_info['user']
+                    if isinstance(user_info, dict):
+                        short_name = user_info.get('shortName', '').strip()
+                        if short_name:
+                            return short_name
+            
+            # Fallback : utiliser le nom de la base tronqué
+            full_name = self.node_manager.get_node_name(node_id, self.interface)
+            if full_name.startswith('Node-'):
+                # Pour les nœuds inconnus, utiliser seulement les 4 derniers caractères de l'ID
+                return f"{node_id:08x}"[-4:]
+            else:
+                # Tronquer le nom long à 8 caractères maximum
+                return full_name[:8]
+                
+        except Exception as e:
+            debug_print(f"Erreur récupération nom court {node_id}: {e}")
+            return f"{node_id:08x}"[-4:]
+    
     def check_command_throttling(self, sender_id, sender_info):
         """Vérifier le throttling des commandes pour un utilisateur"""
         current_time = time.time()
@@ -166,7 +201,7 @@ class MessageHandler:
             "/rx [page]", 
             "/my",
             "/sys",
-            "/echo <message>",
+            "/echo <texte>",
             "/legend"
         ]
         
@@ -240,6 +275,27 @@ class MessageHandler:
             error_print(f"Erreur commande /help: {e}")
             self.send_single_message("Erreur génération aide", sender_id, sender_info)
     
+    def handle_echo_command(self, message, sender_id, sender_info, packet):
+        """Gérer la commande /echo - réponse publique sur le canal"""
+        echo_text = message[6:].strip()  # Retirer "/echo "
+        
+        if not echo_text:
+            # Répondre en public avec usage
+            response = f"Usage: /echo <texte> - par {self._get_short_name(sender_id)}"
+            self.send_public_message(response)
+            return
+        
+        # Créer la réponse avec l'identifiant court de l'auteur
+        author_short = self._get_short_name(sender_id)
+        response = f"Echo de {author_short}: {echo_text}"
+        
+        # Log de la conversation
+        info_print(f"Echo public: {sender_info} -> '{echo_text}'")
+        self.log_conversation(sender_id, sender_info, message, response)
+        
+        # Répondre en public
+        self.send_public_message(response)
+    
     def handle_rebootg2_command(self, sender_id, sender_info):
         """Gérer la commande /rebootg2 (non documentée)"""
         info_print(f"RebootG2: {sender_info}")
@@ -287,7 +343,7 @@ class MessageHandler:
                     error_print(f"Erreur envoi reboot API: {e}")
                     time.sleep(10)
                     try:
-                        error_msg = f"❌ Erreur reboot API: {str(e)[:50]}"
+                        error_msg = f"⌘ Erreur reboot API: {str(e)[:50]}"
                         self.send_single_message(error_msg, sender_id, sender_info)
                     except Exception as e2:
                         debug_print(f"Message d'erreur reboot échoué: {e2}")
@@ -346,7 +402,7 @@ class MessageHandler:
                     else:
                         try:
                             error_output = result.stderr.strip() if result.stderr else "Erreur inconnue"
-                            error_msg = f"❌ Erreur télémétrie: {error_output[:80]}"
+                            error_msg = f"⌘ Erreur télémétrie: {error_output[:80]}"
                             self.send_single_message(error_msg, sender_id, sender_info)
                         except Exception as e:
                             debug_print(f"Message d'erreur télémétrie échoué: {e}")
@@ -359,7 +415,7 @@ class MessageHandler:
                 except Exception as e:
                     error_print(f"Erreur demande télémétrie: {e}")
                     try:
-                        error_msg = f"❌ Erreur télémétrie: {str(e)[:60]}"
+                        error_msg = f"⌘ Erreur télémétrie: {str(e)[:60]}"
                         self.send_single_message(error_msg, sender_id, sender_info)
                     except Exception as e2:
                         debug_print(f"Message d'erreur télémétrie échoué: {e2}")
@@ -367,7 +423,7 @@ class MessageHandler:
             except Exception as e:
                 time.sleep(10)
                 try:
-                    error_msg = f"❌ Erreur général: {str(e)[:80]}"
+                    error_msg = f"⌘ Erreur général: {str(e)[:80]}"
                     error_print(f"Erreur rebootg2: {e}")
                     self.send_single_message(error_msg, sender_id, sender_info)
                 except Exception as e2:
@@ -420,7 +476,7 @@ class MessageHandler:
                         pass
                     
                 except Exception as e:
-                    error_msg = f"❌ Erreur création signal: {str(e)[:50]}"
+                    error_msg = f"⌘ Erreur création signal: {str(e)[:50]}"
                     debug_print(error_msg)
                     try:
                         self.send_single_message(error_msg, sender_id, sender_info)
@@ -430,7 +486,7 @@ class MessageHandler:
             except subprocess.TimeoutExpired:
                 info_print("⏱️ Timeout sur commande reboot (normal)")
             except Exception as e:
-                error_msg = f"❌ Erreur redémarrage: {str(e)[:50]}"
+                error_msg = f"⌘ Erreur redémarrage: {str(e)[:50]}"
                 error_print(f"Erreur reboot Pi5: {e}")
                 try:
                     self.send_single_message(error_msg, sender_id, sender_info)
@@ -473,7 +529,7 @@ class MessageHandler:
                     
                     # ID du nœud
                     if hasattr(local_node, 'nodeNum'):
-                        config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
+                        config_info.append(f"📢 ID: !{local_node.nodeNum:08x}")
                     
                     # Version firmware si disponible
                     if hasattr(local_node, 'firmwareVersion'):
@@ -521,7 +577,7 @@ class MessageHandler:
                 self.send_response_chunks(response, sender_id, sender_info)
                 
             except Exception as e:
-                error_msg = f"❌ Erreur config {REMOTE_NODE_NAME}: {str(e)[:50]}"
+                error_msg = f"⌘ Erreur config {REMOTE_NODE_NAME}: {str(e)[:50]}"
                 error_print(f"Erreur G2 config: {e}")
                 try:
                     self.send_single_message(error_msg, sender_id, sender_info)
@@ -530,65 +586,6 @@ class MessageHandler:
         
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_g2_config, daemon=True).start()
-    
-    def handle_echo_command(self, message, sender_id, sender_info):
-        """Gérer la commande /echo - diffuser un message via tigrog2 (commande cachée)"""
-        text_to_echo = message[6:].strip()  # Retirer "/echo "
-        
-        if not text_to_echo:
-            self.send_single_message("Usage: /echo <message>", sender_id, sender_info)
-            return
-        
-        info_print(f"Echo via {REMOTE_NODE_NAME}: {sender_info} -> '{text_to_echo}'")
-        
-        import threading
-        
-        def send_echo_via_tigrog2():
-            try:
-                # Se connecter à tigrog2 via TCP
-                import meshtastic.tcp_interface
-                
-                debug_print(f"Connexion TCP à {REMOTE_NODE_HOST} pour echo...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
-                )
-                
-                # Attendre la connexion
-                time.sleep(2)
-                
-                # Préparer le message avec attribution
-                attributed_message = f"[{sender_info}] {text_to_echo}"
-                
-                # Tronquer si nécessaire pour respecter les limites LoRa
-                if len(attributed_message) > MAX_MESSAGE_SIZE:
-                    max_text_len = MAX_MESSAGE_SIZE - len(f"[{sender_info}] ") - 3  # -3 pour "..."
-                    attributed_message = f"[{sender_info}] {text_to_echo[:max_text_len]}..."
-                
-                # Envoyer en broadcast via tigrog2
-                remote_interface.sendText(attributed_message)
-                
-                debug_print(f"Message diffusé via {REMOTE_NODE_NAME}: '{attributed_message}'")
-                
-                remote_interface.close()
-                
-                # Confirmation à l'expéditeur
-                confirm_msg = f"📢 Diffusé via {REMOTE_NODE_NAME}"
-                self.send_single_message(confirm_msg, sender_id, sender_info)
-                
-                # Log de la transaction
-                self.log_conversation(sender_id, sender_info, f"/echo {text_to_echo}", confirm_msg)
-                
-            except Exception as e:
-                error_msg = f"❌ Erreur echo {REMOTE_NODE_NAME}: {str(e)[:40]}"
-                error_print(f"Erreur echo via tigrog2: {e}")
-                try:
-                    self.send_single_message(error_msg, sender_id, sender_info)
-                except Exception as e2:
-                    debug_print(f"Envoi erreur /echo échoué: {e2}")
-        
-        # Lancer dans un thread séparé pour ne pas bloquer
-        threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
         """Gérer la commande /sys"""
@@ -702,13 +699,13 @@ class MessageHandler:
                 if system_info:
                     response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
                 else:
-                    response = "❌ Impossible de récupérer les infos système"
+                    response = "⌘ Impossible de récupérer les infos système"
                 
                 self.send_response_chunks(response, sender_id, sender_info)
                 self.log_conversation(sender_id, sender_info, "/sys", response)
                 
             except Exception as e:
-                error_msg = f"❌ Erreur système: {str(e)[:100]}"
+                error_msg = f"⌘ Erreur système: {str(e)[:100]}"
                 error_print(f"Erreur sys: {e}")
                 self.send_single_message(error_msg, sender_id, sender_info)
         
@@ -727,7 +724,7 @@ class MessageHandler:
                 remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
                 
                 if not remote_nodes:
-                    response = f"❌ {REMOTE_NODE_NAME} inaccessible"
+                    response = f"⌘ {REMOTE_NODE_NAME} inaccessible"
                     self.send_single_message(response, sender_id, sender_info)
                     return
                 
@@ -789,7 +786,7 @@ class MessageHandler:
                     # Distance de tigrog2 si disponible (utiliser RSSI estimé)
                     if display_rssi != 0 and display_rssi > -150:
                         distance_est = self._estimate_distance_from_rssi(display_rssi)
-                        response_parts.append(f"📏 ~{distance_est} de {REMOTE_NODE_NAME}")
+                        response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
                     
                     # Statut liaison directe avec tigrog2
                     response_parts.append(f"🎯 Direct → {REMOTE_NODE_NAME}")
@@ -800,7 +797,7 @@ class MessageHandler:
                     # Nœud pas trouvé dans tigrog2 - probablement relayé
                     response_parts = [
                         f"⚠️ Pas direct → {REMOTE_NODE_NAME}",
-                        "🔀 Messages relayés"
+                        "📀 Messages relayés"
                     ]
                     
                     # Suggérer des nœuds tigrog2 comme relays potentiels
@@ -820,7 +817,7 @@ class MessageHandler:
             except Exception as e:
                 error_print(f"Erreur commande /my: {e}")
                 try:
-                    error_response = f"❌ Erreur: {str(e)[:30]}"
+                    error_response = f"⌘ Erreur: {str(e)[:30]}"
                     self.send_single_message(error_response, sender_id, sender_info)
                 except Exception as e2:
                     debug_print(f"Envoi erreur /my échoué: {e2}")
@@ -875,6 +872,20 @@ class MessageHandler:
         else:
             return ">20km"
     
+    def _find_tigrog2_relays(self, remote_nodes):
+        """Trouver les meilleurs relays potentiels dans les données tigrog2"""
+        if not remote_nodes:
+            return []
+        
+        # Trier par qualité de signal (RSSI décroissant)
+        sorted_relays = sorted(
+            [node for node in remote_nodes if node.get('rssi', 0) != 0],
+            key=lambda x: x.get('rssi', -999),
+            reverse=True
+        )
+        
+        return sorted_relays[:3]  # Top 3 des meilleurs relays potentiels
+    
     def process_text_message(self, packet, decoded, message):
         """Traiter un message texte"""
         sender_id = packet.get('from', 0)
@@ -885,7 +896,22 @@ class MessageHandler:
             my_id = getattr(self.interface.localNode, 'nodeNum', 0)
         
         is_for_me = (to_id == my_id) if my_id else False
+        is_from_me = (sender_id == my_id) if my_id else False
+        is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
         sender_info = self.node_manager.get_node_name(sender_id, self.interface)
+        
+        # NOUVEAU : Gérer /echo sur les messages publics
+        if message.startswith('/echo ') and (is_broadcast or is_for_me) and not is_from_me:
+            # /echo fonctionne sur les messages publics ET privés, mais pas de nous-mêmes
+            info_print(f"ECHO PUBLIC de {sender_info}: '{message}' (Broadcast:{is_broadcast})")
+            self.handle_echo_command(message, sender_id, sender_info, packet)
+            return
+        
+        # Messages publics (broadcast) - ignorer les autres commandes
+        if is_broadcast and not is_from_me:
+            if DEBUG_MODE and not message.startswith('/echo'):
+                debug_print(f"Message public ignoré: '{message}'")
+            return
         
         # Log seulement les messages pour nous ou en mode debug
         if is_for_me or DEBUG_MODE:
@@ -916,8 +942,6 @@ class MessageHandler:
             self.handle_reboot_command(sender_id, sender_info)  # Utilise l'ancienne méthode
         elif message.startswith('/g2'):
             self.handle_g2_command(sender_id, sender_info)
-        elif message.startswith('/echo '):
-            self.handle_echo_command(message, sender_id, sender_info)
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:
