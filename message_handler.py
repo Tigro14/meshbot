@@ -166,6 +166,7 @@ class MessageHandler:
             "/rx [page]", 
             "/my",
             "/sys",
+            "/echo <message>",
             "/legend"
         ]
         
@@ -530,6 +531,65 @@ class MessageHandler:
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_g2_config, daemon=True).start()
     
+    def handle_echo_command(self, message, sender_id, sender_info):
+        """Gérer la commande /echo - diffuser un message via tigrog2 (commande cachée)"""
+        text_to_echo = message[6:].strip()  # Retirer "/echo "
+        
+        if not text_to_echo:
+            self.send_single_message("Usage: /echo <message>", sender_id, sender_info)
+            return
+        
+        info_print(f"Echo via {REMOTE_NODE_NAME}: {sender_info} -> '{text_to_echo}'")
+        
+        import threading
+        
+        def send_echo_via_tigrog2():
+            try:
+                # Se connecter à tigrog2 via TCP
+                import meshtastic.tcp_interface
+                
+                debug_print(f"Connexion TCP à {REMOTE_NODE_HOST} pour echo...")
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
+                
+                # Attendre la connexion
+                time.sleep(2)
+                
+                # Préparer le message avec attribution
+                attributed_message = f"[{sender_info}] {text_to_echo}"
+                
+                # Tronquer si nécessaire pour respecter les limites LoRa
+                if len(attributed_message) > MAX_MESSAGE_SIZE:
+                    max_text_len = MAX_MESSAGE_SIZE - len(f"[{sender_info}] ") - 3  # -3 pour "..."
+                    attributed_message = f"[{sender_info}] {text_to_echo[:max_text_len]}..."
+                
+                # Envoyer en broadcast via tigrog2
+                remote_interface.sendText(attributed_message)
+                
+                debug_print(f"Message diffusé via {REMOTE_NODE_NAME}: '{attributed_message}'")
+                
+                remote_interface.close()
+                
+                # Confirmation à l'expéditeur
+                confirm_msg = f"📢 Diffusé via {REMOTE_NODE_NAME}"
+                self.send_single_message(confirm_msg, sender_id, sender_info)
+                
+                # Log de la transaction
+                self.log_conversation(sender_id, sender_info, f"/echo {text_to_echo}", confirm_msg)
+                
+            except Exception as e:
+                error_msg = f"❌ Erreur echo {REMOTE_NODE_NAME}: {str(e)[:40]}"
+                error_print(f"Erreur echo via tigrog2: {e}")
+                try:
+                    self.send_single_message(error_msg, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Envoi erreur /echo échoué: {e2}")
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
+    
     def handle_sys_command(self, sender_id, sender_info):
         """Gérer la commande /sys"""
         info_print(f"Sys: {sender_info}")
@@ -856,6 +916,8 @@ class MessageHandler:
             self.handle_reboot_command(sender_id, sender_info)  # Utilise l'ancienne méthode
         elif message.startswith('/g2'):
             self.handle_g2_command(sender_id, sender_info)
+        elif message.startswith('/echo '):
+            self.handle_echo_command(message, sender_id, sender_info)
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:

@@ -36,7 +36,7 @@ Créer le script `/usr/local/bin/rebootpi-watcher.sh` :
 #!/bin/bash
 # Script de surveillance pour redémarrage Pi via bot Meshtastic
 
-SIGNAL_FILE="/tmp/rebootpi_requested"
+SIGNAL_FILE="/tmp/reboot_requested"
 LOG_FILE="/var/log/bot-reboot.log"
 
 while true; do
@@ -45,7 +45,16 @@ while true; do
         cat "$SIGNAL_FILE" >> "$LOG_FILE"
         rm -f "$SIGNAL_FILE"
         echo "$(date): Exécution du redémarrage Pi..." >> "$LOG_FILE"
-        /sbin/reboot
+        
+        # Méthodes de redémarrage pour RPi5 (par ordre de préférence)
+        # 1. systemctl (recommandé pour systemd)
+        systemctl reboot || \
+        # 2. shutdown avec délai court
+        shutdown -r +1 "Redémarrage via bot" || \
+        # 3. reboot direct
+        /sbin/reboot || \
+        # 4. sync + reboot forcé
+        { sync; echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }
     fi
     sleep 5
 done
@@ -106,7 +115,7 @@ sudo systemctl is-active rebootpi-watcher.service
 sudo journalctl -u rebootpi-watcher.service -f
 
 # Tester le mécanisme (ATTENTION: redémarre le système!)
-echo "Test manuel" > /tmp/rebootpi_requested
+echo "Test manuel" > /tmp/reboot_requested
 ```
 
 ### Sécurité
@@ -131,6 +140,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/rx [page]` - Nœuds distants vus par tigrog2
 - `/my` - Vos signaux vus par tigrog2
 - `/sys` - Informations système (CPU, RAM, uptime)
+- `/echo <message>` - Diffuser un message via tigrog2
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
 
@@ -152,4 +162,3 @@ Le fichier `config.py` contient tous les paramètres configurables :
 - Throttling : 5 commandes par 5 minutes par utilisateur
 - Messages limités à 180 caractères (contrainte LoRa)
 - Nécessite llama.cpp en fonctionnement pour `/bot`
-
