@@ -79,17 +79,8 @@ class MessageHandler:
             except Exception as e2:
                 error_print(f"Échec envoi définitif → {sender_info}: {e2}")
     
-    def send_public_message(self, message):
-        """Envoyer un message sur le canal public"""
-        try:
-            # Envoyer en broadcast (destinationId par défaut = broadcast)
-            self.interface.sendText(message)
-            debug_print(f"Message public envoyé: '{message[:50]}...'")
-        except Exception as e:
-            error_print(f"Échec envoi message public: {e}")
-    
     def _get_short_name(self, node_id):
-        """Obtenir le nom court d'un nœud (shortName ou version tronquée)"""
+        """Obtenir le nom court d'un nœud (shortName ou les 4 derniers caractères hex de l'ID)"""
         try:
             # Essayer d'obtenir le shortName depuis l'interface
             if hasattr(self.interface, 'nodes') and node_id in self.interface.nodes:
@@ -101,14 +92,8 @@ class MessageHandler:
                         if short_name:
                             return short_name
             
-            # Fallback : utiliser le nom de la base tronqué
-            full_name = self.node_manager.get_node_name(node_id, self.interface)
-            if full_name.startswith('Node-'):
-                # Pour les nœuds inconnus, utiliser seulement les 4 derniers caractères de l'ID
-                return f"{node_id:08x}"[-4:]
-            else:
-                # Tronquer le nom long à 8 caractères maximum
-                return full_name[:8]
+            # Fallback : toujours utiliser les 4 derniers caractères de l'ID
+            return f"{node_id:08x}"[-4:]
                 
         except Exception as e:
             debug_print(f"Erreur récupération nom court {node_id}: {e}")
@@ -276,25 +261,59 @@ class MessageHandler:
             self.send_single_message("Erreur génération aide", sender_id, sender_info)
     
     def handle_echo_command(self, message, sender_id, sender_info, packet):
-        """Gérer la commande /echo - réponse publique sur le canal"""
+        """Gérer la commande /echo - tigrog2 diffuse l'echo dans le mesh"""
         echo_text = message[6:].strip()  # Retirer "/echo "
         
         if not echo_text:
-            # Répondre en public avec usage
-            response = f"Usage: /echo <texte> - par {self._get_short_name(sender_id)}"
-            self.send_public_message(response)
+            # Répondre en privé avec usage
+            response = f"Usage: /echo <texte>"
+            self.send_single_message(response, sender_id, sender_info)
             return
         
-        # Créer la réponse avec l'identifiant court de l'auteur
-        author_short = self._get_short_name(sender_id)
-        response = f"Echo de {author_short}: {echo_text}"
+        # Log de la commande
+        info_print(f"Echo via tigrog2: {sender_info} -> '{echo_text}'")
         
-        # Log de la conversation
-        info_print(f"Echo public: {sender_info} -> '{echo_text}'")
-        self.log_conversation(sender_id, sender_info, message, response)
+        import threading
         
-        # Répondre en public
-        self.send_public_message(response)
+        def send_echo_via_tigrog2():
+            try:
+                # Se connecter à tigrog2 via TCP
+                import meshtastic.tcp_interface
+                
+                debug_print(f"Connexion TCP à tigrog2 pour echo...")
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
+                
+                # Attendre la connexion
+                time.sleep(1)
+                
+                # Créer la réponse avec l'identifiant court en préambule
+                author_short = self._get_short_name(sender_id)
+                echo_response = f"{author_short}: {echo_text}"
+                
+                # Envoyer le message en broadcast via tigrog2
+                remote_interface.sendText(echo_response)
+                
+                debug_print(f"Echo diffusé via tigrog2: '{echo_response}'")
+                
+                # Fermer la connexion
+                remote_interface.close()
+                
+                # Log de la conversation
+                self.log_conversation(sender_id, sender_info, message, echo_response)
+                
+            except Exception as e:
+                error_print(f"Erreur echo via tigrog2: {e}")
+                try:
+                    error_response = f"Erreur echo tigrog2: {str(e)[:30]}"
+                    self.send_single_message(error_response, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Envoi erreur echo échoué: {e2}")
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
     
     def handle_rebootg2_command(self, sender_id, sender_info):
         """Gérer la commande /rebootg2 (non documentée)"""
@@ -932,6 +951,8 @@ class MessageHandler:
             self.handle_rx_command(message, sender_id, sender_info)
         elif message.startswith('/my'):
             self.handle_my_command(sender_id, sender_info)
+        elif message.startswith('/echo '):
+            self.handle_echo_command(message, sender_id, sender_info, packet)
         elif message.startswith('/legend'):
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
