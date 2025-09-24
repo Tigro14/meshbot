@@ -17,7 +17,7 @@ ESPHOME_PORT = 80
 # Configuration nœuds distants
 REMOTE_NODE_HOST = "192.168.1.38"
 REMOTE_NODE_NAME = "tigrog2"
-TIGROG2_NODE_ID = 0x16fad3dc  # Node ID du tigrog2
+TIGROG2_NODE_ID = 0x12345678  # À remplacer par l'ID réel de tigrog2
 
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
@@ -37,9 +37,28 @@ CONTEXT_TIMEOUT = 1800  # 30 minutes
 # Limites messages
 MAX_MESSAGE_SIZE = 180
 
-# Throttling des commandes utilisateurs
-MAX_COMMANDS_PER_WINDOW = 5  # 5 commandes max
-COMMAND_WINDOW_SECONDS = 300  # par tranche de 5 minutes (300s)
+# Configuration throttling commandes
+MAX_COMMANDS_PER_WINDOW = 5  # Nombre max de commandes
+COMMAND_WINDOW_SECONDS = 300  # Fenêtre de temps en secondes (5 minutes)
+
+# Configuration Telegram Bridge
+TELEGRAM_ENABLED = True  # Activer/désactiver l'intégration Telegram
+TELEGRAM_BOT_TOKEN = "8370817963:AAG3tUW1Qvw_4dQyKlJKR1VGIZo4KxsQULQ"  # Token du bot Telegram
+
+# Utilisateurs Telegram autorisés (liste vide = tous autorisés)
+# Format: [123456789, 987654321, ...]
+TELEGRAM_AUTHORIZED_USERS = []
+
+# Configuration communication Telegram
+TELEGRAM_QUEUE_FILE = "/tmp/telegram_mesh_queue.json"
+TELEGRAM_RESPONSE_FILE = "/tmp/mesh_telegram_response.json"
+TELEGRAM_COMMAND_TIMEOUT = 30  # Timeout pour les commandes en secondes
+TELEGRAM_MAX_MESSAGE_LENGTH = 4096  # Limite de caractères Telegram
+TELEGRAM_RATE_LIMIT_PER_USER = 10  # Commandes par minute par utilisateur
+
+# Configuration logs Telegram
+TELEGRAM_LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR
+TELEGRAM_LOG_FILE = "/var/log/telegram-mesh-bot.log"
 
 # Variables globales d'état
 DEBUG_MODE = False
