@@ -827,7 +827,9 @@ class MessageHandler:
         is_for_me = (to_id == my_id) if my_id else False
         sender_info = self.node_manager.get_node_name(sender_id, self.interface)
         
-        info_print(f"MESSAGE REÇU de {sender_info}: '{message}' (ForMe:{is_for_me})")
+        # Log seulement les messages pour nous ou en mode debug
+        if is_for_me or DEBUG_MODE:
+            info_print(f"MESSAGE REÇU de {sender_info}: '{message}' (ForMe:{is_for_me})")
         
         # Traiter les commandes seulement si c'est pour nous
         if not is_for_me:
