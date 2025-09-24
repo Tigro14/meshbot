@@ -192,7 +192,7 @@ class DebugMeshBot:
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec architecture modulaire")
                 print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
-                print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, reboot, config, nodes, context, update, save, mem, quit")
+                print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, rebootpi, config, nodes, context, update, save, mem, quit")
                 
                 # Initialiser et démarrer l'interface debug SEULEMENT si on a un terminal
                 import sys

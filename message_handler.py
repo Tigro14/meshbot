@@ -401,31 +401,30 @@ class MessageHandler:
                     self.node_manager.save_node_names(force=True)
                     debug_print("💾 Base de nœuds sauvegardée")
                 
-                # Commande de redémarrage système (sans sudo)
-                # Utiliser systemctl qui fonctionne même avec "no new privileges"
-                reboot_cmd = ['systemctl', 'reboot']
-                debug_print(f"Exécution: {' '.join(reboot_cmd)}")
-                
-                # Alternative si systemctl ne fonctionne pas
+                # Commande de redémarrage système - méthode fichier signal
                 try:
-                    result = subprocess.run(reboot_cmd, 
-                                          capture_output=True, 
-                                          text=True, 
-                                          timeout=10)
-                    if result.returncode != 0:
-                        debug_print(f"systemctl échoué: {result.stderr}")
-                        # Fallback: écrire dans /proc/sys/kernel/sysrq
-                        try:
-                            with open('/proc/sys/kernel/sysrq', 'w') as f:
-                                f.write('1')
-                            with open('/proc/sysrq-trigger', 'w') as f:
-                                f.write('b')  # b = reboot immediately
-                        except PermissionError:
-                            # Dernière option: signal au processus init
-                            subprocess.run(['kill', '-USR1', '1'], timeout=5)
-                except subprocess.CalledProcessError:
-                    # Si tout échoue, essayer d'autres méthodes
-                    debug_print("Fallback vers méthodes alternatives de reboot")
+                    # Créer un fichier signal pour le redémarrage
+                    signal_file = '/tmp/reboot_requested'
+                    with open(signal_file, 'w') as f:
+                        f.write(f"Redémarrage demandé par {sender_info} (!{sender_id:08x})\n")
+                        f.write(f"Timestamp: {time.time()}\n")
+                    
+                    debug_print(f"Fichier signal créé: {signal_file}")
+                    info_print("📝 Signal de redémarrage créé - nécessite script de surveillance système")
+                    
+                    # Message alternatif à l'utilisateur
+                    try:
+                        self.send_single_message("📝 Signal redémarrage créé", sender_id, sender_info)
+                    except:
+                        pass
+                    
+                except Exception as e:
+                    error_msg = f"❌ Erreur création signal: {str(e)[:50]}"
+                    debug_print(error_msg)
+                    try:
+                        self.send_single_message(error_msg, sender_id, sender_info)
+                    except:
+                        pass
                 
             except subprocess.TimeoutExpired:
                 info_print("⏱️ Timeout sur commande reboot (normal)")
@@ -760,8 +759,8 @@ class MessageHandler:
             self.handle_help_command(sender_id, sender_info)
         elif message.startswith('/rebootg2'):
             self.handle_rebootg2_command(sender_id, sender_info)
-        elif message.startswith('/reboot'):
-            self.handle_reboot_command(sender_id, sender_info)
+        elif message.startswith('/rebootpi'):
+            self.handle_rebootpi_command(sender_id, sender_info)
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:
