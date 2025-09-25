@@ -32,7 +32,7 @@ case "$1" in
         sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
         sleep 2
         echo "🚀 Lancement en mode debug..."
-        python3 /home/dietpi/debug_mesh_bot.py --debug
+        python3 /home/dietpi/bot/main_bot.py --debug
         ;;
     run)
         echo "🔧 Mode normal interactif..."

@@ -607,28 +607,26 @@ class MessageHandler:
         threading.Thread(target=get_g2_config, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
-        """Gérer la commande /sys - VERSION CORRIGÉE"""
+        """Gérer la commande /sys - VERSION FINALE CORRIGÉE"""
         info_print(f"Sys: {sender_info}")
-
+        
         import subprocess
         import threading
-
+        
         def get_system_info():
             try:
                 system_info = []
-
+                
                 # 1. Température CPU (RPI5)
                 try:
-                    # Méthode 1: vcgencmd (Raspberry Pi)
                     temp_cmd = ['vcgencmd', 'measure_temp']
-                    temp_result = subprocess.run(temp_cmd,
-                                               capture_output=True,
-                                               text=True,
+                    temp_result = subprocess.run(temp_cmd, 
+                                               capture_output=True, 
+                                               text=True, 
                                                timeout=5)
-
+                    
                     if temp_result.returncode == 0:
                         temp_output = temp_result.stdout.strip()
-                        # Format: temp=45.1'C
                         if 'temp=' in temp_output:
                             temp_value = temp_output.split('=')[1].replace("'C", "°C")
                             system_info.append(f"🌡️ CPU: {temp_value}")
@@ -643,52 +641,51 @@ class MessageHandler:
                                 system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
                         except:
                             system_info.append("🌡️ CPU: N/A")
-
+                            
                 except Exception as e:
                     debug_print(f"Erreur température: {e}")
                     system_info.append("🌡️ CPU: Error")
-
-                # 2. Uptime ET Load Average - VERSION CORRIGÉE
+                
+                # 2. Uptime ET Load Average - VERSION FINALE
                 try:
                     uptime_cmd = ['uptime']
-                    uptime_result = subprocess.run(uptime_cmd,
-                                                 capture_output=True,
-                                                 text=True,
+                    uptime_result = subprocess.run(uptime_cmd, 
+                                                 capture_output=True, 
+                                                 text=True, 
                                                  timeout=5)
-
+                    
                     if uptime_result.returncode == 0:
                         uptime_output = uptime_result.stdout.strip()
-                        debug_print(f"Uptime output brut: {uptime_output}")
-
-                        # Exemple: " 14:25:17 up  2:34,  1 user,  load average: 0.08, 0.03, 0.01"
-                        # Ou: " 14:25:17 up 1 day,  2:34,  1 user,  load average: 0.08, 0.03, 0.01"
-
-                        # 1. Extraire la partie uptime (avant "load average")
+                        debug_print(f"Uptime output: {uptime_output}")
+                        
                         if 'load average:' in uptime_output:
                             uptime_part, load_part = uptime_output.split('load average:', 1)
-
-                            # Nettoyer la partie uptime
-                            uptime_clean = uptime_part.strip()
-
-                            # Extraire les informations importantes d'uptime
-                            if ' up ' in uptime_clean:
-                                # Diviser après "up "
-                                after_up = uptime_clean.split(' up ')[1]
-                                # Supprimer la partie utilisateurs (après la virgule avec "user")
-                                if 'user' in after_up:
-                                    up_time_part = after_up.split(',')[:-1]  # Enlever la dernière partie "X users"
-                                    up_info = ','.join(up_time_part).strip()
-                                else:
-                                    up_info = after_up.strip()
-
-                                system_info.append(f"⏱️ Up: {up_info}")
-
-                            # Extraire et nettoyer le load average
+                            
+                            # Traiter la partie uptime
+                            if ' up ' in uptime_part:
+                                after_up = uptime_part.split(' up ')[1]
+                                
+                                # Supprimer la partie "X users" qui vient à la fin
+                                up_parts = after_up.split(',')
+                                # Filtrer les parties qui contiennent "user"
+                                filtered_parts = []
+                                for part in up_parts:
+                                    part = part.strip()
+                                    if 'user' not in part.lower():
+                                        filtered_parts.append(part)
+                                
+                                if filtered_parts:
+                                    up_info = ', '.join(filtered_parts)
+                                    system_info.append(f"⏱️ Up: {up_info}")
+                                    debug_print(f"Uptime formaté: {up_info}")
+                            
+                            # Traiter le load average
                             load_values = load_part.strip()
                             system_info.append(f"📊 Load: {load_values}")
-
+                            debug_print(f"Load average formaté: {load_values}")
+                            
                         else:
-                            # Pas de load average trouvé, afficher uptime seulement
+                            # Fallback si pas de load average
                             if ' up ' in uptime_output:
                                 up_info = uptime_output.split(' up ')[1].split(',')[0].strip()
                                 system_info.append(f"⏱️ Up: {up_info}")
@@ -696,55 +693,54 @@ class MessageHandler:
                                 system_info.append(f"⏱️ {uptime_output[:50]}")
                     else:
                         system_info.append("⏱️ Uptime: Error")
-
+                        
                 except Exception as e:
                     debug_print(f"Erreur uptime: {e}")
                     system_info.append("⏱️ Uptime: Error")
-
+                
                 # 3. Informations mémoire
                 try:
-                    # Récupérer info mémoire rapidement
                     with open('/proc/meminfo', 'r') as f:
                         meminfo = f.read()
-
+                    
                     mem_total = None
                     mem_available = None
-
+                    
                     for line in meminfo.split('\n'):
                         if line.startswith('MemTotal:'):
                             mem_total = int(line.split()[1])  # en kB
                         elif line.startswith('MemAvailable:'):
                             mem_available = int(line.split()[1])  # en kB
-
+                    
                     if mem_total and mem_available:
                         mem_used = mem_total - mem_available
                         mem_percent = (mem_used / mem_total) * 100
                         mem_total_mb = mem_total // 1024
                         mem_used_mb = mem_used // 1024
-
+                        
                         system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
-
+                        
                 except Exception as e:
                     debug_print(f"Erreur mémoire: {e}")
-
+                
                 # Construire la réponse finale
                 if system_info:
                     response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
+                    debug_print(f"Réponse /sys complète: {response}")
                 else:
                     response = "❌ Impossible de récupérer les infos système"
-
-                debug_print(f"Réponse /sys générée: {response}")
+                
                 self.send_response_chunks(response, sender_id, sender_info)
                 self.log_conversation(sender_id, sender_info, "/sys", response)
-
+                
             except Exception as e:
                 error_msg = f"❌ Erreur système: {str(e)[:100]}"
                 error_print(f"Erreur sys: {e}")
                 self.send_single_message(error_msg, sender_id, sender_info)
-
+        
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_system_info, daemon=True).start()
-        
+
     def handle_my_command(self, sender_id, sender_info):
         """Gérer la commande /my - infos signal vues par tigrog2 UNIQUEMENT basé sur SNR"""
         info_print(f"My: {sender_info}")
