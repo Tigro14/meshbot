@@ -101,8 +101,8 @@ class TelegramMeshtasticBridge:
             return True
         return user_id in TELEGRAM_AUTHORIZED_USERS
     
-    async def mesh_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /mesh pour relayer vers Meshtastic"""
+    async def bot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /bot pour chat IA"""
         user = update.effective_user
         
         if not self.check_authorization(user.id):
@@ -110,29 +110,122 @@ class TelegramMeshtasticBridge:
             return
         
         if not context.args:
-            await update.message.reply_text("Usage: /mesh <commande>\nEx: /mesh /power")
+            await update.message.reply_text("Usage: /bot <question>\nEx: /bot Quelle est la météo ?")
             return
         
-        # Construire la commande Meshtastic
-        mesh_command = ' '.join(context.args)
-        logger.info(f"Commande mesh de {user.username}: {mesh_command}")
+        # Construire la commande
+        question = ' '.join(context.args)
+        mesh_command = f"/bot {question}"
+        logger.info(f"Bot IA de {user.username}: {question}")
         
-        # Envoyer via l'API du bot Meshtastic
         try:
             response = await self.send_to_meshtastic(mesh_command, user)
-            # Formater la réponse pour Telegram (4096 caractères max)
+            
             if len(response) > 4000:
-                # Diviser en chunks si nécessaire
                 chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
                 for i, chunk in enumerate(chunks):
                     if i == 0:
-                        await update.message.reply_text(f"📡 **Réponse Mesh:** (partie {i+1}/{len(chunks)})\n```\n{chunk}\n```", parse_mode='Markdown')
+                        await update.message.reply_text(f"🤖 **IA Mesh:** (partie {i+1}/{len(chunks)})\n{chunk}")
                     else:
-                        await update.message.reply_text(f"📡 **(suite {i+1}/{len(chunks)})**\n```\n{chunk}\n```", parse_mode='Markdown')
+                        await update.message.reply_text(f"🤖 **(suite {i+1}/{len(chunks)})**\n{chunk}")
             else:
-                await update.message.reply_text(f"📡 **Réponse Mesh:**\n```\n{response}\n```", parse_mode='Markdown')
+                await update.message.reply_text(f"🤖 **IA Mesh:**\n{response}")
         except Exception as e:
-            logger.error(f"Erreur commande mesh: {e}")
+            logger.error(f"Erreur commande /bot: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /power pour télémétrie ESPHome"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Power de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/power", user)
+            await update.message.reply_text(f"🔋 **Télémétrie:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande /power: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rx pour nœuds paginés (format LoRa compact)"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        # Récupérer le numéro de page
+        page = 1
+        if context.args:
+            try:
+                page = int(context.args[0])
+            except ValueError:
+                page = 1
+        
+        mesh_command = f"/rx {page}" if page > 1 else "/rx"
+        logger.info(f"RX page {page} de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic(mesh_command, user)
+            await update.message.reply_text(f"📡 **Nœuds (paginé):**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande /rx: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def my_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /my pour signaux personnels"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"My de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/my", user)
+            await update.message.reply_text(f"📊 **Vos signaux:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande /my: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /sys pour infos système"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Sys de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/sys", user)
+            await update.message.reply_text(f"🖥️ **Système:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande /sys: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /legend pour légende des indicateurs"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Legend de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/legend", user)
+            await update.message.reply_text(f"🔍 **Légende:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande /legend: {e}")
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
     
     async def nodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,17 +275,13 @@ class TelegramMeshtasticBridge:
                 # Ligne formatée pour Telegram - Format compact sur une ligne
                 metrics = []
                 
-                # RSSI seulement si non-zéro
-                if rssi != 0:
-                    metrics.append(f"RSSI: {rssi}dBm")
-                
-                # SNR toujours affiché
+                # SNR toujours affiché (métrique principale LoRa)
                 metrics.append(f"SNR: {snr:.1f}dB")
                 
                 # Temps
                 metrics.append(time_str)
                 
-                line = f"{rssi_icon} **{name}** - {' | '.join(metrics)}"
+                line = f"{rssi_icon} **{name}** {' | '.join(metrics)}"
                 
                 response_lines.append(line)
             
@@ -201,7 +290,7 @@ class TelegramMeshtasticBridge:
             
             # Footer informatif
             full_response += f"\n\n🔍 Légende: 🟢 Excellent | 🟡 Bon | 🟠 Faible | 🔴 Critique\n"
-            full_response += f"📊 Triés par qualité de signal, <3 jours"
+            full_response += f"📊 Triés par SNR (qualité LoRa), <3 jours"
             
             # Vérifier la taille et diviser si nécessaire
             if len(full_response) > 4000:
@@ -237,26 +326,29 @@ class TelegramMeshtasticBridge:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
     
     def get_quality_icon(self, rssi, snr=0.0):
-        """Obtenir l'icône de qualité basée sur RSSI ou SNR si RSSI=0"""
-        if rssi != 0:
-            if rssi >= -80:
-                return "🟢"  # Excellent
-            elif rssi >= -100:
-                return "🟡"  # Bon
-            elif rssi >= -120:
-                return "🟠"  # Faible
+        """Obtenir l'icône de qualité basée prioritairement sur SNR (plus fiable en LoRa)"""
+        # Prioriser SNR pour l'icône car plus fiable en LoRa
+        if snr != 0:
+            if snr >= 8:
+                return "🟢"  # Excellent SNR
+            elif snr >= 3:
+                return "🟡"  # Bon SNR
+            elif snr >= -2:
+                return "🟠"  # SNR faible mais utilisable
             else:
-                return "🔴"  # Très faible
-        else:
-            # Basé sur SNR si RSSI=0
-            if snr >= 10:
+                return "🔴"  # SNR critique
+        elif rssi != 0:
+            # Fallback sur RSSI si pas de SNR
+            if rssi >= -80:
                 return "🟢"
-            elif snr >= 5:
+            elif rssi >= -100:
                 return "🟡"
-            elif snr >= 0:
+            elif rssi >= -120:
                 return "🟠"
             else:
-                return "🔴" if snr != 0 else "📶"
+                return "🔴"
+        else:
+            return "📶"  # Aucune métrique disponible
     
     async def get_extended_nodes_list(self):
         """Récupérer la liste étendue des nœuds pour Telegram"""
@@ -339,8 +431,8 @@ class TelegramMeshtasticBridge:
             
             remote_interface.close()
             
-            # Trier par qualité de signal (RSSI décroissant)
-            node_list.sort(key=lambda x: x.get('rssi', -999), reverse=True)
+            # Trier par SNR décroissant (plus fiable que RSSI en LoRa)
+            node_list.sort(key=lambda x: x.get('snr', -999), reverse=True)
             
             return node_list
             
@@ -565,8 +657,17 @@ class TelegramMeshtasticBridge:
         # Ajouter les handlers
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("mesh", self.mesh_command))
-        self.application.add_handler(CommandHandler("nodes", self.nodes_command))  # Nouvelle commande optimisée
+        
+        # Commandes Meshtastic directes (sans préfixe /mesh)
+        self.application.add_handler(CommandHandler("bot", self.bot_command))
+        self.application.add_handler(CommandHandler("power", self.power_command))
+        self.application.add_handler(CommandHandler("rx", self.rx_command))
+        self.application.add_handler(CommandHandler("my", self.my_command))
+        self.application.add_handler(CommandHandler("sys", self.sys_command))
+        self.application.add_handler(CommandHandler("legend", self.legend_command))
+        
+        # Commandes Telegram spécifiques
+        self.application.add_handler(CommandHandler("nodes", self.nodes_command))
         self.application.add_handler(CommandHandler("echo", self.echo_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
         self.application.add_handler(CommandHandler("stats", self.stats_command))
