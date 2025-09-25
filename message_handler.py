@@ -607,7 +607,7 @@ class MessageHandler:
         threading.Thread(target=get_g2_config, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
-        """Gérer la commande /sys"""
+        """Gérer la commande /sys avec LoadAvg complet"""
         info_print(f"Sys: {sender_info}")
         
         import subprocess
@@ -648,7 +648,7 @@ class MessageHandler:
                     debug_print(f"Erreur température: {e}")
                     system_info.append("🌡️ CPU: Error")
                 
-                # 2. Uptime
+                # 2. Uptime ET Load Average (complet)
                 try:
                     uptime_cmd = ['uptime']
                     uptime_result = subprocess.run(uptime_cmd, 
@@ -658,39 +658,54 @@ class MessageHandler:
                     
                     if uptime_result.returncode == 0:
                         uptime_output = uptime_result.stdout.strip()
-                        # Nettoyer et simplifier l'output uptime
-                        uptime_clean = uptime_output.replace('  ', ' ')
+                        debug_print(f"Uptime brut: {uptime_output}")
                         
-                        # Extraire les parties importantes
-                        parts = uptime_clean.split(',')
-                        if len(parts) >= 3:
-                            # Uptime + load average
-                            uptime_part = parts[0].strip()  # "up X days, Y hours"
-                            load_parts = [p.strip() for p in parts[-3:]]  # derniers 3 éléments (load avg)
-                            
-                            # Formater de manière compacte
-                            if 'up' in uptime_part:
-                                up_info = uptime_part.split('up')[1].strip()
-                                system_info.append(f"⏱ Up: {up_info}")
-                            
-                            # Load average (simplifier)
-                            load_info = ', '.join(load_parts)
-                            if 'load average:' in load_info:
-                                load_values = load_info.split('load average:')[1].strip()
-                                system_info.append(f"📊 Load: {load_values}")
+                        # Parser l'output uptime complet
+                        # Format typique: " 20:30:45 up  2:15,  1 user,  load average: 0.08, 0.03, 0.01"
+                        
+                        # Extraire uptime
+                        if 'up' in uptime_output:
+                            # Trouver la partie uptime
+                            up_part = uptime_output.split('up')[1]
+                            if ',' in up_part:
+                                # Prendre jusqu'au premier élément avec "user" ou "load"
+                                parts = up_part.split(',')
+                                uptime_duration = parts[0].strip()
+                                
+                                # Nettoyer si nécessaire
+                                if 'user' not in uptime_duration and 'load' not in uptime_duration:
+                                    system_info.append(f"⏱ Up: {uptime_duration}")
+                                else:
+                                    system_info.append("⏱ Up: active")
+                        
+                        # Extraire Load Average
+                        if 'load average:' in uptime_output:
+                            load_part = uptime_output.split('load average:')[1].strip()
+                            # Load average peut être "0.08, 0.03, 0.01"
+                            system_info.append(f"📊 Load: {load_part}")
+                        elif 'load averages:' in uptime_output:  # Variante BSD/macOS
+                            load_part = uptime_output.split('load averages:')[1].strip()
+                            system_info.append(f"📊 Load: {load_part}")
                         else:
-                            # Fallback: uptime complet mais tronqué
-                            system_info.append(f"⏱ {uptime_clean[:50]}")
+                            # Fallback: essayer de lire depuis /proc/loadavg
+                            try:
+                                with open('/proc/loadavg', 'r') as f:
+                                    loadavg = f.read().strip()
+                                    # Format: "0.08 0.03 0.01 1/123 456"
+                                    load_values = ' '.join(loadavg.split()[:3])  # Prendre les 3 premiers
+                                    system_info.append(f"📊 Load: {load_values}")
+                            except:
+                                system_info.append("📊 Load: N/A")
                     else:
                         system_info.append("⏱ Uptime: Error")
                         
                 except Exception as e:
                     debug_print(f"Erreur uptime: {e}")
                     system_info.append("⏱ Uptime: Error")
+                    system_info.append("📊 Load: Error")
                 
-                # 3. Informations mémoire (bonus)
+                # 3. Informations mémoire
                 try:
-                    # Récupérer info mémoire rapidement
                     with open('/proc/meminfo', 'r') as f:
                         meminfo = f.read()
                     
@@ -730,7 +745,7 @@ class MessageHandler:
         
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_system_info, daemon=True).start()
-    
+
     def handle_my_command(self, sender_id, sender_info):
         """Gérer la commande /my - infos signal vues par tigrog2 UNIQUEMENT basé sur SNR"""
         info_print(f"My: {sender_info}")
