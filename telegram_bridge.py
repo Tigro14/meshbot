@@ -6,30 +6,89 @@ Bot Telegram bridge pour interface avec le bot Meshtastic
 import asyncio
 import logging
 import json
+import os
 import time
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import requests
 
 # Configuration
-# Importer depuis config.py au lieu de définir ici
 import sys
-sys.path.append('/opt/meshtastic-bot')  # Ajuster selon votre chemin
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_AUTHORIZED_USERS, TELEGRAM_QUEUE_FILE, TELEGRAM_RESPONSE_FILE, TELEGRAM_COMMAND_TIMEOUT
+import os
 
-# Configuration logging
+# Essayer d'importer la configuration
+config_found = False
+try:
+    from config import *
+    config_found = True
+    print("✅ Configuration chargée depuis le répertoire courant")
+except ImportError:
+    try:
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, parent_dir)
+        from config import *
+        config_found = True
+        print(f"✅ Configuration chargée depuis {parent_dir}")
+    except ImportError:
+        print("❌ config.py non trouvé - utilisation valeurs par défaut")
+
+# Valeurs par défaut si config.py non trouvé
+if not config_found:
+    TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    TELEGRAM_AUTHORIZED_USERS = []
+    TELEGRAM_QUEUE_FILE = "/tmp/telegram_mesh_queue.json"
+    TELEGRAM_RESPONSE_FILE = "/tmp/mesh_telegram_response.json"
+    TELEGRAM_COMMAND_TIMEOUT = 30
+    DEBUG_MODE = False
+    TELEGRAM_TO_MESH_MAPPING = {}
+
+# Importer le mapping s'il existe
+try:
+    from config import TELEGRAM_TO_MESH_MAPPING
+except (ImportError, NameError):
+    TELEGRAM_TO_MESH_MAPPING = {}
+
+# Configuration logging - réduire le niveau des librairies externes
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO if not DEBUG_MODE else logging.DEBUG
 )
-logger = logging.getLogger(__name__)
+
+if not DEBUG_MODE:
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
+    logging.getLogger('telegram').setLevel(logging.WARNING)
+    logging.getLogger('telegram.ext').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('requests').setLevel(logging.WARNING)
+    
+    logger = logging.getLogger('telegram_bridge')
+    logger.setLevel(logging.INFO)
+else:
+    logging.getLogger('httpx').setLevel(logging.INFO)
+    logging.getLogger('telegram').setLevel(logging.INFO)
+    logger = logging.getLogger('telegram_bridge')
+    logger.setLevel(logging.DEBUG)
+
+logger = logging.getLogger('telegram_bridge')
 
 class TelegramMeshtasticBridge:
     def __init__(self):
         self.application = None
         self.command_queue = asyncio.Queue()
         
+    def get_mesh_display_name(self, user_id, username):
+        """Obtenir le nom d'affichage Meshtastic pour un utilisateur"""
+        if user_id in TELEGRAM_TO_MESH_MAPPING:
+            return TELEGRAM_TO_MESH_MAPPING[user_id]["short_name"]
+        return username or f"tg{user_id}"
+    
+    def check_authorization(self, user_id):
+        """Vérifier si l'utilisateur est autorisé"""
+        if not TELEGRAM_AUTHORIZED_USERS:
+            return True
+        return user_id in TELEGRAM_AUTHORIZED_USERS
+    
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /start"""
         user = update.effective_user
@@ -38,47 +97,55 @@ class TelegramMeshtasticBridge:
         welcome_msg = (
             f"🤖 Bot Meshtastic Bridge\n\n"
             f"Salut {user.first_name} !\n\n"
+            f"🎯 **Vous êtes mappé comme:** {self.get_mesh_display_name(user.id, user.username or user.first_name)}\n\n"
             f"Commandes disponibles:\n"
-            f"• /mesh <commande> - Envoyer une commande au bot Meshtastic\n"
-            f"• /status - État du réseau Meshtastic\n"
-            f"• /nodes - Liste des nœuds\n"
-            f"• /echo <message> - Echo via tigrog2\n"
-            f"• /help - Cette aide\n\n"
-            f"Votre ID: {user.id}"
+            f"• /bot <question> - Chat avec l'IA\n"
+            f"• /power - Info batterie/solaire\n"
+            f"• /rx [page] - Nœuds vus par tigrog2\n"
+            f"• /sys - Info système Pi5\n"
+            f"• /echo <message> - Diffuser via tigrog2\n"
+            f"• /legend - Légende signaux\n"
+            f"• /help - Aide complète\n\n"
+            f"💬 **Raccourci:** Tapez directement votre message pour /bot\n\n"
+            f"Votre ID Telegram: {user.id}"
         )
         
         await update.message.reply_text(welcome_msg)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /help"""
+        user = update.effective_user
+        mesh_name = self.get_mesh_display_name(user.id, user.username or user.first_name)
+        
         help_msg = (
-            "🤖 **Commandes disponibles:**\n\n"
-            "**Commandes Meshtastic:**\n"
-            "• `/mesh /bot <question>` - Chat IA\n"
-            "• `/mesh /power` - Info batterie/solaire\n"
-            "• `/mesh /rx [page]` - Nœuds vus par tigrog2\n"
-            "• `/mesh /my` - Vos signaux\n"
-            "• `/mesh /sys` - Info système Pi5\n"
-            "• `/mesh /legend` - Légende signaux\n\n"
-            "**Commandes directes:**\n"
-            "• `/status` - État réseau\n"
-            "• `/nodes` - Liste nœuds actifs\n"
-            "• `/echo <message>` - Diffuser via tigrog2\n"
-            "• `/stats` - Statistiques\n\n"
-            "**Format raccourci:**\n"
-            "Tapez directement votre message pour `/mesh /bot <message>`"
+            f"🤖 **Bot Meshtastic - Aide complète**\n\n"
+            f"🎯 **Votre identité mesh:** `{mesh_name}`\n\n"
+            f"**📱 Commandes principales:**\n"
+            f"• `/bot <question>` - Chat avec l'IA Llama\n"
+            f"• `/power` - Info batterie/solaire ESPHome\n"
+            f"• `/rx [page]` - Nœuds vus par tigrog2\n"
+            f"• `/sys` - Info système Pi5\n"
+            f"• `/echo <message>` - Diffuser via tigrog2\n"
+            f"• `/legend` - Légende des indicateurs\n\n"
+            f"**🔧 Commandes système:**\n"
+            f"• `/status` - État général du système\n"
+            f"• `/nodes` - Liste des nœuds actifs\n"
+            f"• `/help` - Cette aide\n\n"
+            f"**💡 Conseils d'utilisation:**\n"
+            f"• **Raccourci IA:** Tapez directement votre message pour `/bot`\n"
+            f"• **Echo mesh:** Vos messages `/echo` apparaissent comme `{mesh_name}: ...`\n"
+            f"• **Pagination:** `/rx 2` pour voir la page 2 des nœuds\n\n"
+            f"**⚠️ Limitations:**\n"
+            f"• `/my` non disponible depuis Telegram (position requise)\n"
+            f"• Messages LoRa limités à ~180 caractères\n"
+            f"• Throttling: 5 commandes/5min max\n\n"
+            f"**🆔 Votre ID Telegram:** `{user.id}`"
         )
         
         await update.message.reply_text(help_msg, parse_mode='Markdown')
     
-    def check_authorization(self, user_id):
-        """Vérifier si l'utilisateur est autorisé"""
-        if not TELEGRAM_AUTHORIZED_USERS:  # Si liste vide, tout le monde est autorisé
-            return True
-        return user_id in TELEGRAM_AUTHORIZED_USERS
-    
-    async def mesh_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /mesh pour relayer vers Meshtastic"""
+    async def bot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /bot directe"""
         user = update.effective_user
         
         if not self.check_authorization(user.id):
@@ -86,17 +153,112 @@ class TelegramMeshtasticBridge:
             return
         
         if not context.args:
-            await update.message.reply_text("Usage: /mesh <commande>\nEx: /mesh /power")
+            await update.message.reply_text("Usage: /bot <question>\nEx: /bot Comment ça va ?")
             return
         
-        # Construire la commande Meshtastic
-        mesh_command = ' '.join(context.args)
-        logger.info(f"Commande mesh de {user.username}: {mesh_command}")
+        question = ' '.join(context.args)
+        bot_command = f"/bot {question}"
+        logger.info(f"Commande bot directe de {user.username}: {question}")
         
-        # Envoyer via l'API du bot Meshtastic
+        try:
+            response = await self.send_to_meshtastic(bot_command, user)
+            mesh_name = self.get_mesh_display_name(user.id, user.username or user.first_name)
+            await update.message.reply_text(f"🤖 **IA Mesh** (en tant que `{mesh_name}`):\n{response}", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande bot: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /power directe"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Commande power de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/power", user)
+            await update.message.reply_text(f"🔋 **Power:**\n{response}")
+        except Exception as e:
+            logger.error(f"Erreur commande power: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rx directe"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        page = ""
+        if context.args and context.args[0].isdigit():
+            page = f" {context.args[0]}"
+        
+        rx_command = f"/rx{page}"
+        logger.info(f"Commande rx de {user.username}: {rx_command}")
+        
+        try:
+            response = await self.send_to_meshtastic(rx_command, user)
+            await update.message.reply_text(f"📡 **Nœuds:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande rx: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /sys directe"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Commande sys de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/sys", user)
+            await update.message.reply_text(f"💻 **Système:**\n```\n{response}\n```", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Erreur commande sys: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /legend directe"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        logger.info(f"Commande legend de {user.username}")
+        
+        try:
+            response = await self.send_to_meshtastic("/legend", user)
+            await update.message.reply_text(f"📶 **Légende:**\n{response}")
+        except Exception as e:
+            logger.error(f"Erreur commande legend: {e}")
+            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    
+    async def mesh_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /mesh pour compatibilité (optionnelle)"""
+        user = update.effective_user
+        
+        if not self.check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        if not context.args:
+            await update.message.reply_text("⚠️ Commande /mesh dépréciée\n\nUtilisez directement:\n• /bot <question>\n• /power\n• /rx\n• /sys\n• /legend")
+            return
+        
+        mesh_command = ' '.join(context.args)
+        logger.info(f"Commande mesh (legacy) de {user.username}: {mesh_command}")
+        
         try:
             response = await self.send_to_meshtastic(mesh_command, user)
-            await update.message.reply_text(f"📡 **Réponse Mesh:**\n```\n{response}\n```", parse_mode='Markdown')
+            await update.message.reply_text(f"📡 **Réponse:**\n{response}")
         except Exception as e:
             logger.error(f"Erreur commande mesh: {e}")
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
@@ -117,11 +279,19 @@ class TelegramMeshtasticBridge:
         logger.info(f"Echo de {user.username}: {echo_text}")
         
         try:
-            # Simuler un node_id pour Telegram (on peut utiliser l'user_id tronqué)
-            telegram_node_id = user.id & 0xFFFFFFFF  # Tronquer à 32 bits
+            display_name = self.get_mesh_display_name(user.id, user.username or user.first_name)
             
-            response = await self.send_echo_to_meshtastic(echo_text, telegram_node_id, user.username or user.first_name)
-            await update.message.reply_text(f"📡 Echo diffusé: `{user.first_name}: {echo_text}`", parse_mode='Markdown')
+            echo_command = f"/echo {echo_text}"
+            fake_user = type('User', (), {
+                'id': user.id,
+                'username': display_name,
+                'first_name': display_name
+            })()
+            
+            response = await self.send_to_meshtastic(echo_command, fake_user)
+            
+            await update.message.reply_text(f"📡 **Echo diffusé:**\n`{display_name}: {echo_text}`", parse_mode='Markdown')
+            
         except Exception as e:
             logger.error(f"Erreur echo: {e}")
             await update.message.reply_text(f"❌ Erreur echo: {str(e)}")
@@ -169,10 +339,10 @@ class TelegramMeshtasticBridge:
             await update.message.reply_text(f"📈 **Statistiques:**\n```\n{stats}\n```", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Erreur stats: {e}")
-            await update.message.reply_text(f"❌ Erreur stats: {str(e)}")
+            return f"Erreur stats: {str(e)}"
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Gérer les messages texte (raccourci pour /mesh /bot)"""
+        """Gérer les messages texte (raccourci pour /bot)"""
         user = update.effective_user
         message_text = update.message.text
         
@@ -180,90 +350,139 @@ class TelegramMeshtasticBridge:
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        # Raccourci: message direct = /mesh /bot <message>
         logger.info(f"Message direct de {user.username}: {message_text}")
         
         try:
             mesh_command = f"/bot {message_text}"
             response = await self.send_to_meshtastic(mesh_command, user)
-            await update.message.reply_text(f"🤖 **IA Mesh:**\n{response}")
+            mesh_name = self.get_mesh_display_name(user.id, user.username or user.first_name)
+            await update.message.reply_text(f"🤖 **IA Mesh** (en tant que `{mesh_name}`):\n{response}", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Erreur message direct: {e}")
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
     
     async def send_to_meshtastic(self, command, user):
-        """Envoyer une commande au bot Meshtastic via API"""
-        # Simuler l'API - à adapter selon votre implémentation
-        api_data = {
-            "command": command,
-            "telegram_user_id": user.id,
-            "telegram_username": user.username or user.first_name,
-            "timestamp": time.time()
-        }
-        
-        # Ici vous devrez implémenter l'interface avec votre bot Meshtastic
-        # Option 1: API REST
-        # response = requests.post(f"{MESHTASTIC_BOT_API_URL}/command", json=api_data)
-        # return response.json()['response']
-        
-        # Option 2: File/Queue system
-        # with open("/tmp/telegram_to_mesh_queue", "a") as f:
-        #     f.write(json.dumps(api_data) + "\n")
-        
-        # Pour le moment, simulation
-        await asyncio.sleep(1)  # Simuler délai de traitement
-        return f"[Simulé] Réponse à: {command}"
+        """Envoyer une commande au bot Meshtastic via système de fichiers"""
+        try:
+            request_id = f"tg_{int(time.time()*1000)}_{user.id}"
+            
+            request_data = {
+                "id": request_id,
+                "command": command,
+                "source": "telegram",
+                "user": {
+                    "telegram_id": user.id,
+                    "username": user.username or user.first_name,
+                    "first_name": user.first_name
+                },
+                "timestamp": time.time()
+            }
+            
+            existing_requests = []
+            try:
+                if os.path.exists(TELEGRAM_QUEUE_FILE):
+                    with open(TELEGRAM_QUEUE_FILE, 'r') as f:
+                        existing_requests = json.load(f)
+                        if not isinstance(existing_requests, list):
+                            existing_requests = []
+            except (json.JSONDecodeError, FileNotFoundError):
+                existing_requests = []
+            
+            existing_requests.append(request_data)
+            
+            with open(TELEGRAM_QUEUE_FILE, 'w') as f:
+                json.dump(existing_requests, f, indent=2)
+            
+            logger.info(f"Requête {request_id} envoyée au bot Meshtastic")
+            
+            return await self.wait_for_response(request_id, TELEGRAM_COMMAND_TIMEOUT)
+            
+        except Exception as e:
+            logger.error(f"Erreur envoi commande à Meshtastic: {e}")
+            return f"Erreur communication: {str(e)[:50]}"
     
-    async def send_echo_to_meshtastic(self, echo_text, node_id, username):
-        """Envoyer un echo via tigrog2"""
-        api_data = {
-            "action": "echo",
-            "text": echo_text,
-            "node_id": node_id,
-            "username": username,
-            "timestamp": time.time()
-        }
+    async def wait_for_response(self, request_id, timeout=30):
+        """Attendre la réponse du bot Meshtastic"""
+        start_time = time.time()
         
-        # Interface avec votre système echo
-        # À adapter selon votre implémentation
-        await asyncio.sleep(0.5)
-        return True
+        while (time.time() - start_time) < timeout:
+            try:
+                if os.path.exists(TELEGRAM_RESPONSE_FILE):
+                    with open(TELEGRAM_RESPONSE_FILE, 'r') as f:
+                        try:
+                            responses = json.load(f)
+                            if not isinstance(responses, list):
+                                responses = []
+                        except json.JSONDecodeError:
+                            responses = []
+                    
+                    for i, response in enumerate(responses):
+                        if response.get("request_id") == request_id:
+                            result = response.get("response", "Pas de réponse")
+                            
+                            responses.pop(i)
+                            with open(TELEGRAM_RESPONSE_FILE, 'w') as f:
+                                json.dump(responses, f, indent=2)
+                            
+                            logger.info(f"Réponse reçue pour {request_id}")
+                            return result
+                
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"Erreur lecture réponse: {e}")
+                continue
+        
+        logger.warning(f"Timeout pour la requête {request_id}")
+        return f"⏰ Timeout - pas de réponse du bot Meshtastic après {timeout}s"
     
     async def get_meshtastic_status(self):
         """Récupérer l'état du système Meshtastic"""
-        # À adapter selon votre API
-        await asyncio.sleep(0.5)
-        return (
-            "Pi5 Bot: ✅ Actif\n"
-            "Tigrog2: ✅ Connecté\n"
-            "Llama: ✅ Opérationnel\n"
-            "ESPHome: ✅ En ligne\n"
-            f"Uptime: 2h 15m\n"
-            f"Dernière activité: {datetime.now().strftime('%H:%M:%S')}"
-        )
+        try:
+            fake_user = type('User', (), {
+                'id': 999999999,
+                'username': 'telegram_status',
+                'first_name': 'Telegram'
+            })()
+            
+            response = await self.send_to_meshtastic("/sys", fake_user)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération status: {e}")
+            return f"Erreur status: {str(e)}"
     
     async def get_meshtastic_nodes(self):
         """Récupérer la liste des nœuds"""
-        await asyncio.sleep(0.5)
-        return (
-            "🟢 tigrog2: -85dBm (direct)\n"
-            "🟡 node1: -95dBm (1h)\n"
-            "🟠 node2: -105dBm (3h)\n"
-            "🔴 node3: -115dBm (12h)\n"
-            "Total: 4 nœuds actifs"
-        )
+        try:
+            fake_user = type('User', (), {
+                'id': 999999998,
+                'username': 'telegram_nodes',
+                'first_name': 'Telegram'
+            })()
+            
+            response = await self.send_to_meshtastic("/rx", fake_user)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération nodes: {e}")
+            return f"Erreur nodes: {str(e)}"
     
     async def get_meshtastic_stats(self):
         """Récupérer les statistiques"""
-        await asyncio.sleep(0.5)
-        return (
-            "Messages aujourd'hui: 47\n"
-            "Commandes /bot: 12\n"
-            "Commandes /echo: 8\n"
-            "Nœuds vus: 15\n"
-            "Temps réponse moyen: 1.2s\n"
-            f"Dernière stats: {datetime.now().strftime('%H:%M:%S')}"
-        )
+        try:
+            fake_user = type('User', (), {
+                'id': 999999997,
+                'username': 'telegram_stats', 
+                'first_name': 'Telegram'
+            })()
+            
+            response = await self.send_to_meshtastic("/sys", fake_user)
+            return f"📈 Statistiques système:\n{response}"
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération stats: {e}")
+            return f"Erreur stats: {str(e)}"
     
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire d'erreurs global"""
@@ -278,17 +497,27 @@ class TelegramMeshtasticBridge:
         """Démarrer le bot Telegram"""
         logger.info("Démarrage du bot Telegram Meshtastic Bridge...")
         
-        # Créer l'application
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
-        # Ajouter les handlers
+        # Ajouter les handlers - nouvelles commandes directes
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("mesh", self.mesh_command))
+        
+        # Commandes principales (directes)
+        self.application.add_handler(CommandHandler("bot", self.bot_command))
+        self.application.add_handler(CommandHandler("power", self.power_command))
+        self.application.add_handler(CommandHandler("rx", self.rx_command))
+        self.application.add_handler(CommandHandler("sys", self.sys_command))
+        self.application.add_handler(CommandHandler("legend", self.legend_command))
         self.application.add_handler(CommandHandler("echo", self.echo_command))
+        
+        # Commandes système
         self.application.add_handler(CommandHandler("status", self.status_command))
         self.application.add_handler(CommandHandler("nodes", self.nodes_command))
         self.application.add_handler(CommandHandler("stats", self.stats_command))
+        
+        # Compatibilité ancienne interface
+        self.application.add_handler(CommandHandler("mesh", self.mesh_command))
         
         # Handler pour messages texte (raccourci /bot)
         self.application.add_handler(
@@ -307,7 +536,7 @@ class TelegramMeshtasticBridge:
         
         # Garder le bot actif
         try:
-            await asyncio.Event().wait()  # Attendre indéfiniment
+            await asyncio.Event().wait()
         except KeyboardInterrupt:
             logger.info("Arrêt du bot...")
         finally:
@@ -317,12 +546,10 @@ class TelegramMeshtasticBridge:
 
 def main():
     """Point d'entrée principal"""
-    # Vérifier le token
-    if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("❌ Veuillez configurer TELEGRAM_BOT_TOKEN dans le fichier")
         return
     
-    # Créer et lancer le bot
     bridge = TelegramMeshtasticBridge()
     
     try:
