@@ -330,14 +330,14 @@ class TelegramMeshtasticBridge:
         # Debug temporaire pour voir les valeurs reçues
         print(f"DEBUG get_quality_icon: snr={snr} (type: {type(snr)})")
         
-        # Seuils ajustés selon vos données réelles
-        if snr > 4.5:  # Au lieu de >= 5
+        # Seuils corrigés selon vos vraies données
+        if snr >= 7.0:  # Capte 10.8, 10.5, 10.2, 10.0, 8.0, 7.2, 7.0
             return "🟢"  # Excellent SNR
-        elif snr > 1.0:  # Au lieu de >= 0
+        elif snr >= 3.0:  # Capte 5.8, 6.5, 4.2
             return "🟡"  # Bon SNR
-        elif snr > -3.0:  # Au lieu de >= -5
+        elif snr >= -3.0:  # Capte 0.5, -0.2, -4.2 
             return "🟠"  # SNR faible mais utilisable
-        else:
+        else:  # Capte -5.8, -8.2, -8.8, -9.0, -10.2, -11.0
             return "🔴"  # SNR critique
     
     async def get_extended_nodes_list(self):
