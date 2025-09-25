@@ -118,7 +118,7 @@ class TelegramIntegration:
         elif command.startswith('/rx'):
             return self._handle_rx_command(command, sender_id, sender_info)
         elif command.startswith('/nodes'):
-            return self._handle_nodes_command(sender_id, sender_info)  # Nouvelle commande
+            return self._handle_nodes_command(sender_id, sender_info)
         elif command.startswith('/my'):
             return self._handle_my_command(sender_id, sender_info)
         elif command.startswith('/sys'):
@@ -158,28 +158,15 @@ class TelegramIntegration:
                 snr = node.get('snr', 0.0)
                 last_heard = node.get('last_heard', 0)
                 
-                # Icône de qualité basée prioritairement sur SNR (plus fiable en LoRa)
-                if snr != 0:
-                    if snr >= 8:
-                        signal_icon = "🟢"  # Excellent SNR
-                    elif snr >= 3:
-                        signal_icon = "🟡"  # Bon SNR
-                    elif snr >= -2:
-                        signal_icon = "🟠"  # SNR faible mais utilisable
-                    else:
-                        signal_icon = "🔴"  # SNR critique
-                elif rssi != 0:
-                    # Fallback sur RSSI si pas de SNR
-                    if rssi >= -80:
-                        signal_icon = "🟢"
-                    elif rssi >= -100:
-                        signal_icon = "🟡"
-                    elif rssi >= -120:
-                        signal_icon = "🟠"
-                    else:
-                        signal_icon = "🔴"
+                # Icône de qualité basée uniquement sur SNR (RSSI supprimé car buggé)
+                if snr > 4.5:  # Au lieu de >= 5
+                    signal_icon = "🟢"  # Excellent SNR
+                elif snr > 1.0:  # Au lieu de >= 0
+                    signal_icon = "🟡"  # Bon SNR
+                elif snr > -3.0:  # Au lieu de >= -5
+                    signal_icon = "🟠"  # SNR faible mais utilisable
                 else:
-                    signal_icon = "📶"  # Aucune métrique disponible
+                    signal_icon = "🔴"  # SNR critique
                 
                 # Temps écoulé depuis dernière réception
                 if last_heard > 0:
@@ -408,12 +395,13 @@ class TelegramIntegration:
 /power - Info batterie/solaire
 /rx [page] - Nœuds vus par tigrog2 (paginé)
 /nodes - Liste complète des nœuds (format étendu)
+/my - Vos signaux vus par tigrog2
 /sys - Info système Pi5
 /echo <texte> - Diffuser via tigrog2
 /legend - Légende signaux
 /help - Cette aide
 
-Note: /my non disponible depuis Telegram"""
+Note: /my non disponible depuis Telegram pour les vraies métriques"""
         
         return help_text
     

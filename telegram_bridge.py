@@ -63,11 +63,11 @@ class TelegramMeshtasticBridge:
             f"🤖 Bot Meshtastic Bridge\n\n"
             f"Salut {user.first_name} !\n\n"
             f"Commandes disponibles:\n"
-            f"• /mesh <commande> - Envoyer une commande au bot Meshtastic\n"
-            f"• /status - État du réseau Meshtastic\n"
+            f"• /bot <question> - Chat IA\n"
+            f"• /power - Télémétrie\n"
             f"• /nodes - Liste complète des nœuds\n" 
             f"• /echo <message> - Echo via {REMOTE_NODE_NAME}\n"
-            f"• /help - Cette aide\n\n"
+            f"• /help - Aide complète\n\n"
             f"Votre ID: {user.id}"
         )
         
@@ -78,19 +78,19 @@ class TelegramMeshtasticBridge:
         help_msg = (
             "🤖 **Commandes disponibles:**\n\n"
             "**Commandes Meshtastic:**\n"
-            "• `/mesh /bot <question>` - Chat IA\n"
-            "• `/mesh /power` - Info batterie/solaire\n"
-            "• `/mesh /rx [page]` - Nœuds vus par tigrog2 (paginé)\n"
-            "• `/mesh /my` - Vos signaux\n"
-            "• `/mesh /sys` - Info système Pi5\n"
-            "• `/mesh /legend` - Légende signaux\n\n"
-            "**Commandes directes:**\n"
+            "• `/bot <question>` - Chat IA\n"
+            "• `/power` - Info batterie/solaire\n"
+            "• `/rx [page]` - Nœuds vus par tigrog2 (paginé)\n"
+            "• `/my` - Vos signaux\n"
+            "• `/sys` - Info système Pi5\n"
+            "• `/legend` - Légende signaux\n\n"
+            "**Commandes Telegram:**\n"
             "• `/status` - État réseau\n"
             "• `/nodes` - Liste complète des nœuds (format étendu)\n"
             "• `/echo <message>` - Diffuser via tigrog2\n"
             "• `/stats` - Statistiques\n\n"
             "**Format raccourci:**\n"
-            "Tapez directement votre message pour `/mesh /bot <message>`"
+            "Tapez directement votre message pour `/bot <message>`"
         )
         
         await update.message.reply_text(help_msg, parse_mode='Markdown')
@@ -326,29 +326,19 @@ class TelegramMeshtasticBridge:
             await update.message.reply_text(f"❌ Erreur: {str(e)}")
     
     def get_quality_icon(self, rssi, snr=0.0):
-        """Obtenir l'icône de qualité basée prioritairement sur SNR (plus fiable en LoRa)"""
-        # Prioriser SNR pour l'icône car plus fiable en LoRa
-        if snr != 0:
-            if snr >= 8:
-                return "🟢"  # Excellent SNR
-            elif snr >= 3:
-                return "🟡"  # Bon SNR
-            elif snr >= -2:
-                return "🟠"  # SNR faible mais utilisable
-            else:
-                return "🔴"  # SNR critique
-        elif rssi != 0:
-            # Fallback sur RSSI si pas de SNR
-            if rssi >= -80:
-                return "🟢"
-            elif rssi >= -100:
-                return "🟡"
-            elif rssi >= -120:
-                return "🟠"
-            else:
-                return "🔴"
+        """Obtenir l'icône de qualité basée uniquement sur SNR (RSSI supprimé car buggé)"""
+        # Debug temporaire pour voir les valeurs reçues
+        print(f"DEBUG get_quality_icon: snr={snr} (type: {type(snr)})")
+        
+        # Seuils ajustés selon vos données réelles
+        if snr > 4.5:  # Au lieu de >= 5
+            return "🟢"  # Excellent SNR
+        elif snr > 1.0:  # Au lieu de >= 0
+            return "🟡"  # Bon SNR
+        elif snr > -3.0:  # Au lieu de >= -5
+            return "🟠"  # SNR faible mais utilisable
         else:
-            return "📶"  # Aucune métrique disponible
+            return "🔴"  # SNR critique
     
     async def get_extended_nodes_list(self):
         """Récupérer la liste étendue des nœuds pour Telegram"""
@@ -414,6 +404,9 @@ class TelegramMeshtasticBridge:
                         # Métriques de signal
                         rssi = node_info.get('rssi', 0)
                         snr = node_info.get('snr', 0.0)
+                        
+                        # Debug temporaire pour voir les valeurs extraites
+                        print(f"DEBUG node {name}: rssi={rssi}, snr={snr}")
                         
                         node_data = {
                             'id': id_int,
@@ -502,7 +495,7 @@ class TelegramMeshtasticBridge:
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        # Raccourci: message direct = /mesh /bot <message>
+        # Raccourci: message direct = /bot <message>
         logger.info(f"Message direct de {user.username}: {message_text}")
         
         try:
