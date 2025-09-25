@@ -277,13 +277,13 @@ class TelegramIntegration:
         return "Commande /my non applicable depuis Telegram (réservée aux utilisateurs mesh)"
     
     def _handle_sys_command(self, sender_id, sender_info):
-        """Traiter /sys depuis Telegram"""
+        """Traiter /sys depuis Telegram - VERSION CORRIGÉE"""
         try:
             import subprocess
             
             system_info = []
             
-            # Température CPU
+            # 1. Température CPU
             try:
                 temp_result = subprocess.run(['vcgencmd', 'measure_temp'], 
                                            capture_output=True, text=True, timeout=5)
@@ -291,28 +291,55 @@ class TelegramIntegration:
                     temp_output = temp_result.stdout.strip()
                     if 'temp=' in temp_output:
                         temp_value = temp_output.split('=')[1].replace("'C", "°C")
-                        system_info.append(f"🌡️ CPU: {temp_value}")
+                        system_info.append(f"🌡 CPU: {temp_value}")
                     else:
-                        system_info.append(f"🌡️ CPU: {temp_output}")
+                        system_info.append(f"🌡 CPU: {temp_output}")
+                else:
+                    # Fallback thermal_zone
+                    try:
+                        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                            temp_millis = int(f.read().strip())
+                            temp_celsius = temp_millis / 1000.0
+                            system_info.append(f"🌡 CPU: {temp_celsius:.1f}°C")
+                    except:
+                        system_info.append("🌡 CPU: N/A")
             except:
-                system_info.append("🌡️ CPU: N/A")
+                system_info.append("🌡 CPU: N/A")
             
-            # Uptime
+            # 2. Uptime ET Load - CORRECTION
             try:
                 uptime_result = subprocess.run(['uptime'], capture_output=True, text=True, timeout=5)
                 if uptime_result.returncode == 0:
                     uptime_output = uptime_result.stdout.strip()
-                    uptime_clean = uptime_output.replace('  ', ' ')
-                    parts = uptime_clean.split(',')
-                    if len(parts) >= 1:
-                        uptime_part = parts[0].strip()
-                        if 'up' in uptime_part:
-                            up_info = uptime_part.split('up')[1].strip()
-                            system_info.append(f"⏱️ Up: {up_info}")
+                    
+                    # Parser correctement uptime
+                    if 'load average:' in uptime_output:
+                        uptime_part, load_part = uptime_output.split('load average:', 1)
+                        
+                        # Extraire uptime
+                        if ' up ' in uptime_part:
+                            after_up = uptime_part.split(' up ')[1]
+                            if 'user' in after_up:
+                                up_time_parts = after_up.split(',')[:-1]  # Enlever "X users"
+                                up_info = ','.join(up_time_parts).strip()
+                            else:
+                                up_info = after_up.strip()
+                            system_info.append(f"⏱ Up: {up_info}")
+                        
+                        # Extraire load average
+                        load_values = load_part.strip()
+                        system_info.append(f"📊 Load: {load_values}")
+                    else:
+                        # Pas de load average
+                        if ' up ' in uptime_output:
+                            up_info = uptime_output.split(' up ')[1].split(',')[0].strip()
+                            system_info.append(f"⏱ Up: {up_info}")
+                else:
+                    system_info.append("⏱ Uptime: Error")
             except:
-                system_info.append("⏱️ Uptime: Error")
+                system_info.append("⏱ Uptime: Error")
             
-            # Mémoire
+            # 3. Mémoire
             try:
                 with open('/proc/meminfo', 'r') as f:
                     meminfo = f.read()
@@ -336,13 +363,13 @@ class TelegramIntegration:
                 pass
             
             if system_info:
-                return "🖥️ Système RPI5:\n" + "\n".join(system_info)
+                return "🖥 Système RPI5:\n" + "\n".join(system_info)
             else:
                 return "Impossible de récupérer les infos système"
                 
         except Exception as e:
             return f"Erreur /sys: {str(e)}"
-    
+        
     def _handle_legend_command(self, sender_id, sender_info):
         """Traiter /legend depuis Telegram"""
         try:
