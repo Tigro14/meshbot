@@ -38,7 +38,7 @@ if not config_found:
     TELEGRAM_AUTHORIZED_USERS = []
     TELEGRAM_QUEUE_FILE = "/tmp/telegram_mesh_queue.json"
     TELEGRAM_RESPONSE_FILE = "/tmp/mesh_telegram_response.json"
-    TELEGRAM_COMMAND_TIMEOUT = 30
+    TELEGRAM_COMMAND_TIMEOUT = 50
     DEBUG_MODE = False
     TELEGRAM_TO_MESH_MAPPING = {}
 
