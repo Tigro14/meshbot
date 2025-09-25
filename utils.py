@@ -58,31 +58,55 @@ def format_elapsed_time(timestamp):
     else:
         return f"{elapsed//86400}j"
 
-def get_signal_quality_icon(rssi):
-    """Retourne l'icône de qualité basée sur le RSSI"""
-    if rssi >= -80:
-        return "🟢"  # Excellent
-    elif rssi >= -100:
-        return "🟡"  # Bon
-    elif rssi >= -120:
-        return "🟠"  # Faible
-    elif rssi < -120 and rssi != 0:
-        return "🔴"  # Très faible
-    else:
-        return "📶"  # Par défaut
-
-def get_snr_quality_icon(snr):
-    """Retourne l'icône de qualité basée sur le SNR"""
+def get_signal_quality_icon(snr):
+    """Retourne l'icône de qualité basée UNIQUEMENT sur le SNR"""
     if snr >= 10:
-        return "🔵"    # Excellent SNR
+        return "🟢"  # Excellent SNR
     elif snr >= 5:
-        return "🟣"    # Bon SNR
+        return "🟡"  # Bon SNR
     elif snr >= 0:
-        return "🟤"    # SNR faible mais positif
-    elif snr < 0 and snr != 0:
-        return "⚫"    # SNR négatif
+        return "🟠"  # SNR faible mais positif
+    elif snr >= -5:
+        return "🔴"  # SNR négatif mais décodable
+    elif snr < -5 and snr != 0:
+        return "⚫"   # SNR très négatif
     else:
-        return ""
+        return "📶"  # Par défaut (pas de données)
+
+def get_snr_quality_description(snr):
+    """Description textuelle de la qualité basée sur SNR"""
+    if snr >= 10:
+        return "Excellente"
+    elif snr >= 5:
+        return "Très bonne"
+    elif snr >= 0:
+        return "Bonne"
+    elif snr >= -5:
+        return "Correcte"
+    elif snr >= -10:
+        return "Faible"
+    elif snr < -10 and snr != 0:
+        return "Très faible"
+    else:
+        return "Inconnue"
+
+def estimate_distance_from_snr(snr):
+    """Estimation approximative de distance basée UNIQUEMENT sur SNR (LoRa)"""
+    # Basé sur des observations terrain LoRa - SNR vs distance
+    if snr >= 10:
+        return "<500m"
+    elif snr >= 5:
+        return "500m-2km"
+    elif snr >= 0:
+        return "2-5km"
+    elif snr >= -5:
+        return "5-15km"
+    elif snr >= -10:
+        return "15-25km"
+    elif snr < -10 and snr != 0:
+        return ">25km"
+    else:
+        return "?"
 
 def truncate_text(text, max_length, suffix="..."):
     """Tronquer un texte si trop long"""

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gestionnaire des nœuds et de leurs informations
+Gestionnaire des nœuds et de leurs informations - VERSION SNR UNIQUEMENT
 """
 
 import json
@@ -15,7 +15,7 @@ class NodeManager:
     def __init__(self):
         self.node_names = {}
         self._last_node_save = 0
-        self.rx_history = {}  # node_id -> {'name': str, 'rssi': int, 'snr': float, 'last_seen': timestamp, 'count': int}
+        self.rx_history = {}  # node_id -> {'name': str, 'snr': float, 'last_seen': timestamp, 'count': int}
     
     def load_node_names(self):
         """Charger la base de noms depuis le fichier"""
@@ -157,7 +157,7 @@ class NodeManager:
             debug_print(f"Erreur traitement NodeInfo: {e}")
     
     def update_rx_history(self, packet):
-        """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop)"""
+        """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop) - SNR UNIQUEMENT"""
         try:
             from_id = packet.get('from')
             if not from_id:
@@ -175,8 +175,7 @@ class NodeManager:
                 debug_print(f"🔄 Ignoré (relayé {hops_taken} hop): {self.get_node_name(from_id)}")
                 return
             
-            # Extraire les informations de signal (uniquement pour direct)
-            rssi = packet.get('rssi', 0)
+            # Extraire UNIQUEMENT le SNR (ignorer RSSI)
             snr = packet.get('snr', 0.0)
             current_time = time.time()
             
@@ -186,7 +185,6 @@ class NodeManager:
             # Mettre à jour l'historique
             if from_id in self.rx_history:
                 entry = self.rx_history[from_id]
-                entry['rssi'] = rssi
                 entry['snr'] = snr
                 entry['last_seen'] = current_time
                 entry['count'] += 1
@@ -194,7 +192,6 @@ class NodeManager:
             else:
                 self.rx_history[from_id] = {
                     'name': node_name,
-                    'rssi': rssi,
                     'snr': snr,
                     'last_seen': current_time,
                     'count': 1
@@ -208,13 +205,13 @@ class NodeManager:
                                       reverse=True)
                 self.rx_history = dict(sorted_entries[:MAX_RX_HISTORY])
             
-            debug_print(f"📡 RX DIRECT: {node_name} RSSI:{rssi} SNR:{snr:.1f} (0 hop)")
+            debug_print(f"📡 RX DIRECT: {node_name} SNR:{snr:.1f} (0 hop)")
             
         except Exception as e:
             debug_print(f"Erreur mise à jour RX: {e}")
     
     def format_rx_report(self):
-        """Formater le rapport des nœuds reçus"""
+        """Formater le rapport des nœuds reçus - SNR UNIQUEMENT"""
         try:
             if not self.rx_history:
                 return "Aucun nœud reçu récemment"
@@ -230,8 +227,8 @@ class NodeManager:
             if not recent_nodes:
                 return "Aucun nœud récent (30min)"
             
-            # Trier par force du signal (RSSI descendant)
-            recent_nodes.sort(key=lambda x: x[1]['rssi'], reverse=True)
+            # Trier par qualité SNR (descendant)
+            recent_nodes.sort(key=lambda x: x[1]['snr'], reverse=True)
             
             # Formater le rapport
             lines = []
@@ -239,17 +236,16 @@ class NodeManager:
             
             for node_id, data in recent_nodes[:10]:  # Limiter à 10 pour la taille du message
                 name = truncate_text(data['name'], 12)
-                rssi = data['rssi']
                 snr = data['snr']
                 count = data['count']
                 
-                # Indicateur de qualité basé sur RSSI
-                signal_icon = get_signal_quality_icon(rssi)
+                # Indicateur de qualité basé sur SNR UNIQUEMENT
+                signal_icon = get_signal_quality_icon(snr)
                 
                 # Temps depuis dernière réception
                 time_str = format_elapsed_time(data['last_seen'])
                 
-                line = f"{signal_icon} {name}: {rssi}dBm SNR:{snr:.1f} ({count}x) {time_str}"
+                line = f"{signal_icon} {name}: SNR:{snr:.1f}dB ({count}x) {time_str}"
                 lines.append(line)
             
             if len(recent_nodes) > 10:

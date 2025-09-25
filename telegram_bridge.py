@@ -1,264 +1,181 @@
 #!/usr/bin/env python3
 """
-Bot Telegram bridge pour interface avec le bot Meshtastic
-Version améliorée avec /nodes optimisé pour Telegram
+Module d'intégration Telegram dans le bot Meshtastic existant
+Version améliorée avec commande /nodes optimisée
 """
 
-import asyncio
-import logging
 import json
+import os
 import time
-from datetime import datetime
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import threading
+from config import *
+from utils import *
 
-# Configuration - Importer depuis config.py principal
-import sys
-sys.path.append('/home/dietpi/bot')  # Ajuster selon votre chemin
-
-try:
-    from config import (
-        TELEGRAM_BOT_TOKEN, 
-        TELEGRAM_AUTHORIZED_USERS, 
-        TELEGRAM_QUEUE_FILE, 
-        TELEGRAM_RESPONSE_FILE, 
-        TELEGRAM_COMMAND_TIMEOUT,
-        REMOTE_NODE_HOST,
-        REMOTE_NODE_NAME
-    )
-    print("✅ Configuration importée depuis config.py principal")
-except ImportError:
-    print("⚠️ Configuration locale utilisée")
-    TELEGRAM_BOT_TOKEN = "YOUR_TOKEN_HERE"
-    TELEGRAM_AUTHORIZED_USERS = []
-    TELEGRAM_QUEUE_FILE = "/tmp/telegram_mesh_queue.json"
-    TELEGRAM_RESPONSE_FILE = "/tmp/mesh_telegram_response.json"
-    TELEGRAM_COMMAND_TIMEOUT = 30
-    REMOTE_NODE_HOST = "192.168.1.38"
-    REMOTE_NODE_NAME = "tigrog2"
-
-# Configuration logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# Réduire la verbosité des logs httpx (polling Telegram)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("telegram.ext.Updater").setLevel(logging.WARNING)
-logging.getLogger("telegram.ext.Application").setLevel(logging.WARNING)
-
-class TelegramMeshtasticBridge:
-    def __init__(self):
-        self.application = None
-        self.interface = None
+class TelegramIntegration:
+    def __init__(self, message_handler, node_manager, context_manager):
+        self.message_handler = message_handler
+        self.node_manager = node_manager
+        self.context_manager = context_manager
         
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /start"""
-        user = update.effective_user
-        logger.info(f"Utilisateur {user.username} ({user.id}) démarre le bot")
+        # Utiliser les configurations centralisées
+        self.queue_file = TELEGRAM_QUEUE_FILE
+        self.response_file = TELEGRAM_RESPONSE_FILE
         
-        welcome_msg = (
-            f"🤖 Bot Meshtastic Bridge\n\n"
-            f"Salut {user.first_name} !\n\n"
-            f"Commandes disponibles:\n"
-            f"• /bot <question> - Chat IA\n"
-            f"• /power - Télémétrie\n"
-            f"• /nodes - Liste complète des nœuds\n" 
-            f"• /echo <message> - Echo via {REMOTE_NODE_NAME}\n"
-            f"• /help - Aide complète\n\n"
-            f"Votre ID: {user.id}"
-        )
+        self.running = False
+        self.processor_thread = None
         
-        await update.message.reply_text(welcome_msg)
+        # Créer les fichiers s'ils n'existent pas
+        self._ensure_files_exist()
+        
+    def _ensure_files_exist(self):
+        """Créer les fichiers de communication s'ils n'existent pas"""
+        for file_path in [self.queue_file, self.response_file]:
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
+                    json.dump([], f)
     
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /help"""
-        help_msg = (
-            "🤖 **Commandes disponibles:**\n\n"
-            "**Commandes Meshtastic:**\n"
-            "• `/bot <question>` - Chat IA\n"
-            "• `/power` - Info batterie/solaire\n"
-            "• `/rx [page]` - Nœuds vus par tigrog2 (paginé)\n"
-            "• `/my` - Vos signaux\n"
-            "• `/sys` - Info système Pi5\n"
-            "• `/legend` - Légende signaux\n\n"
-            "**Commandes Telegram:**\n"
-            "• `/status` - État réseau\n"
-            "• `/nodes` - Liste complète des nœuds (format étendu)\n"
-            "• `/echo <message>` - Diffuser via tigrog2\n"
-            "• `/stats` - Statistiques\n\n"
-            "**Format raccourci:**\n"
-            "Tapez directement votre message pour `/bot <message>`"
-        )
-        
-        await update.message.reply_text(help_msg, parse_mode='Markdown')
-    
-    def check_authorization(self, user_id):
-        """Vérifier si l'utilisateur est autorisé"""
-        if not TELEGRAM_AUTHORIZED_USERS:  # Si liste vide, tout le monde est autorisé
-            return True
-        return user_id in TELEGRAM_AUTHORIZED_USERS
-    
-    async def bot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /bot pour chat IA"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+    def start(self):
+        """Démarrer le processeur de requêtes Telegram"""
+        if self.running:
             return
         
-        if not context.args:
-            await update.message.reply_text("Usage: /bot <question>\nEx: /bot Quelle est la météo ?")
-            return
-        
-        # Construire la commande
-        question = ' '.join(context.args)
-        mesh_command = f"/bot {question}"
-        logger.info(f"Bot IA de {user.username}: {question}")
-        
-        try:
-            response = await self.send_to_meshtastic(mesh_command, user)
-            
-            if len(response) > 4000:
-                chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
-                for i, chunk in enumerate(chunks):
-                    if i == 0:
-                        await update.message.reply_text(f"🤖 **IA Mesh:** (partie {i+1}/{len(chunks)})\n{chunk}")
-                    else:
-                        await update.message.reply_text(f"🤖 **(suite {i+1}/{len(chunks)})**\n{chunk}")
-            else:
-                await update.message.reply_text(f"🤖 **IA Mesh:**\n{response}")
-        except Exception as e:
-            logger.error(f"Erreur commande /bot: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+        self.running = True
+        self.processor_thread = threading.Thread(target=self._process_telegram_requests, daemon=True)
+        self.processor_thread.start()
+        info_print("🔗 Interface Telegram démarrée")
     
-    async def power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /power pour télémétrie ESPHome"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        logger.info(f"Power de {user.username}")
-        
-        try:
-            response = await self.send_to_meshtastic("/power", user)
-            await update.message.reply_text(f"🔋 **Télémétrie:**\n```\n{response}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur commande /power: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+    def stop(self):
+        """Arrêter le processeur"""
+        self.running = False
+        if self.processor_thread:
+            self.processor_thread.join(timeout=5)
+        info_print("🔗 Interface Telegram arrêtée")
     
-    async def rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /rx pour nœuds paginés (format LoRa compact)"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        # Récupérer le numéro de page
-        page = 1
-        if context.args:
+    def _process_telegram_requests(self):
+        """Traiter les requêtes Telegram en continu"""
+        while self.running:
             try:
-                page = int(context.args[0])
-            except ValueError:
-                page = 1
-        
-        mesh_command = f"/rx {page}" if page > 1 else "/rx"
-        logger.info(f"RX page {page} de {user.username}")
-        
-        try:
-            response = await self.send_to_meshtastic(mesh_command, user)
-            await update.message.reply_text(f"📡 **Nœuds (paginé):**\n```\n{response}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur commande /rx: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+                self._check_and_process_queue()
+                time.sleep(1)  # Vérifier chaque seconde
+            except Exception as e:
+                error_print(f"Erreur processeur Telegram: {e}")
+                time.sleep(5)  # Attendre plus longtemps en cas d'erreur
     
-    async def my_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /my pour signaux personnels"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        logger.info(f"My de {user.username}")
-        
+    def _check_and_process_queue(self):
+        """Vérifier et traiter la queue des requêtes"""
         try:
-            response = await self.send_to_meshtastic("/my", user)
-            await update.message.reply_text(f"📊 **Vos signaux:**\n```\n{response}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur commande /my: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
-    
-    async def sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /sys pour infos système"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        logger.info(f"Sys de {user.username}")
-        
-        try:
-            response = await self.send_to_meshtastic("/sys", user)
-            await update.message.reply_text(f"🖥️ **Système:**\n```\n{response}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur commande /sys: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
-    
-    async def legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /legend pour légende des indicateurs"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        logger.info(f"Legend de {user.username}")
-        
-        try:
-            response = await self.send_to_meshtastic("/legend", user)
-            await update.message.reply_text(f"🔍 **Légende:**\n```\n{response}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur commande /legend: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
-    
-    async def nodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /nodes - Liste complète optimisée pour Telegram"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        try:
-            # Récupérer les nœuds via l'interface Meshtastic
-            nodes_data = await self.get_extended_nodes_list()
-            
-            if not nodes_data:
-                await update.message.reply_text("❌ Aucun nœud disponible")
+            if not os.path.exists(self.queue_file):
                 return
             
-            # Formater pour Telegram (format étendu)
-            response_lines = [f"📡 **Nœuds {REMOTE_NODE_NAME}** ({len(nodes_data)} nœuds):\n"]
+            # Lire les requêtes
+            with open(self.queue_file, 'r') as f:
+                try:
+                    requests = json.load(f)
+                except json.JSONDecodeError:
+                    return
             
-            for node in nodes_data:
-                # Format étendu pour Telegram : nom complet + détails
-                name = node.get('name', 'Inconnu')
-                node_id = node.get('id', 0)
+            if not requests:
+                return
+            
+            # Traiter chaque requête
+            processed_requests = []
+            for request in requests:
+                try:
+                    response = self._process_single_request(request)
+                    self._send_response(request["id"], response)
+                    debug_print(f"Requête Telegram traitée: {request['command']}")
+                except Exception as e:
+                    error_response = f"Erreur traitement: {str(e)}"
+                    self._send_response(request["id"], error_response)
+                    error_print(f"Erreur traitement requête Telegram: {e}")
+            
+            # Vider la queue (toutes les requêtes ont été traitées)
+            with open(self.queue_file, 'w') as f:
+                json.dump([], f)
+                
+        except Exception as e:
+            debug_print(f"Erreur lecture queue Telegram: {e}")
+    
+    def _process_single_request(self, request):
+        """Traiter une requête Telegram individuelle"""
+        command = request.get("command", "").strip()
+        user_info = request.get("user", {})
+        telegram_id = user_info.get("telegram_id", 0)
+        username = user_info.get("username", "Telegram")
+        
+        debug_print(f"Traitement commande Telegram: {command} de {username}")
+        
+        # Simuler un sender_id Meshtastic basé sur l'ID Telegram
+        # Utiliser les 4 derniers octets de l'ID Telegram
+        sender_id = telegram_id & 0xFFFFFFFF
+        sender_info = f"TG:{username}"
+        
+        # Router la commande vers le gestionnaire approprié
+        if command.startswith('/bot '):
+            return self._handle_bot_command(command, sender_id, sender_info)
+        elif command.startswith('/power'):
+            return self._handle_power_command(sender_id, sender_info)
+        elif command.startswith('/rx'):
+            return self._handle_rx_command(command, sender_id, sender_info)
+        elif command.startswith('/nodes'):
+            return self._handle_nodes_command(sender_id, sender_info)
+        elif command.startswith('/my'):
+            return self._handle_my_command(sender_id, sender_info)
+        elif command.startswith('/sys'):
+            return self._handle_sys_command(sender_id, sender_info)
+        elif command.startswith('/legend'):
+            return self._handle_legend_command(sender_id, sender_info)
+        elif command.startswith('/echo '):
+            return self._handle_echo_command(command, sender_id, sender_info)
+        elif command.startswith('/help'):
+            return self._handle_help_command(sender_id, sender_info)
+        else:
+            return f"Commande inconnue: {command}"
+    
+    def _handle_nodes_command(self, sender_id, sender_info):
+        """Traiter /nodes depuis Telegram - Version étendue optimisée pour Telegram"""
+        try:
+            info_print(f"Nodes (étendu): {sender_info}")
+            
+            # Récupérer les nœuds distants avec toutes les informations
+            remote_nodes = self.message_handler.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+            
+            if not remote_nodes:
+                return f"❌ Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
+            
+            # Trier par SNR décroissant (plus fiable que RSSI en LoRa)
+            remote_nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
+            
+            # Format étendu pour Telegram (sans pagination, noms longs)
+            lines = []
+            lines.append(f"📡 **Nœuds DIRECTS de {REMOTE_NODE_NAME}** ({len(remote_nodes)} nœuds):")
+            
+            for i, node in enumerate(remote_nodes, 1):
+                # Informations complètes pour chaque nœud
+                node_id = node['id']
+                name = node['name']
                 rssi = node.get('rssi', 0)
                 snr = node.get('snr', 0.0)
                 last_heard = node.get('last_heard', 0)
                 
-                # Icônes de qualité
-                rssi_icon = self.get_quality_icon(rssi)
+                # Debug temporaire pour voir les valeurs extraites des données Meshtastic
+                debug_print(f"DEBUG node {name}: rssi={rssi}, snr={snr} (type: {type(snr)})")
                 
-                # Temps écoulé
+                # Icône de qualité basée uniquement sur SNR (RSSI supprimé car buggé)
+                if snr >= 10.0:  # Test avec vos valeurs les plus hautes
+                    debug_print(f"DEBUG: SNR {snr} -> 🟢 (≥ 10.0)")
+                    signal_icon = "🟢"  # Excellent SNR
+                elif snr >= 5.0:
+                    debug_print(f"DEBUG: SNR {snr} -> 🟡 (≥ 5.0)")
+                    signal_icon = "🟡"  # Bon SNR
+                elif snr >= 0.0:
+                    debug_print(f"DEBUG: SNR {snr} -> 🟠 (≥ 0.0)")
+                    signal_icon = "🟠"  # SNR faible mais utilisable
+                else:
+                    debug_print(f"DEBUG: SNR {snr} -> 🔴 (< 0.0)")
+                    signal_icon = "🔴"  # SNR critique
+                
+                # Temps écoulé depuis dernière réception
                 if last_heard > 0:
                     elapsed = int(time.time() - last_heard)
                     if elapsed < 60:
@@ -272,440 +189,300 @@ class TelegramMeshtasticBridge:
                 else:
                     time_str = "n/a"
                 
-                # Ligne formatée pour Telegram - Format compact sur une ligne
+                # Construire les métriques affichées
                 metrics = []
                 
-                # SNR toujours affiché (métrique principale LoRa)
+                # RSSI seulement si non-zéro
+                if rssi != 0:
+                    metrics.append(f"RSSI: {rssi}dBm")
+                
+                # SNR toujours affiché
                 metrics.append(f"SNR: {snr:.1f}dB")
                 
                 # Temps
                 metrics.append(time_str)
                 
-                line = f"{rssi_icon} **{name}** {' | '.join(metrics)}"
+                # Ligne formatée compacte (une seule ligne)
+                line = f"{signal_icon} **{name}** - {' | '.join(metrics)}"
                 
-                response_lines.append(line)
+                lines.append(line)
             
-            # Assembler la réponse
-            full_response = "\n".join(response_lines)
+            # Ajouter un footer informatif
+            lines.append("")
+            lines.append(f"🔍 Légende: 🟢 Excellent | 🟡 Bon | 🟠 Faible | 🔴 Critique")
+            lines.append(f"📊 Triés par SNR (qualité LoRa), <3 jours")
             
-            # Footer informatif
-            full_response += f"\n\n🔍 Légende: 🟢 Excellent | 🟡 Bon | 🟠 Faible | 🔴 Critique\n"
-            full_response += f"📊 Triés par SNR (qualité LoRa), <3 jours"
+            return "\n".join(lines)
             
-            # Vérifier la taille et diviser si nécessaire
-            if len(full_response) > 4000:
-                # Diviser par chunks de nœuds
-                node_chunks = []
-                current_chunk = [response_lines[0]]  # Header
-                current_size = len(response_lines[0])
-                
-                for line in response_lines[1:]:
-                    if current_size + len(line) + 2 > 3800:  # Marge de sécurité
-                        node_chunks.append("\n\n".join(current_chunk))
-                        current_chunk = [f"📡 **Nœuds {REMOTE_NODE_NAME}** (suite):\n", line]
-                        current_size = len(current_chunk[0]) + len(line) + 2
-                    else:
-                        current_chunk.append(line)
-                        current_size += len(line) + 2
-                
-                if current_chunk:
-                    node_chunks.append("\n\n".join(current_chunk))
-                
-                # Envoyer chaque chunk
-                for i, chunk in enumerate(node_chunks):
-                    if i == 0:
-                        await update.message.reply_text(chunk, parse_mode='Markdown')
-                    else:
-                        await update.message.reply_text(chunk, parse_mode='Markdown')
-                        await asyncio.sleep(1)  # Éviter le rate limiting
-            else:
-                await update.message.reply_text(full_response, parse_mode='Markdown')
+        except Exception as e:
+            return f"❌ Erreur /nodes: {str(e)[:50]}"
+    
+    def _handle_bot_command(self, command, sender_id, sender_info):
+        """Traiter /bot depuis Telegram"""
+        try:
+            # Capturer la sortie de la commande bot
+            import io
+            import sys
+            from contextlib import redirect_stdout, redirect_stderr
+            
+            # Buffer pour capturer la réponse
+            captured_output = io.StringIO()
+            
+            # Simuler l'interface pour éviter l'envoi réel de messages
+            class TelegramInterface:
+                def sendText(self, message, destinationId=None):
+                    captured_output.write(message)
+            
+            # Remplacer temporairement l'interface
+            original_interface = self.message_handler.interface
+            self.message_handler.interface = TelegramInterface()
+            
+            try:
+                self.message_handler.handle_bot_command(command, sender_id, sender_info)
+                response = captured_output.getvalue()
+                return response if response else "Pas de réponse du bot IA"
+            finally:
+                self.message_handler.interface = original_interface
                 
         except Exception as e:
-            logger.error(f"Erreur commande nodes: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+            return f"Erreur /bot: {str(e)}"
     
-    def get_quality_icon(self, rssi, snr=0.0):
-        """Obtenir l'icône de qualité basée uniquement sur SNR (RSSI supprimé car buggé)"""
-        # Debug temporaire pour voir les valeurs reçues
-        print(f"DEBUG get_quality_icon: snr={snr} (type: {type(snr)})")
-        
-        # Seuils corrigés selon vos vraies données
-        if snr >= 7.0:  # Capte 10.8, 10.5, 10.2, 10.0, 8.0, 7.2, 7.0
-            return "🟢"  # Excellent SNR
-        elif snr >= 3.0:  # Capte 5.8, 6.5, 4.2
-            return "🟡"  # Bon SNR
-        elif snr >= -3.0:  # Capte 0.5, -0.2, -4.2 
-            return "🟠"  # SNR faible mais utilisable
-        else:  # Capte -5.8, -8.2, -8.8, -9.0, -10.2, -11.0
-            return "🔴"  # SNR critique
-    
-    async def get_extended_nodes_list(self):
-        """Récupérer la liste étendue des nœuds pour Telegram"""
+    def _handle_power_command(self, sender_id, sender_info):
+        """Traiter /power depuis Telegram"""
         try:
-            # Simuler la récupération des nœuds via l'API
-            # Dans une vraie implémentation, ceci ferait appel à remote_nodes_client
-            import meshtastic.tcp_interface
-            
-            # Connexion TCP temporaire à tigrog2
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=REMOTE_NODE_HOST, 
-                portNumber=4403
-            )
-            
-            # Attendre le chargement
-            await asyncio.sleep(2)
-            
-            # Récupérer les nœuds
-            remote_nodes = remote_interface.nodes
-            node_list = []
-            
-            current_time = time.time()
-            three_days_ago = current_time - (3 * 24 * 3600)  # 3 jours
-            
-            for node_id, node_info in remote_nodes.items():
+            esphome_data = self.message_handler.esphome_client.parse_esphome_data()
+            return esphome_data
+        except Exception as e:
+            return f"Erreur /power: {str(e)}"
+    
+    def _handle_rx_command(self, command, sender_id, sender_info):
+        """Traiter /rx depuis Telegram"""
+        try:
+            # Extraire le numéro de page
+            page = 1
+            parts = command.split()
+            if len(parts) > 1:
                 try:
-                    if isinstance(node_info, dict):
-                        # Filtrer seulement les nœuds directs (hopsAway = 0)
-                        hops_away = node_info.get('hopsAway', None)
-                        if hops_away is not None and hops_away > 0:
-                            continue
-                        
-                        # Convertir node_id
-                        if isinstance(node_id, str):
-                            if node_id.startswith('!'):
-                                clean_id = node_id[1:]
-                                id_int = int(clean_id, 16)
-                            else:
-                                id_int = int(node_id, 16)
-                        else:
-                            id_int = int(node_id)
-                        
-                        # Récupérer le nom complet (longName prioritaire pour Telegram)
-                        name = "Inconnu"
-                        if 'user' in node_info and isinstance(node_info['user'], dict):
-                            user_info = node_info['user']
-                            long_name = user_info.get('longName', '')
-                            short_name = user_info.get('shortName', '')
-                            
-                            # Pour Telegram, préférer longName (plus lisible)
-                            if long_name:
-                                name = long_name
-                            elif short_name:
-                                name = short_name
-                            else:
-                                name = f"Nœud-{id_int:04x}"
-                        
-                        # Vérifications temporelles
-                        last_heard = node_info.get('lastHeard', 0)
-                        if last_heard > 0 and last_heard < three_days_ago:
-                            continue
-                        
-                        # Métriques de signal
-                        rssi = node_info.get('rssi', 0)
-                        snr = node_info.get('snr', 0.0)
-                        
-                        # Debug temporaire pour voir les valeurs extraites
-                        print(f"DEBUG node {name}: rssi={rssi}, snr={snr}")
-                        
-                        node_data = {
-                            'id': id_int,
-                            'name': name,
-                            'rssi': rssi,
-                            'snr': snr,
-                            'last_heard': last_heard
-                        }
-                        
-                        node_list.append(node_data)
-                        
-                except Exception as e:
-                    logger.debug(f"Erreur traitement nœud {node_id}: {e}")
-                    continue
+                    page = int(parts[1])
+                except ValueError:
+                    page = 1
             
-            remote_interface.close()
-            
-            # Trier par SNR décroissant (plus fiable que RSSI en LoRa)
-            node_list.sort(key=lambda x: x.get('snr', -999), reverse=True)
-            
-            return node_list
-            
+            report = self.message_handler.remote_nodes_client.get_tigrog2_paginated(page)
+            return report
         except Exception as e:
-            logger.error(f"Erreur récupération nœuds: {e}")
-            return []
+            return f"Erreur /rx: {str(e)}"
     
-    async def echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /echo pour diffuser via tigrog2"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        if not context.args:
-            await update.message.reply_text("Usage: /echo <message>\nEx: /echo Salut le réseau!")
-            return
-        
-        echo_text = ' '.join(context.args)
-        logger.info(f"Echo de {user.username}: {echo_text}")
-        
-        try:
-            # Envoyer l'echo via tigrog2
-            response = await self.send_echo_to_tigrog2(echo_text, user)
-            await update.message.reply_text(f"📡 Echo diffusé: `{user.first_name}: {echo_text}`", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur echo: {e}")
-            await update.message.reply_text(f"❌ Erreur echo: {str(e)}")
+    def _handle_my_command(self, sender_id, sender_info):
+        """Traiter /my depuis Telegram (pas applicable pour Telegram)"""
+        return "Commande /my non applicable depuis Telegram (réservée aux utilisateurs mesh)"
     
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /status pour l'état du réseau"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
+    def _handle_sys_command(self, sender_id, sender_info):
+        """Traiter /sys depuis Telegram"""
         try:
-            status = await self.get_meshtastic_status()
-            await update.message.reply_text(f"📊 **État Meshtastic:**\n```\n{status}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur status: {e}")
-            await update.message.reply_text(f"❌ Erreur status: {str(e)}")
-    
-    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /stats pour les statistiques"""
-        user = update.effective_user
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        try:
-            stats = await self.get_meshtastic_stats()
-            await update.message.reply_text(f"📈 **Statistiques:**\n```\n{stats}\n```", parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Erreur stats: {e}")
-            await update.message.reply_text(f"❌ Erreur stats: {str(e)}")
-    
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Gérer les messages texte (raccourci pour /mesh /bot)"""
-        user = update.effective_user
-        message_text = update.message.text
-        
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-        
-        # Raccourci: message direct = /bot <message>
-        logger.info(f"Message direct de {user.username}: {message_text}")
-        
-        try:
-            mesh_command = f"/bot {message_text}"
-            response = await self.send_to_meshtastic(mesh_command, user)
+            import subprocess
             
-            # Réponse directe de l'IA (formatée pour Telegram)
-            if len(response) > 4000:
-                chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
-                for i, chunk in enumerate(chunks):
-                    if i == 0:
-                        await update.message.reply_text(f"🤖 **IA Mesh:** (partie {i+1}/{len(chunks)})\n{chunk}")
+            system_info = []
+            
+            # Température CPU
+            try:
+                temp_result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                           capture_output=True, text=True, timeout=5)
+                if temp_result.returncode == 0:
+                    temp_output = temp_result.stdout.strip()
+                    if 'temp=' in temp_output:
+                        temp_value = temp_output.split('=')[1].replace("'C", "°C")
+                        system_info.append(f"🌡️ CPU: {temp_value}")
                     else:
-                        await update.message.reply_text(f"🤖 **(suite {i+1}/{len(chunks)})**\n{chunk}")
+                        system_info.append(f"🌡️ CPU: {temp_output}")
+            except:
+                system_info.append("🌡️ CPU: N/A")
+            
+            # Uptime + Load Average
+            try:
+                uptime_result = subprocess.run(['uptime'], capture_output=True, text=True, timeout=5)
+                if uptime_result.returncode == 0:
+                    uptime_output = uptime_result.stdout.strip()
+                    uptime_clean = uptime_output.replace('  ', ' ')
+                    parts = uptime_clean.split(',')
+                    
+                    # Extraire uptime
+                    if len(parts) >= 1:
+                        uptime_part = parts[0].strip()
+                        if 'up' in uptime_part:
+                            up_info = uptime_part.split('up')[1].strip()
+                            system_info.append(f"⏱️ Up: {up_info}")
+                    
+                    # Extraire load average (dernière partie après "load average:")
+                    uptime_str = uptime_clean
+                    if 'load average:' in uptime_str:
+                        load_part = uptime_str.split('load average:')[1].strip()
+                        system_info.append(f"⚖️ Load: {load_part}")
+                    
+            except:
+                system_info.append("⏱️ Uptime: Error")
+            
+            # Mémoire
+            try:
+                with open('/proc/meminfo', 'r') as f:
+                    meminfo = f.read()
+                
+                mem_total = None
+                mem_available = None
+                
+                for line in meminfo.split('\n'):
+                    if line.startswith('MemTotal:'):
+                        mem_total = int(line.split()[1])
+                    elif line.startswith('MemAvailable:'):
+                        mem_available = int(line.split()[1])
+                
+                if mem_total and mem_available:
+                    mem_used = mem_total - mem_available
+                    mem_percent = (mem_used / mem_total) * 100
+                    mem_total_mb = mem_total // 1024
+                    mem_used_mb = mem_used // 1024
+                    system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
+            except:
+                pass
+            
+            if system_info:
+                return "🖥️ Système RPI5:\n" + "\n".join(system_info)
             else:
-                await update.message.reply_text(f"🤖 **IA Mesh:**\n{response}")
+                return "Impossible de récupérer les infos système"
+                
         except Exception as e:
-            logger.error(f"Erreur message direct: {e}")
-            await update.message.reply_text(f"❌ Erreur: {str(e)}")
+            return f"Erreur /sys: {str(e)}"
     
-    async def send_to_meshtastic(self, command, user):
-        """Envoyer une commande au bot Meshtastic via le système de fichiers"""
+    def _handle_legend_command(self, sender_id, sender_info):
+        """Traiter /legend depuis Telegram"""
         try:
-            # Créer la requête
-            request_data = {
-                "id": f"tg_{int(time.time()*1000)}",
-                "command": command,
-                "source": "telegram",
-                "user": {
-                    "telegram_id": user.id,
-                    "username": user.username or user.first_name,
-                    "first_name": user.first_name
-                },
+            legend_text = self.message_handler.format_legend()
+            return legend_text
+        except Exception as e:
+            return f"Erreur /legend: {str(e)}"
+    
+    def _handle_echo_command(self, command, sender_id, sender_info):
+        """Traiter /echo depuis Telegram"""
+        try:
+            echo_text = command[6:].strip()  # Retirer "/echo "
+            
+            if not echo_text:
+                return "Usage: /echo <texte>"
+            
+            # Utiliser la méthode existante mais adaptée pour Telegram
+            import threading
+            import time
+            
+            def send_echo_via_tigrog2():
+                try:
+                    import meshtastic.tcp_interface
+                    
+                    remote_interface = meshtastic.tcp_interface.TCPInterface(
+                        hostname=REMOTE_NODE_HOST, 
+                        portNumber=4403
+                    )
+                    
+                    time.sleep(1)
+                    
+                    # Utiliser le nom d'utilisateur Telegram comme identifiant
+                    username = sender_info.split(':')[1] if ':' in sender_info else sender_info
+                    echo_response = f"TG-{username}: {echo_text}"
+                    
+                    remote_interface.sendText(echo_response)
+                    remote_interface.close()
+                    
+                    debug_print(f"Echo Telegram diffusé via tigrog2: '{echo_response}'")
+                    
+                except Exception as e:
+                    error_print(f"Erreur echo Telegram via tigrog2: {e}")
+            
+            # Lancer en thread
+            threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
+            
+            return f"📡 Echo diffusé: {echo_text}"
+            
+        except Exception as e:
+            return f"Erreur /echo: {str(e)}"
+    
+    def _handle_help_command(self, sender_id, sender_info):
+        """Traiter /help depuis Telegram"""
+        help_text = """🤖 Bot Meshtastic - Commandes Telegram:
+
+/bot <question> - Chat avec l'IA
+/power - Info batterie/solaire
+/rx [page] - Nœuds vus par tigrog2 (paginé)
+/nodes - Liste complète des nœuds (format étendu)
+/my - Vos signaux vus par tigrog2
+/sys - Info système Pi5
+/echo <texte> - Diffuser via tigrog2
+/legend - Légende signaux
+/help - Cette aide
+
+Note: /my non disponible depuis Telegram pour les vraies métriques"""
+        
+        return help_text
+    
+    def _send_response(self, request_id, response):
+        """Envoyer une réponse vers Telegram"""
+        try:
+            # Lire les réponses existantes
+            responses = []
+            if os.path.exists(self.response_file):
+                with open(self.response_file, 'r') as f:
+                    try:
+                        responses = json.load(f)
+                    except json.JSONDecodeError:
+                        responses = []
+            
+            # Ajouter la nouvelle réponse
+            response_data = {
+                "request_id": request_id,
+                "response": response,
                 "timestamp": time.time()
             }
             
-            # Lire les requêtes existantes
-            requests = []
-            try:
-                with open(TELEGRAM_QUEUE_FILE, 'r') as f:
-                    requests = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError):
-                requests = []
+            responses.append(response_data)
             
-            # Ajouter la nouvelle requête
-            requests.append(request_data)
+            # Limiter le nombre de réponses stockées
+            if len(responses) > 100:
+                responses = responses[-50:]  # Garder les 50 plus récentes
             
-            # Écrire la queue
-            with open(TELEGRAM_QUEUE_FILE, 'w') as f:
-                json.dump(requests, f)
-            
-            # Attendre la réponse
-            return await self.wait_for_response(request_data["id"])
+            # Écrire les réponses
+            with open(self.response_file, 'w') as f:
+                json.dump(responses, f)
             
         except Exception as e:
-            return f"Erreur interface: {str(e)}"
-    
-    async def wait_for_response(self, request_id):
-        """Attendre la réponse du bot Meshtastic"""
-        start_time = time.time()
-        
-        while (time.time() - start_time) < TELEGRAM_COMMAND_TIMEOUT:
-            try:
-                with open(TELEGRAM_RESPONSE_FILE, 'r') as f:
-                    responses = json.load(f)
-                
-                # Chercher notre réponse
-                for i, response in enumerate(responses):
-                    if response.get("request_id") == request_id:
-                        result = response.get("response", "Pas de réponse")
-                        
-                        # Supprimer la réponse traitée
-                        responses.pop(i)
-                        with open(TELEGRAM_RESPONSE_FILE, 'w') as f:
-                            json.dump(responses, f)
-                        
-                        return result
-                
-                await asyncio.sleep(0.5)
-                
-            except (FileNotFoundError, json.JSONDecodeError):
-                await asyncio.sleep(0.5)
-                continue
-        
-        return "⏰ Timeout - pas de réponse du bot Meshtastic"
-    
-    async def send_echo_to_tigrog2(self, echo_text, user):
-        """Envoyer un echo via tigrog2"""
-        try:
-            import meshtastic.tcp_interface
-            
-            # Connexion TCP à tigrog2
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=REMOTE_NODE_HOST, 
-                portNumber=4403
-            )
-            
-            await asyncio.sleep(1)
-            
-            # Créer le message d'echo avec identification
-            author = user.username or user.first_name
-            echo_message = f"TG-{author}: {echo_text}"
-            
-            # Envoyer en broadcast
-            remote_interface.sendText(echo_message)
-            remote_interface.close()
-            
-            logger.info(f"Echo Telegram diffusé: {echo_message}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Erreur echo tigrog2: {e}")
-            raise
-    
-    async def get_meshtastic_status(self):
-        """Récupérer l'état du système Meshtastic"""
-        # Envoyer via le système de fichiers
-        return await self.send_to_meshtastic("/sys", type('User', (), {
-            'id': 999999999,
-            'username': 'telegram_status',
-            'first_name': 'Telegram'
-        })())
-    
-    async def get_meshtastic_stats(self):
-        """Récupérer les statistiques"""
-        await asyncio.sleep(0.5)
-        return (
-            f"Messages aujourd'hui: {47}\n"
-            f"Commandes /bot: {12}\n"
-            f"Commandes /echo: {8}\n"
-            f"Nœuds vus: {15}\n"
-            f"Temps réponse moyen: 1.2s\n"
-            f"Dernière stats: {datetime.now().strftime('%H:%M:%S')}"
-        )
-    
-    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        """Gestionnaire d'erreurs global"""
-        logger.error(f"Exception: {context.error}")
-        
-        if update and hasattr(update, 'message') and update.message:
-            await update.message.reply_text(
-                "❌ Erreur interne du bot. L'équipe technique a été notifiée."
-            )
-    
-    async def start_bot(self):
-        """Démarrer le bot Telegram"""
-        logger.info("Démarrage du bot Telegram Meshtastic Bridge...")
-        
-        # Créer l'application
-        self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        
-        # Ajouter les handlers
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        
-        # Commandes Meshtastic directes (sans préfixe /mesh)
-        self.application.add_handler(CommandHandler("bot", self.bot_command))
-        self.application.add_handler(CommandHandler("power", self.power_command))
-        self.application.add_handler(CommandHandler("rx", self.rx_command))
-        self.application.add_handler(CommandHandler("my", self.my_command))
-        self.application.add_handler(CommandHandler("sys", self.sys_command))
-        self.application.add_handler(CommandHandler("legend", self.legend_command))
-        
-        # Commandes Telegram spécifiques
-        self.application.add_handler(CommandHandler("nodes", self.nodes_command))
-        self.application.add_handler(CommandHandler("echo", self.echo_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("stats", self.stats_command))
-        
-        # Handler pour messages texte (raccourci /bot)
-        self.application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
-        )
-        
-        # Gestionnaire d'erreurs
-        self.application.add_error_handler(self.error_handler)
-        
-        # Démarrer le bot
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.updater.start_polling()
-        
-        logger.info("✅ Bot Telegram démarré et en écoute...")
-        
-        # Garder le bot actif
-        try:
-            await asyncio.Event().wait()  # Attendre indéfiniment
-        except KeyboardInterrupt:
-            logger.info("Arrêt du bot...")
-        finally:
-            await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
+            error_print(f"Erreur envoi réponse Telegram: {e}")
 
-def main():
-    """Point d'entrée principal"""
-    # Vérifier le token
-    if TELEGRAM_BOT_TOKEN == "YOUR_TOKEN_HERE":
-        print("❌ Veuillez configurer TELEGRAM_BOT_TOKEN dans le fichier")
-        return
+# Fonction d'intégration dans main_bot.py
+def integrate_telegram_bridge(bot_instance):
+    """
+    Fonction à ajouter dans main_bot.py pour intégrer Telegram
     
-    # Créer et lancer le bot
-    bridge = TelegramMeshtasticBridge()
+    Usage dans main_bot.py:
     
+    # Après l'initialisation des gestionnaires, ajouter:
+    from telegram_integration import integrate_telegram_bridge
+    
+    # Dans DebugMeshBot.__init__():
+    self.telegram_integration = None
+    
+    # Dans DebugMeshBot.start(), après l'initialisation du message_handler:
     try:
-        asyncio.run(bridge.start_bot())
-    except KeyboardInterrupt:
-        print("\n🛑 Arrêt du bot Telegram")
+        from telegram_integration import TelegramIntegration
+        self.telegram_integration = TelegramIntegration(
+            self.message_handler,
+            self.node_manager,
+            self.context_manager
+        )
+        self.telegram_integration.start()
+        info_print("✅ Interface Telegram intégrée")
+    except ImportError:
+        debug_print("📱 Module Telegram non disponible")
     except Exception as e:
-        logger.error(f"Erreur critique: {e}")
-
-if __name__ == "__main__":
-    main()
+        error_print(f"Erreur intégration Telegram: {e}")
+    
+    # Dans DebugMeshBot.stop():
+    if self.telegram_integration:
+        self.telegram_integration.stop()
+    """
+    pass

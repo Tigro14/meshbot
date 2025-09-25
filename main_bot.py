@@ -41,8 +41,8 @@ class DebugMeshBot:
         
         # Thread de mise à jour
         self.update_thread = None
-        
-        # Intégration Telegram
+   
+        # Intégration Telegram (initialisé plus tard si disponible)
         self.telegram_integration = None
 
     def on_message(self, packet, interface):
@@ -181,7 +181,7 @@ class DebugMeshBot:
                 self.interface
             )
             
-            # Intégration Telegram
+            # Tentative d'intégration Telegram (optionnelle)
             try:
                 from telegram_integration import TelegramIntegration
                 self.telegram_integration = TelegramIntegration(
@@ -209,7 +209,7 @@ class DebugMeshBot:
             
             if DEBUG_MODE:
                 info_print("MODE DEBUG avec architecture modulaire")
-                print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
+                print(f"Config: SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
                 print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, rebootpi, g2, echo, config, nodes, context, update, save, mem, quit")
                 
                 # Initialiser et démarrer l'interface debug SEULEMENT si on a un terminal
@@ -243,8 +243,8 @@ class DebugMeshBot:
         if self.node_manager:
             self.node_manager.save_node_names(force=True)
         
-        # Arrêter l'intégration Telegram
-        if hasattr(self, 'telegram_integration') and self.telegram_integration:
+        # Arrêter l'intégration Telegram si active
+        if self.telegram_integration:
             self.telegram_integration.stop()
 
         if self.interface:

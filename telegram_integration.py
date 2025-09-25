@@ -158,14 +158,21 @@ class TelegramIntegration:
                 snr = node.get('snr', 0.0)
                 last_heard = node.get('last_heard', 0)
                 
+                # Debug temporaire pour voir les valeurs extraites des données Meshtastic
+                debug_print(f"DEBUG node {name}: rssi={rssi}, snr={snr} (type: {type(snr)})")
+                
                 # Icône de qualité basée uniquement sur SNR (RSSI supprimé car buggé)
-                if snr > 4.5:  # Au lieu de >= 5
+                if snr >= 10.0:  # Test avec vos valeurs les plus hautes
+                    debug_print(f"DEBUG: SNR {snr} -> 🟢 (≥ 10.0)")
                     signal_icon = "🟢"  # Excellent SNR
-                elif snr > 1.0:  # Au lieu de >= 0
+                elif snr >= 5.0:
+                    debug_print(f"DEBUG: SNR {snr} -> 🟡 (≥ 5.0)")
                     signal_icon = "🟡"  # Bon SNR
-                elif snr > -3.0:  # Au lieu de >= -5
+                elif snr >= 0.0:
+                    debug_print(f"DEBUG: SNR {snr} -> 🟠 (≥ 0.0)")
                     signal_icon = "🟠"  # SNR faible mais utilisable
                 else:
+                    debug_print(f"DEBUG: SNR {snr} -> 🔴 (< 0.0)")
                     signal_icon = "🔴"  # SNR critique
                 
                 # Temps écoulé depuis dernière réception
