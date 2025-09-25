@@ -84,4 +84,4 @@ TELEGRAM_BOT_SEARCH_PATHS = [
 ]
 
 # Variables globales d'état
-DEBUG_MODE = False
+DEBUG_MODE = True
