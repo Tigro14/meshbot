@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Module d'intégration Telegram dans le bot Meshtastic existant
+Version améliorée avec commande /nodes optimisée
 """
 
 import json
@@ -10,36 +11,28 @@ import threading
 from config import *
 from utils import *
 
-# Importer spécifiquement le mapping s'il existe
-try:
-    from config import TELEGRAM_TO_MESH_MAPPING
-except ImportError:
-    TELEGRAM_TO_MESH_MAPPING = {}
-
 class TelegramIntegration:
     def __init__(self, message_handler, node_manager, context_manager):
         self.message_handler = message_handler
         self.node_manager = node_manager
         self.context_manager = context_manager
         
+        # Utiliser les configurations centralisées
         self.queue_file = TELEGRAM_QUEUE_FILE
         self.response_file = TELEGRAM_RESPONSE_FILE
         
         self.running = False
         self.processor_thread = None
         
+        # Créer les fichiers s'ils n'existent pas
         self._ensure_files_exist()
         
     def _ensure_files_exist(self):
         """Créer les fichiers de communication s'ils n'existent pas"""
         for file_path in [self.queue_file, self.response_file]:
             if not os.path.exists(file_path):
-                try:
-                    with open(file_path, 'w') as f:
-                        json.dump([], f)
-                    debug_print(f"Fichier créé: {file_path}")
-                except Exception as e:
-                    error_print(f"Erreur création {file_path}: {e}")
+                with open(file_path, 'w') as f:
+                    json.dump([], f)
     
     def start(self):
         """Démarrer le processeur de requêtes Telegram"""
@@ -63,10 +56,10 @@ class TelegramIntegration:
         while self.running:
             try:
                 self._check_and_process_queue()
-                time.sleep(1)
+                time.sleep(1)  # Vérifier chaque seconde
             except Exception as e:
                 error_print(f"Erreur processeur Telegram: {e}")
-                time.sleep(5)
+                time.sleep(5)  # Attendre plus longtemps en cas d'erreur
     
     def _check_and_process_queue(self):
         """Vérifier et traiter la queue des requêtes"""
@@ -74,133 +67,204 @@ class TelegramIntegration:
             if not os.path.exists(self.queue_file):
                 return
             
-            requests_to_process = []
-            try:
-                with open(self.queue_file, 'r') as f:
-                    requests_data = json.load(f)
-                    if isinstance(requests_data, list):
-                        requests_to_process = requests_data.copy()
-            except (json.JSONDecodeError, FileNotFoundError):
-                return
+            # Lire les requêtes
+            with open(self.queue_file, 'r') as f:
+                try:
+                    requests = json.load(f)
+                except json.JSONDecodeError:
+                    return
             
-            if not requests_to_process:
+            if not requests:
                 return
-            
-            # Vider le fichier de queue
-            try:
-                with open(self.queue_file, 'w') as f:
-                    json.dump([], f)
-            except Exception as e:
-                error_print(f"Erreur vidage queue: {e}")
             
             # Traiter chaque requête
-            for request in requests_to_process:
+            processed_requests = []
+            for request in requests:
                 try:
-                    request_id = request.get("id", "unknown")
-                    debug_print(f"Traitement requête Telegram: {request_id}")
-                    
                     response = self._process_single_request(request)
-                    self._send_response(request_id, response)
-                    
-                    info_print(f"✅ Requête Telegram {request_id} traitée")
-                    
+                    self._send_response(request["id"], response)
+                    debug_print(f"Requête Telegram traitée: {request['command']}")
                 except Exception as e:
-                    error_response = f"Erreur traitement: {str(e)[:80]}"
-                    request_id = request.get("id", "unknown")
-                    self._send_response(request_id, error_response)
-                    error_print(f"Erreur traitement requête Telegram {request_id}: {e}")
+                    error_response = f"Erreur traitement: {str(e)}"
+                    self._send_response(request["id"], error_response)
+                    error_print(f"Erreur traitement requête Telegram: {e}")
+            
+            # Vider la queue (toutes les requêtes ont été traitées)
+            with open(self.queue_file, 'w') as f:
+                json.dump([], f)
                 
         except Exception as e:
-            error_print(f"Erreur lecture queue Telegram: {e}")
-    
-    def _get_mesh_identity(self, telegram_id, telegram_username):
-        """Obtenir l'identité Meshtastic pour un utilisateur Telegram"""
-        if telegram_id in TELEGRAM_TO_MESH_MAPPING:
-            mapping = TELEGRAM_TO_MESH_MAPPING[telegram_id]
-            return {
-                "node_id": mapping["node_id"],
-                "short_name": mapping["short_name"],
-                "display_name": mapping["display_name"]
-            }
-        
-        fallback_node_id = telegram_id & 0xFFFFFFFF
-        return {
-            "node_id": fallback_node_id,
-            "short_name": telegram_username[:8] if telegram_username else f"{fallback_node_id:08x}"[-4:],
-            "display_name": f"TG:{telegram_username}" if telegram_username else f"TG:{fallback_node_id:08x}"
-        }
+            debug_print(f"Erreur lecture queue Telegram: {e}")
     
     def _process_single_request(self, request):
         """Traiter une requête Telegram individuelle"""
         command = request.get("command", "").strip()
         user_info = request.get("user", {})
         telegram_id = user_info.get("telegram_id", 0)
-        telegram_username = user_info.get("username", "Telegram")
+        username = user_info.get("username", "Telegram")
         
-        debug_print(f"🔄 Commande Telegram: '{command}' de {telegram_username}")
+        debug_print(f"Traitement commande Telegram: {command} de {username}")
         
-        mesh_identity = self._get_mesh_identity(telegram_id, telegram_username)
-        sender_id = mesh_identity["node_id"]
-        sender_info = mesh_identity["display_name"]
+        # Simuler un sender_id Meshtastic basé sur l'ID Telegram
+        # Utiliser les 4 derniers octets de l'ID Telegram
+        sender_id = telegram_id & 0xFFFFFFFF
+        sender_info = f"TG:{username}"
         
-        debug_print(f"🎯 Mapping: {telegram_username} ({telegram_id}) -> {mesh_identity['short_name']} (0x{sender_id:08x})")
-        
+        # Router la commande vers le gestionnaire approprié
+        if command.startswith('/bot '):
+            return self._handle_bot_command(command, sender_id, sender_info)
+        elif command.startswith('/power'):
+            return self._handle_power_command(sender_id, sender_info)
+        elif command.startswith('/rx'):
+            return self._handle_rx_command(command, sender_id, sender_info)
+        elif command.startswith('/nodes'):
+            return self._handle_nodes_command(sender_id, sender_info)  # Nouvelle commande
+        elif command.startswith('/my'):
+            return self._handle_my_command(sender_id, sender_info)
+        elif command.startswith('/sys'):
+            return self._handle_sys_command(sender_id, sender_info)
+        elif command.startswith('/legend'):
+            return self._handle_legend_command(sender_id, sender_info)
+        elif command.startswith('/echo '):
+            return self._handle_echo_command(command, sender_id, sender_info)
+        elif command.startswith('/help'):
+            return self._handle_help_command(sender_id, sender_info)
+        else:
+            return f"Commande inconnue: {command}"
+    
+    def _handle_nodes_command(self, sender_id, sender_info):
+        """Traiter /nodes depuis Telegram - Version étendue optimisée pour Telegram"""
         try:
-            if command.startswith('/bot '):
-                return self._handle_bot_command(command, sender_id, sender_info)
-            elif command.startswith('/power'):
-                return self._handle_power_command(sender_id, sender_info)
-            elif command.startswith('/rx'):
-                return self._handle_rx_command(command, sender_id, sender_info)
-            elif command.startswith('/my'):
-                return self._handle_my_command(sender_id, sender_info)
-            elif command.startswith('/sys'):
-                return self._handle_sys_command(sender_id, sender_info)
-            elif command.startswith('/legend'):
-                return self._handle_legend_command(sender_id, sender_info)
-            elif command.startswith('/echo '):
-                return self._handle_echo_command(command, sender_id, sender_info, mesh_identity)
-            elif command.startswith('/help'):
-                return self._handle_help_command(sender_id, sender_info)
-            else:
-                return f"❓ Commande inconnue: {command}\n\nTapez /help pour l'aide"
+            info_print(f"Nodes (étendu): {sender_info}")
+            
+            # Récupérer les nœuds distants avec toutes les informations
+            remote_nodes = self.message_handler.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+            
+            if not remote_nodes:
+                return f"❌ Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
+            
+            # Trier par SNR décroissant (plus fiable que RSSI en LoRa)
+            remote_nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
+            
+            # Format étendu pour Telegram (sans pagination, noms longs)
+            lines = []
+            lines.append(f"📡 **Nœuds DIRECTS de {REMOTE_NODE_NAME}** ({len(remote_nodes)} nœuds):")
+            
+            for i, node in enumerate(remote_nodes, 1):
+                # Informations complètes pour chaque nœud
+                node_id = node['id']
+                name = node['name']
+                rssi = node.get('rssi', 0)
+                snr = node.get('snr', 0.0)
+                last_heard = node.get('last_heard', 0)
                 
+                # Icône de qualité basée prioritairement sur SNR (plus fiable en LoRa)
+                if snr != 0:
+                    if snr >= 8:
+                        signal_icon = "🟢"  # Excellent SNR
+                    elif snr >= 3:
+                        signal_icon = "🟡"  # Bon SNR
+                    elif snr >= -2:
+                        signal_icon = "🟠"  # SNR faible mais utilisable
+                    else:
+                        signal_icon = "🔴"  # SNR critique
+                elif rssi != 0:
+                    # Fallback sur RSSI si pas de SNR
+                    if rssi >= -80:
+                        signal_icon = "🟢"
+                    elif rssi >= -100:
+                        signal_icon = "🟡"
+                    elif rssi >= -120:
+                        signal_icon = "🟠"
+                    else:
+                        signal_icon = "🔴"
+                else:
+                    signal_icon = "📶"  # Aucune métrique disponible
+                
+                # Temps écoulé depuis dernière réception
+                if last_heard > 0:
+                    elapsed = int(time.time() - last_heard)
+                    if elapsed < 60:
+                        time_str = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        time_str = f"{elapsed//60}m"
+                    elif elapsed < 86400:
+                        time_str = f"{elapsed//3600}h"
+                    else:
+                        time_str = f"{elapsed//86400}j"
+                else:
+                    time_str = "n/a"
+                
+                # Construire les métriques affichées
+                metrics = []
+                
+                # RSSI seulement si non-zéro
+                if rssi != 0:
+                    metrics.append(f"RSSI: {rssi}dBm")
+                
+                # SNR toujours affiché
+                metrics.append(f"SNR: {snr:.1f}dB")
+                
+                # Temps
+                metrics.append(time_str)
+                
+                # Ligne formatée compacte (une seule ligne)
+                line = f"{signal_icon} **{name}** - {' | '.join(metrics)}"
+                
+                lines.append(line)
+            
+            # Ajouter un footer informatif
+            lines.append("")
+            lines.append(f"🔍 Légende: 🟢 Excellent | 🟡 Bon | 🟠 Faible | 🔴 Critique")
+            lines.append(f"📊 Triés par SNR (qualité LoRa), <3 jours")
+            
+            return "\n".join(lines)
+            
         except Exception as e:
-            error_print(f"Erreur traitement commande '{command}': {e}")
-            return f"❌ Erreur interne: {str(e)[:100]}"
+            return f"❌ Erreur /nodes: {str(e)[:50]}"
     
     def _handle_bot_command(self, command, sender_id, sender_info):
         """Traiter /bot depuis Telegram"""
         try:
-            prompt = command[5:].strip()
-            if not prompt:
-                return "Usage: /bot <question>"
+            # Capturer la sortie de la commande bot
+            import io
+            import sys
+            from contextlib import redirect_stdout, redirect_stderr
             
-            debug_print(f"🤖 Bot IA pour {sender_info}: '{prompt}'")
-            response = self.message_handler.llama_client.query_llama(prompt, sender_id)
+            # Buffer pour capturer la réponse
+            captured_output = io.StringIO()
             
-            self.message_handler.log_conversation(sender_id, sender_info, prompt, response)
+            # Simuler l'interface pour éviter l'envoi réel de messages
+            class TelegramInterface:
+                def sendText(self, message, destinationId=None):
+                    captured_output.write(message)
             
-            return response
+            # Remplacer temporairement l'interface
+            original_interface = self.message_handler.interface
+            self.message_handler.interface = TelegramInterface()
             
+            try:
+                self.message_handler.handle_bot_command(command, sender_id, sender_info)
+                response = captured_output.getvalue()
+                return response if response else "Pas de réponse du bot IA"
+            finally:
+                self.message_handler.interface = original_interface
+                
         except Exception as e:
-            return f"❌ Erreur /bot: {str(e)[:80]}"
+            return f"Erreur /bot: {str(e)}"
     
     def _handle_power_command(self, sender_id, sender_info):
         """Traiter /power depuis Telegram"""
         try:
-            debug_print(f"🔋 Power pour {sender_info}")
             esphome_data = self.message_handler.esphome_client.parse_esphome_data()
-            
-            self.message_handler.log_conversation(sender_id, sender_info, "/power", esphome_data)
-            
             return esphome_data
         except Exception as e:
-            return f"❌ Erreur /power: {str(e)[:80]}"
+            return f"Erreur /power: {str(e)}"
     
     def _handle_rx_command(self, command, sender_id, sender_info):
         """Traiter /rx depuis Telegram"""
         try:
+            # Extraire le numéro de page
             page = 1
             parts = command.split()
             if len(parts) > 1:
@@ -209,26 +273,20 @@ class TelegramIntegration:
                 except ValueError:
                     page = 1
             
-            debug_print(f"📡 RX page {page} pour {sender_info}")
             report = self.message_handler.remote_nodes_client.get_tigrog2_paginated(page)
-            
-            cmd_log = f"/rx {page}" if page > 1 else "/rx"
-            self.message_handler.log_conversation(sender_id, sender_info, cmd_log, report)
-            
             return report
         except Exception as e:
-            return f"❌ Erreur /rx: {str(e)[:80]}"
+            return f"Erreur /rx: {str(e)}"
     
     def _handle_my_command(self, sender_id, sender_info):
-        """Traiter /my depuis Telegram (pas applicable)"""
-        return "⚠️ Commande /my non applicable depuis Telegram\n(réservée aux utilisateurs mesh avec vraie position/signal)"
+        """Traiter /my depuis Telegram (pas applicable pour Telegram)"""
+        return "Commande /my non applicable depuis Telegram (réservée aux utilisateurs mesh)"
     
     def _handle_sys_command(self, sender_id, sender_info):
         """Traiter /sys depuis Telegram"""
         try:
             import subprocess
             
-            debug_print(f"💻 Sys pour {sender_info}")
             system_info = []
             
             # Température CPU
@@ -242,25 +300,21 @@ class TelegramIntegration:
                         system_info.append(f"🌡️ CPU: {temp_value}")
                     else:
                         system_info.append(f"🌡️ CPU: {temp_output}")
-                else:
-                    try:
-                        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
-                            temp_millis = int(f.read().strip())
-                            temp_celsius = temp_millis / 1000.0
-                            system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
-                    except:
-                        system_info.append("🌡️ CPU: N/A")
             except:
-                system_info.append("🌡️ CPU: Error")
+                system_info.append("🌡️ CPU: N/A")
             
             # Uptime
             try:
                 uptime_result = subprocess.run(['uptime'], capture_output=True, text=True, timeout=5)
                 if uptime_result.returncode == 0:
                     uptime_output = uptime_result.stdout.strip()
-                    if 'up' in uptime_output:
-                        parts = uptime_output.split('up')[1].split(',')[0].strip()
-                        system_info.append(f"⏱️ Up: {parts}")
+                    uptime_clean = uptime_output.replace('  ', ' ')
+                    parts = uptime_clean.split(',')
+                    if len(parts) >= 1:
+                        uptime_part = parts[0].strip()
+                        if 'up' in uptime_part:
+                            up_info = uptime_part.split('up')[1].strip()
+                            system_info.append(f"⏱️ Up: {up_info}")
             except:
                 system_info.append("⏱️ Uptime: Error")
             
@@ -269,7 +323,9 @@ class TelegramIntegration:
                 with open('/proc/meminfo', 'r') as f:
                     meminfo = f.read()
                 
-                mem_total = mem_available = None
+                mem_total = None
+                mem_available = None
+                
                 for line in meminfo.split('\n'):
                     if line.startswith('MemTotal:'):
                         mem_total = int(line.split()[1])
@@ -286,38 +342,32 @@ class TelegramIntegration:
                 pass
             
             if system_info:
-                result = "🖥️ Système RPI5:\n" + "\n".join(system_info)
+                return "🖥️ Système RPI5:\n" + "\n".join(system_info)
             else:
-                result = "❌ Impossible de récupérer les infos système"
-            
-            self.message_handler.log_conversation(sender_id, sender_info, "/sys", result)
-            
-            return result
+                return "Impossible de récupérer les infos système"
                 
         except Exception as e:
-            return f"❌ Erreur /sys: {str(e)[:80]}"
+            return f"Erreur /sys: {str(e)}"
     
     def _handle_legend_command(self, sender_id, sender_info):
         """Traiter /legend depuis Telegram"""
         try:
-            debug_print(f"📶 Legend pour {sender_info}")
             legend_text = self.message_handler.format_legend()
-            
-            self.message_handler.log_conversation(sender_id, sender_info, "/legend", legend_text)
-            
             return legend_text
         except Exception as e:
-            return f"❌ Erreur /legend: {str(e)[:80]}"
+            return f"Erreur /legend: {str(e)}"
     
-    def _handle_echo_command(self, command, sender_id, sender_info, mesh_identity):
-        """Traiter /echo depuis Telegram avec identité Meshtastic mappée"""
+    def _handle_echo_command(self, command, sender_id, sender_info):
+        """Traiter /echo depuis Telegram"""
         try:
-            echo_text = command[6:].strip()
+            echo_text = command[6:].strip()  # Retirer "/echo "
             
             if not echo_text:
                 return "Usage: /echo <texte>"
             
-            debug_print(f"📢 Echo pour {sender_info}: '{echo_text}'")
+            # Utiliser la méthode existante mais adaptée pour Telegram
+            import threading
+            import time
             
             def send_echo_via_tigrog2():
                 try:
@@ -330,69 +380,56 @@ class TelegramIntegration:
                     
                     time.sleep(1)
                     
-                    short_name = mesh_identity["short_name"]
-                    echo_response = f"{short_name}: {echo_text}"
+                    # Utiliser le nom d'utilisateur Telegram comme identifiant
+                    username = sender_info.split(':')[1] if ':' in sender_info else sender_info
+                    echo_response = f"TG-{username}: {echo_text}"
                     
                     remote_interface.sendText(echo_response)
                     remote_interface.close()
                     
-                    debug_print(f"📡 Echo diffusé via tigrog2: '{echo_response}'")
-                    info_print(f"📡 Echo Telegram->Mesh: {mesh_identity['display_name']} -> {short_name}: {echo_text}")
-                    
-                    self.message_handler.log_conversation(sender_id, sender_info, command, f"Echo diffusé: {echo_response}")
+                    debug_print(f"Echo Telegram diffusé via tigrog2: '{echo_response}'")
                     
                 except Exception as e:
-                    error_print(f"Erreur echo via tigrog2: {e}")
+                    error_print(f"Erreur echo Telegram via tigrog2: {e}")
             
+            # Lancer en thread
             threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
             
-            return f"📡 Echo diffusé: {mesh_identity['short_name']}: {echo_text}"
+            return f"📡 Echo diffusé: {echo_text}"
             
         except Exception as e:
-            return f"❌ Erreur /echo: {str(e)[:80]}"
+            return f"Erreur /echo: {str(e)}"
     
     def _handle_help_command(self, sender_id, sender_info):
         """Traiter /help depuis Telegram"""
-        mapped_name = "nom_telegram"
-        
-        for tg_id, mapping in TELEGRAM_TO_MESH_MAPPING.items():
-            if mapping["node_id"] == sender_id:
-                mapped_name = mapping["short_name"]
-                break
-        
-        help_text = f"""🤖 Bot Meshtastic - Commandes Telegram:
+        help_text = """🤖 Bot Meshtastic - Commandes Telegram:
 
 /bot <question> - Chat avec l'IA
-/power - Info batterie/solaire  
-/rx [page] - Nœuds vus par tigrog2
+/power - Info batterie/solaire
+/rx [page] - Nœuds vus par tigrog2 (paginé)
+/nodes - Liste complète des nœuds (format étendu)
 /sys - Info système Pi5
 /echo <texte> - Diffuser via tigrog2
 /legend - Légende signaux
 /help - Cette aide
 
-💡 Raccourci: Tapez directement votre message pour /bot
-
-🎯 Vos messages /echo apparaissent comme: {mapped_name}: ...
-
-⚠️ Note: /my non disponible depuis Telegram"""
-        
-        self.message_handler.log_conversation(sender_id, sender_info, "/help", help_text)
+Note: /my non disponible depuis Telegram"""
         
         return help_text
     
     def _send_response(self, request_id, response):
         """Envoyer une réponse vers Telegram"""
         try:
+            # Lire les réponses existantes
             responses = []
-            try:
-                if os.path.exists(self.response_file):
-                    with open(self.response_file, 'r') as f:
-                        existing_data = json.load(f)
-                        if isinstance(existing_data, list):
-                            responses = existing_data
-            except (json.JSONDecodeError, FileNotFoundError):
-                responses = []
+            if os.path.exists(self.response_file):
+                with open(self.response_file, 'r') as f:
+                    try:
+                        responses = json.load(f)
+                    except json.JSONDecodeError:
+                        responses = []
             
+            # Ajouter la nouvelle réponse
             response_data = {
                 "request_id": request_id,
                 "response": response,
@@ -401,13 +438,47 @@ class TelegramIntegration:
             
             responses.append(response_data)
             
+            # Limiter le nombre de réponses stockées
             if len(responses) > 100:
-                responses = responses[-50:]
+                responses = responses[-50:]  # Garder les 50 plus récentes
             
+            # Écrire les réponses
             with open(self.response_file, 'w') as f:
-                json.dump(responses, f, indent=2)
-            
-            debug_print(f"📤 Réponse {request_id} envoyée vers Telegram")
+                json.dump(responses, f)
             
         except Exception as e:
-            error_print(f"Erreur envoi réponse Telegram {request_id}: {e}")
+            error_print(f"Erreur envoi réponse Telegram: {e}")
+
+# Fonction d'intégration dans main_bot.py
+def integrate_telegram_bridge(bot_instance):
+    """
+    Fonction à ajouter dans main_bot.py pour intégrer Telegram
+    
+    Usage dans main_bot.py:
+    
+    # Après l'initialisation des gestionnaires, ajouter:
+    from telegram_integration import integrate_telegram_bridge
+    
+    # Dans DebugMeshBot.__init__():
+    self.telegram_integration = None
+    
+    # Dans DebugMeshBot.start(), après l'initialisation du message_handler:
+    try:
+        from telegram_integration import TelegramIntegration
+        self.telegram_integration = TelegramIntegration(
+            self.message_handler,
+            self.node_manager,
+            self.context_manager
+        )
+        self.telegram_integration.start()
+        info_print("✅ Interface Telegram intégrée")
+    except ImportError:
+        debug_print("📱 Module Telegram non disponible")
+    except Exception as e:
+        error_print(f"Erreur intégration Telegram: {e}")
+    
+    # Dans DebugMeshBot.stop():
+    if self.telegram_integration:
+        self.telegram_integration.stop()
+    """
+    pass
