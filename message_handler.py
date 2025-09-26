@@ -191,7 +191,7 @@ class MessageHandler:
         ]
         
         return "\n".join(help_lines)
-    
+
     def handle_bot_command(self, message, sender_id, sender_info):
         """Gérer la commande /bot"""
         prompt = message[5:].strip()
@@ -199,7 +199,8 @@ class MessageHandler:
         
         if prompt:
             start_time = time.time()
-            response = self.llama_client.query_llama(prompt, sender_id)
+            # IMPORTANT: Utiliser la méthode spécifique Mesh pour les réponses courtes
+            response = self.llama_client.query_llama_mesh(prompt, sender_id)
             end_time = time.time()
             
             self.log_conversation(sender_id, sender_info, prompt, response, end_time - start_time)
@@ -208,7 +209,7 @@ class MessageHandler:
             # Nettoyage après traitement
             self.llama_client.cleanup_cache()
         else:
-            self.interface.sendText("Usage: /bot <question>", destinationId=sender_id)
+            self.interface.sendText("Usage: /bot <question>", destinationId=sender_id) 
     
     def handle_power_command(self, sender_id, sender_info):
         """Gérer la commande /power"""

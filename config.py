@@ -41,6 +41,28 @@ MAX_MESSAGE_SIZE = 180
 MAX_COMMANDS_PER_WINDOW = 5  # Nombre max de commandes
 COMMAND_WINDOW_SECONDS = 300  # Fenêtre de temps en secondes (5 minutes)
 
+# Configuration IA pour Meshtastic (LoRa) - Réponses très courtes
+MESH_AI_CONFIG = {
+    "system_prompt": "Tu es un assistant accessible via le réseau Meshtastic en LoRa. Réponds en français, très court, 320 caractères maximum. Sois précis et concis, maintiens la continuité de la conversation.",
+    "max_tokens": 1500,
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "top_k": 20,
+    "timeout": 60,  # 1 minute pour LoRa
+    "max_response_chars": 320
+}
+
+# Configuration IA pour Telegram - Réponses plus développées
+TELEGRAM_AI_CONFIG = {
+    "system_prompt": "Tu es un assistant intelligent accessible via Telegram, connecté à un réseau Meshtastic LoRa. Tu peux donner des réponses plus détaillées et développées. Réponds en français de manière claire et complète, tu peux utiliser des emojis pour rendre tes réponses plus engageantes. Tu es utile, créatif et bienveillant.",
+    "max_tokens": 4000,
+    "temperature": 0.8,  # Légèrement plus créatif pour Telegram
+    "top_p": 0.95,
+    "top_k": 25,
+    "timeout": 120,  # 2 minutes pour Telegram
+    "max_response_chars": 3000  # Plus long pour Telegram
+}
+
 # Configuration Telegram Bridge
 TELEGRAM_ENABLED = True  # Activer/désactiver l'intégration Telegram
 TELEGRAM_BOT_TOKEN = "8370817963:AAG3tUW1Qvw_4dQyKlJKR1VGIZo4KxsQULQ"  # Token du bot Telegram

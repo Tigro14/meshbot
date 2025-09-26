@@ -218,35 +218,41 @@ class TelegramIntegration:
             return f"❌ Erreur /nodes: {str(e)[:50]}"
     
     def _handle_bot_command(self, command, sender_id, sender_info):
-        """Traiter /bot depuis Telegram"""
+        """Traiter /bot depuis Telegram avec configuration Telegram"""
         try:
-            # Capturer la sortie de la commande bot
-            import io
-            import sys
-            from contextlib import redirect_stdout, redirect_stderr
+            prompt = command[5:].strip()  # Retirer "/bot "
             
-            # Buffer pour capturer la réponse
-            captured_output = io.StringIO()
+            if not prompt:
+                return "Usage: /bot <question>"
             
-            # Simuler l'interface pour éviter l'envoi réel de messages
-            class TelegramInterface:
-                def sendText(self, message, destinationId=None):
-                    captured_output.write(message)
+            debug_print(f"🤖 Bot Telegram: {sender_info}: '{prompt}'")
             
-            # Remplacer temporairement l'interface
-            original_interface = self.message_handler.interface
-            self.message_handler.interface = TelegramInterface()
+            start_time = time.time()
             
-            try:
-                self.message_handler.handle_bot_command(command, sender_id, sender_info)
-                response = captured_output.getvalue()
-                return response if response else "Pas de réponse du bot IA"
-            finally:
-                self.message_handler.interface = original_interface
-                
+            # IMPORTANT: Utiliser la méthode spécifique Telegram pour les réponses étendues
+            response = self.message_handler.llama_client.query_llama_telegram(prompt, sender_id)
+            
+            end_time = time.time()
+            processing_time = end_time - start_time
+            
+            # Log spécialisé pour Telegram
+            debug_print(f"⏱️ Traitement Telegram: {processing_time:.2f}s")
+            conversation_print("=" * 40)
+            conversation_print(f"TELEGRAM USER: {sender_info} ({sender_id})")
+            conversation_print(f"TELEGRAM QUERY: {prompt}")
+            conversation_print(f"TELEGRAM RESPONSE: {response}")
+            conversation_print(f"TELEGRAM TIME: {processing_time:.2f}s")
+            conversation_print("=" * 40)
+            
+            # Nettoyage
+            self.message_handler.llama_client.cleanup_cache()
+            
+            return response
+            
         except Exception as e:
-            return f"Erreur /bot: {str(e)}"
-    
+            error_print(f"Erreur /bot Telegram: {e}")
+            return f"Erreur IA Telegram: {str(e)[:100]}"
+
     def _handle_power_command(self, sender_id, sender_info):
         """Traiter /power depuis Telegram"""
         try:

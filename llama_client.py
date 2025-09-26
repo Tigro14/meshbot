@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Client pour l'API Llama
+Client pour l'API Llama avec configurations différenciées
 """
 
 import time
@@ -40,7 +40,7 @@ class LlamaClient:
             error_print(f"Serveur llama.cpp inaccessible: {e}")
             return False
     
-    def clean_ai_response(self, content):
+    def clean_ai_response(self, content, max_chars=None):
         """Nettoie la réponse de l'IA - version optimisée mémoire"""
         try:
             debug_print(f"Nettoyage: '{content[:50]}...'")
@@ -54,6 +54,10 @@ class LlamaClient:
             
             if not content or len(content.strip()) < 2:
                 content = "Pas de réponse"
+            
+            # Tronquer si nécessaire selon le canal
+            if max_chars and len(content) > max_chars:
+                content = content[:max_chars-3] + "..."
                 
             debug_print(f"Nettoyé: '{content[:50]}...'")
             return content
@@ -62,17 +66,28 @@ class LlamaClient:
             debug_print(f"Erreur nettoyage: {e}")
             return content if content else "Erreur"
     
-    def query_llama(self, prompt, node_id=None):
-        """Requête au serveur llama avec contexte conversationnel"""
+    def query_llama(self, prompt, node_id=None, source_type="mesh"):
+        """
+        Requête au serveur llama avec contexte conversationnel
+        source_type: "mesh" ou "telegram" pour adapter les paramètres
+        """
         try:
             requests_module = lazy_import_requests()
-            debug_print(f"Envoi à llama: '{prompt[:30]}...'")
+            debug_print(f"Envoi à llama ({source_type}): '{prompt[:30]}...'")
+            
+            # Sélectionner la configuration selon la source
+            if source_type == "telegram":
+                ai_config = TELEGRAM_AI_CONFIG
+                debug_print("🔧 Configuration Telegram (réponses étendues)")
+            else:
+                ai_config = MESH_AI_CONFIG
+                debug_print("🔧 Configuration Mesh (réponses courtes)")
             
             # Construire les messages avec contexte
             messages = [
                 {
                     "role": "system",
-                    "content": "Tu es un assistant accessible via le réseau Meshtastic en LoRa. Réponds en français, très court, 320 caractères. Maintiens la continuité de la conversation."
+                    "content": ai_config["system_prompt"]
                 }
             ]
             
@@ -96,22 +111,27 @@ class LlamaClient:
                 "content": prompt
             })
             
+            # Configuration de la requête avec paramètres adaptés
             data = {
                 "messages": messages,
-                "max_tokens": 2000,
-                "temperature": 0.7,  # Légèrement plus élevé pour plus de variété
-                "top_p": 0.95,
-                "top_k": 20
+                "max_tokens": ai_config["max_tokens"],
+                "temperature": ai_config["temperature"],
+                "top_p": ai_config["top_p"],
+                "top_k": ai_config["top_k"]
             }
             
             debug_print(f"📊 Messages envoyés: {len(messages)} (dont {len(messages)-2} contexte)")
+            debug_print(f"⚙️ Config: tokens={ai_config['max_tokens']}, temp={ai_config['temperature']}, timeout={ai_config['timeout']}s")
             
             start_time = time.time()
-            response = requests_module.post(f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1/chat/completions", 
-                                          json=data, timeout=60)
+            response = requests_module.post(
+                f"http://{LLAMA_HOST}:{LLAMA_PORT}/v1/chat/completions", 
+                json=data, 
+                timeout=ai_config["timeout"]  # Timeout adapté
+            )
             end_time = time.time()
             
-            debug_print(f"Temps: {end_time - start_time:.2f}s")
+            debug_print(f"⏱️ Temps: {end_time - start_time:.2f}s")
             
             if response.status_code == 200:
                 result = response.json()
@@ -126,19 +146,29 @@ class LlamaClient:
                 del response, result, data, messages
                 gc.collect()
                 
-                return self.clean_ai_response(content)
+                # Nettoyer avec la limite de caractères appropriée
+                return self.clean_ai_response(content, ai_config["max_response_chars"])
             else:
+                error_print(f"Erreur HTTP {response.status_code}: {response.text[:100]}")
                 del response, data, messages
-                return "Erreur serveur"
+                return "Erreur serveur IA"
                 
         except Exception as e:
-            error_msg = f"Erreur IA: {str(e)[:30]}"
+            error_msg = f"Erreur IA ({source_type}): {str(e)[:50]}"
             error_print(error_msg)
             return error_msg
+    
+    def query_llama_mesh(self, prompt, node_id=None):
+        """Requête optimisée pour Meshtastic (réponses courtes)"""
+        return self.query_llama(prompt, node_id, "mesh")
+    
+    def query_llama_telegram(self, prompt, node_id=None):
+        """Requête optimisée pour Telegram (réponses étendues)"""
+        return self.query_llama(prompt, node_id, "telegram")
     
     def cleanup_cache(self):
         """Nettoyage périodique du cache"""
         if len(self._response_cache) > MAX_CACHE_SIZE:
             items = list(self._response_cache.items())
             self._response_cache = dict(items[-3:])
-        gc.collect() 
+        gc.collect()
