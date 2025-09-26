@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Gestionnaire des messages et commandes - VERSION SNR UNIQUEMENT + /sys corrigé
+Gestionnaire des messages et commandes
 """
 
 import time
@@ -165,14 +166,14 @@ class MessageHandler:
             debug_print(f"Nettoyage throttling: {len(users_to_remove)} utilisateurs supprimés")
     
     def format_legend(self):
-        """Formater la légende des indicateurs colorés - version SNR uniquement"""
+        """Formater la légende des indicateurs colorés - version compacte"""
         legend_lines = [
-            "📶 Indicateurs SNR:",
-            "🟢=excellent (≥10dB)",
-            "🟡=bon (5-10dB)", 
-            "🟠=faible (0-5dB)",
-            "🔴=critique (-5-0dB)",
-            "⚫=très faible (<-5dB)"
+            "📶 Indicateurs:",
+            "🟢🔵=excellent",
+            "🟡🟣=bon", 
+            "🟠🟤=faible",
+            "🔴⚫=très faible",
+            "1er=RSSI 2e=SNR"
         ]
         
         return "\n".join(legend_lines)
@@ -191,7 +192,7 @@ class MessageHandler:
         ]
         
         return "\n".join(help_lines)
-
+    
     def handle_bot_command(self, message, sender_id, sender_info):
         """Gérer la commande /bot"""
         prompt = message[5:].strip()
@@ -209,7 +210,7 @@ class MessageHandler:
             # Nettoyage après traitement
             self.llama_client.cleanup_cache()
         else:
-            self.interface.sendText("Usage: /bot <question>", destinationId=sender_id) 
+            self.interface.sendText("Usage: /bot <question>", destinationId=sender_id)
     
     def handle_power_command(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -603,12 +604,12 @@ class MessageHandler:
                     self.send_single_message(error_msg, sender_id, sender_info)
                 except Exception as e2:
                     debug_print(f"Envoi erreur /g2 échoué: {e2}")
-
+        
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_g2_config, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
-        """Gérer la commande /sys - VERSION FINALE CORRIGÉE"""
+        """Gérer la commande /sys"""
         info_print(f"Sys: {sender_info}")
         
         import subprocess
@@ -620,6 +621,7 @@ class MessageHandler:
                 
                 # 1. Température CPU (RPI5)
                 try:
+                    # Méthode 1: vcgencmd (Raspberry Pi)
                     temp_cmd = ['vcgencmd', 'measure_temp']
                     temp_result = subprocess.run(temp_cmd, 
                                                capture_output=True, 
@@ -628,6 +630,7 @@ class MessageHandler:
                     
                     if temp_result.returncode == 0:
                         temp_output = temp_result.stdout.strip()
+                        # Format: temp=45.1'C
                         if 'temp=' in temp_output:
                             temp_value = temp_output.split('=')[1].replace("'C", "°C")
                             system_info.append(f"🌡️ CPU: {temp_value}")
@@ -636,286 +639,4 @@ class MessageHandler:
                     else:
                         # Fallback: lecture du fichier thermal_zone
                         try:
-                            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
-                                temp_millis = int(f.read().strip())
-                                temp_celsius = temp_millis / 1000.0
-                                system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
-                        except:
-                            system_info.append("🌡️ CPU: N/A")
-                            
-                except Exception as e:
-                    debug_print(f"Erreur température: {e}")
-                    system_info.append("🌡️ CPU: Error")
-                
-                # 2. Uptime ET Load Average - VERSION FINALE
-                try:
-                    uptime_cmd = ['uptime']
-                    uptime_result = subprocess.run(uptime_cmd, 
-                                                 capture_output=True, 
-                                                 text=True, 
-                                                 timeout=5)
-                    
-                    if uptime_result.returncode == 0:
-                        uptime_output = uptime_result.stdout.strip()
-                        debug_print(f"Uptime output: {uptime_output}")
-                        
-                        if 'load average:' in uptime_output:
-                            uptime_part, load_part = uptime_output.split('load average:', 1)
-                            
-                            # Traiter la partie uptime
-                            if ' up ' in uptime_part:
-                                after_up = uptime_part.split(' up ')[1]
-                                
-                                # Supprimer la partie "X users" qui vient à la fin
-                                up_parts = after_up.split(',')
-                                # Filtrer les parties qui contiennent "user"
-                                filtered_parts = []
-                                for part in up_parts:
-                                    part = part.strip()
-                                    if 'user' not in part.lower():
-                                        filtered_parts.append(part)
-                                
-                                if filtered_parts:
-                                    up_info = ', '.join(filtered_parts)
-                                    system_info.append(f"⏱️ Up: {up_info}")
-                                    debug_print(f"Uptime formaté: {up_info}")
-                            
-                            # Traiter le load average
-                            load_values = load_part.strip()
-                            system_info.append(f"📊 Load: {load_values}")
-                            debug_print(f"Load average formaté: {load_values}")
-                            
-                        else:
-                            # Fallback si pas de load average
-                            if ' up ' in uptime_output:
-                                up_info = uptime_output.split(' up ')[1].split(',')[0].strip()
-                                system_info.append(f"⏱️ Up: {up_info}")
-                            else:
-                                system_info.append(f"⏱️ {uptime_output[:50]}")
-                    else:
-                        system_info.append("⏱️ Uptime: Error")
-                        
-                except Exception as e:
-                    debug_print(f"Erreur uptime: {e}")
-                    system_info.append("⏱️ Uptime: Error")
-                
-                # 3. Informations mémoire
-                try:
-                    with open('/proc/meminfo', 'r') as f:
-                        meminfo = f.read()
-                    
-                    mem_total = None
-                    mem_available = None
-                    
-                    for line in meminfo.split('\n'):
-                        if line.startswith('MemTotal:'):
-                            mem_total = int(line.split()[1])  # en kB
-                        elif line.startswith('MemAvailable:'):
-                            mem_available = int(line.split()[1])  # en kB
-                    
-                    if mem_total and mem_available:
-                        mem_used = mem_total - mem_available
-                        mem_percent = (mem_used / mem_total) * 100
-                        mem_total_mb = mem_total // 1024
-                        mem_used_mb = mem_used // 1024
-                        
-                        system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
-                        
-                except Exception as e:
-                    debug_print(f"Erreur mémoire: {e}")
-                
-                # Construire la réponse finale
-                if system_info:
-                    response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
-                    debug_print(f"Réponse /sys complète: {response}")
-                else:
-                    response = "❌ Impossible de récupérer les infos système"
-                
-                self.send_response_chunks(response, sender_id, sender_info)
-                self.log_conversation(sender_id, sender_info, "/sys", response)
-                
-            except Exception as e:
-                error_msg = f"❌ Erreur système: {str(e)[:100]}"
-                error_print(f"Erreur sys: {e}")
-                self.send_single_message(error_msg, sender_id, sender_info)
-        
-        # Lancer dans un thread séparé pour ne pas bloquer
-        threading.Thread(target=get_system_info, daemon=True).start()
-
-    def handle_my_command(self, sender_id, sender_info):
-        """Gérer la commande /my - infos signal vues par tigrog2 UNIQUEMENT basé sur SNR"""
-        info_print(f"My: {sender_info}")
-        
-        import threading
-        
-        def get_remote_signal_info():
-            try:
-                # Récupérer les nœuds de tigrog2 avec leurs informations de signal
-                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
-                
-                if not remote_nodes:
-                    response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
-                    self.send_single_message(response, sender_id, sender_info)
-                    return
-                
-                # Chercher le nœud expéditeur dans les données de tigrog2
-                sender_node_data = None
-                for node in remote_nodes:
-                    if node['id'] == sender_id:
-                        sender_node_data = node
-                        break
-                
-                if sender_node_data:
-                    # Debug : examiner toutes les données reçues
-                    debug_print(f"Données complètes pour {sender_info}: {sender_node_data}")
-                    
-                    # Infos tigrog2 uniquement (source fiable) - SNR UNIQUEMENT
-                    response_parts = []
-                    
-                    # SNR uniquement - ignorer complètement RSSI
-                    snr = sender_node_data.get('snr', 0.0)
-                    
-                    # Debug spécifique SNR
-                    debug_print(f"SNR brut: {snr} (type: {type(snr)})")
-                    
-                    if snr != 0:
-                        snr_icon = get_signal_quality_icon(snr)
-                        snr_str = f"SNR:{snr:.1f}dB"
-                        response_parts.append(f"{snr_icon} {snr_str}")
-                    else:
-                        response_parts.append("📶 SNR:n/a")
-                    
-                    # Qualité + temps sur une ligne (basé sur SNR uniquement)
-                    quality_desc = get_snr_quality_description(snr)
-                    last_heard = sender_node_data.get('last_heard', 0)
-                    if last_heard > 0:
-                        time_str = format_elapsed_time(last_heard)
-                        response_parts.append(f"📈 {quality_desc} ({time_str})")
-                    else:
-                        response_parts.append(f"📈 {quality_desc}")
-                    
-                    # Distance estimée de tigrog2 basée sur SNR
-                    if snr != 0:
-                        distance_est = estimate_distance_from_snr(snr)
-                        response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
-                    
-                    # Statut liaison directe avec tigrog2
-                    response_parts.append(f"🎯 Direct → {REMOTE_NODE_NAME}")
-                    
-                    response = "\n".join(response_parts)
-                    
-                else:
-                    # Nœud pas trouvé dans tigrog2 - probablement relayé
-                    response_parts = [
-                        f"⚠️ Pas direct → {REMOTE_NODE_NAME}",
-                        "🔀 Messages relayés"
-                    ]
-                    
-                    # Suggérer des nœuds tigrog2 comme relays potentiels (basé sur SNR)
-                    potential_relays = self._find_tigrog2_relays_by_snr(remote_nodes)
-                    if potential_relays:
-                        best_relay = potential_relays[0]  # Le meilleur SNR
-                        response_parts.append(f"📡 Via réseau mesh")
-                        response_parts.append(f"   (ex: {truncate_text(best_relay['name'], 8)})")
-                    else:
-                        response_parts.append("❌ Route mesh complexe")
-                    
-                    response = "\n".join(response_parts)
-                
-                self.log_conversation(sender_id, sender_info, "/my", response)
-                self.send_response_chunks(response, sender_id, sender_info)
-                
-            except Exception as e:
-                error_print(f"Erreur commande /my: {e}")
-                try:
-                    error_response = f"⚠️ Erreur: {str(e)[:30]}"
-                    self.send_single_message(error_response, sender_id, sender_info)
-                except Exception as e2:
-                    debug_print(f"Envoi erreur /my échoué: {e2}")
-        
-        # Lancer dans un thread séparé pour ne pas bloquer
-        threading.Thread(target=get_remote_signal_info, daemon=True).start()
-    
-    def _find_tigrog2_relays_by_snr(self, remote_nodes):
-        """Trouver les meilleurs relays potentiels dans les données tigrog2 basé sur SNR uniquement"""
-        if not remote_nodes:
-            return []
-        
-        # Trier par qualité SNR (décroissant)
-        sorted_relays = sorted(
-            [node for node in remote_nodes if node.get('snr', 0.0) != 0.0],
-            key=lambda x: x.get('snr', -999),
-            reverse=True
-        )
-        
-        return sorted_relays[:3]  # Top 3 des meilleurs relays potentiels
-    
-    def process_text_message(self, packet, decoded, message):
-        """Traiter un message texte"""
-        sender_id = packet.get('from', 0)
-        to_id = packet.get('to', 0)
-        my_id = None
-        
-        if hasattr(self.interface, 'localNode') and self.interface.localNode:
-            my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-        
-        is_for_me = (to_id == my_id) if my_id else False
-        is_from_me = (sender_id == my_id) if my_id else False
-        is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
-        sender_info = self.node_manager.get_node_name(sender_id, self.interface)
-        
-        # NOUVEAU : Gérer /echo sur les messages publics
-        if message.startswith('/echo ') and (is_broadcast or is_for_me) and not is_from_me:
-            # /echo fonctionne sur les messages publics ET privés, mais pas de nous-mêmes
-            info_print(f"ECHO PUBLIC de {sender_info}: '{message}' (Broadcast:{is_broadcast})")
-            self.handle_echo_command(message, sender_id, sender_info, packet)
-            return
-        
-        # Messages publics (broadcast) - ignorer les autres commandes
-        if is_broadcast and not is_from_me:
-            if DEBUG_MODE and not message.startswith('/echo'):
-                debug_print(f"Message public ignoré: '{message}'")
-            return
-        
-        # Log seulement les messages pour nous ou en mode debug
-        if is_for_me or DEBUG_MODE:
-            info_print(f"MESSAGE REÇU de {sender_info}: '{message}' (ForMe:{is_for_me})")
-        
-        # Traiter les commandes seulement si c'est pour nous
-        if not is_for_me:
-            if DEBUG_MODE:
-                debug_print("Message public ignoré")
-            return
-        
-        # Router les commandes
-        if message.startswith('/bot '):
-            self.handle_bot_command(message, sender_id, sender_info)
-        elif message.startswith('/power'):
-            self.handle_power_command(sender_id, sender_info)
-        elif message.startswith('/rx'):
-            self.handle_rx_command(message, sender_id, sender_info)
-        elif message.startswith('/my'):
-            self.handle_my_command(sender_id, sender_info)
-        elif message.startswith('/echo '):
-            self.handle_echo_command(message, sender_id, sender_info, packet)
-        elif message.startswith('/legend'):
-            self.handle_legend_command(sender_id, sender_info)
-        elif message.startswith('/help'):
-            self.handle_help_command(sender_id, sender_info)
-        elif message.startswith('/rebootg2'):
-            self.handle_rebootg2_command(sender_id, sender_info)
-        elif message.startswith('/rebootpi'):
-            self.handle_reboot_command(sender_id, sender_info)
-        elif message.startswith('/g2'):
-            self.handle_g2_command(sender_id, sender_info)
-        elif message.startswith('/sys'):
-            self.handle_sys_command(sender_id, sender_info)
-        else:
-            # Commande non reconnue - afficher l'aide au lieu de l'ignorer
-            if message.startswith('/'):
-                info_print(f"Commande inconnue de {sender_info}: '{message}'")
-                self.handle_help_command(sender_id, sender_info)
-            else:
-                # Message normal (pas de commande)
-                if DEBUG_MODE:
-                    debug_print(f"Message normal reçu: '{message}'")
+                            with open('/sys/class/thermal/thermal_zone0/
