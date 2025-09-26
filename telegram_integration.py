@@ -446,19 +446,27 @@ class TelegramIntegration:
 Note: /my non disponible depuis Telegram"""
         
         return help_text
-    
-    def _send_response(self, request_id, response):
-        """Envoyer une réponse vers Telegram avec debug"""
+
+def _send_response(self, request_id, response):
+        """Envoyer une réponse vers Telegram avec debug et synchronisation forcée"""
         try:
             info_print(f"Envoi réponse Telegram pour {request_id}: {len(response)} chars")
             
-            # Lire les réponses existantes
+            # Lire les réponses existantes avec retry
             responses = []
-            if os.path.exists(self.response_file):
-                with open(self.response_file, 'r') as f:
-                    try:
-                        responses = json.load(f)
-                    except json.JSONDecodeError:
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if os.path.exists(self.response_file):
+                        with open(self.response_file, 'r') as f:
+                            responses = json.load(f)
+                        break
+                except (json.JSONDecodeError, IOError) as e:
+                    if attempt < max_retries - 1:
+                        error_print(f"Tentative {attempt + 1} lecture fichier réponse échouée: {e}")
+                        time.sleep(0.1)  # Attendre 100ms avant retry
+                    else:
+                        error_print(f"Lecture fichier réponse définitivement échouée: {e}")
                         responses = []
             
             # Ajouter la nouvelle réponse
@@ -475,16 +483,61 @@ Note: /my non disponible depuis Telegram"""
                 responses = responses[-50:]  # Garder les 50 plus récentes
                 debug_print("File réponses Telegram nettoyée")
             
-            # Écrire les réponses
-            with open(self.response_file, 'w') as f:
-                json.dump(responses, f)
+            # Écrire les réponses avec retry et sync forcé
+            for attempt in range(max_retries):
+                try:
+                    # Écriture atomique via fichier temporaire
+                    temp_file = self.response_file + ".tmp"
+                    with open(temp_file, 'w') as f:
+                        json.dump(responses, f, indent=2)  # Indentation pour lisibilité
+                        f.flush()  # Forcer l'écriture
+                        os.fsync(f.fileno())  # Synchronisation disque
+                    
+                    # Déplacement atomique
+                    os.rename(temp_file, self.response_file)
+                    
+                    info_print(f"Réponse Telegram sauvegardée pour {request_id} (tentative {attempt + 1})")
+                    
+                    # Vérification immédiate
+                    if os.path.exists(self.response_file):
+                        with open(self.response_file, 'r') as f:
+                            verification = json.load(f)
+                            found = any(r.get("request_id") == request_id for r in verification)
+                            if found:
+                                info_print(f"Vérification OK: réponse {request_id} présente dans le fichier")
+                                break
+                            else:
+                                error_print(f"ERREUR: réponse {request_id} non trouvée après écriture!")
+                    
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        error_print(f"Tentative {attempt + 1} écriture échouée: {e}")
+                        time.sleep(0.1)
+                    else:
+                        error_print(f"Écriture définitivement échouée: {e}")
+                        import traceback
+                        error_print(f"Stack trace _send_response: {traceback.format_exc()}")
             
-            info_print(f"Réponse Telegram sauvegardée pour {request_id}")
+            # Log final avec détails fichier
+            try:
+                file_stat = os.stat(self.response_file)
+                info_print(f"Fichier réponse: {file_stat.st_size} bytes, modifié à {time.strftime('%H:%M:%S', time.localtime(file_stat.st_mtime))}")
+            except Exception as stat_error:
+                error_print(f"Impossible de lire stats fichier: {stat_error}")
             
         except Exception as e:
             error_print(f"Erreur envoi réponse Telegram: {e}")
             import traceback
             error_print(f"Stack trace _send_response: {traceback.format_exc()}")
+            
+            # Fallback: créer un fichier de secours
+            try:
+                fallback_file = f"/tmp/telegram_response_{request_id}.json"
+                with open(fallback_file, 'w') as f:
+                    json.dump({"request_id": request_id, "response": response, "timestamp": time.time()}, f)
+                error_print(f"Réponse sauvée en fallback: {fallback_file}")
+            except:
+                error_print("Même le fallback a échoué!")    
 
 # Fonction d'intégration dans main_bot.py
 def integrate_telegram_bridge(bot_instance):
