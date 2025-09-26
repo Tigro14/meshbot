@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Client pour l'API Llama avec configurations différenciées
 """
@@ -78,10 +79,10 @@ class LlamaClient:
             # Sélectionner la configuration selon la source
             if source_type == "telegram":
                 ai_config = TELEGRAM_AI_CONFIG
-                debug_print("🔧 Configuration Telegram (réponses étendues)")
+                debug_print("Configuration Telegram (réponses étendues)")
             else:
                 ai_config = MESH_AI_CONFIG
-                debug_print("🔧 Configuration Mesh (réponses courtes)")
+                debug_print("Configuration Mesh (réponses courtes)")
             
             # Construire les messages avec contexte
             messages = [
@@ -95,7 +96,7 @@ class LlamaClient:
             if node_id and self.context_manager:
                 context = self.context_manager.get_conversation_context(node_id)
                 if context:
-                    debug_print(f"📚 Utilise contexte: {len(context)} messages")
+                    debug_print(f"Utilise contexte: {len(context)} messages")
                     # Ajouter les messages du contexte (en gardant l'ordre chronologique)
                     for ctx_msg in context:
                         messages.append({
@@ -103,7 +104,7 @@ class LlamaClient:
                             "content": ctx_msg['content']
                         })
                 else:
-                    debug_print("🆕 Nouvelle conversation")
+                    debug_print("Nouvelle conversation")
             
             # Ajouter la nouvelle question
             messages.append({
@@ -120,8 +121,8 @@ class LlamaClient:
                 "top_k": ai_config["top_k"]
             }
             
-            debug_print(f"📊 Messages envoyés: {len(messages)} (dont {len(messages)-2} contexte)")
-            debug_print(f"⚙️ Config: tokens={ai_config['max_tokens']}, temp={ai_config['temperature']}, timeout={ai_config['timeout']}s")
+            debug_print(f"Messages envoyés: {len(messages)} (dont {len(messages)-2} contexte)")
+            debug_print(f"Config: tokens={ai_config['max_tokens']}, temp={ai_config['temperature']}, timeout={ai_config['timeout']}s")
             
             start_time = time.time()
             response = requests_module.post(
@@ -131,7 +132,7 @@ class LlamaClient:
             )
             end_time = time.time()
             
-            debug_print(f"⏱️ Temps: {end_time - start_time:.2f}s")
+            debug_print(f"Temps: {end_time - start_time:.2f}s")
             
             if response.status_code == 200:
                 result = response.json()
