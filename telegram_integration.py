@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Module d'intégration Telegram dans le bot Meshtastic existant
-Avec debug systemd complet
+Avec protection timeout et monitoring robuste
 """
 
 import json
@@ -34,6 +34,7 @@ class TelegramIntegration:
             if not os.path.exists(file_path):
                 with open(file_path, 'w') as f:
                     json.dump([], f)
+                info_print(f"Fichier créé: {file_path}")
     
     def start(self):
         """Démarrer le processeur de requêtes Telegram"""
@@ -74,12 +75,20 @@ class TelegramIntegration:
             if not os.path.exists(self.queue_file):
                 return
             
-            # Lire les requêtes
-            with open(self.queue_file, 'r') as f:
-                try:
+            # Lire les requêtes avec protection contre corruption
+            requests = []
+            try:
+                with open(self.queue_file, 'r') as f:
                     requests = json.load(f)
-                except json.JSONDecodeError:
-                    return
+            except json.JSONDecodeError as je:
+                error_print(f"Fichier queue corrompu: {je}")
+                # Réinitialiser le fichier
+                with open(self.queue_file, 'w') as f:
+                    json.dump([], f)
+                return
+            except Exception as fe:
+                error_print(f"Erreur lecture queue: {fe}")
+                return
             
             if not requests:
                 return
@@ -158,7 +167,7 @@ class TelegramIntegration:
             return f"Commande inconnue: {command}"
     
     def _handle_bot_command(self, command, sender_id, sender_info):
-        """Traiter /bot depuis Telegram avec debug complet"""
+        """Traiter /bot depuis Telegram avec protection timeout et monitoring"""
         try:
             prompt = command[5:].strip()  # Retirer "/bot "
             
@@ -175,15 +184,68 @@ class TelegramIntegration:
             start_time = time.time()
             info_print(f"Début traitement IA Telegram à {time.strftime('%H:%M:%S')}")
             
-            # IMPORTANT: Utiliser la méthode spécifique Telegram pour les réponses étendues
-            try:
-                response = self.message_handler.llama_client.query_llama_telegram(prompt, sender_id)
-                info_print(f"Réponse IA reçue: '{response[:50]}...'")
-            except Exception as llama_error:
-                error_print(f"Erreur lors de l'appel à llama: {llama_error}")
-                import traceback
-                error_print(f"Stack trace llama: {traceback.format_exc()}")
-                return f"Erreur IA: {str(llama_error)[:100]}"
+            # Variables partagées pour monitoring
+            import threading
+            response_result = {"value": None, "error": None, "completed": False}
+            
+            # Thread pour l'appel IA avec timeout protection
+            def ia_call():
+                try:
+                    info_print("THREAD IA: Démarrage...")
+                    response = self.message_handler.llama_client.query_llama_telegram(prompt, sender_id)
+                    info_print(f"THREAD IA: Succès, {len(response)} chars")
+                    response_result["value"] = response
+                    response_result["completed"] = True
+                    info_print("THREAD IA: Terminé avec succès")
+                except Exception as e:
+                    error_print(f"THREAD IA: Erreur {e}")
+                    import traceback
+                    error_print(f"THREAD IA: Stack trace {traceback.format_exc()}")
+                    response_result["error"] = str(e)
+                    response_result["completed"] = True
+            
+            # Lancer le thread IA
+            ia_thread = threading.Thread(target=ia_call, daemon=True)
+            ia_thread.start()
+            info_print("Thread IA lancé")
+            
+            # Monitoring avec timeout (plus long que la config IA)
+            max_wait = TELEGRAM_AI_CONFIG["timeout"] + 60  # 180 secondes total
+            check_interval = 5  # Vérifier toutes les 5 secondes
+            checks = 0
+            
+            while checks * check_interval < max_wait:
+                if response_result["completed"]:
+                    break
+                
+                checks += 1
+                elapsed = checks * check_interval
+                info_print(f"MONITORING: {elapsed}s écoulées, thread {'vivant' if ia_thread.is_alive() else 'MORT'}")
+                
+                # Vérifier si llama.cpp est toujours accessible
+                if checks % 6 == 0:  # Toutes les 30 secondes
+                    if not self.message_handler.llama_client.test_connection():
+                        error_print("MONITORING: llama.cpp n'est plus accessible!")
+                        break
+                
+                time.sleep(check_interval)
+            
+            # Récupérer le résultat
+            if response_result["completed"]:
+                if response_result["error"]:
+                    error_print(f"Erreur du thread IA: {response_result['error']}")
+                    return f"Erreur IA: {response_result['error'][:100]}"
+                else:
+                    response = response_result["value"]
+                    info_print(f"Réponse IA reçue: '{response[:50]}...'")
+            else:
+                # Timeout du monitoring
+                error_print(f"TIMEOUT MONITORING après {max_wait}s")
+                if ia_thread.is_alive():
+                    error_print("Le thread IA est toujours vivant mais n'a pas terminé")
+                else:
+                    error_print("Le thread IA est mort sans retourner de résultat")
+                return f"Timeout: Traitement IA trop long (>{max_wait}s)"
             
             end_time = time.time()
             processing_time = end_time - start_time
@@ -446,8 +508,8 @@ class TelegramIntegration:
 Note: /my non disponible depuis Telegram"""
         
         return help_text
-
-def _send_response(self, request_id, response):
+    
+    def _send_response(self, request_id, response):
         """Envoyer une réponse vers Telegram avec debug et synchronisation forcée"""
         try:
             info_print(f"Envoi réponse Telegram pour {request_id}: {len(response)} chars")
@@ -483,7 +545,7 @@ def _send_response(self, request_id, response):
                 responses = responses[-50:]  # Garder les 50 plus récentes
                 debug_print("File réponses Telegram nettoyée")
             
-            # Écrire les réponses avec retry et sync forcé
+            # Écriture avec retry et sync forcé
             for attempt in range(max_retries):
                 try:
                     # Écriture atomique via fichier temporaire
@@ -537,7 +599,7 @@ def _send_response(self, request_id, response):
                     json.dump({"request_id": request_id, "response": response, "timestamp": time.time()}, f)
                 error_print(f"Réponse sauvée en fallback: {fallback_file}")
             except:
-                error_print("Même le fallback a échoué!")    
+                error_print("Même le fallback a échoué!")
 
 # Fonction d'intégration dans main_bot.py
 def integrate_telegram_bridge(bot_instance):
