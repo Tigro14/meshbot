@@ -639,4 +639,340 @@ class MessageHandler:
                     else:
                         # Fallback: lecture du fichier thermal_zone
                         try:
-                            with open('/sys/class/thermal/thermal_zone0/
+                            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                                temp_millis = int(f.read().strip())
+                                temp_celsius = temp_millis / 1000.0
+                                system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
+                        except:
+                            system_info.append("🌡️ CPU: N/A")
+                            
+                except Exception as e:
+                    debug_print(f"Erreur température: {e}")
+                    system_info.append("🌡️ CPU: Error")
+                
+                # 2. Uptime
+                try:
+                    uptime_cmd = ['uptime']
+                    uptime_result = subprocess.run(uptime_cmd, 
+                                                 capture_output=True, 
+                                                 text=True, 
+                                                 timeout=5)
+                    
+                    if uptime_result.returncode == 0:
+                        uptime_output = uptime_result.stdout.strip()
+                        # Nettoyer et simplifier l'output uptime
+                        uptime_clean = uptime_output.replace('  ', ' ')
+                        
+                        # Extraire les parties importantes
+                        parts = uptime_clean.split(',')
+                        if len(parts) >= 3:
+                            # Uptime + load average
+                            uptime_part = parts[0].strip()  # "up X days, Y hours"
+                            load_parts = [p.strip() for p in parts[-3:]]  # derniers 3 éléments (load avg)
+                            
+                            # Formater de manière compacte
+                            if 'up' in uptime_part:
+                                up_info = uptime_part.split('up')[1].strip()
+                                system_info.append(f"⏱️ Up: {up_info}")
+                            
+                            # Load average (simplifier)
+                            load_info = ', '.join(load_parts)
+                            if 'load average:' in load_info:
+                                load_values = load_info.split('load average:')[1].strip()
+                                system_info.append(f"📊 Load: {load_values}")
+                        else:
+                            # Fallback: uptime complet mais tronqué
+                            system_info.append(f"⏱️ {uptime_clean[:50]}")
+                    else:
+                        system_info.append("⏱️ Uptime: Error")
+                        
+                except Exception as e:
+                    debug_print(f"Erreur uptime: {e}")
+                    system_info.append("⏱️ Uptime: Error")
+                
+                # 3. Informations mémoire (bonus)
+                try:
+                    # Récupérer info mémoire rapidement
+                    with open('/proc/meminfo', 'r') as f:
+                        meminfo = f.read()
+                    
+                    mem_total = None
+                    mem_available = None
+                    
+                    for line in meminfo.split('\n'):
+                        if line.startswith('MemTotal:'):
+                            mem_total = int(line.split()[1])  # en kB
+                        elif line.startswith('MemAvailable:'):
+                            mem_available = int(line.split()[1])  # en kB
+                    
+                    if mem_total and mem_available:
+                        mem_used = mem_total - mem_available
+                        mem_percent = (mem_used / mem_total) * 100
+                        mem_total_mb = mem_total // 1024
+                        mem_used_mb = mem_used // 1024
+                        
+                        system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
+                        
+                except Exception as e:
+                    debug_print(f"Erreur mémoire: {e}")
+                
+                # Construire la réponse finale
+                if system_info:
+                    response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
+                else:
+                    response = "⚠️ Impossible de récupérer les infos système"
+                
+                self.send_response_chunks(response, sender_id, sender_info)
+                self.log_conversation(sender_id, sender_info, "/sys", response)
+                
+            except Exception as e:
+                error_msg = f"⚠️ Erreur système: {str(e)[:100]}"
+                error_print(f"Erreur sys: {e}")
+                self.send_single_message(error_msg, sender_id, sender_info)
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=get_system_info, daemon=True).start()
+    
+    def handle_my_command(self, sender_id, sender_info):
+        """Gérer la commande /my - infos signal vues par tigrog2 uniquement (antenne locale non fiable)"""
+        info_print(f"My: {sender_info}")
+        
+        import threading
+        
+        def get_remote_signal_info():
+            try:
+                # Récupérer les nœuds de tigrog2 avec leurs informations de signal
+                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                
+                if not remote_nodes:
+                    response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
+                    self.send_single_message(response, sender_id, sender_info)
+                    return
+                
+                # Chercher le nœud expéditeur dans les données de tigrog2
+                sender_node_data = None
+                for node in remote_nodes:
+                    if node['id'] == sender_id:
+                        sender_node_data = node
+                        break
+                
+                if sender_node_data:
+                    # Debug : examiner toutes les données reçues
+                    debug_print(f"Données complètes pour {sender_info}: {sender_node_data}")
+                    
+                    # Infos tigrog2 uniquement (source fiable)
+                    response_parts = []
+                    
+                    # RSSI + SNR sur une ligne
+                    rssi = sender_node_data.get('rssi', 0)
+                    snr = sender_node_data.get('snr', 0.0)
+                    
+                    # Debug spécifique RSSI
+                    debug_print(f"RSSI brut: {rssi} (type: {type(rssi)})")
+                    debug_print(f"SNR brut: {snr} (type: {type(snr)})")
+                    
+                    # Estimation RSSI depuis SNR si RSSI=0
+                    display_rssi = rssi
+                    rssi_estimated = False
+                    
+                    if rssi == 0 and snr != 0:
+                        # Formule empirique : RSSI ≈ -100 + (SNR * 2.5)
+                        # Cette estimation est basée sur des observations terrain LoRa
+                        display_rssi = int(-100 + (snr * 2.5))
+                        rssi_estimated = True
+                        debug_print(f"RSSI estimé depuis SNR: {display_rssi}dBm")
+                    
+                    if display_rssi != 0 or snr != 0:
+                        rssi_icon = get_signal_quality_icon(display_rssi) if display_rssi != 0 else "📶"
+                        
+                        if rssi_estimated:
+                            rssi_str = f"~{display_rssi}dBm"  # ~ pour indiquer estimation
+                        elif display_rssi != 0:
+                            rssi_str = f"{display_rssi}dBm"
+                        else:
+                            rssi_str = "n/a"
+                        
+                        snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
+                        response_parts.append(f"{rssi_icon} {rssi_str} {snr_str}")
+                    
+                    # Qualité + temps sur une ligne (utiliser RSSI estimé pour la qualité)
+                    quality_desc = self._get_signal_quality_description(display_rssi, snr)
+                    last_heard = sender_node_data.get('last_heard', 0)
+                    if last_heard > 0:
+                        time_str = format_elapsed_time(last_heard)
+                        response_parts.append(f"📈 {quality_desc} ({time_str})")
+                    else:
+                        response_parts.append(f"📈 {quality_desc}")
+                    
+                    # Distance de tigrog2 si disponible (utiliser RSSI estimé)
+                    if display_rssi != 0 and display_rssi > -150:
+                        distance_est = self._estimate_distance_from_rssi(display_rssi)
+                        response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
+                    
+                    # Statut liaison directe avec tigrog2
+                    response_parts.append(f"🎯 Direct → {REMOTE_NODE_NAME}")
+                    
+                    response = "\n".join(response_parts)
+                    
+                else:
+                    # Nœud pas trouvé dans tigrog2 - probablement relayé
+                    response_parts = [
+                        f"⚠️ Pas direct → {REMOTE_NODE_NAME}",
+                        "🔀 Messages relayés"
+                    ]
+                    
+                    # Suggérer des nœuds tigrog2 comme relays potentiels
+                    potential_relays = self._find_tigrog2_relays(remote_nodes)
+                    if potential_relays:
+                        best_relay = potential_relays[0]  # Le plus fort
+                        response_parts.append(f"📡 Via réseau mesh")
+                        response_parts.append(f"   (ex: {truncate_text(best_relay['name'], 8)})")
+                    else:
+                        response_parts.append("❓ Route mesh complexe")
+                    
+                    response = "\n".join(response_parts)
+                
+                self.log_conversation(sender_id, sender_info, "/my", response)
+                self.send_response_chunks(response, sender_id, sender_info)
+                
+            except Exception as e:
+                error_print(f"Erreur commande /my: {e}")
+                try:
+                    error_response = f"⚠️ Erreur: {str(e)[:30]}"
+                    self.send_single_message(error_response, sender_id, sender_info)
+                except Exception as e2:
+                    debug_print(f"Envoi erreur /my échoué: {e2}")
+        
+        # Lancer dans un thread séparé pour ne pas bloquer
+        threading.Thread(target=get_remote_signal_info, daemon=True).start()
+    
+    def _get_signal_quality_description(self, rssi, snr):
+        """Obtenir une description textuelle de la qualité du signal"""
+        if rssi == 0 and snr == 0:
+            return "Inconnue"
+        
+        # Classification basée sur RSSI principalement
+        if rssi >= -80:
+            return "Excellente"
+        elif rssi >= -100:
+            if snr >= 5:
+                return "Très bonne"
+            else:
+                return "Bonne"
+        elif rssi >= -120:
+            if snr >= 0:
+                return "Correcte"
+            else:
+                return "Faible"
+        elif rssi > -150:
+            if snr >= -5:
+                return "Très faible"
+            else:
+                return "Critique"
+        else:
+            return "Inconnue"
+    
+    def _estimate_distance_from_rssi(self, rssi):
+        """Estimation approximative de distance basée sur RSSI (LoRa 868MHz)"""
+        # Formule approximative : distance = 10^((Tx_Power - RSSI - 32.44 - 20*log10(freq_MHz)) / 20)
+        # Supposons Tx_Power = 20dBm, freq = 868MHz
+        # Simplification pour estimation rapide
+        
+        if rssi >= -80:
+            return "<100m"
+        elif rssi >= -90:
+            return "100-300m" 
+        elif rssi >= -100:
+            return "300m-1km"
+        elif rssi >= -110:
+            return "1-3km"
+        elif rssi >= -120:
+            return "3-10km"
+        elif rssi >= -130:
+            return "10-20km"
+        else:
+            return ">20km"
+    
+    def _find_tigrog2_relays(self, remote_nodes):
+        """Trouver les meilleurs relays potentiels dans les données tigrog2"""
+        if not remote_nodes:
+            return []
+        
+        # Trier par qualité de signal (RSSI décroissant)
+        sorted_relays = sorted(
+            [node for node in remote_nodes if node.get('rssi', 0) != 0],
+            key=lambda x: x.get('rssi', -999),
+            reverse=True
+        )
+        
+        return sorted_relays[:3]  # Top 3 des meilleurs relays potentiels
+    
+    def process_text_message(self, packet, decoded, message):
+        """Traiter un message texte"""
+        sender_id = packet.get('from', 0)
+        to_id = packet.get('to', 0)
+        my_id = None
+        
+        if hasattr(self.interface, 'localNode') and self.interface.localNode:
+            my_id = getattr(self.interface.localNode, 'nodeNum', 0)
+        
+        is_for_me = (to_id == my_id) if my_id else False
+        is_from_me = (sender_id == my_id) if my_id else False
+        is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
+        sender_info = self.node_manager.get_node_name(sender_id, self.interface)
+        
+        # NOUVEAU : Gérer /echo sur les messages publics
+        if message.startswith('/echo ') and (is_broadcast or is_for_me) and not is_from_me:
+            # /echo fonctionne sur les messages publics ET privés, mais pas de nous-mêmes
+            info_print(f"ECHO PUBLIC de {sender_info}: '{message}' (Broadcast:{is_broadcast})")
+            self.handle_echo_command(message, sender_id, sender_info, packet)
+            return
+        
+        # Messages publics (broadcast) - ignorer les autres commandes
+        if is_broadcast and not is_from_me:
+            if DEBUG_MODE and not message.startswith('/echo'):
+                debug_print(f"Message public ignoré: '{message}'")
+            return
+        
+        # Log seulement les messages pour nous ou en mode debug
+        if is_for_me or DEBUG_MODE:
+            info_print(f"MESSAGE REÇU de {sender_info}: '{message}' (ForMe:{is_for_me})")
+        
+        # Traiter les commandes seulement si c'est pour nous
+        if not is_for_me:
+            if DEBUG_MODE:
+                debug_print("Message public ignoré")
+            return
+        
+        # Router les commandes
+        if message.startswith('/bot '):
+            self.handle_bot_command(message, sender_id, sender_info)
+        elif message.startswith('/power'):
+            self.handle_power_command(sender_id, sender_info)
+        elif message.startswith('/rx'):
+            self.handle_rx_command(message, sender_id, sender_info)
+        elif message.startswith('/my'):
+            self.handle_my_command(sender_id, sender_info)
+        elif message.startswith('/echo '):
+            self.handle_echo_command(message, sender_id, sender_info, packet)
+        elif message.startswith('/legend'):
+            self.handle_legend_command(sender_id, sender_info)
+        elif message.startswith('/help'):
+            self.handle_help_command(sender_id, sender_info)
+        elif message.startswith('/rebootg2'):
+            self.handle_rebootg2_command(sender_id, sender_info)
+        elif message.startswith('/rebootpi'):
+            self.handle_reboot_command(sender_id, sender_info)
+        elif message.startswith('/g2'):
+            self.handle_g2_command(sender_id, sender_info)
+        elif message.startswith('/sys'):
+            self.handle_sys_command(sender_id, sender_info)
+        else:
+            # Commande non reconnue - afficher l'aide au lieu de l'ignorer
+            if message.startswith('/'):
+                info_print(f"Commande inconnue de {sender_info}: '{message}'")
+                self.handle_help_command(sender_id, sender_info)
+            else:
+                # Message normal (pas de commande)
+                if DEBUG_MODE:
+                    debug_print(f"Message normal reçu: '{message}'")
