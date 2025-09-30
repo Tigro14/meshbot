@@ -87,22 +87,5 @@ TELEGRAM_TO_MESH_MAPPING = {
     # }
 }
 
-# Configuration communication Telegram
-TELEGRAM_QUEUE_FILE = "/tmp/telegram_mesh_queue.json"
-TELEGRAM_RESPONSE_FILE = "/tmp/mesh_telegram_response.json"
-TELEGRAM_COMMAND_TIMEOUT = 30  # Timeout pour les commandes en secondes
-TELEGRAM_MAX_MESSAGE_LENGTH = 4096  # Limite de caractères Telegram
-TELEGRAM_RATE_LIMIT_PER_USER = 10  # Commandes par minute par utilisateur
-
-# Configuration logs Telegram
-TELEGRAM_LOG_LEVEL = "DEBUG"  # DEBUG, INFO, WARNING, ERROR
-
-
-# Chemins de recherche pour les modules Telegram 
-TELEGRAM_BOT_SEARCH_PATHS = [
-    "/home/dietpi/bot",          # Installation utilisateur dietpi
-    "."                          # Répertoire courant
-]
-
 # Variables globales d'état
-DEBUG_MODE = False
+DEBUG_MODE = True

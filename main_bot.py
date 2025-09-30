@@ -42,8 +42,8 @@ class DebugMeshBot:
         # Thread de mise à jour
         self.update_thread = None
    
-        # Intégration Telegram (initialisé plus tard si disponible)
         self.telegram_integration = None
+    
 
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
@@ -152,7 +152,7 @@ class DebugMeshBot:
     
     def start(self):
         """Démarrage - version optimisée avec modules"""
-        info_print("Bot Meshtastic-Llama avec architecture modulaire")
+        info_print("🤖 Bot Meshtastic-Llama avec architecture modulaire")
         
         # Charger la base de nœuds
         self.node_manager.load_node_names()
@@ -181,7 +181,7 @@ class DebugMeshBot:
                 self.interface
             )
             
-            # Tentative d'intégration Telegram (optionnelle)
+            # Intégration Telegram
             try:
                 from telegram_integration import TelegramIntegration
                 self.telegram_integration = TelegramIntegration(
@@ -195,7 +195,7 @@ class DebugMeshBot:
                 debug_print("📱 Module Telegram non disponible")
             except Exception as e:
                 error_print(f"Erreur intégration Telegram: {e}")
-            
+    
             # Mise à jour initiale de la base
             self.node_manager.update_node_database(self.interface)
             
@@ -208,19 +208,15 @@ class DebugMeshBot:
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
             
             if DEBUG_MODE:
-                info_print("MODE DEBUG avec architecture modulaire")
-                print(f"Config: SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
+                info_print("🔧 MODE DEBUG avec architecture modulaire")
+                print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
                 print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, rebootpi, g2, echo, config, nodes, context, update, save, mem, quit")
                 
-                # Initialiser et démarrer l'interface debug SEULEMENT si on a un terminal
-                import sys
-                if sys.stdin.isatty():
-                    self.debug_interface = DebugInterface(self)
-                    threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
-                else:
-                    info_print("Pas de terminal détecté - interface debug désactivée")
+                # Initialiser et démarrer l'interface debug
+                self.debug_interface = DebugInterface(self)
+                threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
             else:
-                info_print("Bot en service - '/bot', '/power', '/rx', '/my', '/sys' et '/legend'")
+                info_print("🚀 Bot en service - '/bot', '/power', '/rx', '/my', '/sys' et '/legend'")
             
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
@@ -243,7 +239,7 @@ class DebugMeshBot:
         if self.node_manager:
             self.node_manager.save_node_names(force=True)
         
-        # Arrêter l'intégration Telegram si active
+        # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
 
