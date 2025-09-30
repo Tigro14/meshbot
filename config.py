@@ -98,7 +98,7 @@ TELEGRAM_RATE_LIMIT_PER_USER = 10  # Commandes par minute par utilisateur
 TELEGRAM_LOG_LEVEL = "DEBUG"  # DEBUG, INFO, WARNING, ERROR
 
 
-# Chemins de recherche pour les modules Telegram (utilisés par telegram_bridge.py)
+# Chemins de recherche pour les modules Telegram 
 TELEGRAM_BOT_SEARCH_PATHS = [
     "/home/dietpi/bot",          # Installation utilisateur dietpi
     "."                          # Répertoire courant

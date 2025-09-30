@@ -256,13 +256,6 @@ export TELEGRAM_LOG_LEVEL="DEBUG"
 export MESHTASTIC_API_URL="http://localhost:8000"
 ```
 
-### Personnalisation
-
-Vous pouvez modifier `telegram_bridge.py` pour :
-- Ajouter des commandes spécifiques
-- Modifier le formatage des réponses
-- Ajouter des notifications automatiques
-- Intégrer d'autres services
 
 ---
 

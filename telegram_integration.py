@@ -1,324 +1,198 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module d'intégration Telegram dans le bot Meshtastic existant
-Avec protection timeout et monitoring robuste
+Module d'intégration Telegram dans le bot Meshtastic - INTÉGRATION COMPLÈTE
+Gère directement l'API Telegram sans fichiers queue
 """
 
-import json
-import os
 import time
 import threading
 from config import *
 from utils import *
 
+# Import Telegram (optionnel)
+try:
+    from telegram import Update
+    from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+    import asyncio
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    TELEGRAM_AVAILABLE = False
+    info_print("Module python-telegram-bot non installé")
+
 class TelegramIntegration:
     def __init__(self, message_handler, node_manager, context_manager):
+        if not TELEGRAM_AVAILABLE:
+            raise ImportError("python-telegram-bot requis. Installez: pip3 install python-telegram-bot")
+        
         self.message_handler = message_handler
         self.node_manager = node_manager
         self.context_manager = context_manager
         
-        # Utiliser les configurations centralisées
-        self.queue_file = TELEGRAM_QUEUE_FILE
-        self.response_file = TELEGRAM_RESPONSE_FILE
-        
         self.running = False
-        self.processor_thread = None
-        
-        # Créer les fichiers s'ils n'existent pas
-        self._ensure_files_exist()
-        
-    def _ensure_files_exist(self):
-        """Créer les fichiers de communication s'ils n'existent pas"""
-        for file_path in [self.queue_file, self.response_file]:
-            if not os.path.exists(file_path):
-                with open(file_path, 'w') as f:
-                    json.dump([], f)
-                info_print(f"Fichier créé: {file_path}")
+        self.telegram_thread = None
+        self.application = None
+        self.loop = None
     
     def start(self):
-        """Démarrer le processeur de requêtes Telegram"""
+        """Démarrer le bot Telegram dans un thread séparé"""
         if self.running:
             return
         
         self.running = True
-        self.processor_thread = threading.Thread(target=self._process_telegram_requests, daemon=True)
-        self.processor_thread.start()
-        info_print("Interface Telegram démarrée avec debug complet")
+        self.telegram_thread = threading.Thread(target=self._run_telegram_bot, daemon=True)
+        self.telegram_thread.start()
+        info_print("Bot Telegram démarré en thread séparé")
     
     def stop(self):
-        """Arrêter le processeur"""
+        """Arrêter le bot Telegram"""
         self.running = False
-        if self.processor_thread:
-            self.processor_thread.join(timeout=5)
-        info_print("Interface Telegram arrêtée")
-    
-    def _process_telegram_requests(self):
-        """Traiter les requêtes Telegram en continu"""
-        info_print("Thread processeur Telegram démarré")
-        
-        while self.running:
+        if self.loop and self.application:
             try:
-                self._check_and_process_queue()
-                time.sleep(1)  # Vérifier chaque seconde
-            except Exception as e:
-                error_print(f"Erreur processeur Telegram: {e}")
-                import traceback
-                error_print(f"Stack trace: {traceback.format_exc()}")
-                time.sleep(5)  # Attendre plus longtemps en cas d'erreur
-        
-        info_print("Thread processeur Telegram terminé")
+                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop)
+            except:
+                pass
+        info_print("Bot Telegram arrêté")
     
-    def _check_and_process_queue(self):
-        """Vérifier et traiter la queue des requêtes"""
+    def _run_telegram_bot(self):
+        """Exécuter le bot Telegram dans son propre event loop"""
         try:
-            if not os.path.exists(self.queue_file):
-                return
-            
-            # Lire les requêtes avec protection contre corruption
-            requests = []
-            try:
-                with open(self.queue_file, 'r') as f:
-                    requests = json.load(f)
-            except json.JSONDecodeError as je:
-                error_print(f"Fichier queue corrompu: {je}")
-                # Réinitialiser le fichier
-                with open(self.queue_file, 'w') as f:
-                    json.dump([], f)
-                return
-            except Exception as fe:
-                error_print(f"Erreur lecture queue: {fe}")
-                return
-            
-            if not requests:
-                return
-            
-            debug_print(f"{len(requests)} requêtes Telegram en attente")
-            
-            # Traiter chaque requête
-            for request in requests:
-                try:
-                    request_id = request.get("id", "unknown")
-                    command = request.get("command", "")
-                    user_info = request.get("user", {})
-                    username = user_info.get("username", "Unknown")
-                    
-                    info_print(f"Traitement requête Telegram {request_id}: {command} de {username}")
-                    
-                    start_processing = time.time()
-                    response = self._process_single_request(request)
-                    end_processing = time.time()
-                    
-                    processing_duration = end_processing - start_processing
-                    info_print(f"Requête {request_id} traitée en {processing_duration:.2f}s")
-                    
-                    self._send_response(request["id"], response)
-                    
-                except Exception as e:
-                    error_response = f"Erreur traitement: {str(e)}"
-                    error_print(f"Erreur traitement requête Telegram: {e}")
-                    import traceback
-                    error_print(f"Stack trace: {traceback.format_exc()}")
-                    self._send_response(request.get("id", "unknown"), error_response)
-            
-            # Vider la queue (toutes les requêtes ont été traitées)
-            with open(self.queue_file, 'w') as f:
-                json.dump([], f)
-                
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_until_complete(self._start_telegram_bot())
         except Exception as e:
-            error_print(f"Erreur lecture queue Telegram: {e}")
-            import traceback
-            error_print(f"Stack trace: {traceback.format_exc()}")
+            error_print(f"Erreur bot Telegram: {e}")
     
-    def _process_single_request(self, request):
-        """Traiter une requête Telegram individuelle"""
-        command = request.get("command", "").strip()
-        user_info = request.get("user", {})
-        telegram_id = user_info.get("telegram_id", 0)
-        username = user_info.get("username", "Telegram")
-        
-        debug_print(f"Traitement commande Telegram: {command} de {username}")
-        
-        # Simuler un sender_id Meshtastic basé sur l'ID Telegram
-        # Utiliser les 4 derniers octets de l'ID Telegram
-        sender_id = telegram_id & 0xFFFFFFFF
-        sender_info = f"TG:{username}"
-        
-        # Router la commande vers le gestionnaire approprié
-        if command.startswith('/bot '):
-            return self._handle_bot_command(command, sender_id, sender_info)
-        elif command.startswith('/power'):
-            return self._handle_power_command(sender_id, sender_info)
-        elif command.startswith('/rx'):
-            return self._handle_rx_command(command, sender_id, sender_info)
-        elif command.startswith('/my'):
-            return self._handle_my_command(sender_id, sender_info)
-        elif command.startswith('/sys'):
-            return self._handle_sys_command(sender_id, sender_info)
-        elif command.startswith('/legend'):
-            return self._handle_legend_command(sender_id, sender_info)
-        elif command.startswith('/echo '):
-            return self._handle_echo_command(command, sender_id, sender_info)
-        elif command.startswith('/nodes '):
-            return self._handle_nodes_command(command, sender_id, sender_info)
-        elif command.startswith('/help'):
-            return self._handle_help_command(sender_id, sender_info)
-        else:
-            return f"Commande inconnue: {command}"
-    
-    def _handle_bot_command(self, command, sender_id, sender_info):
-        """Traiter /bot depuis Telegram avec protection timeout et monitoring"""
+    async def _start_telegram_bot(self):
+        """Démarrer l'application Telegram"""
         try:
-            prompt = command[5:].strip()  # Retirer "/bot "
+            info_print(f"Initialisation bot Telegram...")
             
-            if not prompt:
-                return "Usage: /bot <question>"
+            self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
             
-            info_print(f"Bot Telegram: {sender_info}: '{prompt}'")
+            # Handlers de commandes
+            self.application.add_handler(CommandHandler("start", self._start_command))
+            self.application.add_handler(CommandHandler("help", self._help_command))
+            self.application.add_handler(CommandHandler("power", self._power_command))
+            self.application.add_handler(CommandHandler("rx", self._rx_command))
+            self.application.add_handler(CommandHandler("sys", self._sys_command))
+            self.application.add_handler(CommandHandler("legend", self._legend_command))
+            self.application.add_handler(CommandHandler("echo", self._echo_command))
+            self.application.add_handler(CommandHandler("nodes", self._nodes_command))
+            self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
+            self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
             
-            # Vérifier la disponibilité de llama.cpp
-            if not self.message_handler.llama_client.test_connection():
-                error_print("Serveur llama.cpp non disponible pour requête Telegram")
-                return "Erreur: Serveur IA non disponible"
+            # Handler pour messages texte (raccourci /bot)
+            self.application.add_handler(
+                MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
+            )
             
-            start_time = time.time()
-            info_print(f"Début traitement IA Telegram à {time.strftime('%H:%M:%S')}")
+            # Gestionnaire d'erreurs
+            self.application.add_error_handler(self._error_handler)
             
-            # Variables partagées pour monitoring
-            import threading
-            response_result = {"value": None, "error": None, "completed": False}
+            # Démarrer
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
             
-            # Thread pour l'appel IA avec timeout protection
-            def ia_call():
-                try:
-                    info_print("THREAD IA: Démarrage...")
-                    response = self.message_handler.llama_client.query_llama_telegram(prompt, sender_id)
-                    info_print(f"THREAD IA: Succès, {len(response)} chars")
-                    response_result["value"] = response
-                    response_result["completed"] = True
-                    info_print("THREAD IA: Terminé avec succès")
-                except Exception as e:
-                    error_print(f"THREAD IA: Erreur {e}")
-                    import traceback
-                    error_print(f"THREAD IA: Stack trace {traceback.format_exc()}")
-                    response_result["error"] = str(e)
-                    response_result["completed"] = True
+            info_print("Bot Telegram en écoute...")
             
-            # Lancer le thread IA
-            ia_thread = threading.Thread(target=ia_call, daemon=True)
-            ia_thread.start()
-            info_print("Thread IA lancé")
-            
-            # Monitoring avec timeout (plus long que la config IA)
-            max_wait = TELEGRAM_AI_CONFIG["timeout"] + 60  # 180 secondes total
-            check_interval = 5  # Vérifier toutes les 5 secondes
-            checks = 0
-            
-            while checks * check_interval < max_wait:
-                if response_result["completed"]:
-                    break
-                
-                checks += 1
-                elapsed = checks * check_interval
-                info_print(f"MONITORING: {elapsed}s écoulées, thread {'vivant' if ia_thread.is_alive() else 'MORT'}")
-                
-                # Vérifier si llama.cpp est toujours accessible
-                if checks % 6 == 0:  # Toutes les 30 secondes
-                    if not self.message_handler.llama_client.test_connection():
-                        error_print("MONITORING: llama.cpp n'est plus accessible!")
-                        break
-                
-                time.sleep(check_interval)
-            
-            # Récupérer le résultat
-            if response_result["completed"]:
-                if response_result["error"]:
-                    error_print(f"Erreur du thread IA: {response_result['error']}")
-                    return f"Erreur IA: {response_result['error'][:100]}"
-                else:
-                    response = response_result["value"]
-                    info_print(f"Réponse IA reçue: '{response[:50]}...'")
-            else:
-                # Timeout du monitoring
-                error_print(f"TIMEOUT MONITORING après {max_wait}s")
-                if ia_thread.is_alive():
-                    error_print("Le thread IA est toujours vivant mais n'a pas terminé")
-                else:
-                    error_print("Le thread IA est mort sans retourner de résultat")
-                return f"Timeout: Traitement IA trop long (>{max_wait}s)"
-            
-            end_time = time.time()
-            processing_time = end_time - start_time
-            
-            # Log spécialisé pour Telegram avec debug complet
-            info_print(f"Traitement IA Telegram terminé en {processing_time:.2f}s")
-            conversation_print("=" * 50)
-            conversation_print(f"TELEGRAM USER: {sender_info} ({sender_id})")
-            conversation_print(f"TELEGRAM QUERY: {prompt}")
-            conversation_print(f"TELEGRAM RESPONSE: {response}")
-            conversation_print(f"TELEGRAM TIME: {processing_time:.2f}s")
-            conversation_print(f"TELEGRAM CONFIG: timeout={TELEGRAM_AI_CONFIG['timeout']}s, max_tokens={TELEGRAM_AI_CONFIG['max_tokens']}")
-            conversation_print("=" * 50)
-            
-            # Nettoyage
-            try:
-                self.message_handler.llama_client.cleanup_cache()
-                debug_print("Cache IA nettoyé après requête Telegram")
-            except Exception as cleanup_error:
-                error_print(f"Erreur nettoyage cache: {cleanup_error}")
-            
-            return response
+            # Garder actif
+            while self.running:
+                await asyncio.sleep(1)
             
         except Exception as e:
-            error_print(f"Erreur /bot Telegram: {e}")
-            import traceback
-            error_print(f"Stack trace _handle_bot_command: {traceback.format_exc()}")
-            return f"Erreur IA Telegram: {str(e)[:100]}"
+            error_print(f"Erreur démarrage Telegram: {e}")
     
-    def _handle_power_command(self, sender_id, sender_info):
-        """Traiter /power depuis Telegram"""
-        try:
-            info_print(f"Power Telegram: {sender_info}")
-            esphome_data = self.message_handler.esphome_client.parse_esphome_data()
-            info_print(f"Données ESPHome récupérées: {len(esphome_data)} chars")
-            return esphome_data
-        except Exception as e:
-            error_print(f"Erreur /power Telegram: {e}")
-            return f"Erreur /power: {str(e)}"
+    async def _shutdown(self):
+        """Arrêter proprement le bot"""
+        if self.application:
+            await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
     
-    def _handle_rx_command(self, command, sender_id, sender_info):
-        """Traiter /rx depuis Telegram"""
-        try:
-            info_print(f"RX Telegram: {sender_info}")
-            # Extraire le numéro de page
-            page = 1
-            parts = command.split()
-            if len(parts) > 1:
-                try:
-                    page = int(parts[1])
-                except ValueError:
-                    page = 1
-            
-            report = self.message_handler.remote_nodes_client.get_tigrog2_paginated(page)
-            info_print(f"Rapport RX généré: {len(report)} chars")
-            return report
-        except Exception as e:
-            error_print(f"Erreur /rx Telegram: {e}")
-            return f"Erreur /rx: {str(e)}"
+    def _check_authorization(self, user_id):
+        """Vérifier si l'utilisateur est autorisé"""
+        if not TELEGRAM_AUTHORIZED_USERS:
+            return True
+        return user_id in TELEGRAM_AUTHORIZED_USERS
     
-    def _handle_my_command(self, sender_id, sender_info):
-        """Traiter /my depuis Telegram (pas applicable pour Telegram)"""
-        return "Commande /my non applicable depuis Telegram (réservée aux utilisateurs mesh)"
+    # === COMMANDES TELEGRAM ===
     
-    def _handle_sys_command(self, sender_id, sender_info):
-        """Traiter /sys depuis Telegram avec debug"""
-        try:
-            info_print(f"Sys Telegram: {sender_info}")
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /start"""
+        user = update.effective_user
+        info_print(f"Telegram /start: {user.username} ({user.id})")
+        
+        welcome_msg = (
+            f"Bot Meshtastic Bridge\n\n"
+            f"Salut {user.first_name} !\n\n"
+            f"Commandes:\n"
+            f"• Message direct → Chat IA\n"
+            f"• /power - Batterie/solaire\n"
+            f"• /rx [page] - Nœuds tigrog2\n"
+            f"• /sys - Système Pi5\n"
+            f"• /echo <msg> - Diffuser\n"
+            f"• /nodes <IP> [page] - Nœuds distants\n"
+            f"• /legend - Légende\n"
+            f"• /help - Aide\n\n"
+            f"Votre ID: {user.id}"
+        )
+        await update.message.reply_text(welcome_msg)
+    
+    async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /help"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        help_text = self.message_handler.format_help()
+        await update.message.reply_text(f"Aide:\n{help_text}")
+    
+    async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /power"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        info_print(f"Telegram /power: {user.username}")
+        response = await asyncio.to_thread(
+            self.message_handler.esphome_client.parse_esphome_data
+        )
+        await update.message.reply_text(f"Power:\n{response}")
+    
+    async def _rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rx [page]"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        page = int(context.args[0]) if context.args else 1
+        info_print(f"Telegram /rx {page}: {user.username}")
+        
+        response = await asyncio.to_thread(
+            self.message_handler.remote_nodes_client.get_tigrog2_paginated,
+            page
+        )
+        await update.message.reply_text(response)
+    
+    async def _sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /sys"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        info_print(f"Telegram /sys: {user.username}")
+        
+        # Appeler la fonction sys dans un thread
+        def get_sys_info():
             import subprocess
-            
             system_info = []
             
-            # Température CPU
             try:
                 temp_result = subprocess.run(['vcgencmd', 'measure_temp'], 
                                            capture_output=True, text=True, timeout=5)
@@ -327,40 +201,13 @@ class TelegramIntegration:
                     if 'temp=' in temp_output:
                         temp_value = temp_output.split('=')[1].replace("'C", "°C")
                         system_info.append(f"CPU: {temp_value}")
-                    else:
-                        system_info.append(f"CPU: {temp_output}")
-                else:
-                    system_info.append("CPU: N/A")
-            except Exception as temp_error:
-                error_print(f"Erreur température: {temp_error}")
-                system_info.append("CPU: Error")
+            except:
+                system_info.append("CPU: N/A")
             
-            # Uptime
-            try:
-                uptime_result = subprocess.run(['uptime'], capture_output=True, text=True, timeout=5)
-                if uptime_result.returncode == 0:
-                    uptime_output = uptime_result.stdout.strip()
-                    uptime_clean = uptime_output.replace('  ', ' ')
-                    parts = uptime_clean.split(',')
-                    if len(parts) >= 1:
-                        uptime_part = parts[0].strip()
-                        if 'up' in uptime_part:
-                            up_info = uptime_part.split('up')[1].strip()
-                            system_info.append(f"Up: {up_info}")
-                else:
-                    system_info.append("Uptime: Error")
-            except Exception as uptime_error:
-                error_print(f"Erreur uptime: {uptime_error}")
-                system_info.append("Uptime: Error")
-            
-            # Mémoire
             try:
                 with open('/proc/meminfo', 'r') as f:
                     meminfo = f.read()
-                
-                mem_total = None
-                mem_available = None
-                
+                mem_total = mem_available = None
                 for line in meminfo.split('\n'):
                     if line.startswith('MemTotal:'):
                         mem_total = int(line.split()[1])
@@ -373,97 +220,104 @@ class TelegramIntegration:
                     mem_total_mb = mem_total // 1024
                     mem_used_mb = mem_used // 1024
                     system_info.append(f"RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
-            except Exception as mem_error:
-                error_print(f"Erreur mémoire: {mem_error}")
+            except:
+                pass
             
-            if system_info:
-                result = "Système RPI5:\n" + "\n".join(system_info)
-                info_print(f"Info système générées: {len(result)} chars")
-                return result
-            else:
-                return "Impossible de récupérer les infos système"
-                
-        except Exception as e:
-            error_print(f"Erreur /sys Telegram: {e}")
-            return f"Erreur /sys: {str(e)}"
+            return "Système RPI5:\n" + "\n".join(system_info) if system_info else "Erreur système"
+        
+        response = await asyncio.to_thread(get_sys_info)
+        await update.message.reply_text(response)
     
-    def _handle_legend_command(self, sender_id, sender_info):
-        """Traiter /legend depuis Telegram"""
-        try:
-            info_print(f"Legend Telegram: {sender_info}")
-            legend_text = self.message_handler.format_legend()
-            return legend_text
-        except Exception as e:
-            error_print(f"Erreur /legend Telegram: {e}")
-            return f"Erreur /legend: {str(e)}"
+    async def _legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /legend"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        legend = self.message_handler.format_legend()
+        await update.message.reply_text(legend)
     
-    def _handle_echo_command(self, command, sender_id, sender_info):
-        """Traiter /echo depuis Telegram"""
-        try:
-            info_print(f"Echo Telegram: {sender_info}")
-            echo_text = command[6:].strip()  # Retirer "/echo "
-            
-            if not echo_text:
-                return "Usage: /echo <texte>"
-            
-            # Utiliser la méthode existante mais adaptée pour Telegram
-            import threading
-            import time
-            
-            def send_echo_via_tigrog2():
-                try:
-                    info_print(f"Connexion tigrog2 pour echo Telegram...")
-                    import meshtastic.tcp_interface
-                    
-                    remote_interface = meshtastic.tcp_interface.TCPInterface(
-                        hostname=REMOTE_NODE_HOST, 
-                        portNumber=4403
-                    )
-                    
-                    time.sleep(1)
-                    
-                    # Utiliser le nom d'utilisateur Telegram comme identifiant
-                    username = sender_info.split(':')[1] if ':' in sender_info else sender_info
-                    echo_response = f"{username}: {echo_text}"
-                    
-                    remote_interface.sendText(echo_response)
-                    remote_interface.close()
-                    
-                    info_print(f"Echo Telegram diffusé via tigrog2: '{echo_response}'")
-                    
-                except Exception as e:
-                    error_print(f"Erreur echo Telegram via tigrog2: {e}")
-            
-            # Lancer en thread
-            threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
-            
-            return f"Echo diffusé: {echo_text}"
-            
-        except Exception as e:
-            error_print(f"Erreur /echo Telegram: {e}")
-            return f"Erreur /echo: {str(e)}"
+    async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /echo"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        if not context.args:
+            await update.message.reply_text("Usage: /echo <message>")
+            return
+        
+        echo_text = ' '.join(context.args)
+        info_print(f"Telegram /echo: {user.username} -> '{echo_text}'")
+        
+        # Simuler un sender_id basé sur Telegram ID
+        sender_id = user.id & 0xFFFFFFFF
+        
+        def send_echo():
+            import meshtastic.tcp_interface
+            try:
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, portNumber=4403
+                )
+                time.sleep(1)
+                username = user.username or user.first_name
+                remote_interface.sendText(f"{username[:4]}: {echo_text}")
+                remote_interface.close()
+                return f"Echo diffusé: {username[:4]}: {echo_text}"
+            except Exception as e:
+                return f"Erreur echo: {str(e)[:50]}"
+        
+        response = await asyncio.to_thread(send_echo)
+        await update.message.reply_text(response)
     
-    def _handle_nodes_command(self, command, sender_id, sender_info):
-        """Traiter une commande de récupération de noeuds distants depuis Telegram"""
-        try:
-            info_print(f"Nodes Telegram: {sender_info}")
-            parts = command.split(' ', 1)
-            if len(parts) > 1:
-                remote_host = parts[1].strip()
-                info_print(f"Récupération noeuds distants: {remote_host}")
+    async def _nodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /nodes <IP> [page]"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        if not context.args:
+            await update.message.reply_text("Usage: /nodes <IP> [page]\nEx: /nodes 192.168.1.38")
+            return
+        
+        remote_host = context.args[0]
+        requested_page = int(context.args[1]) if len(context.args) > 1 else 1
+        
+        info_print(f"Telegram /nodes {remote_host} page {requested_page}: {user.username}")
+        
+        # Fonction qui capture requested_page de la closure
+        def get_nodes_list():
+            try:
                 nodes = self.message_handler.remote_nodes_client.get_remote_nodes(remote_host)
-                
                 if not nodes:
-                    return f"Aucun noeud trouvé sur {remote_host}"
+                    return f"Aucun nœud sur {remote_host}"
                 
-                response_lines = [f"Noeuds trouvés sur {remote_host} ({len(nodes)}):\n"]
+                nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
                 
-                for node in nodes[:10]:  # Limiter à 10 pour Telegram
+                nodes_per_page = 10
+                total_nodes = len(nodes)
+                total_pages = max(1, (total_nodes + nodes_per_page - 1) // nodes_per_page)
+                
+                # Valider sans réassigner
+                valid_page = min(requested_page, total_pages)
+                valid_page = max(1, valid_page)
+                
+                start_idx = (valid_page - 1) * nodes_per_page
+                end_idx = min(start_idx + nodes_per_page, total_nodes)
+                page_nodes = nodes[start_idx:end_idx]
+                
+                lines = []
+                if valid_page == 1:
+                    lines.append(f"Nœuds DIRECTS {remote_host} ({total_nodes}):\n")
+                
+                for node in page_nodes:
                     name = node.get('name', 'Unknown')
-                    rssi = node.get('rssi', 0)
+                    snr = node.get('snr', 0.0)
                     last_heard = node.get('last_heard', 0)
                     
-                    # Temps depuis dernière réception
                     if last_heard > 0:
                         elapsed = int(time.time() - last_heard)
                         if elapsed < 60:
@@ -477,160 +331,104 @@ class TelegramIntegration:
                     else:
                         time_str = "n/a"
                     
-                    response_lines.append(f"  • {name}: {rssi}dBm ({time_str})")
+                    if snr >= 10:
+                        icon = "🟢"
+                    elif snr >= 5:
+                        icon = "🟡"
+                    elif snr >= 0:
+                        icon = "🟠"
+                    elif snr >= -5:
+                        icon = "🔴"
+                    else:
+                        icon = "⚫"
+                    
+                    lines.append(f"{icon} {name}: SNR {snr:.1f}dB ({time_str})")
                 
-                if len(nodes) > 10:
-                    response_lines.append(f"\n... et {len(nodes) - 10} autres")
+                if total_pages > 1:
+                    lines.append(f"\nPage {valid_page}/{total_pages}")
+                    if valid_page < total_pages:
+                        lines.append(f"➡️ /nodes {remote_host} {valid_page + 1}")
                 
-                result = "\n".join(response_lines)
-                info_print(f"Liste noeuds générée: {len(nodes)} noeuds")
-                return result
-            else:
-                return "Usage: nodes <IP_du_noeud>\nEx: nodes 192.168.1.38"
-                
-        except Exception as e:
-            error_print(f"Erreur /nodes Telegram: {e}")
-            return f"Erreur nodes: {str(e)}"
-    
-    def _handle_help_command(self, sender_id, sender_info):
-        """Traiter /help depuis Telegram"""
-        help_text = """Bot Meshtastic - Commandes Telegram:
-
-/bot <question> - Chat avec l'IA
-/power - Info batterie/solaire
-/rx [page] - Noeuds vus par tigrog2
-/sys - Info système Pi5
-/echo <texte> - Diffuser via tigrog2
-/nodes <IP> - Noeuds d'un hôte distant
-/legend - Légende signaux
-/help - Cette aide
-
-Note: /my non disponible depuis Telegram"""
+                return "\n".join(lines)
+            except Exception as e:
+                error_print(f"Erreur get_nodes_list: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"Erreur: {str(e)[:100]}"
         
-        return help_text
-    
-    def _send_response(self, request_id, response):
-        """Envoyer une réponse vers Telegram avec debug et synchronisation forcée"""
-        try:
-            info_print(f"Envoi réponse Telegram pour {request_id}: {len(response)} chars")
-            
-            # Lire les réponses existantes avec retry
-            responses = []
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    if os.path.exists(self.response_file):
-                        with open(self.response_file, 'r') as f:
-                            responses = json.load(f)
-                        break
-                except (json.JSONDecodeError, IOError) as e:
-                    if attempt < max_retries - 1:
-                        error_print(f"Tentative {attempt + 1} lecture fichier réponse échouée: {e}")
-                        time.sleep(0.1)  # Attendre 100ms avant retry
-                    else:
-                        error_print(f"Lecture fichier réponse définitivement échouée: {e}")
-                        responses = []
-            
-            # Ajouter la nouvelle réponse
-            response_data = {
-                "request_id": request_id,
-                "response": response,
-                "timestamp": time.time()
-            }
-            
-            responses.append(response_data)
-            
-            # Limiter le nombre de réponses stockées
-            if len(responses) > 100:
-                responses = responses[-50:]  # Garder les 50 plus récentes
-                debug_print("File réponses Telegram nettoyée")
-            
-            # Écriture avec retry et sync forcé
-            for attempt in range(max_retries):
-                try:
-                    # Écriture atomique via fichier temporaire
-                    temp_file = self.response_file + ".tmp"
-                    with open(temp_file, 'w') as f:
-                        json.dump(responses, f, indent=2)  # Indentation pour lisibilité
-                        f.flush()  # Forcer l'écriture
-                        os.fsync(f.fileno())  # Synchronisation disque
-                    
-                    # Déplacement atomique
-                    os.rename(temp_file, self.response_file)
-                    
-                    info_print(f"Réponse Telegram sauvegardée pour {request_id} (tentative {attempt + 1})")
-                    
-                    # Vérification immédiate
-                    if os.path.exists(self.response_file):
-                        with open(self.response_file, 'r') as f:
-                            verification = json.load(f)
-                            found = any(r.get("request_id") == request_id for r in verification)
-                            if found:
-                                info_print(f"Vérification OK: réponse {request_id} présente dans le fichier")
-                                break
-                            else:
-                                error_print(f"ERREUR: réponse {request_id} non trouvée après écriture!")
-                    
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        error_print(f"Tentative {attempt + 1} écriture échouée: {e}")
-                        time.sleep(0.1)
-                    else:
-                        error_print(f"Écriture définitivement échouée: {e}")
-                        import traceback
-                        error_print(f"Stack trace _send_response: {traceback.format_exc()}")
-            
-            # Log final avec détails fichier
-            try:
-                file_stat = os.stat(self.response_file)
-                info_print(f"Fichier réponse: {file_stat.st_size} bytes, modifié à {time.strftime('%H:%M:%S', time.localtime(file_stat.st_mtime))}")
-            except Exception as stat_error:
-                error_print(f"Impossible de lire stats fichier: {stat_error}")
-            
-        except Exception as e:
-            error_print(f"Erreur envoi réponse Telegram: {e}")
-            import traceback
-            error_print(f"Stack trace _send_response: {traceback.format_exc()}")
-            
-            # Fallback: créer un fichier de secours
-            try:
-                fallback_file = f"/tmp/telegram_response_{request_id}.json"
-                with open(fallback_file, 'w') as f:
-                    json.dump({"request_id": request_id, "response": response, "timestamp": time.time()}, f)
-                error_print(f"Réponse sauvée en fallback: {fallback_file}")
-            except:
-                error_print("Même le fallback a échoué!")
+        response = await asyncio.to_thread(get_nodes_list)
+        await update.message.reply_text(response)
 
-# Fonction d'intégration dans main_bot.py
-def integrate_telegram_bridge(bot_instance):
-    """
-    Fonction à ajouter dans main_bot.py pour intégrer Telegram
+    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Messages texte = /bot"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        message_text = update.message.text
+        info_print(f"Telegram message: {user.username} -> '{message_text[:50]}'")
+        
+        sender_id = user.id & 0xFFFFFFFF
+        
+        def query_ai():
+            return self.message_handler.llama_client.query_llama_telegram(message_text, sender_id)
+        
+        response = await asyncio.to_thread(query_ai)
+        await update.message.reply_text(response)
+
+    async def _rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rebootg2 - Redémarrage tigrog2"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        info_print(f"Telegram /rebootg2: {user.username}")
+        
+        sender_id = user.id & 0xFFFFFFFF
+        sender_info = f"TG:{user.username}"
+        
+        await update.message.reply_text("🔄 Redémarrage tigrog2...")
+        
+        # Appeler la fonction existante dans message_handler
+        def reboot_g2():
+            try:
+                self.message_handler.handle_rebootg2_command(sender_id, sender_info)
+                return "Commande envoyée"
+            except Exception as e:
+                return f"Erreur: {str(e)[:100]}"
+        
+        # Note: La réponse viendra de manière asynchrone via le thread
+        await asyncio.to_thread(reboot_g2)
+        # Ne pas attendre de réponse immédiate, elle sera envoyée par le thread
     
-    Usage dans main_bot.py:
-    
-    # Après l'initialisation des gestionnaires, ajouter:
-    from telegram_integration import integrate_telegram_bridge
-    
-    # Dans DebugMeshBot.__init__():
-    self.telegram_integration = None
-    
-    # Dans DebugMeshBot.start(), après l'initialisation du message_handler:
-    try:
-        from telegram_integration import TelegramIntegration
-        self.telegram_integration = TelegramIntegration(
-            self.message_handler,
-            self.node_manager,
-            self.context_manager
-        )
-        self.telegram_integration.start()
-        info_print("Interface Telegram intégrée")
-    except ImportError:
-        debug_print("Module Telegram non disponible")
-    except Exception as e:
-        error_print(f"Erreur intégration Telegram: {e}")
-    
-    # Dans DebugMeshBot.stop():
-    if self.telegram_integration:
-        self.telegram_integration.stop()
-    """
-    pass
+    async def _rebootpi_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rebootpi - Redémarrage Pi5"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        info_print(f"🚨 Telegram /rebootpi: {user.username}")
+        
+        sender_id = user.id & 0xFFFFFFFF
+        sender_info = f"TG:{user.username}"
+        
+        await update.message.reply_text("🔄 Redémarrage Pi5 en cours...")
+        
+        # Appeler la fonction existante
+        def reboot_pi():
+            try:
+                self.message_handler.handle_reboot_command(sender_id, sender_info)
+                return "Signal créé"
+            except Exception as e:
+                return f"Erreur: {str(e)[:100]}"
+        
+        await asyncio.to_thread(reboot_pi)
+
+    async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
+        """Gestionnaire d'erreurs"""
+        error_print(f"Erreur Telegram: {context.error}")
+        if update and hasattr(update, 'message') and update.message:
+            await update.message.reply_text("Erreur interne")
