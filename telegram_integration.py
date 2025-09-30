@@ -193,21 +193,81 @@ class TelegramIntegration:
             import subprocess
             system_info = []
             
+            # 1. Température CPU (RPI5)
             try:
-                temp_result = subprocess.run(['vcgencmd', 'measure_temp'], 
-                                           capture_output=True, text=True, timeout=5)
+                temp_cmd = ['vcgencmd', 'measure_temp']
+                temp_result = subprocess.run(temp_cmd, 
+                                           capture_output=True, 
+                                           text=True, 
+                                           timeout=5)
+                
                 if temp_result.returncode == 0:
                     temp_output = temp_result.stdout.strip()
                     if 'temp=' in temp_output:
                         temp_value = temp_output.split('=')[1].replace("'C", "°C")
-                        system_info.append(f"CPU: {temp_value}")
+                        system_info.append(f"🌡️ CPU: {temp_value}")
+                    else:
+                        system_info.append(f"🌡️ CPU: {temp_output}")
+                else:
+                    try:
+                        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                            temp_millis = int(f.read().strip())
+                            temp_celsius = temp_millis / 1000.0
+                            system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
+                    except:
+                        system_info.append("🌡️ CPU: N/A")
             except:
-                system_info.append("CPU: N/A")
+                system_info.append("🌡️ CPU: Error")
             
+            # 2. Uptime simplifié
+            try:
+                uptime_cmd = ['uptime', '-p']
+                uptime_result = subprocess.run(uptime_cmd, 
+                                             capture_output=True, 
+                                             text=True, 
+                                             timeout=5)
+                
+                if uptime_result.returncode == 0:
+                    uptime_output = uptime_result.stdout.strip()
+                    uptime_clean = uptime_output.replace('up ', '')
+                    system_info.append(f"⏱️ Up: {uptime_clean}")
+                else:
+                    with open('/proc/uptime', 'r') as f:
+                        uptime_seconds = float(f.read().split()[0])
+                        days = int(uptime_seconds // 86400)
+                        hours = int((uptime_seconds % 86400) // 3600)
+                        minutes = int((uptime_seconds % 3600) // 60)
+                        
+                        if days > 0:
+                            uptime_str = f"{days}d {hours}h"
+                        elif hours > 0:
+                            uptime_str = f"{hours}h {minutes}m"
+                        else:
+                            uptime_str = f"{minutes}m"
+                        
+                        system_info.append(f"⏱️ Up: {uptime_str}")
+            except:
+                system_info.append("⏱️ Uptime: Error")
+            
+            # 3. Load Average
+            try:
+                with open('/proc/loadavg', 'r') as f:
+                    loadavg = f.read().strip().split()
+                    load_1m = float(loadavg[0])
+                    load_5m = float(loadavg[1])
+                    load_15m = float(loadavg[2])
+                    system_info.append(f"📊 Load: {load_1m:.2f} {load_5m:.2f} {load_15m:.2f}")
+            except:
+                pass
+            
+            # 4. Mémoire
             try:
                 with open('/proc/meminfo', 'r') as f:
                     meminfo = f.read()
-                mem_total = mem_available = None
+                
+                mem_total = None
+                mem_available = None
+                
                 for line in meminfo.split('\n'):
                     if line.startswith('MemTotal:'):
                         mem_total = int(line.split()[1])
@@ -219,15 +279,16 @@ class TelegramIntegration:
                     mem_percent = (mem_used / mem_total) * 100
                     mem_total_mb = mem_total // 1024
                     mem_used_mb = mem_used // 1024
-                    system_info.append(f"RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
+                    
+                    system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
             except:
                 pass
             
-            return "Système RPI5:\n" + "\n".join(system_info) if system_info else "Erreur système"
+            return "🖥️ Système RPI5:\n" + "\n".join(system_info) if system_info else "Erreur système"
         
         response = await asyncio.to_thread(get_sys_info)
         await update.message.reply_text(response)
-    
+
     async def _legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /legend"""
         user = update.effective_user
