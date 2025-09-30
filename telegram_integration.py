@@ -273,47 +273,25 @@ class TelegramIntegration:
         await update.message.reply_text(response)
     
     async def _nodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /nodes <IP> [page]"""
+        """Commande /nodes - Affiche tous les nœuds de tigrog2"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("Non autorisé")
             return
         
-        if not context.args:
-            await update.message.reply_text("Usage: /nodes <IP> [page]\nEx: /nodes 192.168.1.38")
-            return
+        info_print(f"Telegram /nodes: {user.username}")
         
-        remote_host = context.args[0]
-        requested_page = int(context.args[1]) if len(context.args) > 1 else 1
-        
-        info_print(f"Telegram /nodes {remote_host} page {requested_page}: {user.username}")
-        
-        # Fonction qui capture requested_page de la closure
         def get_nodes_list():
             try:
-                nodes = self.message_handler.remote_nodes_client.get_remote_nodes(remote_host)
+                nodes = self.message_handler.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
                 if not nodes:
-                    return f"Aucun nœud sur {remote_host}"
+                    return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
                 
                 nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
                 
-                nodes_per_page = 10
-                total_nodes = len(nodes)
-                total_pages = max(1, (total_nodes + nodes_per_page - 1) // nodes_per_page)
+                lines = [f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} ({len(nodes)}):\n"]
                 
-                # Valider sans réassigner
-                valid_page = min(requested_page, total_pages)
-                valid_page = max(1, valid_page)
-                
-                start_idx = (valid_page - 1) * nodes_per_page
-                end_idx = min(start_idx + nodes_per_page, total_nodes)
-                page_nodes = nodes[start_idx:end_idx]
-                
-                lines = []
-                if valid_page == 1:
-                    lines.append(f"Nœuds DIRECTS {remote_host} ({total_nodes}):\n")
-                
-                for node in page_nodes:
+                for node in nodes:
                     name = node.get('name', 'Unknown')
                     snr = node.get('snr', 0.0)
                     last_heard = node.get('last_heard', 0)
@@ -344,11 +322,6 @@ class TelegramIntegration:
                     
                     lines.append(f"{icon} {name}: SNR {snr:.1f}dB ({time_str})")
                 
-                if total_pages > 1:
-                    lines.append(f"\nPage {valid_page}/{total_pages}")
-                    if valid_page < total_pages:
-                        lines.append(f"➡️ /nodes {remote_host} {valid_page + 1}")
-                
                 return "\n".join(lines)
             except Exception as e:
                 error_print(f"Erreur get_nodes_list: {e}")
@@ -357,24 +330,6 @@ class TelegramIntegration:
                 return f"Erreur: {str(e)[:100]}"
         
         response = await asyncio.to_thread(get_nodes_list)
-        await update.message.reply_text(response)
-
-    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Messages texte = /bot"""
-        user = update.effective_user
-        if not self._check_authorization(user.id):
-            await update.message.reply_text("Non autorisé")
-            return
-        
-        message_text = update.message.text
-        info_print(f"Telegram message: {user.username} -> '{message_text[:50]}'")
-        
-        sender_id = user.id & 0xFFFFFFFF
-        
-        def query_ai():
-            return self.message_handler.llama_client.query_llama_telegram(message_text, sender_id)
-        
-        response = await asyncio.to_thread(query_ai)
         await update.message.reply_text(response)
 
     async def _rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -426,6 +381,24 @@ class TelegramIntegration:
                 return f"Erreur: {str(e)[:100]}"
         
         await asyncio.to_thread(reboot_pi)
+
+    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Messages texte = /bot (Chat IA)"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        message_text = update.message.text
+        info_print(f"Telegram message: {user.username} -> '{message_text[:50]}'")
+        
+        sender_id = user.id & 0xFFFFFFFF
+        
+        def query_ai():
+            return self.message_handler.llama_client.query_llama_telegram(message_text, sender_id)
+        
+        response = await asyncio.to_thread(query_ai)
+        await update.message.reply_text(response)
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire d'erreurs"""
