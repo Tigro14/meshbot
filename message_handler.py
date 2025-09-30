@@ -320,24 +320,19 @@ class MessageHandler:
                 
             except Exception as e:
                 error_print(f"Erreur echo via tigrog2: {e}")
-                import traceback
-                error_print(traceback.format_exc())
                 try:
                     error_response = f"Erreur echo tigrog2: {str(e)[:30]}"
                     self.send_single_message(error_response, sender_id, sender_info)
                 except Exception as e2:
                     debug_print(f"Envoi erreur echo échoué: {e2}")
             finally:
-                # Fermeture propre avec gestion d'erreur
+                # Fermeture propre avec gestion d'erreur silencieuse
                 if remote_interface:
                     try:
-                        debug_print("Fermeture connexion tigrog2...")
                         remote_interface.close()
-                        debug_print("✅ Connexion fermée")
-                    except Exception as e:
-                        # Ignorer les erreurs de fermeture (broken pipe normal)
-                        debug_print(f"Avertissement fermeture: {e}")
-    
+                    except:
+                        pass  # Ignorer les erreurs de fermeture
+        
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
 
