@@ -20,7 +20,8 @@ class MessageHandler:
         
         # Throttling des commandes utilisateurs
         self.user_commands = {}  # user_id -> [timestamps des commandes]
-    
+        self._last_echo_id = None  # Cache doublons echo 
+
     def log_conversation(self, sender_id, sender_info, query, response, processing_time=None):
         """Log une conversation complète"""
         try:
@@ -264,6 +265,14 @@ class MessageHandler:
     
     def handle_echo_command(self, message, sender_id, sender_info, packet):
         """Gérer la commande /echo - tigrog2 diffuse l'echo dans le mesh"""
+        
+        # ⚠️ ANTI-DOUBLON : Vérifier si on a déjà traité ce message récemment
+        message_id = f"{sender_id}_{message}_{int(time.time())}"
+        if hasattr(self, '_last_echo_id') and self._last_echo_id == message_id:
+            debug_print("⚠️ Echo déjà traité, ignoré")
+            return
+        self._last_echo_id = message_id
+        
         echo_text = message[6:].strip()  # Retirer "/echo "
         
         if not echo_text:
@@ -278,6 +287,7 @@ class MessageHandler:
         import threading
         
         def send_echo_via_tigrog2():
+            remote_interface = None
             try:
                 # Se connecter à tigrog2 via TCP
                 import meshtastic.tcp_interface
@@ -288,35 +298,49 @@ class MessageHandler:
                     portNumber=4403
                 )
                 
-                # Attendre la connexion
-                time.sleep(1)
+                # Attendre la connexion stable
+                time.sleep(3)
                 
                 # Créer la réponse avec l'identifiant court en préambule
                 author_short = self._get_short_name(sender_id)
                 echo_response = f"{author_short}: {echo_text}"
                 
-                # Envoyer le message en broadcast via tigrog2
+                debug_print(f"Envoi broadcast: '{echo_response}'")
+                
+                # Envoyer le message en BROADCAST via tigrog2
                 remote_interface.sendText(echo_response)
                 
-                debug_print(f"Echo diffusé via tigrog2: '{echo_response}'")
+                # Attendre que le message soit bien transmis au radio
+                time.sleep(4)
                 
-                # Fermer la connexion
-                remote_interface.close()
+                debug_print(f"✅ Echo diffusé via tigrog2: '{echo_response}'")
                 
                 # Log de la conversation
                 self.log_conversation(sender_id, sender_info, message, echo_response)
                 
             except Exception as e:
                 error_print(f"Erreur echo via tigrog2: {e}")
+                import traceback
+                error_print(traceback.format_exc())
                 try:
                     error_response = f"Erreur echo tigrog2: {str(e)[:30]}"
                     self.send_single_message(error_response, sender_id, sender_info)
                 except Exception as e2:
                     debug_print(f"Envoi erreur echo échoué: {e2}")
-        
+            finally:
+                # Fermeture propre avec gestion d'erreur
+                if remote_interface:
+                    try:
+                        debug_print("Fermeture connexion tigrog2...")
+                        remote_interface.close()
+                        debug_print("✅ Connexion fermée")
+                    except Exception as e:
+                        # Ignorer les erreurs de fermeture (broken pipe normal)
+                        debug_print(f"Avertissement fermeture: {e}")
+    
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
-    
+
     def handle_rebootg2_command(self, sender_id, sender_info):
         """Gérer la commande /rebootg2 (non documentée)"""
         info_print(f"RebootG2: {sender_info}")
