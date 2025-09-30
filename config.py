@@ -96,7 +96,6 @@ TELEGRAM_RATE_LIMIT_PER_USER = 10  # Commandes par minute par utilisateur
 
 # Configuration logs Telegram
 TELEGRAM_LOG_LEVEL = "DEBUG"  # DEBUG, INFO, WARNING, ERROR
-TELEGRAM_LOG_FILE = "/var/log/telegram-mesh-bot.log"
 
 
 # Chemins de recherche pour les modules Telegram (utilisés par telegram_bridge.py)
