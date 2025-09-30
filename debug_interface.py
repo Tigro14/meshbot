@@ -3,6 +3,7 @@
 Interface de débogage interactive
 """
 
+import sys
 from config import *
 from utils import *
 
@@ -13,6 +14,11 @@ class DebugInterface:
     def interactive_loop(self):
         """Boucle interactive avec gestion des noms"""
         if not DEBUG_MODE:
+            return
+        
+        # Vérifier qu'on a un terminal interactif
+        if not sys.stdin.isatty():
+            debug_print("Interface debug désactivée (pas de terminal)")
             return
             
         while self.bot.running:
@@ -27,6 +33,10 @@ class DebugInterface:
                     
             except KeyboardInterrupt:
                 self.bot.running = False
+                break
+            except EOFError:
+                # Stdin fermé (ex: service systemd)
+                debug_print("Interface debug fermée (EOF)")
                 break
             except Exception as e:
                 info_print(f"Erreur: {e}")

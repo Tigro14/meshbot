@@ -609,130 +609,144 @@ class MessageHandler:
         threading.Thread(target=get_g2_config, daemon=True).start()
     
     def handle_sys_command(self, sender_id, sender_info):
-        """Gérer la commande /sys"""
-        info_print(f"Sys: {sender_info}")
-        
-        import subprocess
-        import threading
-        
-        def get_system_info():
+    """Gérer la commande /sys"""
+    info_print(f"Sys: {sender_info}")
+    
+    import subprocess
+    import threading
+    
+    def get_system_info():
+        try:
+            system_info = []
+            
+            # 1. Température CPU (RPI5)
             try:
-                system_info = []
+                # Méthode 1: vcgencmd (Raspberry Pi)
+                temp_cmd = ['vcgencmd', 'measure_temp']
+                temp_result = subprocess.run(temp_cmd, 
+                                           capture_output=True, 
+                                           text=True, 
+                                           timeout=5)
                 
-                # 1. Température CPU (RPI5)
-                try:
-                    # Méthode 1: vcgencmd (Raspberry Pi)
-                    temp_cmd = ['vcgencmd', 'measure_temp']
-                    temp_result = subprocess.run(temp_cmd, 
-                                               capture_output=True, 
-                                               text=True, 
-                                               timeout=5)
-                    
-                    if temp_result.returncode == 0:
-                        temp_output = temp_result.stdout.strip()
-                        # Format: temp=45.1'C
-                        if 'temp=' in temp_output:
-                            temp_value = temp_output.split('=')[1].replace("'C", "°C")
-                            system_info.append(f"🌡️ CPU: {temp_value}")
-                        else:
-                            system_info.append(f"🌡️ CPU: {temp_output}")
-                    else:
-                        # Fallback: lecture du fichier thermal_zone
-                        try:
-                            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
-                                temp_millis = int(f.read().strip())
-                                temp_celsius = temp_millis / 1000.0
-                                system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
-                        except:
-                            system_info.append("🌡️ CPU: N/A")
-                            
-                except Exception as e:
-                    debug_print(f"Erreur température: {e}")
-                    system_info.append("🌡️ CPU: Error")
+                if temp_result.returncode == 0:
+                    temp_output = temp_result.stdout.strip()
+                    # Format: temp=45.1'C
+                    if 'temp=' in temp_output:
+                        temp_value = temp_output.split('=')[1].replace("'C", "°C")
+                        system_info.append(f"🌡️ CPU: {temp_value}")
+                else:
+                    # Fallback: lecture du fichier thermal_zone
+                    try:
+                        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                            temp_millis = int(f.read().strip())
+                            temp_celsius = temp_millis / 1000.0
+                            system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
+                    except:
+                        system_info.append("🌡️ CPU: N/A")
+                        
+            except Exception as e:
+                debug_print(f"Erreur température: {e}")
+                system_info.append("🌡️ CPU: Error")
+            
+            # 2. Uptime
+            try:
+                uptime_cmd = ['uptime', '-p']
+                uptime_result = subprocess.run(uptime_cmd, 
+                                             capture_output=True, 
+                                             text=True, 
+                                             timeout=5)
                 
-                # 2. Uptime
-                try:
-                    uptime_cmd = ['uptime']
-                    uptime_result = subprocess.run(uptime_cmd, 
+                if uptime_result.returncode == 0:
+                    uptime_output = uptime_result.stdout.strip()
+                    # Format: "up 2 days, 3 hours, 45 minutes"
+                    uptime_clean = uptime_output.replace('up ', '')
+                    system_info.append(f"⏱️ Up: {uptime_clean}")
+                else:
+                    # Fallback: uptime standard
+                    uptime_result = subprocess.run(['uptime'], 
                                                  capture_output=True, 
                                                  text=True, 
                                                  timeout=5)
-                    
                     if uptime_result.returncode == 0:
                         uptime_output = uptime_result.stdout.strip()
-                        # Nettoyer et simplifier l'output uptime
-                        uptime_clean = uptime_output.replace('  ', ' ')
+                        # Extraire juste la partie uptime
+                        if 'up' in uptime_output:
+                            parts = uptime_output.split('up')[1].split(',')
+                            if len(parts) >= 2:
+                                uptime_str = parts[0].strip() + ',' + parts[1].strip()
+                                system_info.append(f"⏱️ Up: {uptime_str}")
                         
-                        # Extraire les parties importantes
-                        parts = uptime_clean.split(',')
-                        if len(parts) >= 3:
-                            # Uptime + load average
-                            uptime_part = parts[0].strip()  # "up X days, Y hours"
-                            load_parts = [p.strip() for p in parts[-3:]]  # derniers 3 éléments (load avg)
-                            
-                            # Formater de manière compacte
-                            if 'up' in uptime_part:
-                                up_info = uptime_part.split('up')[1].strip()
-                                system_info.append(f"⏱️ Up: {up_info}")
-                            
-                            # Load average (simplifier)
-                            load_info = ', '.join(load_parts)
-                            if 'load average:' in load_info:
-                                load_values = load_info.split('load average:')[1].strip()
-                                system_info.append(f"📊 Load: {load_values}")
-                        else:
-                            # Fallback: uptime complet mais tronqué
-                            system_info.append(f"⏱️ {uptime_clean[:50]}")
-                    else:
-                        system_info.append("⏱️ Uptime: Error")
-                        
-                except Exception as e:
-                    debug_print(f"Erreur uptime: {e}")
-                    system_info.append("⏱️ Uptime: Error")
-                
-                # 3. Informations mémoire (bonus)
-                try:
-                    # Récupérer info mémoire rapidement
-                    with open('/proc/meminfo', 'r') as f:
-                        meminfo = f.read()
-                    
-                    mem_total = None
-                    mem_available = None
-                    
-                    for line in meminfo.split('\n'):
-                        if line.startswith('MemTotal:'):
-                            mem_total = int(line.split()[1])  # en kB
-                        elif line.startswith('MemAvailable:'):
-                            mem_available = int(line.split()[1])  # en kB
-                    
-                    if mem_total and mem_available:
-                        mem_used = mem_total - mem_available
-                        mem_percent = (mem_used / mem_total) * 100
-                        mem_total_mb = mem_total // 1024
-                        mem_used_mb = mem_used // 1024
-                        
-                        system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
-                        
-                except Exception as e:
-                    debug_print(f"Erreur mémoire: {e}")
-                
-                # Construire la réponse finale
-                if system_info:
-                    response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
-                else:
-                    response = "⚠️ Impossible de récupérer les infos système"
-                
-                self.send_response_chunks(response, sender_id, sender_info)
-                self.log_conversation(sender_id, sender_info, "/sys", response)
-                
             except Exception as e:
-                error_msg = f"⚠️ Erreur système: {str(e)[:100]}"
-                error_print(f"Erreur sys: {e}")
-                self.send_single_message(error_msg, sender_id, sender_info)
-        
-        # Lancer dans un thread séparé pour ne pas bloquer
-        threading.Thread(target=get_system_info, daemon=True).start()
+                debug_print(f"Erreur uptime: {e}")
+                system_info.append("⏱️ Uptime: Error")
+            
+            # 3. Load Average
+            try:
+                # Lire directement depuis /proc/loadavg
+                with open('/proc/loadavg', 'r') as f:
+                    loadavg = f.read().strip()
+                    # Format: "0.52 0.58 0.59 1/234 12345"
+                    load_values = ' '.join(loadavg.split()[:3])
+                    system_info.append(f"📊 Load: {load_values}")
+            except Exception as e:
+                debug_print(f"Erreur load: {e}")
+                # Fallback: uptime pour avoir le load
+                try:
+                    uptime_result = subprocess.run(['uptime'], 
+                                                 capture_output=True, 
+                                                 text=True, 
+                                                 timeout=5)
+                    if uptime_result.returncode == 0:
+                        uptime_output = uptime_result.stdout.strip()
+                        if 'load average:' in uptime_output:
+                            load_part = uptime_output.split('load average:')[1].strip()
+                            system_info.append(f"📊 Load: {load_part}")
+                except:
+                    pass
+            
+            # 4. Informations mémoire
+            try:
+                # Récupérer info mémoire rapidement
+                with open('/proc/meminfo', 'r') as f:
+                    meminfo = f.read()
+                
+                mem_total = None
+                mem_available = None
+                
+                for line in meminfo.split('\n'):
+                    if line.startswith('MemTotal:'):
+                        mem_total = int(line.split()[1])  # en kB
+                    elif line.startswith('MemAvailable:'):
+                        mem_available = int(line.split()[1])  # en kB
+                
+                if mem_total and mem_available:
+                    mem_used = mem_total - mem_available
+                    mem_percent = (mem_used / mem_total) * 100
+                    mem_total_mb = mem_total // 1024
+                    mem_used_mb = mem_used // 1024
+                    
+                    system_info.append(f"💾 RAM: {mem_used_mb}MB/{mem_total_mb}MB ({mem_percent:.0f}%)")
+                    
+            except Exception as e:
+                debug_print(f"Erreur mémoire: {e}")
+            
+            # Construire la réponse finale
+            if system_info:
+                response = "🖥️ Système RPI5:\n" + "\n".join(system_info)
+            else:
+                response = "❌ Impossible de récupérer les infos système"
+            
+            self.send_response_chunks(response, sender_id, sender_info)
+            self.log_conversation(sender_id, sender_info, "/sys", response)
+            
+        except Exception as e:
+            error_msg = f"❌ Erreur système: {str(e)[:100]}"
+            error_print(f"Erreur sys: {e}")
+            self.send_single_message(error_msg, sender_id, sender_info)
     
+    # Lancer dans un thread séparé pour ne pas bloquer
+    threading.Thread(target=get_system_info, daemon=True).start()
+
     def handle_my_command(self, sender_id, sender_info):
         """Gérer la commande /my - infos signal vues par tigrog2 uniquement (antenne locale non fiable)"""
         info_print(f"My: {sender_info}")
