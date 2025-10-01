@@ -6,19 +6,30 @@ Client pour la récupération des nœuds distants
 import time
 import meshtastic.tcp_interface
 from config import *
-from utils import *
+from utils import (
+    debug_print,
+    error_print,
+    format_elapsed_time,
+    get_signal_quality_icon,
+    truncate_text,
+    validate_page_number
+)
 
 class RemoteNodesClient:
     def __init__(self):
         pass
-    
+
     def get_remote_nodes(self, remote_host, remote_port=4403):
         """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant"""
+        remote_interface = None  # ✅ Initialiser
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
             
             # Tenter une connexion TCP au nœud distant
-            remote_interface = meshtastic.tcp_interface.TCPInterface(hostname=remote_host, portNumber=remote_port)
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=remote_host, 
+                portNumber=remote_port
+            )
             
             # Attendre que les données se chargent
             time.sleep(2)
@@ -134,6 +145,13 @@ class RemoteNodesClient:
         except Exception as e:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
             return []
+        finally:  # ✅ AJOUTER ce bloc
+            if remote_interface:
+                try:
+                    debug_print(f"Fermeture connexion {remote_host}")
+                    remote_interface.close()
+                except Exception as e:
+                    debug_print(f"Erreur fermeture: {e}")
     
     def get_tigrog2_paginated(self, page=1):
         """Récupérer et formater les nœuds tigrog2 avec pagination simple"""
@@ -194,7 +212,7 @@ class RemoteNodesClient:
         rssi_icon = get_signal_quality_icon(node.get('rssi', 0))
         
         # Indicateur de qualité SNR
-        snr_icon = get_snr_quality_icon(node.get('snr', 0.0))
+        snr_icon = get_signal_quality_icon(node.get('snr', 0.0))
         
         # Format de base : icône RSSI + icône SNR + nom court + temps
         line_parts = [rssi_icon]

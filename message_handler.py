@@ -206,7 +206,8 @@ class MessageHandler:
             end_time = time.time()
             
             self.log_conversation(sender_id, sender_info, prompt, response, end_time - start_time)
-            self.send_response_chunks(response, sender_id, sender_info)
+            #self.send_response_chunks(response, sender_id, sender_info)
+            self.send_single_message(response, sender_id, sender_info)
             
             # Nettoyage après traitement
             self.llama_client.cleanup_cache()
@@ -757,7 +758,7 @@ class MessageHandler:
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_system_info, daemon=True).start()
 
-    def handle_my_command(self, sender_id, sender_info):
+    def handle_my_command(self, sender_id, sender_info, is_broadcast=False):
         """Gérer la commande /my - infos signal vues par tigrog2 uniquement (antenne locale non fiable)"""
         info_print(f"My: {sender_info}")
         
@@ -773,16 +774,26 @@ class MessageHandler:
                     self.send_single_message(response, sender_id, sender_info)
                     return
                 
+                # Normaliser l'ID de l'expéditeur
+                sender_id_normalized = sender_id & 0xFFFFFFFF
+                
+                debug_print(f"🔍 Recherche nœud {sender_id_normalized:08x} ({sender_info})")
+                debug_print(f"📋 {len(remote_nodes)} nœuds disponibles dans tigrog2")
+                
                 # Chercher le nœud expéditeur dans les données de tigrog2
                 sender_node_data = None
                 for node in remote_nodes:
-                    if node['id'] == sender_id:
+                    # Normaliser aussi l'ID du nœud
+                    node_id_normalized = node['id'] & 0xFFFFFFFF
+                    
+                    if node_id_normalized == sender_id_normalized:
                         sender_node_data = node
+                        debug_print(f"✅ Nœud {sender_info} trouvé dans tigrog2!")
                         break
                 
                 if sender_node_data:
                     # Debug : examiner toutes les données reçues
-                    debug_print(f"Données complètes pour {sender_info}: {sender_node_data}")
+                    debug_print(f"📊 Données complètes: {sender_node_data}")
                     
                     # Infos tigrog2 uniquement (source fiable)
                     response_parts = []
@@ -791,9 +802,9 @@ class MessageHandler:
                     rssi = sender_node_data.get('rssi', 0)
                     snr = sender_node_data.get('snr', 0.0)
                     
-                    # Debug spécifique RSSI
-                    debug_print(f"RSSI brut: {rssi} (type: {type(rssi)})")
-                    debug_print(f"SNR brut: {snr} (type: {type(snr)})")
+                    # Debug spécifique RSSI/SNR
+                    debug_print(f"📡 RSSI brut: {rssi} (type: {type(rssi)})")
+                    debug_print(f"📡 SNR brut: {snr} (type: {type(snr)})")
                     
                     # Estimation RSSI depuis SNR si RSSI=0
                     display_rssi = rssi
@@ -801,10 +812,9 @@ class MessageHandler:
                     
                     if rssi == 0 and snr != 0:
                         # Formule empirique : RSSI ≈ -100 + (SNR * 2.5)
-                        # Cette estimation est basée sur des observations terrain LoRa
                         display_rssi = int(-100 + (snr * 2.5))
                         rssi_estimated = True
-                        debug_print(f"RSSI estimé depuis SNR: {display_rssi}dBm")
+                        debug_print(f"🔢 RSSI estimé depuis SNR: {display_rssi}dBm")
                     
                     if display_rssi != 0 or snr != 0:
                         rssi_icon = get_signal_quality_icon(display_rssi) if display_rssi != 0 else "📶"
@@ -818,6 +828,8 @@ class MessageHandler:
                         
                         snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
                         response_parts.append(f"{rssi_icon} {rssi_str} {snr_str}")
+                    else:
+                        response_parts.append("📶 Signal: n/a")
                     
                     # Qualité + temps sur une ligne (utiliser RSSI estimé pour la qualité)
                     quality_desc = self._get_signal_quality_description(display_rssi, snr)
@@ -831,15 +843,25 @@ class MessageHandler:
                     # Distance de tigrog2 si disponible (utiliser RSSI estimé)
                     if display_rssi != 0 and display_rssi > -150:
                         distance_est = self._estimate_distance_from_rssi(display_rssi)
-                        response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
+                        response_parts.append(f"📏 ~{distance_est} de {REMOTE_NODE_NAME}")
                     
                     # Statut liaison directe avec tigrog2
                     response_parts.append(f"🎯 Direct → {REMOTE_NODE_NAME}")
                     
-                    response = "\n".join(response_parts)
+#                    response = "\n".join(response_parts)
+                    response = " | ".join(response_parts)
                     
                 else:
                     # Nœud pas trouvé dans tigrog2 - probablement relayé
+                    debug_print(f"❌ Nœud {sender_info} ({sender_id_normalized:08x}) non trouvé")
+
+                    # Afficher les nœuds disponibles de manière lisible
+                    available_nodes_list = []
+                    for n in remote_nodes[:10]:
+                        node_str = f"{n['id']:08x} ({n.get('name', 'Unknown')})"
+                        available_nodes_list.append(node_str)
+                    debug_print(f"📋 Nœuds disponibles: {', '.join(available_nodes_list)}")
+                    
                     response_parts = [
                         f"⚠️ Pas direct → {REMOTE_NODE_NAME}",
                         "🔀 Messages relayés"
@@ -855,21 +877,67 @@ class MessageHandler:
                         response_parts.append("❓ Route mesh complexe")
                     
                     response = "\n".join(response_parts)
-                
-                self.log_conversation(sender_id, sender_info, "/my", response)
-                self.send_response_chunks(response, sender_id, sender_info)
-                
+                    if is_broadcast:
+                        # ✅ Réponse publique : préfixer avec le nom court de l'appelant
+                        author_short = self._get_short_name(sender_id)
+                        response = f"{author_short}: {response}"
+                        
+                        # Envoyer en BROADCAST via tigrog2 (comme /echo)
+                        self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
+                    else:
+                        # Réponse privée normale
+                        self.log_conversation(sender_id, sender_info, "/my", response)
+                        self.send_single_message(response, sender_id, sender_info)                
+
             except Exception as e:
                 error_print(f"Erreur commande /my: {e}")
+                import traceback
+                error_print(traceback.format_exc())
                 try:
                     error_response = f"⚠️ Erreur: {str(e)[:30]}"
                     self.send_single_message(error_response, sender_id, sender_info)
                 except Exception as e2:
                     debug_print(f"Envoi erreur /my échoué: {e2}")
-        
+    
         # Lancer dans un thread séparé pour ne pas bloquer
         threading.Thread(target=get_remote_signal_info, daemon=True).start()
-    
+
+    def _send_broadcast_via_tigrog2(self, message, sender_id, sender_info, command):
+        """Envoyer un message en broadcast via tigrog2 (utilisé par /my public)"""
+        import threading
+        
+        def send_broadcast():
+            remote_interface = None
+            try:
+                import meshtastic.tcp_interface
+                
+                debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
+                
+                time.sleep(3)
+                
+                debug_print(f"Envoi broadcast: '{message[:50]}...'")
+                remote_interface.sendText(message)
+                
+                time.sleep(4)
+                
+                debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
+                self.log_conversation(sender_id, sender_info, command, message)
+                
+            except Exception as e:
+                error_print(f"Erreur broadcast {command} via tigrog2: {e}")
+            finally:
+                if remote_interface:
+                    try:
+                        remote_interface.close()
+                    except:
+                        pass
+        
+        threading.Thread(target=send_broadcast, daemon=True).start()
+
     def _get_signal_quality_description(self, rssi, snr):
         """Obtenir une description textuelle de la qualité du signal"""
         if rssi == 0 and snr == 0:
@@ -945,18 +1013,21 @@ class MessageHandler:
         is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
         sender_info = self.node_manager.get_node_name(sender_id, self.interface)
         
-        # NOUVEAU : Gérer /echo sur les messages publics
-        if message.startswith('/echo ') and (is_broadcast or is_for_me) and not is_from_me:
-            # /echo fonctionne sur les messages publics ET privés, mais pas de nous-mêmes
-            info_print(f"ECHO PUBLIC de {sender_info}: '{message}' (Broadcast:{is_broadcast})")
-            self.handle_echo_command(message, sender_id, sender_info, packet)
-            return
-        
-        # Messages publics (broadcast) - ignorer les autres commandes
-        if is_broadcast and not is_from_me:
-            if DEBUG_MODE and not message.startswith('/echo'):
-                debug_print(f"Message public ignoré: '{message}'")
-            return
+        # NOUVEAU : Gérer /echo et /my sur les messages publics
+        if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
+            # /echo et /my fonctionnent sur les messages publics ET privés, mais pas de nous-mêmes
+            if message.startswith('/echo '):
+                info_print(f"ECHO PUBLIC de {sender_info}: '{message}' (Broadcast:{is_broadcast})")
+                self.handle_echo_command(message, sender_id, sender_info, packet)
+            elif message.startswith('/my'):
+                info_print(f"MY PUBLIC de {sender_info} (Broadcast:{is_broadcast})")
+                self.handle_my_command(sender_id, sender_info, is_broadcast=is_broadcast)
+            return  # ✅ IMPORTANT: Return ici pour éviter le traitement double
+            # Messages publics (broadcast) - ignorer les autres commandes
+            if is_broadcast and not is_from_me:
+                if DEBUG_MODE and not message.startswith('/echo'):
+                    debug_print(f"Message public ignoré: '{message}'")
+                return
         
         # Log seulement les messages pour nous ou en mode debug
         if is_for_me or DEBUG_MODE:
@@ -979,6 +1050,8 @@ class MessageHandler:
             self.handle_my_command(sender_id, sender_info)
         elif message.startswith('/echo '):
             self.handle_echo_command(message, sender_id, sender_info, packet)
+        elif message.startswith('/my'):  
+            self.handle_my_command(sender_id, sender_info, is_broadcast=False) 
         elif message.startswith('/legend'):
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
