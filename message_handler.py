@@ -1004,15 +1004,15 @@ class MessageHandler:
         sender_id = packet.get('from', 0)
         to_id = packet.get('to', 0)
         my_id = None
-        
+
         if hasattr(self.interface, 'localNode') and self.interface.localNode:
             my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-        
+
         is_for_me = (to_id == my_id) if my_id else False
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
         sender_info = self.node_manager.get_node_name(sender_id, self.interface)
-        
+
         # NOUVEAU : Gérer /echo et /my sur les messages publics
         if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
             # /echo et /my fonctionnent sur les messages publics ET privés, mais pas de nous-mêmes
@@ -1022,24 +1022,25 @@ class MessageHandler:
             elif message.startswith('/my'):
                 info_print(f"MY PUBLIC de {sender_info} (Broadcast:{is_broadcast})")
                 self.handle_my_command(sender_id, sender_info, is_broadcast=is_broadcast)
-            return  # ✅ IMPORTANT: Return ici pour éviter le traitement double
-            # Messages publics (broadcast) - ignorer les autres commandes
-            if is_broadcast and not is_from_me:
-                if DEBUG_MODE and not message.startswith('/echo'):
-                    debug_print(f"Message public ignoré: '{message}'")
-                return
-        
+            return  # ✅ Return ici pour éviter le traitement double
+
+        # Messages publics (broadcast) - ignorer les autres commandes
+        if is_broadcast and not is_from_me:
+            if DEBUG_MODE and not message.startswith('/echo') and not message.startswith('/my'):
+                debug_print(f"Message public ignoré: '{message}'")
+            return
+
         # Log seulement les messages pour nous ou en mode debug
         if is_for_me or DEBUG_MODE:
             info_print(f"MESSAGE REÇU de {sender_info}: '{message}' (ForMe:{is_for_me})")
-        
+
         # Traiter les commandes seulement si c'est pour nous
         if not is_for_me:
             if DEBUG_MODE:
                 debug_print("Message public ignoré")
             return
-        
-        # Router les commandes
+
+        # Router les commandes (PRIVÉES)
         if message.startswith('/bot '):
             self.handle_bot_command(message, sender_id, sender_info)
         elif message.startswith('/power'):
@@ -1047,11 +1048,9 @@ class MessageHandler:
         elif message.startswith('/rx'):
             self.handle_rx_command(message, sender_id, sender_info)
         elif message.startswith('/my'):
-            self.handle_my_command(sender_id, sender_info)
+            self.handle_my_command(sender_id, sender_info, is_broadcast=False)
         elif message.startswith('/echo '):
             self.handle_echo_command(message, sender_id, sender_info, packet)
-        elif message.startswith('/my'):  
-            self.handle_my_command(sender_id, sender_info, is_broadcast=False) 
         elif message.startswith('/legend'):
             self.handle_legend_command(sender_id, sender_info)
         elif message.startswith('/help'):
