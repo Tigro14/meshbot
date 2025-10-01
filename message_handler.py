@@ -877,17 +877,17 @@ class MessageHandler:
                         response_parts.append("❓ Route mesh complexe")
                     
                     response = "\n".join(response_parts)
-                    if is_broadcast:
-                        # ✅ Réponse publique : préfixer avec le nom court de l'appelant
-                        author_short = self._get_short_name(sender_id)
-                        response = f"{author_short}: {response}"
+                if is_broadcast:
+                    # ✅ Réponse publique : préfixer avec le nom court de l'appelant
+                    author_short = self._get_short_name(sender_id)
+                    response = f"{author_short}: {response}"
                         
-                        # Envoyer en BROADCAST via tigrog2 (comme /echo)
-                        self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
-                    else:
-                        # Réponse privée normale
-                        self.log_conversation(sender_id, sender_info, "/my", response)
-                        self.send_single_message(response, sender_id, sender_info)                
+                    # Envoyer en BROADCAST via tigrog2 (comme /echo)
+                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
+                else:
+                    # Réponse privée normale
+                    self.log_conversation(sender_id, sender_info, "/my", response)
+                    self.send_single_message(response, sender_id, sender_info)                
 
             except Exception as e:
                 error_print(f"Erreur commande /my: {e}")
