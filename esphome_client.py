@@ -39,13 +39,16 @@ class ESPHomeClient:
                 try:
                     url = f"http://{ESPHOME_HOST}{endpoint}"
                     resp = requests_module.get(url, timeout=2)
+
                     if resp.status_code == 200:
-                        data = resp.json()
-                        if 'value' in data:
+                        try:
+                            data = resp.json()
+                        except Exception:
+                            data = {}
+                        if isinstance(data, dict) and 'value' in data:
                             sensor_name = endpoint.split('/')[-1]
                             found_data[sensor_name] = data['value']
-                        del data
-                    del resp
+                    resp.close()
                 except:
                     continue
             
