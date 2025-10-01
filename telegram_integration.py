@@ -298,7 +298,58 @@ class TelegramIntegration:
         
         legend = self.message_handler.format_legend()
         await update.message.reply_text(legend)
-    
+
+    async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /echo"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Usage: /echo <message>")
+            return
+
+        echo_text = ' '.join(context.args)
+        info_print(f"Telegram /echo: {user.username} -> '{echo_text}'")
+
+        # Simuler un sender_id basé sur Telegram ID
+        sender_id = user.id & 0xFFFFFFFF
+
+        def send_echo():
+            import meshtastic.tcp_interface
+            try:
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, portNumber=4403
+                )
+                time.sleep(3)
+
+                # Utiliser le mapping Telegram -> Mesh si disponible
+                telegram_username = user.username or user.first_name
+
+                # Chercher dans le mapping
+                if telegram_username in TELEGRAM_TO_MESH_MAPPING:
+                    mesh_name = TELEGRAM_TO_MESH_MAPPING[telegram_username]
+                    debug_print(f"✅ Mapping Telegram: {telegram_username} -> {mesh_name}")
+                else:
+                    # Fallback : utiliser les 4 premiers caractères
+                    mesh_name = telegram_username[:5]
+                    debug_print(f"⚠️ Pas de mapping pour {telegram_username}, utilise: {mesh_name}")
+
+                echo_message = f"{mesh_name}: {echo_text}"
+                remote_interface.sendText(echo_message)
+
+                time.sleep(4)
+                remote_interface.close()
+
+                return f"Echo diffusé: {echo_message}"
+
+            except Exception as e:
+                return f"Erreur echo: {str(e)[:50]}"
+
+        response = await asyncio.to_thread(send_echo)
+        await update.message.reply_text(response)
+
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /echo"""
         user = update.effective_user
