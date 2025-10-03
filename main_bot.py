@@ -33,7 +33,7 @@ class DebugMeshBot:
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.remote_nodes_client = RemoteNodesClient()
-    self.traffic_monitor = TrafficMonitor(self.node_manager)
+        self.traffic_monitor = TrafficMonitor(self.node_manager)
         
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -185,6 +185,7 @@ class DebugMeshBot:
                 self.node_manager,
                 self.context_manager,
                 self.interface,
+                self.traffic_monitor
             )
             
             # Intégration Telegram

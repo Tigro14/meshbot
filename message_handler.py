@@ -10,7 +10,7 @@ from config import *
 from utils import *
 
 class MessageHandler:
-    def __init__(self, llama_client, esphome_client, remote_nodes_client, node_manager, context_manager, interface):
+    def __init__(self, llama_client, esphome_client, remote_nodes_client, node_manager, context_manager, interface, traffic_monitor=None):
         self.llama_client = llama_client
         self.esphome_client = esphome_client
         self.remote_nodes_client = remote_nodes_client

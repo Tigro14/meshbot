@@ -135,7 +135,7 @@ class TelegramIntegration:
             f"• /echo <msg> - Diffuser\n"
             f"• /nodes <IP> [page] - Nœuds distants\n"
             f"• /legend - Légende\n"
-            f"• /trafic [heures] - Messages publics (défaut: 8h)"\n
+            f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
             f"• /help - Aide\n\n"
             f"Votre ID: {user.id}"
         )
@@ -349,6 +349,30 @@ class TelegramIntegration:
                 return f"Erreur echo: {str(e)[:50]}"
 
         response = await asyncio.to_thread(send_echo)
+        await update.message.reply_text(response)
+    async def _trafic_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /trafic pour historique messages publics"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        hours = 8
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(24, hours))
+            except ValueError:
+                hours = 8
+        
+        info_print(f"Telegram /trafic {hours}h: {user.username}")
+        
+        def get_traffic():
+            if not self.message_handler.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+            return self.message_handler.traffic_monitor.get_traffic_report(hours)
+        
+        response = await asyncio.to_thread(get_traffic)
         await update.message.reply_text(response)
 
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
