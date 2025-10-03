@@ -20,6 +20,7 @@ from esphome_client import ESPHomeClient
 from remote_nodes_client import RemoteNodesClient
 from message_handler import MessageHandler
 from debug_interface import DebugInterface
+from traffic_monitor import TrafficMonitor
 
 class DebugMeshBot:
     def __init__(self):
@@ -32,6 +33,7 @@ class DebugMeshBot:
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.remote_nodes_client = RemoteNodesClient()
+    self.traffic_monitor = TrafficMonitor(self.node_manager)
         
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -85,13 +87,16 @@ class DebugMeshBot:
             
             decoded = packet['decoded']
             portnum = decoded.get('portnum', '')
-            
+        
             # Traitement des messages texte
             if portnum == 'TEXT_MESSAGE_APP':
                 sender_name = self.node_manager.get_node_name(from_id, self.interface)
                 debug_print(f"Message texte de {sender_name}")
                 
                 message = self._extract_message_text(decoded)
+                
+                if message and is_broadcast and not is_from_me:
+                    self.traffic_monitor.add_public_message(packet, message)
                 
                 if message and self.message_handler:
                     self.message_handler.process_text_message(packet, decoded, message)
@@ -133,6 +138,7 @@ class DebugMeshBot:
                     # Nettoyage périodique
                     self.context_manager.cleanup_old_contexts()
                     self.node_manager.cleanup_old_rx_history()
+                    self.traffic_monitor.cleanup_old_messages()
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
     
@@ -178,7 +184,7 @@ class DebugMeshBot:
                 self.remote_nodes_client,
                 self.node_manager,
                 self.context_manager,
-                self.interface
+                self.interface,
             )
             
             # Intégration Telegram

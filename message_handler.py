@@ -17,6 +17,7 @@ class MessageHandler:
         self.node_manager = node_manager
         self.context_manager = context_manager
         self.interface = interface
+        self.traffic_monitor = traffic_monitor  
         
         # Throttling des commandes utilisateurs
         self.user_commands = {}  # user_id -> [timestamps des commandes]
@@ -189,6 +190,7 @@ class MessageHandler:
             "/my",
             "/sys",
             "/echo <texte>",
+            "/trafic [heures]", 
             "/legend"
         ]
         
@@ -998,7 +1000,37 @@ class MessageHandler:
         )
         
         return sorted_relays[:3]  # Top 3 des meilleurs relays potentiels
-    
+
+    def handle_trafic_command(self, message, sender_id, sender_info):
+        """Gérer la commande /trafic"""
+        info_print(f"Trafic: {sender_info}")
+        
+        # Extraire les heures optionnelles
+        hours = 8  # Par défaut
+        parts = message.split()
+        if len(parts) > 1:
+            try:
+                hours = int(parts[1])
+                # Limiter entre 1 et 24 heures
+                hours = max(1, min(24, hours))
+            except ValueError:
+                hours = 8
+        
+        if not self.traffic_monitor:
+            error_msg = "❌ Traffic monitor non disponible"
+            self.send_single_message(error_msg, sender_id, sender_info)
+            return
+        
+        try:
+            report = self.traffic_monitor.get_traffic_report(hours)
+            self.log_conversation(sender_id, sender_info, 
+                                f"/trafic {hours}" if hours != 8 else "/trafic", 
+                                report)
+            self.send_response_chunks(report, sender_id, sender_info)
+        except Exception as e:
+            error_msg = f"❌ Erreur trafic: {str(e)[:50]}"
+            self.send_single_message(error_msg, sender_id, sender_info)
+
     def process_text_message(self, packet, decoded, message):
         """Traiter un message texte"""
         sender_id = packet.get('from', 0)
@@ -1061,6 +1093,8 @@ class MessageHandler:
             self.handle_reboot_command(sender_id, sender_info)
         elif message.startswith('/g2'):
             self.handle_g2_command(sender_id, sender_info)
+        elif message.startswith('/trafic'):  
+            self.handle_trafic_command(message, sender_id, sender_info)
         elif message.startswith('/sys'):
             self.handle_sys_command(sender_id, sender_info)
         else:
