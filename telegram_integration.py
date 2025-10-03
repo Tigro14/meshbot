@@ -512,6 +512,33 @@ class TelegramIntegration:
         response = await asyncio.to_thread(query_ai)
         await update.message.reply_text(response)
 
+    async def _handle_trafic_command(self, command, sender_id, sender_info):
+        """Traiter /trafic depuis Telegram"""
+        try:
+            # Capturer la sortie
+            import io
+            import sys
+            from contextlib import redirect_stdout
+            
+            captured_output = io.StringIO()
+            
+            class TelegramInterface:
+                def sendText(self, message, destinationId=None):
+                    captured_output.write(message)
+            
+                original_interface = self.message_handler.interface
+                self.message_handler.interface = TelegramInterface()
+                
+                try:
+                    self.message_handler.handle_trafic_command(command, sender_id, sender_info)
+                    response = captured_output.getvalue()
+                return response if response else "Aucun trafic à afficher"
+                finally:
+                    self.message_handler.interface = original_interface
+            
+        except Exception as e:
+            return f"Erreur /trafic: {str(e)}"    
+
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire d'erreurs"""
         error_print(f"Erreur Telegram: {context.error}")
