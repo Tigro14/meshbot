@@ -135,6 +135,7 @@ class TelegramIntegration:
             f"• /echo <msg> - Diffuser\n"
             f"• /nodes <IP> [page] - Nœuds distants\n"
             f"• /legend - Légende\n"
+            f"• /trafic [heures] - Messages publics (défaut: 8h)"\n
             f"• /help - Aide\n\n"
             f"Votre ID: {user.id}"
         )
