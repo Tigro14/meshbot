@@ -200,7 +200,76 @@ class RemoteNodesClient:
             
         except Exception as e:
             return f"Erreur {REMOTE_NODE_NAME}: {str(e)[:30]}"
-    
+
+    def get_all_nodes_alphabetical(self, days_limit=30):
+        """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
+        try:
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            
+            if not remote_nodes:
+                return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
+            
+            current_time = time.time()
+            cutoff_time = current_time - (days_limit * 24 * 3600)
+            
+            # Filtrer par période
+            recent_nodes = [
+                node for node in remote_nodes
+                if node.get('last_heard', 0) >= cutoff_time
+            ]
+            
+            if not recent_nodes:
+                return f"Aucun nœud vu dans les {days_limit} derniers jours"
+            
+            # Trier par nom alphabétique
+            recent_nodes.sort(key=lambda x: x.get('name', 'Unknown').lower())
+            
+            # Construire la réponse
+            lines = []
+            lines.append(f"📋 Tous les nœuds de {REMOTE_NODE_NAME} (<{days_limit}j):")
+            lines.append(f"Total: {len(recent_nodes)} nœuds\n")
+            
+            for node in recent_nodes:
+                name = node.get('name', 'Unknown')
+                snr = node.get('snr', 0.0)
+                rssi = node.get('rssi', 0)
+                last_heard = node.get('last_heard', 0)
+                
+                # Calculer temps écoulé
+                elapsed = int(current_time - last_heard) if last_heard > 0 else 0
+                if elapsed < 3600:  # < 1h
+                    time_str = f"{elapsed//60}m"
+                elif elapsed < 86400:  # < 1j
+                    time_str = f"{elapsed//3600}h"
+                else:
+                    time_str = f"{elapsed//86400}j"
+                
+                # Icône qualité signal
+                if snr >= 10:
+                    icon = "🟢"
+                elif snr >= 5:
+                    icon = "🟡"
+                elif snr >= 0:
+                    icon = "🟠"
+                else:
+                    icon = "🔴"
+                
+                # Format: icône + nom complet + SNR + temps
+                line = f"{icon} {name}"
+                if snr != 0:
+                    line += f" | SNR:{snr:.1f}dB"
+                if rssi != 0:
+                    line += f" | {rssi}dBm"
+                line += f" | {time_str}"
+                
+                lines.append(line)
+            
+            return "\n".join(lines)
+        
+        except Exception as e:
+            error_print(f"Erreur get_all_nodes_alphabetical: {e}")
+            return f"Erreur: {str(e)[:50]}"
+
     def _format_node_line(self, node):
         """Formater une ligne de nœud selon la configuration"""
         short_name = truncate_text(node['name'], 8)

@@ -94,6 +94,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
+            self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
             
             # Handler pour messages texte
             self.application.add_handler(
@@ -160,6 +161,7 @@ class TelegramIntegration:
             f"• /sys - Système Pi5\n"
             f"• /echo <msg> - Diffuser\n"
             f"• /nodes - Nœuds tigrog2\n"
+            f"• /fullnodes [jours] - Liste complète alphabétique (défaut: 30j)\n"
             f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
             f"• /legend - Légende\n"
             f"• /help - Aide\n\n"
@@ -393,6 +395,64 @@ class TelegramIntegration:
         
         response = await asyncio.to_thread(get_nodes_list)
         await update.message.reply_text(response)
+
+    async def _fullnodes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /fullnodes - Liste complète alphabétique des nœuds"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("Non autorisé")
+            return
+        
+        # Extraire le nombre de jours (optionnel, défaut 30)
+        days = 30
+        if context.args and len(context.args) > 0:
+            try:
+                days = int(context.args[0])
+                days = max(1, min(90, days))  # Entre 1 et 90 jours
+            except ValueError:
+                days = 30
+        
+        info_print(f"Telegram /fullnodes ({days}j): {user.username}")
+        
+        def get_full_nodes():
+            try:
+                return self.message_handler.remote_nodes_client.get_all_nodes_alphabetical(days)
+            except Exception as e:
+                error_print(f"Erreur get_full_nodes: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"Erreur: {str(e)[:100]}"
+        
+        response = await asyncio.to_thread(get_full_nodes)
+        
+        # Telegram a une limite de 4096 caractères par message
+        if len(response) > 4000:
+            # Découper en plusieurs messages
+            chunks = []
+            lines = response.split('\n')
+            current_chunk = []
+            current_length = 0
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 pour le \n
+                if current_length + line_length > 4000:
+                    chunks.append('\n'.join(current_chunk))
+                    current_chunk = [line]
+                    current_length = line_length
+                else:
+                    current_chunk.append(line)
+                    current_length += line_length
+            
+            if current_chunk:
+                chunks.append('\n'.join(current_chunk))
+            
+            # Envoyer les chunks
+            for i, chunk in enumerate(chunks):
+                if i > 0:
+                    await asyncio.sleep(1)  # Éviter rate limiting
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(response)
 
     async def _rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rebootg2 - Redémarrage tigrog2"""
