@@ -149,7 +149,7 @@ class RemoteNodesClient:
             if remote_interface:
                 try:
                     debug_print(f"Fermeture connexion {remote_host}")
-                    remote_interface.close()
+                    #remote_interface.close()
                 except Exception as e:
                     debug_print(f"Erreur fermeture: {e}")
     
