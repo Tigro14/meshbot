@@ -55,18 +55,30 @@ class TelegramIntegration:
         info_print("🛑 Bot Telegram arrêté")
     
     def _run_telegram_bot(self):
-        """Exécuter le bot Telegram dans son propre event loop"""
+    """Exécuter le bot Telegram dans son propre event loop"""
+    try:
+        # Créer un nouvel event loop pour ce thread
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
+        # Lancer le bot et bloquer jusqu'à l'arrêt
+        self.loop.run_until_complete(self._start_telegram_bot())
+        
+    except Exception as e:
+        error_print(f"Erreur bot Telegram: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+    finally:
+        # Nettoyer l'event loop
         try:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-            self.loop.run_until_complete(self._start_telegram_bot())
-        except Exception as e:
-            error_print(f"Erreur bot Telegram: {e}")
-    
+            self.loop.close()
+        except:
+            pass
+
     async def _start_telegram_bot(self):
         """Démarrer l'application Telegram"""
         try:
-            info_print(f"📱 Initialisation bot Telegram...")
+            info_print(f"Initialisation bot Telegram...")
             
             self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
             
@@ -79,11 +91,11 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
-            self.application.add_handler(CommandHandler("trafic", self._trafic_command))  # ✅ AJOUTER
+            self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
             
-            # Handler pour messages texte (raccourci /bot)
+            # Handler pour messages texte
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
             )
@@ -91,22 +103,33 @@ class TelegramIntegration:
             # Gestionnaire d'erreurs
             self.application.add_error_handler(self._error_handler)
             
-            # Démarrer
+            # Démarrer l'application
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling()
             
-            info_print("✅ Bot Telegram en écoute...")
+            # Démarrer le polling (BLOQUANT - pas besoin de boucle while)
+            info_print("Bot Telegram en écoute...")
+            await self.application.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                poll_interval=2.0  # Vérifier toutes les 2 secondes au lieu de 1
+            )
             
-            # Garder actif
+            # Attendre que running devienne False (pas de boucle active)
             while self.running:
-                await asyncio.sleep(1)
+                await asyncio.sleep(5)  # Vérifier moins souvent
+            
+            # Arrêter proprement
+            info_print("Arrêt du polling Telegram...")
+            await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
             
         except Exception as e:
             error_print(f"Erreur démarrage Telegram: {e}")
             import traceback
             error_print(traceback.format_exc())
-    
+
     async def _shutdown(self):
         """Arrêter proprement le bot"""
         if self.application:
