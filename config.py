@@ -88,4 +88,4 @@ TELEGRAM_TO_MESH_MAPPING = {
 }
 
 # Variables globales d'état
-DEBUG_MODE = True
+DEBUG_MODE = False

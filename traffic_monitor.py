@@ -117,8 +117,8 @@ class TrafficMonitor:
     def _format_message_line(self, msg):
         """Formater une ligne de message individuel"""
         timestamp_str = time.strftime("%H:%M", time.localtime(msg['timestamp']))
-        sender_short = truncate_text(msg['sender_name'], 10)
-        message_short = truncate_text(msg['message'], 50)
+        sender_short = truncate_text(msg['sender_name'], 25)
+        message_short = truncate_text(msg['message'], 120)
         
         # Ajouter indicateur de signal si disponible
         signal_icon = ""
