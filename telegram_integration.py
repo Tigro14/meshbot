@@ -55,25 +55,25 @@ class TelegramIntegration:
         info_print("🛑 Bot Telegram arrêté")
     
     def _run_telegram_bot(self):
-    """Exécuter le bot Telegram dans son propre event loop"""
-    try:
-        # Créer un nouvel event loop pour ce thread
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        
-        # Lancer le bot et bloquer jusqu'à l'arrêt
-        self.loop.run_until_complete(self._start_telegram_bot())
-        
-    except Exception as e:
-        error_print(f"Erreur bot Telegram: {e}")
-        import traceback
-        error_print(traceback.format_exc())
-    finally:
-        # Nettoyer l'event loop
+        """Exécuter le bot Telegram dans son propre event loop"""
         try:
-            self.loop.close()
-        except:
-            pass
+            # Créer un nouvel event loop pour ce thread
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            
+            # Lancer le bot et bloquer jusqu'à l'arrêt
+            self.loop.run_until_complete(self._start_telegram_bot())
+            
+        except Exception as e:
+            error_print(f"Erreur bot Telegram: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+        finally:
+            # Nettoyer l'event loop
+            try:
+                self.loop.close()
+            except:
+                pass
 
     async def _start_telegram_bot(self):
         """Démarrer l'application Telegram"""
