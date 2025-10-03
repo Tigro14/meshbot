@@ -95,12 +95,26 @@ class RemoteNodesClient:
                             long_name = user.get('longName', '')
                             
                             # Utiliser shortName en priorité, sinon longName tronqué
-                            if short_name:
-                                name = short_name
+                            # Concaténer shortName + longName
+                            if short_name and long_name:
+                                 # Si les deux existent et sont différents
+                                if short_name.lower() != long_name.lower():
+                                    name = f"{short_name} {long_name}"
+                                else:
+                                # Si identiques, afficher une seule fois
+                                    name = long_name
                             elif long_name:
-                                name = long_name[:8]  # Tronquer à 8 caractères
+                                name = long_name
+                            elif short_name:
+                                name = short_name
                             else:
                                 name = f"Node-{id_int:04x}"
+                            #if short_name:
+                            #    name = short_name
+                            #elif long_name:
+                            #    name = long_name[:8]  # Tronquer à 8 caractères
+                            #else:
+                            #    name = f"Node-{id_int:04x}"
                         
                         last_heard = node_info.get('lastHeard', 0)
                         
@@ -222,7 +236,21 @@ class RemoteNodesClient:
                 return f"Aucun nœud vu dans les {days_limit} derniers jours"
             
             # Trier par nom alphabétique
-            recent_nodes.sort(key=lambda x: x.get('name', 'Unknown').lower())
+
+            # ✅ Trier par longName au lieu du nom combiné
+            # D'abord, extraire le longName de chaque nœud
+            def get_sort_key(node):
+                name = node.get('name', 'Unknown')
+                # Si le nom contient un espace (format "shortName longName")
+                if ' ' in name:
+                    # Extraire le longName (partie après le premier espace)
+                    return name.split(' ', 1)[1].lower()
+                else:
+                    # Sinon, utiliser le nom tel quel
+                    return name.lower()
+            recent_nodes.sort(key=get_sort_key)
+
+            #recent_nodes.sort(key=lambda x: x.get('name', 'Unknown').lower())
             
             # Construire la réponse
             lines = []
