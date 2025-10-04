@@ -18,9 +18,16 @@ from utils import (
 class RemoteNodesClient:
     def __init__(self):
         pass
+    
+    def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
+        """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant
 
-    def get_remote_nodes(self, remote_host, remote_port=4403,days_filter=30):
-        """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant"""
+        Args:
+            remote_host: IP du nœud distant
+            remote_port: Port TCP (défaut: 4403)
+            days_filter: Nombre de jours pour filtrer les nœuds (défaut: 3)
+        """
+
         remote_interface = None  # ✅ Initialiser
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
@@ -109,12 +116,6 @@ class RemoteNodesClient:
                                 name = short_name
                             else:
                                 name = f"Node-{id_int:04x}"
-                            #if short_name:
-                            #    name = short_name
-                            #elif long_name:
-                            #    name = long_name[:8]  # Tronquer à 8 caractères
-                            #else:
-                            #    name = f"Node-{id_int:04x}"
                         
                         last_heard = node_info.get('lastHeard', 0)
                         
@@ -126,12 +127,12 @@ class RemoteNodesClient:
                             snr = node_info.get('snr', 0.0)
                         
                         # FILTRE TEMPOREL : ne garder que les nœuds récents selon days_filter
-                        current_time = time.time()
-                        cutoff_time = current_time - (days_filter * 24 * 3600)  # ✅ Utiliser le paramètre
-
-                        if last_heard == 0 or last_heard < cutoff_time:
-                            debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {last_heard})")
-                            continue
+#                        current_time = time.time()
+#                        cutoff_time = current_time - (days_filter * 24 * 3600)  # ✅ Utiliser le paramètre
+#
+#                        if last_heard == 0 or last_heard < cutoff_time:
+#                            debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {last_heard})")
+#                            continue
                         
                         node_data = {
                             'id': id_int,
@@ -218,8 +219,11 @@ class RemoteNodesClient:
     def get_all_nodes_alphabetical(self, days_limit=30):
         """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
         try:
-            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST, days_filter=days_limit)
-            
+            remote_nodes = self.get_remote_nodes(
+                REMOTE_NODE_HOST, 
+                days_filter=days_limit  # ✅ Passer le paramètre
+            )    
+
             if not remote_nodes:
                 return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
             
