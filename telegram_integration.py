@@ -33,7 +33,6 @@ class TelegramIntegration:
         self.telegram_thread = None
         self.application = None
         self.loop = None
-    
         # Liste des utilisateurs pour les alertes
         self.alert_users = TELEGRAM_ALERT_USERS if TELEGRAM_ALERT_USERS else TELEGRAM_AUTHORIZED_USERS
 
