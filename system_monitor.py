@@ -22,7 +22,13 @@ class SystemMonitor:
         self.temp_high_since = None  # Timestamp depuis quand la temp est élevée
         self.last_temp_alert = 0  # Timestamp de la dernière alerte temp
         self.temp_alert_cooldown = 1800  # 30 minutes entre alertes temp
-        
+
+        # ✅ État CPU
+        self.cpu_high_since = None  # Timestamp depuis quand le CPU est élevé
+        self.last_cpu_alert = 0  # Timestamp de la dernière alerte CPU
+        self.cpu_alert_cooldown = 1800  # 30 minutes entre alertes CPU
+        self.process = None  # Objet psutil.Process
+         
         # État tigrog2
         self.tigrog2_last_seen = None  # Timestamp dernière connexion réussie
         self.tigrog2_was_online = False  # État précédent
@@ -61,7 +67,14 @@ class SystemMonitor:
                         self._check_temperature()
                         temp_check_counter = 0
                     temp_check_counter += 1
-                
+
+                # ✅ Monitoring CPU
+                if CPU_WARNING_ENABLED:
+                    if cpu_check_counter >= CPU_CHECK_INTERVAL:
+                        self._check_cpu()
+                        cpu_check_counter = 0
+                    cpu_check_counter += 1 
+
                 # Monitoring tigrog2
                 if TIGROG2_MONITORING_ENABLED:
                     if tigrog2_check_counter >= TIGROG2_CHECK_INTERVAL:
@@ -119,7 +132,59 @@ class SystemMonitor:
             
         except Exception as e:
             error_print(f"Erreur vérification température: {e}")
-    
+
+    def _check_cpu(self):
+        """Vérifier l'utilisation CPU du bot et alerter si nécessaire"""
+        try:
+            # Initialiser psutil.Process si nécessaire
+            if self.process is None:
+                import psutil
+                import os
+                self.process = psutil.Process(os.getpid())
+            
+            # Obtenir l'utilisation CPU (moyenne sur 1 seconde)
+            cpu_percent = self.process.cpu_percent(interval=1.0)
+            
+            if cpu_percent is None:
+                return
+            
+            current_time = time.time()
+            
+            # CPU critique
+            if cpu_percent >= CPU_CRITICAL_THRESHOLD:
+                if current_time - self.last_cpu_alert >= self.cpu_alert_cooldown:
+                    self._send_cpu_alert(cpu_percent, critical=True)
+                    self.last_cpu_alert = current_time
+                    # Log systemd
+                    info_print(f"🚨 CPU CRITIQUE: {cpu_percent:.1f}%")
+                return
+            
+            # CPU d'avertissement
+            if cpu_percent >= CPU_WARNING_THRESHOLD:
+                if self.cpu_high_since is None:
+                    # Début de CPU élevé
+                    self.cpu_high_since = current_time
+                    debug_print(f"⚠️ CPU élevé détecté: {cpu_percent:.1f}%")
+                else:
+                    # CPU élevé depuis un certain temps
+                    duration = current_time - self.cpu_high_since
+                    
+                    if duration >= CPU_WARNING_DURATION:
+                        # Durée dépassée, envoyer alerte si cooldown passé
+                        if current_time - self.last_cpu_alert >= self.cpu_alert_cooldown:
+                            self._send_cpu_alert(cpu_percent, critical=False)
+                            self.last_cpu_alert = current_time
+                            # Log systemd
+                            info_print(f"⚠️ CPU ÉLEVÉ: {cpu_percent:.1f}% depuis {int(duration/60)}min")
+            else:
+                # CPU normal
+                if self.cpu_high_since is not None:
+                    debug_print(f"✅ CPU revenu à la normale: {cpu_percent:.1f}%")
+                    self.cpu_high_since = None
+            
+        except Exception as e:
+            error_print(f"Erreur vérification CPU: {e}")
+
     def _check_tigrog2(self):
         """Vérifier l'état de tigrog2 et alerter si nécessaire"""
         try:
@@ -253,7 +318,56 @@ class SystemMonitor:
             
         except Exception as e:
             error_print(f"Erreur envoi alerte température: {e}")
-    
+
+    def _send_cpu_alert(self, cpu_percent, critical=False):
+        """Envoyer une alerte CPU via Telegram"""
+        try:
+            if not self.telegram_integration:
+                return
+            
+            # Informations supplémentaires
+            try:
+                threads = len(self.process.threads())
+                memory_mb = self.process.memory_info().rss / 1024 / 1024
+            except:
+                threads = "N/A"
+                memory_mb = 0
+            
+            if critical:
+                emoji = "🔥"
+                level = "CRITIQUE"
+                message = (
+                    f"{emoji} ALERTE CPU {level}\n\n"
+                    f"⚡ Utilisation: {cpu_percent:.1f}%\n"
+                    f"⚠️ Seuil critique: {CPU_CRITICAL_THRESHOLD}%\n"
+                    f"🧵 Threads: {threads}\n"
+                    f"💾 RAM: {memory_mb:.0f}MB\n\n"
+                    f"Action recommandée: Vérifier le bot immédiatement!\n"
+                    f"Causes possibles:\n"
+                    f"• Boucle infinie\n"
+                    f"• Polling Telegram trop agressif\n"
+                    f"• Problème réseau Meshtastic"
+                )
+            else:
+                emoji = "⚠️"
+                level = "ÉLEVÉE"
+                duration_min = int((time.time() - self.cpu_high_since) / 60)
+                message = (
+                    f"{emoji} Alerte CPU {level}\n\n"
+                    f"⚡ Utilisation: {cpu_percent:.1f}%\n"
+                    f"📊 Seuil: {CPU_WARNING_THRESHOLD}%\n"
+                    f"⏱️ Durée: {duration_min} minutes\n"
+                    f"🧵 Threads: {threads}\n"
+                    f"💾 RAM: {memory_mb:.0f}MB\n\n"
+                    f"Surveillance en cours...\n"
+                    f"Tip: Vérifier les logs pour identifier la cause"
+                )
+            
+            self.telegram_integration.send_alert(message)
+            
+        except Exception as e:
+            error_print(f"Erreur envoi alerte CPU: {e}")
+
     def _send_tigrog2_alert(self, alert_type):
         """Envoyer une alerte tigrog2 via Telegram"""
         try:

@@ -73,6 +73,8 @@ class DebugInterface:
             self.bot.node_manager.load_node_names()
         elif command == 'mem':
             self._handle_memory_command()
+        elif command == 'cpu':
+            self._handle_cpu_command()
         elif command == 'help':
             self._show_help()
         else:
@@ -183,7 +185,30 @@ class DebugInterface:
         except:
             active_contexts, total_messages = self.bot.context_manager.get_memory_stats()
             info_print(f"Nœuds: {len(self.bot.node_manager.node_names)}, Contextes: {active_contexts} ({total_messages} messages)")
-    
+
+    def _handle_cpu_command(self):
+        """Afficher l'utilisation CPU en temps réel"""
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            
+            info_print("📊 Monitoring CPU (10 secondes)...")
+            for i in range(10):
+                cpu = process.cpu_percent(interval=1.0)
+                threads = len(process.threads())
+                mem = process.memory_info().rss / 1024 / 1024
+                info_print(f"  [{i+1}/10] CPU: {cpu:.1f}% | Threads: {threads} | RAM: {mem:.0f}MB")
+            
+            # Moyenne
+            cpu_avg = process.cpu_percent(interval=1.0)
+            info_print(f"✅ Moyenne: {cpu_avg:.1f}%")
+            
+        except ImportError:
+            info_print("❌ psutil non installé")
+        except Exception as e:
+            info_print(f"❌ Erreur: {e}") 
+
     def _show_help(self):
         """Afficher l'aide des commandes debug"""
         print("Commandes:")
@@ -203,4 +228,5 @@ class DebugInterface:
         print("  save           - Sauvegarder base nœuds")
         print("  reload         - Recharger base nœuds")
         print("  mem            - Mémoire utilisée")
+        print("  cpu            - Monitoring CPU 10s")
         print("  quit           - Quitter")

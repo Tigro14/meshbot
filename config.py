@@ -97,9 +97,9 @@ TELEGRAM_ALERT_USERS = [134360030]  # Ajouter les IDs des utilisateurs à alerte
 
 # Configuration monitoring température CPU
 TEMP_WARNING_ENABLED = True  # Activer/désactiver les alertes température
-TEMP_WARNING_THRESHOLD = 60  # Température en °C déclenchant une alerte
+TEMP_WARNING_THRESHOLD = 50  # Température en °C déclenchant une alerte
 TEMP_WARNING_DURATION = 300  # Durée en secondes avant alerte (5 minutes)
-TEMP_CRITICAL_THRESHOLD = 85.0  # Température critique
+TEMP_CRITICAL_THRESHOLD = 68.0  # Température critique
 TEMP_CHECK_INTERVAL = 60  # Vérifier la température toutes les 60 secondes
 
 # Configuration monitoring tigrog2
@@ -108,6 +108,13 @@ TIGROG2_CHECK_INTERVAL = 120  # Vérifier tigrog2 toutes les 2 minutes
 TIGROG2_TIMEOUT = 20  # Timeout de connexion en secondes
 TIGROG2_ALERT_ON_REBOOT = True  # Alerter lors d'un redémarrage détecté
 TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si tigrog2 devient inaccessible
+
+# Configuration monitoring CPU du bot
+CPU_WARNING_ENABLED = True  # Activer/désactiver les alertes CPU
+CPU_WARNING_THRESHOLD = 80  # % CPU déclenchant une alerte (80%)
+CPU_WARNING_DURATION = 300  # Durée en secondes avant alerte (5 minutes)
+CPU_CRITICAL_THRESHOLD = 150  # % CPU critique (150% = 1.5 cœurs)
+CPU_CHECK_INTERVAL = 30  # Vérifier le CPU toutes les 30 secondes
 
 # Variables globales d'état
 DEBUG_MODE = True

@@ -213,6 +213,13 @@ class DebugMeshBot:
                 )
                 self.telegram_integration.start()
                 info_print("✅ Interface Telegram intégrée")
+
+                # ✅ Démarrer le monitoring système avec Telegram
+                from system_monitor import SystemMonitor
+                self.system_monitor = SystemMonitor(self.telegram_integration)
+                self.system_monitor.start()
+                info_print("🔍 Monitoring système démarré")
+
             except ImportError:
                 debug_print("📱 Module Telegram non disponible")
             except Exception as e:
@@ -260,7 +267,11 @@ class DebugMeshBot:
         # Sauvegarder avant fermeture
         if self.node_manager:
             self.node_manager.save_node_names(force=True)
-        
+
+        # ✅ Arrêter le monitoring système
+        if hasattr(self, 'system_monitor') and self.system_monitor:
+            self.system_monitor.stop() 
+
         # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
