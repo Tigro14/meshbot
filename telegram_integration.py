@@ -119,6 +119,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
+            self.application.add_handler(CommandHandler("cpu", self._cpu_command))
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
             self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
