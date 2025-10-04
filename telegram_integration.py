@@ -194,7 +194,8 @@ class TelegramIntegration:
             f"• /nodes - Nœuds tigrog2\n"
             f"• /fullnodes [jours] - Liste complète alphabétique (défaut: 30j)\n"
             f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
-            f"• /legend - Légende\n"
+            f"• /legend \n"
+            f"• /cpu \n"
             f"• /help - Aide\n\n"
             f"Votre ID: {user.id}"
         )
@@ -369,6 +370,49 @@ class TelegramIntegration:
         response = await asyncio.to_thread(send_echo)
         await update.message.reply_text(response)
     
+    async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /cpu - Monitoring CPU en temps réel"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        info_print(f"📱 Telegram /cpu: {user.username}")
+
+        # Message initial
+        await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")
+
+        def get_cpu_monitoring():
+            try:
+                import psutil
+                import os
+                process = psutil.Process(os.getpid())
+
+                measurements = []
+                for i in range(10):
+                    cpu = process.cpu_percent(interval=1.0)
+                    threads = len(process.threads())
+                    mem = process.memory_info().rss / 1024 / 1024
+                    measurements.append(f"[{i+1}/10] CPU: {cpu:.1f}% | Threads: {threads} | RAM: {mem:.0f}MB")
+
+                # Moyenne finale
+                cpu_avg = process.cpu_percent(interval=1.0)
+
+                report = "📊 Monitoring CPU (10s):\n\n"
+                report += "\n".join(measurements)
+                report += f"\n\n✅ Moyenne: {cpu_avg:.1f}%"
+
+                return report
+
+            except ImportError:
+                return "❌ Module psutil non installé\nInstaller: pip3 install psutil"
+            except Exception as e:
+                error_print(f"Erreur monitoring CPU: {e}")
+                return f"❌ Erreur: {str(e)[:100]}"
+
+        response = await asyncio.to_thread(get_cpu_monitoring)
+        await update.message.reply_text(response)
+
     async def _trafic_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /trafic pour historique messages publics"""
         user = update.effective_user

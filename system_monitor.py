@@ -58,6 +58,7 @@ class SystemMonitor:
         
         temp_check_counter = 0
         tigrog2_check_counter = 0
+        cpu_check_counter = 0
         
         while self.running:
             try:
