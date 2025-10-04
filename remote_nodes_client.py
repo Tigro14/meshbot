@@ -428,7 +428,14 @@ class RemoteNodesClient:
                     hops_indicator = f" [{hops_away}hop]"  # [1h], [2h], etc.
                 
                 # ✅ MODIFICATION : Ajouter hops_indicator dans la ligne
-                line = f"{icon} {name}{hops_indicator}"
+#                line = f"{icon} {name}{hops_indicator}"
+#                if snr != 0:
+#                    line += f" | SNR:{snr:.1f}dB"
+#                if rssi != 0:
+#                    line += f" | {rssi}dBm"
+#                line += f" | {time_str}"
+                # ✅ Construire la ligne avec hops_indicator ET node_id pour debug
+                line = f"{icon} {name}{hops_indicator} [!{node['id']:08x}]"  # ← AJOUT node_id
                 if snr != 0:
                     line += f" | SNR:{snr:.1f}dB"
                 if rssi != 0:
