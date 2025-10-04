@@ -19,7 +19,7 @@ class RemoteNodesClient:
     def __init__(self):
         pass
 
-    def get_remote_nodes(self, remote_host, remote_port=4403):
+    def get_remote_nodes(self, remote_host, remote_port=4403,days_filter=30):
         """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant"""
         remote_interface = None  # ✅ Initialiser
         try:
@@ -125,12 +125,12 @@ class RemoteNodesClient:
                             rssi = node_info.get('rssi', 0)
                             snr = node_info.get('snr', 0.0)
                         
-                        # FILTRE TEMPOREL : ne garder que les nœuds vus dans les 3 derniers jours
+                        # FILTRE TEMPOREL : ne garder que les nœuds récents selon days_filter
                         current_time = time.time()
-                        three_days_ago = current_time - (3 * 24 * 3600)  # 3 jours en secondes
-                        
-                        if last_heard == 0 or last_heard < three_days_ago:
-                            debug_print(f"Nœud {node_id} ignoré (trop ancien: {last_heard})")
+                        cutoff_time = current_time - (days_filter * 24 * 3600)  # ✅ Utiliser le paramètre
+
+                        if last_heard == 0 or last_heard < cutoff_time:
+                            debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {last_heard})")
                             continue
                         
                         node_data = {
@@ -166,11 +166,11 @@ class RemoteNodesClient:
                     #remote_interface.close()
                 except Exception as e:
                     debug_print(f"Erreur fermeture: {e}")
-    
-    def get_tigrog2_paginated(self, page=1):
+
+    def get_tigrog2_paginated(self, page=1, days_filter=3):  # ✅ Ajouter paramètre
         """Récupérer et formater les nœuds tigrog2 avec pagination simple"""
         try:
-            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST, days_filter=days_filter)  # ✅ Passer 
             
             if not remote_nodes:
                 return f"Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
@@ -218,7 +218,7 @@ class RemoteNodesClient:
     def get_all_nodes_alphabetical(self, days_limit=30):
         """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
         try:
-            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST)
+            remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST, days_filter=days_limit)
             
             if not remote_nodes:
                 return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
