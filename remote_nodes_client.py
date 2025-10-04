@@ -146,13 +146,6 @@ class RemoteNodesClient:
                             days_ago = (current_time - last_heard) / 86400 if last_heard > 0 else 999
                             debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {days_ago:.1f}j)")
                             continue
-                        # FILTRE TEMPOREL : ne garder que les nœuds récents selon days_filter
-#                        current_time = time.time()
-#                        cutoff_time = current_time - (days_filter * 24 * 3600)  # ✅ Utiliser le paramètre
-#
-#                        if last_heard == 0 or last_heard < cutoff_time:
-#                            debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {last_heard})")
-#                            continue
                         
                         node_data = {
                             'id': id_int,
@@ -187,6 +180,133 @@ class RemoteNodesClient:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
             return []
         finally:  
+            if remote_interface:
+                try:
+                    debug_print(f"Fermeture connexion {remote_host}")
+                except Exception as e:
+                    debug_print(f"Erreur fermeture: {e}")
+
+    def get_all_remote_nodes(self, remote_host, remote_port=4403, days_filter=30):
+        """Récupérer TOUS les nœuds (directs + relayés) d'un nœud distant
+        
+        Args:
+            remote_host: IP du nœud distant
+            remote_port: Port TCP (défaut: 4403)
+            days_filter: Nombre de jours pour filtrer (défaut: 30)
+            
+        Returns:
+            list: Liste de TOUS les nœuds (pas de filtre hopsAway)
+        """
+        # ✅ Calcul du seuil temporel
+        current_time = time.time()
+        cutoff_time = current_time - (days_filter * 24 * 3600)
+        debug_print(f"Filtre temporel TOUS nœuds: derniers {days_filter} jours")
+        
+        # Compteurs pour statistiques
+        skipped_by_date = 0
+        skipped_by_no_data = 0
+        
+        remote_interface = None
+        try:
+            debug_print(f"Connexion au nœud distant {remote_host}...")
+            
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=remote_host, 
+                portNumber=remote_port
+            )
+            
+            time.sleep(2)
+            remote_nodes = remote_interface.nodes
+            
+            # ✅ PAS DE FILTRE hopsAway - on prend tout !
+            node_list = []
+            for node_id, node_info in remote_nodes.items():
+                try:
+                    if not isinstance(node_info, dict):
+                        continue
+                    
+                    # ✅ Vérifier qu'on a des données minimales
+                    last_heard = node_info.get('lastHeard', 0)
+                    if last_heard == 0:
+                        skipped_by_no_data += 1
+                        debug_print(f"Nœud {node_id} ignoré (pas de lastHeard)")
+                        continue
+                    
+                    # ✅ FILTRE TEMPOREL uniquement
+                    if last_heard < cutoff_time:
+                        skipped_by_date += 1
+                        days_ago = (current_time - last_heard) / 86400
+                        debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {days_ago:.1f}j)")
+                        continue
+                    
+                    # Traiter le node_id
+                    if isinstance(node_id, str):
+                        if node_id.startswith('!'):
+                            clean_id = node_id[1:]
+                            id_int = int(clean_id, 16)
+                        elif node_id.isdigit():
+                            id_int = int(node_id)
+                        else:
+                            id_int = int(node_id, 16)
+                    else:
+                        id_int = int(node_id)
+                    
+                    # Récupérer le nom
+                    name = "Unknown"
+                    if 'user' in node_info and isinstance(node_info['user'], dict):
+                        user = node_info['user']
+                        short_name = user.get('shortName', '')
+                        long_name = user.get('longName', '')
+                        
+                        if short_name and long_name:
+                            if short_name.lower() != long_name.lower():
+                                name = f"{short_name} {long_name}"
+                            else:
+                                name = long_name
+                        elif long_name:
+                            name = long_name
+                        elif short_name:
+                            name = short_name
+                        else:
+                            name = f"Node-{id_int:04x}"
+                    
+                    # ✅ Récupérer hopsAway pour info
+                    hops_away = node_info.get('hopsAway', 0)
+                    
+                    # Collecter les métriques
+                    node_data = {
+                        'id': id_int,
+                        'name': name,
+                        'last_heard': last_heard,
+                        'hops_away': hops_away  # ✅ Ajouter pour affichage
+                    }
+                    
+                    if COLLECT_SIGNAL_METRICS:
+                        node_data['rssi'] = node_info.get('rssi', 0)
+                        node_data['snr'] = node_info.get('snr', 0.0)
+                    
+                    node_list.append(node_data)
+                    
+                    debug_print(f"✅ Nœud accepté: {name} (hops:{hops_away})")
+                    
+                except Exception as e:
+                    debug_print(f"Erreur traitement nœud {node_id}: {e}")
+                    continue
+            
+            remote_interface.close()
+            
+            # ✅ LOG RÉCAPITULATIF
+            debug_print(f"✅ Résultats TOUS nœuds pour {remote_host} (filtre: {days_filter}j):")
+            debug_print(f"   - Nœuds acceptés: {len(node_list)}")
+            debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
+            debug_print(f"   - Ignorés (pas de données): {skipped_by_no_data}")
+            
+            return node_list
+            
+        except Exception as e:
+            error_print(f"Erreur récupération TOUS nœuds {remote_host}: {e}")
+            return []
+        finally:
             if remote_interface:
                 try:
                     debug_print(f"Fermeture connexion {remote_host}")
@@ -245,7 +365,7 @@ class RemoteNodesClient:
         """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
         try:
             # ✅ Le filtrage par date est DÉJÀ fait dans get_remote_nodes()
-            remote_nodes = self.get_remote_nodes(
+            remote_nodes = self.get_all_remote_nodes(
                 REMOTE_NODE_HOST, 
                 days_filter=days_limit
             )
@@ -300,9 +420,14 @@ class RemoteNodesClient:
                     icon = "🟠"
                 else:
                     icon = "🔴"
+            
+                # ✅ AJOUT : Indicateur de hops pour les nœuds relayés
+                hops_indicator = ""
+                if hops_away > 0:
+                    hops_indicator = f" [{hops_away}h]"  # [1h], [2h], etc.
                 
-                # Format: icône + nom complet + SNR + RSSI + temps
-                line = f"{icon} {name}"
+                # ✅ MODIFICATION : Ajouter hops_indicator dans la ligne
+                line = f"{icon} {name}{hops_indicator}"
                 if snr != 0:
                     line += f" | SNR:{snr:.1f}dB"
                 if rssi != 0:
@@ -310,7 +435,7 @@ class RemoteNodesClient:
                 line += f" | {time_str}"
                 
                 lines.append(line)
-            
+                        
             return "\n".join(lines)
         
         except Exception as e:
