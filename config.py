@@ -110,4 +110,4 @@ TIGROG2_ALERT_ON_REBOOT = True  # Alerter lors d'un redémarrage détecté
 TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si tigrog2 devient inaccessible
 
 # Variables globales d'état
-DEBUG_MODE = False
+DEBUG_MODE = True
