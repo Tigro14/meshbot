@@ -87,5 +87,27 @@ TELEGRAM_TO_MESH_MAPPING = {
     # }
 }
 
+# ========================================
+# CONFIGURATION ALERTES TELEGRAM
+# ========================================
+
+# Utilisateurs Telegram à alerter (IDs Telegram)
+# Si vide, utilise TELEGRAM_AUTHORIZED_USERS
+TELEGRAM_ALERT_USERS = [134360030]  # Ajouter les IDs des utilisateurs à alerter
+
+# Configuration monitoring température CPU
+TEMP_WARNING_ENABLED = True  # Activer/désactiver les alertes température
+TEMP_WARNING_THRESHOLD = 75.0  # Température en °C déclenchant une alerte
+TEMP_WARNING_DURATION = 300  # Durée en secondes avant alerte (5 minutes)
+TEMP_CRITICAL_THRESHOLD = 85.0  # Température critique
+TEMP_CHECK_INTERVAL = 60  # Vérifier la température toutes les 60 secondes
+
+# Configuration monitoring tigrog2
+TIGROG2_MONITORING_ENABLED = True  # Activer/désactiver le monitoring tigrog2
+TIGROG2_CHECK_INTERVAL = 120  # Vérifier tigrog2 toutes les 2 minutes
+TIGROG2_TIMEOUT = 10  # Timeout de connexion en secondes
+TIGROG2_ALERT_ON_REBOOT = True  # Alerter lors d'un redémarrage détecté
+TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si tigrog2 devient inaccessible
+
 # Variables globales d'état
 DEBUG_MODE = False

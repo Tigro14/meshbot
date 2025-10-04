@@ -183,17 +183,14 @@ class MessageHandler:
     def format_help(self):
         """Formater l'aide des commandes disponibles - version compacte"""
         help_lines = [
-            "🤖 Commandes bot:",
-            "• Message direct → Chat IA",
-            "• /power - Batterie/solaire",
-            "• /rx [page] - Nœuds tigrog2",
-            "• /sys - Système Pi5",
-            "• /echo <msg> - Diffuser",
-            "• /nodes - Nœuds tigrog2",
-            "• /fullnodes [jours] - Liste complète (défaut: 30j)",
-            "• /trafic [heures] - Messages publics (défaut: 8h)",
-            "• /legend - Légende",
-            "• /help - Aide"
+            "• /bot IA",
+            "• /power",
+            "• /rx [page]",
+            "• /sys ",
+            "• /echo <msg>",
+            "• /nodes",
+            "• /legend ",
+            "• /help"
         ]
         
         return "\n".join(help_lines)

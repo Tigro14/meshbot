@@ -21,6 +21,7 @@ from remote_nodes_client import RemoteNodesClient
 from message_handler import MessageHandler
 from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
+from system_monitor import SystemMonitor
 
 class DebugMeshBot:
     def __init__(self):
