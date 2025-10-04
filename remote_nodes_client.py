@@ -425,7 +425,7 @@ class RemoteNodesClient:
                 # ✅ AJOUT : Indicateur de hops pour les nœuds relayés
                 hops_indicator = ""
                 if hops_away > 0:
-                    hops_indicator = f" [{hops_away}h]"  # [1h], [2h], etc.
+                    hops_indicator = f" [{hops_away}hop]"  # [1h], [2h], etc.
                 
                 # ✅ MODIFICATION : Ajouter hops_indicator dans la ligne
                 line = f"{icon} {name}{hops_indicator}"
