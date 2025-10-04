@@ -5,6 +5,7 @@ Routeur principal des messages et commandes
 Orchestre tous les gestionnaires de commandes
 """
 
+from config import DEBUG_MODE
 from utils import info_print, debug_print
 from .message_sender import MessageSender
 from .command_handlers import (
