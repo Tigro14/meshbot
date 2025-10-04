@@ -152,7 +152,7 @@ class RemoteNodesClient:
                             'name': name,
                             'last_heard': last_heard
                         }
-                        
+
                         # Ajouter les métriques si collectées
                         if COLLECT_SIGNAL_METRICS:
                             node_data['rssi'] = rssi
