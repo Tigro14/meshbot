@@ -468,7 +468,9 @@ class TelegramIntegration:
                 for node in nodes:
                     name = node.get('name', 'Unknown')
                     snr = node.get('snr', 0.0)
+                    rssi = node.get('rssi', 0)
                     last_heard = node.get('last_heard', 0)
+                    hops_away = node.get('hops_away', 0)  
                     
                     elapsed = int(time.time() - last_heard) if last_heard > 0 else 0
                     if elapsed < 60:
