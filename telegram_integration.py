@@ -333,8 +333,19 @@ class TelegramIntegration:
                     hostname=REMOTE_NODE_HOST, portNumber=4403
                 )
                 time.sleep(3)
-                username = user.username or user.first_name
-                message = f"{username[:4]}: {echo_text}"
+
+                # Utiliser le mapping Telegram → Meshtastic
+                mesh_identity = self._get_mesh_identity(user.id)
+
+                if mesh_identity:
+                    prefix = mesh_identity['short_name']
+                    info_print(f"🔄 Echo avec identité mappée: {prefix}")
+                else:
+                    username = user.username or user.first_name
+                    prefix = username[:4]
+                    info_print(f"⚠️ Echo sans mapping: {prefix}")
+
+        message = f"{prefix}: {echo_text}"
                 remote_interface.sendText(message)
                 time.sleep(4)
                 remote_interface.close()
