@@ -244,37 +244,39 @@ class RemoteNodesClient:
     def get_all_nodes_alphabetical(self, days_limit=30):
         """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
         try:
+            # ✅ Le filtrage par date est DÉJÀ fait dans get_remote_nodes()
             remote_nodes = self.get_remote_nodes(
                 REMOTE_NODE_HOST, 
-                days_filter=days_limit  # ✅ Passer le paramètre
-            )    
-
-            if not remote_nodes:
-                return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
+                days_filter=days_limit
+            )
             
-            # Trier par nom alphabétique
-
-            # ✅ Trier par longName au lieu du nom combiné
-            # D'abord, extraire le longName de chaque nœud
+            if not remote_nodes:
+                return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME} (<{days_limit}j)"
+            
+            # ✅ Trier par longName
             def get_sort_key(node):
                 name = node.get('name', 'Unknown')
-                # Si le nom contient un espace (format "shortName longName")
                 if ' ' in name:
                     # Extraire le longName (partie après le premier espace)
                     return name.split(' ', 1)[1].lower()
                 else:
                     # Sinon, utiliser le nom tel quel
                     return name.lower()
-            recent_nodes.sort(key=get_sort_key)
-
-            #recent_nodes.sort(key=lambda x: x.get('name', 'Unknown').lower())
+            
+            # ✅ CORRECTION : Utiliser remote_nodes au lieu de recent_nodes
+            remote_nodes.sort(key=get_sort_key)
+            
+            # ✅ AJOUT : Définir current_time pour le calcul du temps écoulé
+            current_time = time.time()
             
             # Construire la réponse
             lines = []
             lines.append(f"📋 Tous les nœuds de {REMOTE_NODE_NAME} (<{days_limit}j):")
-            lines.append(f"Total: {len(recent_nodes)} nœuds\n")
+            # ✅ CORRECTION : remote_nodes au lieu de recent_nodes
+            lines.append(f"Total: {len(remote_nodes)} nœuds\n")
             
-            for node in recent_nodes:
+            # ✅ CORRECTION : remote_nodes au lieu de recent_nodes
+            for node in remote_nodes:
                 name = node.get('name', 'Unknown')
                 snr = node.get('snr', 0.0)
                 rssi = node.get('rssi', 0)
@@ -289,7 +291,7 @@ class RemoteNodesClient:
                 else:
                     time_str = f"{elapsed//86400}j"
                 
-                # Icône qualité signal
+                # Icône qualité signal basée sur SNR
                 if snr >= 10:
                     icon = "🟢"
                 elif snr >= 5:
@@ -299,7 +301,7 @@ class RemoteNodesClient:
                 else:
                     icon = "🔴"
                 
-                # Format: icône + nom complet + SNR + temps
+                # Format: icône + nom complet + SNR + RSSI + temps
                 line = f"{icon} {name}"
                 if snr != 0:
                     line += f" | SNR:{snr:.1f}dB"
@@ -314,7 +316,7 @@ class RemoteNodesClient:
         except Exception as e:
             error_print(f"Erreur get_all_nodes_alphabetical: {e}")
             return f"Erreur: {str(e)[:50]}"
-
+    
     def _format_node_line(self, node):
         """Formater une ligne de nœud selon la configuration"""
         short_name = truncate_text(node['name'], 8)
