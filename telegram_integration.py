@@ -134,19 +134,23 @@ class TelegramIntegration:
             # Démarrer l'application
             await self.application.initialize()
             await self.application.start()
-            
-            # Démarrer le polling (BLOQUANT - pas besoin de boucle while)
-            info_print("Bot Telegram en écoute...")
+            # ✅ POLLING OPTIMISÉ - Réduire la charge CPU
+            info_print("Bot Telegram en écoute (polling optimisé)...")
             await self.application.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True,
-                poll_interval=2.0  # Vérifier toutes les 2 secondes au lieu de 1
+                poll_interval=5.0,        # ✅ 5 secondes au lieu de 2
+                timeout=10,                # ✅ Timeout plus court
+                read_timeout=10,           # ✅ Timeout lecture
+                write_timeout=10,          # ✅ Timeout écriture
+                connect_timeout=10,        # ✅ Timeout connexion
+                pool_timeout=10            # ✅ Timeout pool
             )
             
-            # Attendre que running devienne False (pas de boucle active)
+            # ✅ Boucle d'attente OPTIMISÉE - Ne pas vérifier trop souvent
             while self.running:
-                await asyncio.sleep(5)  # Vérifier moins souvent
-            
+                await asyncio.sleep(10)  # ✅ 10 secondes au lieu de 5
+
             # Arrêter proprement
             info_print("Arrêt du polling Telegram...")
             await self.application.updater.stop()
