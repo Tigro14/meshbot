@@ -499,10 +499,19 @@ class TelegramIntegration:
         
         # Extraire le nombre de jours (optionnel, défaut 30)
         days = 30
+        max_days = 365  # ✅ Limite raisonnable : 1 an
+        
         if context.args and len(context.args) > 0:
             try:
-                days = int(context.args[0])
-                days = max(1, min(90, days))  # Entre 1 et 90 jours
+                requested_days = int(context.args[0])
+                if requested_days > max_days:
+                    # ✅ Informer l'utilisateur si demande excessive
+                    await update.message.reply_text(
+                        f"⚠️ Maximum {max_days}j autorisé. Utilisation de {max_days}j."
+                    )
+                    days = max_days
+                else:
+                    days = max(1, requested_days)
             except ValueError:
                 days = 30
         

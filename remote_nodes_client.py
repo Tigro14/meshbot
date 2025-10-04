@@ -252,18 +252,6 @@ class RemoteNodesClient:
             if not remote_nodes:
                 return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
             
-            current_time = time.time()
-            cutoff_time = current_time - (days_limit * 24 * 3600)
-            
-            # Filtrer par période
-            recent_nodes = [
-                node for node in remote_nodes
-                if (node.get('last_heard') or 0) >= cutoff_time
-            ]
-
-            if not recent_nodes:
-                return f"Aucun nœud vu dans les {days_limit} derniers jours"
-            
             # Trier par nom alphabétique
 
             # ✅ Trier par longName au lieu du nom combiné
