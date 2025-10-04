@@ -131,18 +131,32 @@ class DebugMeshBot:
     
     def periodic_update_thread(self):
         """Thread de mise à jour périodique"""
+        # ✅ Délai initial pour laisser le système démarrer
+        time.sleep(60)
+
         while self.running:
             try:
+                # ✅ Sleep AVANT de faire le travail
                 time.sleep(NODE_UPDATE_INTERVAL)
-                if self.running:
-                    self.node_manager.update_node_database(self.interface)
-                    # Nettoyage périodique
-                    self.context_manager.cleanup_old_contexts()
-                    self.node_manager.cleanup_old_rx_history()
-                    self.traffic_monitor.cleanup_old_messages()
+                
+                if not self.running:
+                    break
+                
+                # Mise à jour de la base de nœuds
+                debug_print("🔄 Mise à jour périodique...")
+                self.node_manager.update_node_database(self.interface)
+                
+                # Nettoyage périodique
+                self.context_manager.cleanup_old_contexts()
+                self.node_manager.cleanup_old_rx_history()
+                self.traffic_monitor.cleanup_old_messages()
+                
+                debug_print("✅ Mise à jour périodique terminée")
+                
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
-    
+            time.sleep(60)  # Attendre avant de réessayer
+
     def cleanup_cache(self):
         """Nettoyage périodique général"""
         if self.llama_client:
