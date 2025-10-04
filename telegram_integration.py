@@ -514,7 +514,7 @@ class TelegramIntegration:
         sender_id = user.id & 0xFFFFFFFF
         
         def query_ai():
-            return self.message_handler.llama_client.query_llama(message_text, sender_id)
+            return self.message_handler.llama_client.query_llama_telegram(message_text, sender_id)
         
         response = await asyncio.to_thread(query_ai)
         await update.message.reply_text(response)

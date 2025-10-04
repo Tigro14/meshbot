@@ -82,7 +82,7 @@ class DebugInterface:
         """Gérer la commande test"""
         prompt = command[5:]
         info_print(f"TEST: '{prompt}'")
-        response = self.bot.llama_client.query_llama(prompt)  # Sans contexte pour les tests
+        response = self.bot.llama_client.query_llama_telegram(prompt)  # Sans contexte pour les tests
         info_print(f"→ {response}")
     
     def _handle_context_command(self):
