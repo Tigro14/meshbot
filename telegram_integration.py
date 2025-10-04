@@ -197,16 +197,23 @@ class TelegramIntegration:
         await update.message.reply_text(welcome_msg)
     
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /help"""
+        """Commande /help - Version détaillée pour Telegram"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
         info_print(f"📱 Telegram /help: {user.username}")
-        help_text = self.message_handler.format_help()
-        await update.message.reply_text(f"📖 Aide:\n{help_text}")
-    
+        
+        # Utiliser la version détaillée pour Telegram
+        help_text = self.message_handler.format_help_telegram(user.id)
+        
+        # Envoyer en mode Markdown pour le formatage
+        await update.message.reply_text(
+            help_text,
+            parse_mode='Markdown'
+    ) 
+
     async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /power"""
         user = update.effective_user

@@ -52,3 +52,7 @@ class MessageHandler:
     def format_help(self):
         """Format aide - pour compatibilité"""
         return self.router.utility_handler._format_help()
+
+    def format_help_telegram(self, user_id=None):
+        """Format aide détaillée pour Telegram - pour compatibilité"""
+        return self.router.format_help_telegram(user_id)

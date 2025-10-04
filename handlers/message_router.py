@@ -120,3 +120,15 @@ class MessageRouter:
     def cleanup_throttling_data(self):
         """Nettoyer les données de throttling (appelé périodiquement)"""
         self.sender.cleanup_throttling()
+
+    def format_help_telegram(self, user_id=None):
+        """Format aide détaillée pour Telegram"""
+        help_text = self.utility_handler._format_help_telegram()
+
+        # Remplacer le placeholder user_id si fourni
+        if user_id:
+            help_text = help_text.replace("{user_id}", str(user_id))
+        else:
+            help_text = help_text.replace("\nVotre ID Telegram : {user_id}", "")
+
+        return help_text
