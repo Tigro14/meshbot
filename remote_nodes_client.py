@@ -229,9 +229,9 @@ class RemoteNodesClient:
             # Filtrer par période
             recent_nodes = [
                 node for node in remote_nodes
-                if node.get('last_heard', 0) >= cutoff_time
+                if (node.get('last_heard') or 0) >= cutoff_time
             ]
-            
+
             if not recent_nodes:
                 return f"Aucun nœud vu dans les {days_limit} derniers jours"
             
