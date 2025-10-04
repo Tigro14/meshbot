@@ -20,15 +20,17 @@ except ImportError:
     TELEGRAM_AVAILABLE = False
     info_print("Module python-telegram-bot non installé")
 
+
 class TelegramIntegration:
     def __init__(self, message_handler, node_manager, context_manager):
         if not TELEGRAM_AVAILABLE:
-            raise ImportError("python-telegram-bot requis. Installez: pip3 install python-telegram-bot")
-        
+            raise ImportError(
+                "python-telegram-bot requis. Installez: pip3 install python-telegram-bot")
+
         self.message_handler = message_handler
         self.node_manager = node_manager
         self.context_manager = context_manager
-        
+
         self.running = False
         self.telegram_thread = None
         self.application = None
@@ -40,12 +42,13 @@ class TelegramIntegration:
         """Démarrer le bot Telegram dans un thread séparé"""
         if self.running:
             return
-        
+
         self.running = True
-        self.telegram_thread = threading.Thread(target=self._run_telegram_bot, daemon=True)
+        self.telegram_thread = threading.Thread(
+    target=self._run_telegram_bot, daemon=True)
         self.telegram_thread.start()
         info_print("🤖 Bot Telegram démarré en thread séparé")
-    
+
     def stop(self):
         """Arrêter le bot Telegram"""
         self.running = False
