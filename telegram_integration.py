@@ -56,7 +56,29 @@ class TelegramIntegration:
             except:
                 pass
         info_print("🛑 Bot Telegram arrêté")
-    
+
+   def _get_mesh_identity(self, telegram_user_id):
+        """
+        Obtenir l'identité Meshtastic correspondant à un utilisateur Telegram
+        
+        Args:
+            telegram_user_id: ID Telegram de l'utilisateur
+            
+        Returns:
+            dict: {'node_id': int, 'short_name': str, 'display_name': str}
+                  ou None si pas de mapping
+        """
+        from config import TELEGRAM_TO_MESH_MAPPING
+        from utils import debug_print
+        
+        if telegram_user_id in TELEGRAM_TO_MESH_MAPPING:
+            mapping = TELEGRAM_TO_MESH_MAPPING[telegram_user_id]
+            debug_print(f"✅ Mapping Telegram {telegram_user_id} → {mapping['display_name']}")
+            return mapping
+        else:
+            debug_print(f"⚠️ Pas de mapping pour {telegram_user_id}")
+            return None
+
     def _run_telegram_bot(self):
         """Exécuter le bot Telegram dans son propre event loop"""
         try:
@@ -487,7 +509,16 @@ class TelegramIntegration:
             return
         
         info_print(f"🚨 Telegram /rebootpi: {user.username}")
+
+        # Utiliser le mapping Telegram → Meshtastic
+        mesh_identity = self._get_mesh_identity(user.id)
+
+        if mesh_identity:
+            sender_id = mesh_identity['node_id']
+            info_print(f"🔄 Mapping: {user.username} → {mesh_identity['display_name']} (0x{sender_id:08x})")
+        else:
         sender_id = user.id & 0xFFFFFFFF
+        info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
         sender_info = f"TG:{user.username}"
         
         await update.message.reply_text("🔄 Redémarrage Pi5 en cours...")
