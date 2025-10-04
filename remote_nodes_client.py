@@ -18,16 +18,28 @@ from utils import (
 class RemoteNodesClient:
     def __init__(self):
         pass
-    
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant
-
+        
         Args:
             remote_host: IP du nœud distant
             remote_port: Port TCP (défaut: 4403)
             days_filter: Nombre de jours pour filtrer les nœuds (défaut: 3)
+            
+        Returns:
+            list: Liste de nœuds avec leurs infos, DÉJÀ FILTRÉS PAR DATE
         """
-
+        
+        # ✅ AJOUT : Calcul du seuil temporel
+        current_time = time.time()
+        cutoff_time = current_time - (days_filter * 24 * 3600)
+        debug_print(f"Filtre temporel: derniers {days_filter} jours")
+        
+        # Compteurs pour statistiques
+        skipped_by_hops = 0
+        skipped_by_date = 0
+        skipped_by_metrics = 0
+        
         remote_interface = None  # ✅ Initialiser
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
@@ -126,6 +138,14 @@ class RemoteNodesClient:
                             rssi = node_info.get('rssi', 0)
                             snr = node_info.get('snr', 0.0)
                         
+                        # ✅ AJOUT : FILTRE 2 - VÉRIFIER LA DATE
+                        last_heard = node_info.get('lastHeard', 0)
+                        
+                        if last_heard == 0 or last_heard < cutoff_time:
+                            skipped_by_date += 1
+                            days_ago = (current_time - last_heard) / 86400 if last_heard > 0 else 999
+                            debug_print(f"Nœud {node_id} ignoré (>{days_filter}j: {days_ago:.1f}j)")
+                            continue
                         # FILTRE TEMPOREL : ne garder que les nœuds récents selon days_filter
 #                        current_time = time.time()
 #                        cutoff_time = current_time - (days_filter * 24 * 3600)  # ✅ Utiliser le paramètre
@@ -155,16 +175,21 @@ class RemoteNodesClient:
             
             remote_interface.close()
             debug_print(f"✅ {len(node_list)} nœuds DIRECTS récupérés de {remote_host}")
+            debug_print(f"✅ Résultats pour {remote_host} (filtre: {days_filter}j):")
+            debug_print(f"   - Nœuds acceptés: {len(node_list)}")
+            debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
+            debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
+            debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}") 
+
             return node_list
             
         except Exception as e:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
             return []
-        finally:  # ✅ AJOUTER ce bloc
+        finally:  
             if remote_interface:
                 try:
                     debug_print(f"Fermeture connexion {remote_host}")
-                    #remote_interface.close()
                 except Exception as e:
                     debug_print(f"Erreur fermeture: {e}")
 
