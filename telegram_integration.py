@@ -59,7 +59,7 @@ class TelegramIntegration:
                 pass
         info_print("🛑 Bot Telegram arrêté")
 
-   def _get_mesh_identity(self, telegram_user_id):
+    def _get_mesh_identity(self, telegram_user_id):
         """
         Obtenir l'identité Meshtastic correspondant à un utilisateur Telegram
         
@@ -347,7 +347,7 @@ class TelegramIntegration:
                     prefix = username[:4]
                     info_print(f"⚠️ Echo sans mapping: {prefix}")
 
-        message = f"{prefix}: {echo_text}"
+                message = f"{prefix}: {echo_text}"
                 remote_interface.sendText(message)
                 time.sleep(4)
                 remote_interface.close()
@@ -480,7 +480,7 @@ class TelegramIntegration:
                 else:
                     current_chunk.append(line)
                     current_length += line_length
-            
+
             if current_chunk:
                 chunks.append('\n'.join(current_chunk))
             
@@ -511,9 +511,9 @@ class TelegramIntegration:
                 return "✅ Commande envoyée"
             except Exception as e:
                 return f"❌ Erreur: {str(e)[:100]}"
-        
+
         await asyncio.to_thread(reboot_g2)
-    
+
     async def _rebootpi_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rebootpi - Redémarrage Pi5"""
         user = update.effective_user
@@ -530,9 +530,9 @@ class TelegramIntegration:
             sender_id = mesh_identity['node_id']
             info_print(f"🔄 Mapping: {user.username} → {mesh_identity['display_name']} (0x{sender_id:08x})")
         else:
-        sender_id = user.id & 0xFFFFFFFF
-        info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
-        sender_info = f"TG:{user.username}"
+           sender_id = user.id & 0xFFFFFFFF
+           info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
+           sender_info = f"TG:{user.username}"
         
         await update.message.reply_text("🔄 Redémarrage Pi5 en cours...")
         
