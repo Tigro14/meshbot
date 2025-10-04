@@ -401,6 +401,7 @@ class RemoteNodesClient:
                 snr = node.get('snr', 0.0)
                 rssi = node.get('rssi', 0)
                 last_heard = node.get('last_heard', 0)
+                hops_away = node.get('hops_away', 0)  
                 
                 # Calculer temps écoulé
                 elapsed = int(current_time - last_heard) if last_heard > 0 else 0
