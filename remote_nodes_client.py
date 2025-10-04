@@ -105,30 +105,22 @@ class RemoteNodesClient:
                             # Déjà un int
                             id_int = int(node_id)
                         
-                        # Récupérer le nom - privilégier shortName
+
+                        # Récupérer le nom - TOUJOURS privilégier longName
                         name = "Unknown"
-                        short_name = None
                         if 'user' in node_info and isinstance(node_info['user'], dict):
                             user = node_info['user']
-                            short_name = user.get('shortName', '')
-                            long_name = user.get('longName', '')
+                            long_name = user.get('longName', '').strip()
+                            short_name = user.get('shortName', '').strip()
                             
-                            # Utiliser shortName en priorité, sinon longName tronqué
-                            # Concaténer shortName + longName
-                            if short_name and long_name:
-                                 # Si les deux existent et sont différents
-                                if short_name.lower() != long_name.lower():
-                                    name = f"{short_name} {long_name}"
-                                else:
-                                # Si identiques, afficher une seule fois
-                                    name = long_name
-                            elif long_name:
+                            # ✅ CORRECTION : longName en priorité absolue
+                            if long_name:
                                 name = long_name
                             elif short_name:
                                 name = short_name
                             else:
                                 name = f"Node-{id_int:04x}"
-                        
+
                         last_heard = node_info.get('lastHeard', 0)
                         
                         # Collecter les métriques de signal si activé
@@ -250,20 +242,16 @@ class RemoteNodesClient:
                             id_int = int(node_id, 16)
                     else:
                         id_int = int(node_id)
-                    
-                    # Récupérer le nom
+                   
+                    # Récupérer le nom - TOUJOURS privilégier longName
                     name = "Unknown"
                     if 'user' in node_info and isinstance(node_info['user'], dict):
                         user = node_info['user']
-                        short_name = user.get('shortName', '')
-                        long_name = user.get('longName', '')
+                        long_name = user.get('longName', '').strip()
+                        short_name = user.get('shortName', '').strip()
                         
-                        if short_name and long_name:
-                            if short_name.lower() != long_name.lower():
-                                name = f"{short_name} {long_name}"
-                            else:
-                                name = long_name
-                        elif long_name:
+                        # ✅ CORRECTION : longName en priorité absolue
+                        if long_name:
                             name = long_name
                         elif short_name:
                             name = short_name
