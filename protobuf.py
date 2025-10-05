@@ -1,139 +1,137 @@
-from meshtastic import mesh_pb2, mqtt_pb2, portnums_pb2
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-#from meshtastic.util import decode_text
-import paho.mqtt.client as mqtt
-import json
 import base64
-
-# Configuration MQTT (remplacez par votre broker)
-MQTT_BROKER = "serveurperso.com"  # Ex: "localhost" ou "test.mosquitto.org"
-MQTT_PORT = 1883
-MQTT_USER = "meshdev" # Si authentification: "utilisateur"
-MQTT_PASSWORD = "large4cats"  # Si authentification: "motdepasse"
-#MQTT_TOPIC = "msh/2/#"  # Topic Meshtastic (tous les canaux)
-MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"  # Topic Meshtastic (tous les canaux)
-# Clé du canal (à récupérer depuis votre configuration Meshtastic)
-PSK_KEY = base64.b64decode("AQ==")  # ✅ CORRECT
-
-
-# Callback quand un message est reçu
-from meshtastic import mesh_pb2
-
 from meshtastic import mesh_pb2, mqtt_pb2
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+import paho.mqtt.client as mqtt
 
+# ============ CONFIGURATION ============
+MQTT_BROKER = "serveurperso.com"
+MQTT_PORT = 1883
+MQTT_USER = "meshdev"
+MQTT_PASS = "large4cats"  
+MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
+
+# Clé par défaut (AQ== en base64 = 0x01 en hex)
+PSK_KEY = b'\x01' + b'\x00' * 31  # 1 suivi de 31 zéros
+
+# ============ DÉCHIFFREMENT ============
+def decrypt_message(encrypted_data, packet_id, from_node, psk):
+    """Déchiffre un message Meshtastic chiffré avec ChaCha20-Poly1305"""
+    try:
+        # Construction du nonce (96 bits = 12 octets)
+        # Format: packet_id (32 bits) + from_node (32 bits) + padding (32 bits = 0)
+        nonce = packet_id.to_bytes(8, 'little') + from_node.to_bytes(4, 'little')
+        
+        cipher = ChaCha20Poly1305(psk)
+        decrypted = cipher.decrypt(nonce, encrypted_data, None)
+        return decrypted
+    except Exception as e:
+        print(f"❌ Erreur de déchiffrement: {e}")
+        return None
+
+# ============ CALLBACK MQTT ============
 def on_message(client, userdata, msg):
-    print(f"\n--- Message sur {msg.topic} ---")
-    print(f"Payload (hex): {msg.payload.hex()[:100]}...")  # Affiche les 100 premiers caractères
+    print(f"\n{'='*60}")
+    print(f"📨 Message sur {msg.topic}")
+    print(f"Taille: {len(msg.payload)} octets")
     
     try:
-        # 1. Décoder le ServiceEnvelope (enveloppe MQTT)
+        # 1. Décoder le ServiceEnvelope
         envelope = mqtt_pb2.ServiceEnvelope()
         envelope.ParseFromString(msg.payload)
         
-        print(f"Canal: {envelope.channel_id}")
-        print(f"Gateway ID: {envelope.gateway_id}")
+        if not envelope.HasField("packet"):
+            print("⚠️ Pas de paquet MeshPacket")
+            return
         
-        # 2. Extraire le MeshPacket
-        if envelope.HasField("packet"):
-            mesh_packet = envelope.packet
+        mesh_packet = envelope.packet
+        
+        # 2. Afficher les infos du paquet
+        from_id = getattr(mesh_packet, 'from_', getattr(mesh_packet, 'from'))
+        to_id = mesh_packet.to
+        packet_id = mesh_packet.id
+ 
+        print(f"De: !{from_id:08x}, Vers: !{to_id:08x}")
+        print(f"ID: {packet_id}, Canal: {envelope.channel_id}, Hop: {mesh_packet.hop_limit}")
+        
+        # 3. Vérifier le type de payload
+        payload_type = mesh_packet.WhichOneof("payload_variant")
+        print(f"Type: {payload_type}")
+        
+        if payload_type == "decoded":
+            # ===== MESSAGE DÉCHIFFRÉ =====
+            data = mesh_packet.decoded
+            portnum = data.portnum
             
-            # 3. Afficher les informations du paquet
-            print(f"De: !{mesh_packet.from_:08x}, Vers: !{mesh_packet.to:08x}")
-            print(f"ID: {mesh_packet.id}, Hop limit: {mesh_packet.hop_limit}")
+            if portnum == 1:  # TEXT_MESSAGE_APP
+                text = data.payload.decode('utf-8', errors='replace')
+                print(f"📝 Texte: {text}")
             
-            # 4. Vérifier le type de payload
-            payload_type = mesh_packet.WhichOneof("payload_variant")
-            print(f"Type de payload: {payload_type}")
+            elif portnum == 3:  # POSITION_APP
+                position = mesh_pb2.Position()
+                position.ParseFromString(data.payload)
+                lat = position.latitude_i / 1e7
+                lon = position.longitude_i / 1e7
+                print(f"📍 Position: {lat:.6f}, {lon:.6f}")
             
-            if payload_type == "decoded":
-                # Message déchiffré
-                data = mesh_packet.decoded
-                portnum = data.portnum
-                
-                print(f"Port: {portnum}")
-                
-                # Traiter selon le type de données
-                if portnum == 1:  # TEXT_MESSAGE_APP
-                    try:
-                        text = data.payload.decode('utf-8', errors='replace')
-                        print(f"📝 Texte: {text}")
-                    except:
-                        print(f"Texte (hex): {data.payload.hex()}")
-                
-                elif portnum == 3:  # POSITION_APP
-                    try:
-                        position = mesh_pb2.Position()
-                        position.ParseFromString(data.payload)
-                        lat = position.latitude_i / 1e7
-                        lon = position.longitude_i / 1e7
-                        alt = position.altitude
-                        print(f"📍 Position: lat={lat:.6f}, lon={lon:.6f}, alt={alt}m")
-                    except Exception as e:
-                        print(f"Erreur position: {e}")
-                
-                elif portnum == 4:  # NODEINFO_APP
-                    try:
-                        nodeinfo = mesh_pb2.User()
-                        nodeinfo.ParseFromString(data.payload)
-                        print(f"👤 Node: {nodeinfo.long_name} ({nodeinfo.short_name})")
-                        print(f"   Hardware: {nodeinfo.hw_model}")
-                    except Exception as e:
-                        print(f"Erreur nodeinfo: {e}")
-                
-                elif portnum == 67:  # TELEMETRY_APP
-                    try:
-                        telemetry = mesh_pb2.Telemetry()
-                        telemetry.ParseFromString(data.payload)
-                        if telemetry.HasField("device_metrics"):
-                            metrics = telemetry.device_metrics
-                            print(f"🔋 Batterie: {metrics.battery_level}%, Voltage: {metrics.voltage}V")
-                    except Exception as e:
-                        print(f"Erreur télémétrie: {e}")
-                
-                else:
-                    print(f"Port {portnum} non géré (payload: {data.payload.hex()[:50]}...)")
+            elif portnum == 4:  # NODEINFO_APP
+                nodeinfo = mesh_pb2.User()
+                nodeinfo.ParseFromString(data.payload)
+                print(f"👤 Node: {nodeinfo.long_name} ({nodeinfo.short_name})")
             
-            elif payload_type == "encrypted":
-                print("🔒 Message chiffré (clé requise)")
-                print(f"   Encrypted bytes: {len(mesh_packet.encrypted)} octets")
+            elif portnum == 67:  # TELEMETRY_APP
+                telemetry = mesh_pb2.Telemetry()
+                telemetry.ParseFromString(data.payload)
+                if telemetry.HasField("device_metrics"):
+                    print(f"🔋 Batterie: {telemetry.device_metrics.battery_level}%")
             
             else:
-                print(f"⚠️ Type de payload inconnu: {payload_type}")
+                print(f"Port {portnum}: {data.payload.hex()[:50]}...")
+        
+        elif payload_type == "encrypted":
+            # ===== MESSAGE CHIFFRÉ =====
+            encrypted_data = mesh_packet.encrypted
+            print(f"🔒 Message chiffré ({len(encrypted_data)} octets)")
+            
+            # Tenter de déchiffrer
+            decrypted = decrypt_message(encrypted_data, packet_id, from_id, PSK_KEY)
+            
+            if decrypted:
+                # Décoder le Data déchiffré
+                data = mesh_pb2.Data()
+                data.ParseFromString(decrypted)
+                
+                if data.portnum == 1:  # Texte
+                    text = data.payload.decode('utf-8', errors='replace')
+                    print(f"🔓 Texte déchiffré: {text}")
+                elif data.portnum == 3:  # Position
+                    position = mesh_pb2.Position()
+                    position.ParseFromString(data.payload)
+                    lat = position.latitude_i / 1e7
+                    lon = position.longitude_i / 1e7
+                    print(f"🔓 Position déchiffrée: {lat:.6f}, {lon:.6f}")
+                else:
+                    print(f"🔓 Port {data.portnum}: {data.payload.hex()[:50]}...")
         
         else:
-            print("Pas de paquet MeshPacket dans l'enveloppe")
+            print(f"⚠️ Type inconnu: {payload_type}")
     
     except Exception as e:
-        print(f"❌ Erreur de décodage: {e}")
+        print(f"❌ Erreur: {e}")
         import traceback
         traceback.print_exc()
 
+# ============ CONNEXION MQTT ============
+def on_connect(client, userdata, flags, rc, properties=None):
+    print(f"✅ Connecté au broker (code {rc})")
+    client.subscribe(MQTT_TOPIC)
+    print(f"📡 Abonné à {MQTT_TOPIC}")
 
-def decrypt_payload(encrypted_data, nonce, psk):
-    cipher = ChaCha20Poly1305(psk)
-    return cipher.decrypt(nonce, encrypted_data, None)
-
-# Configuration du client MQTT
-#client = mqtt.Client()
-client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)  # API moderne
-
-if MQTT_USER and MQTT_PASSWORD:
-    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+client.username_pw_set(MQTT_USER, MQTT_PASS)
+client.on_connect = on_connect
 client.on_message = on_message
 
-# Connexion au broker
 print(f"Connexion à {MQTT_BROKER}:{MQTT_PORT}...")
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
-
-# Abonnement au topic Meshtastic
-client.subscribe(MQTT_TOPIC)
-print(f"Abonné à {MQTT_TOPIC}")
-
-# Boucle principale pour écouter les messages
-try:
-    client.loop_forever()
-except KeyboardInterrupt:
-    print("Arrêt du client MQTT...")
-    client.disconnect()
+client.loop_forever()
 
