@@ -41,6 +41,12 @@ DEBUG_MODE = True
 # Exemples: [1, 3, 4, 67], [1], None
 ALLOWED_PORTS = None  # Temporairement désactivé pour debug
 
+# Filtrer par nœud (mettre None pour tout accepter)
+# Format : liste d'IDs en hexadécimal (sans le !)
+# Exemples: ["a76f40da"], ["a76f40da", "ea24f40c"], None
+# Si défini, ne montre QUE les messages DE ou VERS ces nœuds
+ALLOWED_NODES = ["a76f40da"]  # Changez en None pour voir tous les nœuds
+
 # ============ CHARGEMENT DES NOMS DE NŒUDS ============
 NODE_NAMES = {}
 
@@ -141,6 +147,23 @@ def on_message(client, userdata, msg):
         
         if DEBUG_MODE:
             print(f"[DEBUG] Type: {payload_type}, From: !{from_id:08x}, To: !{to_id:08x}")
+        
+        # 4. Filtrer par nœud si activé (avant de déchiffrer pour économiser du CPU)
+        if ALLOWED_NODES is not None:
+            from_hex = f"{from_id:08x}"
+            to_hex = f"{to_id:08x}"
+            
+            # Vérifier si le message concerne un des nœuds autorisés
+            node_match = False
+            for allowed_node in ALLOWED_NODES:
+                if from_hex == allowed_node or to_hex == allowed_node:
+                    node_match = True
+                    break
+            
+            if not node_match:
+                if DEBUG_MODE:
+                    print(f"[DEBUG] ⚠️ Message ignoré - ne concerne pas les nœuds filtrés")
+                return
         
         if payload_type == "decoded":
             # ===== MESSAGE DÉCHIFFRÉ =====
@@ -315,6 +338,19 @@ def on_connect(client, userdata, flags, rc, properties=None):
         print(f"📊 Filtrage ports : {', '.join(port_list)}")
     else:
         print(f"📊 Pas de filtrage de ports")
+    
+    if ALLOWED_NODES is not None and len(ALLOWED_NODES) > 0:
+        # Afficher les noms si disponibles
+        node_list = []
+        for node_hex in ALLOWED_NODES:
+            node_id = int(node_hex, 16)
+            if node_id in NODE_NAMES:
+                node_list.append(f"{NODE_NAMES[node_id]} (!{node_hex})")
+            else:
+                node_list.append(f"!{node_hex}")
+        print(f"👤 Filtrage nœuds : {', '.join(node_list)}")
+    else:
+        print(f"👤 Pas de filtrage de nœuds")
     
     if DEBUG_MODE:
         print(f"🐛 Mode debug activé")
