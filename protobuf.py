@@ -3,6 +3,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 #from meshtastic.util import decode_text
 import paho.mqtt.client as mqtt
 import json
+import base64
 
 # Configuration MQTT (remplacez par votre broker)
 MQTT_BROKER = "serveurperso.com"  # Ex: "localhost" ou "test.mosquitto.org"
@@ -12,7 +13,7 @@ MQTT_PASSWORD = "large4cats"  # Si authentification: "motdepasse"
 #MQTT_TOPIC = "msh/2/#"  # Topic Meshtastic (tous les canaux)
 MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"  # Topic Meshtastic (tous les canaux)
 # Clé du canal (à récupérer depuis votre configuration Meshtastic)
-PSK_KEY = bytes.fromhex("1PG7OiApB1nwvP+rz05pAQ==")  # Exemple (base64 décodé)
+PSK_KEY = base64.b64decode("AQ==")  # ✅ CORRECT
 
 
 # Callback quand un message est reçu
