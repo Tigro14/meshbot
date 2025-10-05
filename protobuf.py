@@ -30,7 +30,7 @@ TEST_KEYS = {
 ALLOWED_KEYS = None  # Changez en ["default"] pour filtrer seulement votre clé
 
 # Debug mode (affiche tous les messages reçus, même non déchiffrés)
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 # Filtrer par numéro de port (mettre None pour tout accepter)
 # Ports courants:
@@ -39,8 +39,7 @@ DEBUG_MODE = False
 #   4: NODEINFO_APP (infos de nœud)
 #   67: TELEMETRY_APP (télémétrie/batterie)
 # Exemples: [1, 3, 4, 67], [1], None
-#ALLOWED_PORTS = [1, 3, 4, 67]  # Changez en None pour voir tous les ports
-ALLOWED_PORTS = [1]  # Changez en None pour voir tous les ports
+ALLOWED_PORTS = None  # Temporairement désactivé pour debug
 
 # ============ CHARGEMENT DES NOMS DE NŒUDS ============
 NODE_NAMES = {}
@@ -141,17 +140,24 @@ def on_message(client, userdata, msg):
         payload_type = mesh_packet.WhichOneof("payload_variant")
         
         if DEBUG_MODE:
-            print(f"[DEBUG] Type: {payload_type}, From: !{from_id:08x}")
+            print(f"[DEBUG] Type: {payload_type}, From: !{from_id:08x}, To: !{to_id:08x}")
         
         if payload_type == "decoded":
             # ===== MESSAGE DÉCHIFFRÉ =====
             data = mesh_packet.decoded
             portnum = data.portnum
             
+            if DEBUG_MODE:
+                port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
+                port_name = port_names_debug.get(portnum, f"Port {portnum}")
+                print(f"[DEBUG] Message décodé (non chiffré), Port: {portnum} ({port_name})")
+            
             # Filtrer par port si activé
             if ALLOWED_PORTS is not None and portnum not in ALLOWED_PORTS:
                 if DEBUG_MODE:
-                    print(f"[DEBUG] Port {portnum} ignoré par le filtre")
+                    port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
+                    port_name = port_names_debug.get(portnum, f"Port {portnum}")
+                    print(f"[DEBUG] ⚠️ Port {portnum} ({port_name}) ignoré par le filtre ALLOWED_PORTS")
                 return
             
             print(f"\n{'='*60}")
@@ -229,7 +235,9 @@ def on_message(client, userdata, msg):
                 # Filtrer par port si activé
                 if ALLOWED_PORTS is not None and decoded_data.portnum not in ALLOWED_PORTS:
                     if DEBUG_MODE:
-                        print(f"[DEBUG] Port {decoded_data.portnum} ignoré par le filtre")
+                        port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
+                        port_name = port_names_debug.get(decoded_data.portnum, f"Port {decoded_data.portnum}")
+                        print(f"[DEBUG] ⚠️ Port {decoded_data.portnum} ({port_name}) ignoré par le filtre ALLOWED_PORTS")
                     return
                 
                 print(f"\n{'='*60}")
