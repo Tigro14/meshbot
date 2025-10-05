@@ -116,5 +116,12 @@ CPU_WARNING_DURATION = 300  # Durée en secondes avant alerte (5 minutes)
 CPU_CRITICAL_THRESHOLD = 150  # % CPU critique (150% = 1.5 cœurs)
 CPU_CHECK_INTERVAL = 30  # Vérifier le CPU toutes les 30 secondes
 
+REBOOT_AUTHORIZED_USERS = [
+    134360030,    # Telegram Clic
+    0x16fad3dc    # tigrobot mesh
+]
+REBOOT_PASSWORD = "4242"
+REBOOT_COMMANDS_ENABLED = True
+
 # Variables globales d'état
 DEBUG_MODE = True

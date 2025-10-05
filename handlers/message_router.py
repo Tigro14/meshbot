@@ -90,9 +90,11 @@ class MessageRouter:
         elif message.startswith('/sys'):
             self.system_handler.handle_sys(sender_id, sender_info)
         elif message.startswith('/rebootpi'):
-            self.system_handler.handle_rebootpi(sender_id, sender_info)
+            parts = message.split()
+            response = self.handle_reboot_command(from_id, parts)
         elif message.startswith('/rebootg2'):
-            self.system_handler.handle_rebootg2(sender_id, sender_info)
+            parts = message.split()
+            response = self.handle_rebootg2_command(from_id, parts)
         elif message.startswith('/g2'):
             self.system_handler.handle_g2(sender_id, sender_info)
         

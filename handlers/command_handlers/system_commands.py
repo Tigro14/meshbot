@@ -90,168 +90,145 @@ class SystemCommands:
         
         threading.Thread(target=get_system_info, daemon=True).start()
     
-    def handle_rebootpi(self, sender_id, sender_info):
-        """Gérer la commande /rebootpi"""
-        info_print(f"REBOOT PI5 demandé par: {sender_info}")
+    def _check_reboot_authorization_mesh(self, from_id, command_name, message_parts):
+        """
+        Vérifier autorisation pour commande reboot depuis Meshtastic
         
-        def reboot_pi5():
-            try:
-                self.sender.send_single("🔄 Redémarrage Pi5 en cours...", sender_id, sender_info)
-                info_print(f"🚨 REDÉMARRAGE PI5 INITIÉ PAR {sender_info} (!{sender_id:08x})")
-                
-                time.sleep(3)
-                
-                # Sauvegarder avant redémarrage
-                if self.node_manager:
-                    self.node_manager.save_node_names(force=True)
-                    debug_print("💾 Base de nœuds sauvegardée")
-                
-                # Créer fichier signal
-                try:
-                    signal_file = '/tmp/reboot_requested'
-                    with open(signal_file, 'w') as f:
-                        f.write(f"Redémarrage demandé par {sender_info} (!{sender_id:08x})\n")
-                        f.write(f"Timestamp: {time.time()}\n")
-                    
-                    debug_print(f"Fichier signal créé: {signal_file}")
-                    info_print("📝 Signal de redémarrage créé")
-                    
-                    try:
-                        self.sender.send_single("📝 Signal redémarrage créé", sender_id, sender_info)
-                    except:
-                        pass
-                    
-                except Exception as e:
-                    error_msg = f"⚠️ Erreur signal: {str(e)[:50]}"
-                    debug_print(error_msg)
-                    try:
-                        self.sender.send_single(error_msg, sender_id, sender_info)
-                    except:
-                        pass
-                
-            except Exception as e:
-                error_msg = f"⚠️ Erreur redémarrage: {str(e)[:50]}"
-                error_print(f"Erreur reboot Pi5: {e}")
-                try:
-                    self.sender.send_single(error_msg, sender_id, sender_info)
-                except:
-                    pass
+        Args:
+            from_id: Node ID demandeur
+            command_name: '/rebootpi' ou '/rebootg2'
+            message_parts: ['/rebootpi', 'password']
         
-        threading.Thread(target=reboot_pi5, daemon=True).start()
-    
-    def handle_rebootg2(self, sender_id, sender_info):
-        """Gérer la commande /rebootg2"""
-        info_print(f"RebootG2: {sender_info}")
+        Returns:
+            tuple: (authorized: bool, error_message: str or None)
+        """
+        node_name = self.node_manager.get_node_name(from_id, self.interface)
         
-        def reboot_and_telemetry():
-            try:
-                target_node_id = TIGROG2_NODE_ID
-                target_node_hex = f"!{target_node_id:08x}"
-                
-                debug_print(f"Envoi reboot via API vers {target_node_hex}")
-                
-                # Reboot via API
-                try:
-                    if hasattr(self.interface, 'reboot'):
-                        self.interface.reboot(target_node_id)
-                        info_print("Commande reboot API envoyée")
-                    else:
-                        admin_msg = {"reboot": True}
-                        self.interface.sendData(
-                            str(admin_msg).encode(),
-                            destinationId=target_node_id,
-                            portNum="ADMIN_APP",
-                            wantAck=True
-                        )
-                        info_print("Commande reboot admin envoyée")
-                    
-                    debug_print("Attente redémarrage (50s)...")
-                    time.sleep(50)
-                    
-                    try:
-                        self.sender.send_single(f"🔄 Reboot {REMOTE_NODE_NAME} effectué", sender_id, sender_info)
-                        time.sleep(2)
-                    except:
-                        pass
-                        
-                except Exception as e:
-                    error_print(f"Erreur reboot API: {e}")
-                    time.sleep(10)
-                    try:
-                        self.sender.send_single(f"⚠️ Erreur reboot: {str(e)[:50]}", sender_id, sender_info)
-                    except:
-                        pass
-                    return
-                
-                # Request telemetry
-                time.sleep(5)
-                
-                try:
-                    debug_print("Demande télémétrie via commande système")
-                    
-                    telemetry_cmd = [
-                        'meshtastic', 
-                        '--port', SERIAL_PORT, 
-                        '--dest', target_node_hex, 
-                        '--request-telemetry'
-                    ]
-                    
-                    result = subprocess.run(telemetry_cmd, capture_output=True, text=True, timeout=30)
-                    
-                    if result.returncode == 0:
-                        telemetry_output = result.stdout.strip()
-                        if telemetry_output and len(telemetry_output) > 10:
-                            lines = telemetry_output.split('\n')
-                            useful_lines = []
-                            
-                            for line in lines:
-                                line = line.strip()
-                                if line and not line.startswith('Connected') and not line.startswith('Requesting'):
-                                    if any(kw in line.lower() for kw in ['voltage', 'current', 'temperature', 'humidity', 'pressure', 'battery']):
-                                        useful_lines.append(line)
-                            
-                            if useful_lines:
-                                response = f"📊 Télémétrie {REMOTE_NODE_NAME}:\n" + "\n".join(useful_lines[:5])
-                            else:
-                                response = f"📊 Télémétrie {REMOTE_NODE_NAME}:\n{telemetry_output[:150]}"
-                        else:
-                            response = f"📊 Télémétrie {REMOTE_NODE_NAME} (aucune donnée)"
-                        
-                        time.sleep(3)
-                        try:
-                            self.sender.send_chunks(response, sender_id, sender_info)
-                            self.sender.log_conversation(sender_id, sender_info, "/rebootg2", response)
-                        except:
-                            pass
-                    else:
-                        try:
-                            error_output = result.stderr.strip() if result.stderr else "Erreur inconnue"
-                            self.sender.send_single(f"⚠️ Erreur télémétrie: {error_output[:80]}", sender_id, sender_info)
-                        except:
-                            pass
-                        
-                except subprocess.TimeoutExpired:
-                    try:
-                        self.sender.send_single("⏱️ Timeout télémétrie", sender_id, sender_info)
-                    except:
-                        pass
-                except Exception as e:
-                    error_print(f"Erreur télémétrie: {e}")
-                    try:
-                        self.sender.send_single(f"⚠️ Erreur: {str(e)[:60]}", sender_id, sender_info)
-                    except:
-                        pass
-                
-            except Exception as e:
-                time.sleep(10)
-                error_print(f"Erreur rebootg2: {e}")
-                try:
-                    self.sender.send_single(f"⚠️ Erreur: {str(e)[:80]}", sender_id, sender_info)
-                except:
-                    pass
+        # 1. Vérifier activation globale
+        if not REBOOT_COMMANDS_ENABLED:
+            info_print(f"🚫 {command_name} refusé (désactivé): {node_name}")
+            return False, "❌ Commandes de redémarrage désactivées"
         
-        threading.Thread(target=reboot_and_telemetry, daemon=True).start()
-    
+        # 2. Vérifier liste restreinte
+        if REBOOT_AUTHORIZED_USERS and from_id not in REBOOT_AUTHORIZED_USERS:
+            info_print(f"🚫 {command_name} refusé (non autorisé): {node_name} (0x{from_id:08x})")
+            return False, "❌ Non autorisé pour cette commande"
+        
+        # 3. Vérifier mot de passe
+        if len(message_parts) < 2:
+            debug_print(f"⚠️ {command_name} sans mot de passe: {node_name}")
+            return False, f"⚠️ Usage: {command_name} <password>"
+        
+        provided_password = message_parts[1]
+        
+        if provided_password != REBOOT_PASSWORD:
+            info_print(f"🚫 {command_name} refusé (mauvais MDP): {node_name} (0x{from_id:08x})")
+            return False, "❌ Mot de passe incorrect"
+        
+        # OK
+        info_print(f"🔐 {command_name} autorisé: {node_name} (0x{from_id:08x})")
+        return True, None
+
+
+    # ==========================================
+    # REMPLACEMENT DE handle_reboot_command
+    # ==========================================
+
+    def handle_reboot_command(self, from_id, message_parts):
+        """
+        Traiter /rebootpi de manière sécurisée
+        
+        REMPLACE LA VERSION ACTUELLE
+        
+        Args:
+            from_id: Node ID demandeur
+            message_parts: ['/rebootpi', 'password'] (liste)
+        
+        Returns:
+            str: Message de réponse
+        """
+        # Vérifier autorisation
+        authorized, error_msg = self._check_reboot_authorization_mesh(
+            from_id,
+            '/rebootpi',
+            message_parts
+        )
+        
+        if not authorized:
+            return error_msg
+        
+        # Exécuter le reboot
+        try:
+            node_name = self.node_manager.get_node_name(from_id, self.interface)
+            info_print(f"🚨 REBOOT Pi5: {node_name} (0x{from_id:08x})")
+            
+            signal_file = "/tmp/reboot_requested"
+            with open(signal_file, 'w') as f:
+                f.write(f"Demandé par: {node_name}\n")
+                f.write(f"Node ID: 0x{from_id:08x}\n")
+                f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            
+            info_print(f"✅ Signal créé: {signal_file}")
+            return "✅ Redémarrage Pi5 programmé"
+            
+        except Exception as e:
+            error_print(f"Erreur reboot: {e}")
+            return f"❌ Erreur: {str(e)[:50]}"
+
+
+    # ==========================================
+    # REMPLACEMENT DE handle_rebootg2_command
+    # ==========================================
+
+    def handle_rebootg2_command(self, from_id, message_parts):
+        """
+        Traiter /rebootg2 de manière sécurisée
+        
+        REMPLACE LA VERSION ACTUELLE
+        
+        Args:
+            from_id: Node ID demandeur
+            message_parts: ['/rebootg2', 'password'] (liste)
+        
+        Returns:
+            str: Message de réponse
+        """
+        # Vérifier autorisation
+        authorized, error_msg = self._check_reboot_authorization_mesh(
+            from_id,
+            '/rebootg2',
+            message_parts
+        )
+        
+        if not authorized:
+            return error_msg
+        
+        # Exécuter le reboot
+        try:
+            import meshtastic.tcp_interface
+            from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
+            
+            node_name = self.node_manager.get_node_name(from_id, self.interface)
+            info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
+            
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST,
+                portNumber=4403
+            )
+            time.sleep(3)
+            
+            remote_interface.sendText("/reboot")
+            info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
+            
+            time.sleep(2)
+            remote_interface.close()
+            
+            return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
+            
+        except Exception as e:
+            error_print(f"Erreur reboot {REMOTE_NODE_NAME}: {e}")
+            return f"❌ Erreur: {str(e)[:50]}"
+
     def handle_g2(self, sender_id, sender_info):
         """Gérer la commande /g2"""
         info_print(f"G2 Config: {sender_info}")
