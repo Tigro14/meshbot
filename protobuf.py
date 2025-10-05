@@ -1,6 +1,7 @@
 import base64
 from meshtastic import mesh_pb2, mqtt_pb2
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 import paho.mqtt.client as mqtt
 
 # ============ CONFIGURATION ============
@@ -13,21 +14,43 @@ MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
 # Clé par défaut (AQ== en base64 = 0x01 en hex)
 PSK_KEY = b'\x01' + b'\x00' * 31  # 1 suivi de 31 zéros
 
+# Clés à tester
+TEST_KEYS = {
+    "default": base64.b64decode("AQ==") + b'\x00' * 31,
+    "empty": b'\x00' * 32,
+    "1": b'\x01' * 32,
+}
+
+
 # ============ DÉCHIFFREMENT ============
 def decrypt_message(encrypted_data, packet_id, from_node, psk):
-    """Déchiffre un message Meshtastic chiffré avec ChaCha20-Poly1305"""
+    """Déchiffre un message Meshtastic chiffré avec AES-256-CTR"""
     try:
-        # Construction du nonce (96 bits = 12 octets)
-        # Format: packet_id (32 bits) + from_node (32 bits) + padding (32 bits = 0)
-        nonce = packet_id.to_bytes(8, 'little') + from_node.to_bytes(4, 'little')
+        # Construction du nonce/IV pour AES-CTR (16 octets pour AES)
+        # PacketID (8 bytes LE) + FromNode (4 bytes LE) + padding (4 bytes)
+        nonce = packet_id.to_bytes(8, 'little') + from_node.to_bytes(4, 'little') + b'\x00' * 4
         
-        cipher = ChaCha20Poly1305(psk)
-        decrypted = cipher.decrypt(nonce, encrypted_data, None)
+        print(f"🔧 Debug:")
+        print(f"  - Nonce (hex): {nonce.hex()}")
+        print(f"  - Nonce (len): {len(nonce)} octets")
+        print(f"  - PSK (hex): {psk.hex()[:40]}...")
+        
+        # Créer le cipher AES-256-CTR
+        cipher = Cipher(
+            algorithms.AES(psk),  # AES-256 (clé de 32 octets)
+            modes.CTR(nonce),      # Mode CTR avec le nonce
+            backend=default_backend()
+        )
+        
+        decryptor = cipher.decryptor()
+        decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
+        
         return decrypted
     except Exception as e:
-        print(f"❌ Erreur de déchiffrement: {e}")
+        print(f"❌ Erreur de déchiffrement: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
-
 # ============ CALLBACK MQTT ============
 def on_message(client, userdata, msg):
     print(f"\n{'='*60}")
@@ -92,8 +115,21 @@ def on_message(client, userdata, msg):
             encrypted_data = mesh_packet.encrypted
             print(f"🔒 Message chiffré ({len(encrypted_data)} octets)")
             
+            # Dans on_message, après avoir détecté un message chiffré :
+            for key_name, test_psk in TEST_KEYS.items():
+                decrypted = decrypt_message(encrypted_data, packet_id, from_id, test_psk)
+                if decrypted:
+                    try:
+                        data = mesh_pb2.Data()
+                        data.ParseFromString(decrypted)
+                        print(f"✅ SUCCÈS avec la clé: {key_name}")
+                        # Traiter le message...
+                        break
+                    except:
+            continue  # Mauvaise clé, essayer la suivante
+
             # Tenter de déchiffrer
-            decrypted = decrypt_message(encrypted_data, packet_id, from_id, PSK_KEY)
+            # decrypted = decrypt_message(encrypted_data, packet_id, from_id, PSK_KEY)
             
             if decrypted:
                 # Décoder le Data déchiffré
