@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte Réseau Meshtastic - Paris IDF (vu par mon node)</title>
+    <title>Carte Réseau Meshtastic - Paris IDF</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -286,16 +286,17 @@
                    Math.abs(position.longitude) <= 180;
         }
         
-        function getNodeColor(lastHeard) {
-            if (!lastHeard) return '#6c757d'; // Gris si pas de lastHeard
+        function getNodeColorByHop(hopsAway) {
+            // Votre nœud est toujours bleu
+            if (hopsAway === 0) return '#1a73e8';
             
-            const now = Math.floor(Date.now() / 1000);
-            const hoursAgo = (now - lastHeard) / 3600;
-            
-            if (hoursAgo <= 4) return '#28a745';    // Vert - Moins de 4h
-            if (hoursAgo <= 24) return '#ffc107';   // Jaune - Moins de 24h
-            if (hoursAgo <= 168) return '#fd7e14';  // Orange - Moins de 7 jours
-            return '#dc3545';                       // Rouge - Plus de 7 jours
+            switch(hopsAway) {
+                case 1: return '#28a745';  // Vert - Hop 1
+                case 2: return '#ffc107';  // Jaune - Hop 2
+                case 3: return '#fd7e14';  // Orange - Hop 3
+                case 4: return '#dc3545';  // Rouge - Hop 4
+                default: return '#6c757d'; // Gris - Hop 5+
+            }
         }
         
         function formatDuration(seconds) {
@@ -340,35 +341,35 @@
                 document.getElementById('owner').textContent = myNode.user?.longName || 'Inconnu';
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('fr-FR');
                 
-                // Ajouter la légende
-                const legend = L.control({ position: 'bottomleft' });
+                // Ajouter la légende en bas à droite
+                const legend = L.control({ position: 'bottomright' });
                 legend.onAdd = () => {
                     const div = L.DomUtil.create('div', 'legend');
                     div.innerHTML = `
-                        <h4>Légende</h4>
-                        <div class="legend-item">
-                            <div class="color-box" style="background-color:#28a745"></div>
-                            <span>&lt; 4 heures</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="color-box" style="background-color:#ffc107"></div>
-                            <span>&lt; 24 heures</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="color-box" style="background-color:#fd7e14"></div>
-                            <span>&lt; 7 jours</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="color-box" style="background-color:#dc3545"></div>
-                            <span>&gt; 7 jours</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="color-box" style="background-color:#6c757d"></div>
-                            <span>Date inconnue</span>
-                        </div>
+                        <h4>Distance (hops)</h4>
                         <div class="legend-item">
                             <div class="color-box owner-node"></div>
                             <span>Votre nœud</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#28a745"></div>
+                            <span>Hop 1</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#ffc107"></div>
+                            <span>Hop 2</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#fd7e14"></div>
+                            <span>Hop 3</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#dc3545"></div>
+                            <span>Hop 4</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#6c757d"></div>
+                            <span>Hop 5+</span>
                         </div>
                     `;
                     return div;
@@ -413,6 +414,7 @@
                 const isOwner = CONFIG.ownerNodes.includes(id);
                 const lastHeard = node.lastHeard || 0;
                 const hoursAgo = lastHeard ? (now - lastHeard) / 3600 : Infinity;
+                const hopsAway = node.hopsAway || 0;
                 
                 // Détection du nœud le plus récent
                 if (lastHeard > lastHeardTime) {
@@ -425,8 +427,6 @@
                     return;
                 }
                 
-                // Pour le filtre "Tout", afficher aussi les nœuds sans lastHeard
-                
                 try {
                     // Création du marqueur avec validation
                     const marker = L.circleMarker(
@@ -434,7 +434,7 @@
                         {
                             radius: isOwner ? 16 : 12,
                             className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
-                            fillColor: isOwner ? '#1a73e8' : getNodeColor(lastHeard),
+                            fillColor: isOwner ? '#1a73e8' : getNodeColorByHop(hopsAway),
                             color: '#ffffff',
                             weight: 2,
                             opacity: 1,
@@ -464,6 +464,10 @@
                                 <tr>
                                     <td class="label">ID:</td>
                                     <td class="value">${id}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">Distance:</td>
+                                    <td class="value">${hopsAway} hop${hopsAway > 1 ? 's' : ''}</td>
                                 </tr>
                                 <tr>
                                     <td class="label">Position:</td>
