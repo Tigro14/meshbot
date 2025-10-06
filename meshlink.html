@@ -123,7 +123,7 @@
         // Fonction pour obtenir l'opacité en fonction du SNR
         function getLinkOpacity(snr) {
             if (snr === null || snr === undefined) return 0.3;
-            if (snr > 10) return 0.8;
+            if (snr > 5) return 0.9;
             if (snr > 0) return 0.6;
             return 0.4;
         }
@@ -131,7 +131,7 @@
         // Fonction pour obtenir l'épaisseur en fonction du SNR
         function getLinkWeight(snr) {
             if (snr === null || snr === undefined) return 3;
-            if (snr > 10) return 6;
+            if (snr > 5) return 7;
             if (snr > 0) return 5;
             return 4;
         }
