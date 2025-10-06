@@ -358,6 +358,9 @@
                 
                 updateMarkers(nodesData);
                 drawLinks(nodesData);
+		console.log("Nodes chargés:", Object.keys(nodesData).length);
+                console.log("Markers créés:", Object.keys(markers).length);
+                console.log("Exemple de node:", Object.values(nodesData)[0]);
 
                 // Ajuster la vue de la carte pour inclure tous les markers
                 if (Object.keys(markers).length > 0) {
