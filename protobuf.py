@@ -17,6 +17,7 @@ MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
 NODE_NAMES_FILE = "node_names.json"
 OUTPUT_FILE = "node_positions.json"
 STATS_INTERVAL = 60  # Afficher les stats toutes les 60 secondes
+DEBUG_MODE = True  # Afficher les détails de traitement
 
 # Clés à tester
 TEST_KEYS = {
@@ -177,21 +178,42 @@ def on_message(client, userdata, msg):
         
         payload_type = mesh_packet.WhichOneof("payload_variant")
         
+        # Debug : afficher tous les messages
+        if DEBUG_MODE and MESSAGE_COUNT % 10 == 0:  # Tous les 10 messages
+            from_hex = f"{from_id:08x}"
+            in_json = "✓" if from_id in NODE_NAMES else "✗"
+            print(f"[DEBUG] Msg {MESSAGE_COUNT}: From !{from_hex} {in_json}, Type: {payload_type}")
+        
+        # Ignorer si le nœud n'est pas dans notre liste
+        if from_id not in NODE_NAMES:
+            return
+        
+        if DEBUG_MODE:
+            print(f"\n[DEBUG] Message d'un nœud connu: {NODE_NAMES[from_id]} (!{from_id:08x})")
+            print(f"[DEBUG] Type: {payload_type}")
+        
         # Traiter les messages décodés
         if payload_type == "decoded":
             data = mesh_packet.decoded
             portnum = data.portnum
+            
+            if DEBUG_MODE:
+                print(f"[DEBUG] Message décodé, Port: {portnum}")
             
             if portnum == 3:  # POSITION_APP
                 position = mesh_pb2.Position()
                 position.ParseFromString(data.payload)
                 lat = position.latitude_i / 1e7
                 lon = position.longitude_i / 1e7
+                if DEBUG_MODE:
+                    print(f"[DEBUG] Position trouvée: {lat}, {lon}")
                 update_node_data(from_id, "position", {"lat": lat, "lon": lon})
             
             elif portnum == 4:  # NODEINFO_APP
                 nodeinfo = mesh_pb2.User()
                 nodeinfo.ParseFromString(data.payload)
+                if DEBUG_MODE:
+                    print(f"[DEBUG] NodeInfo trouvé: {nodeinfo.long_name}")
                 update_node_data(from_id, "nodeinfo", {
                     "long_name": nodeinfo.long_name,
                     "short_name": nodeinfo.short_name
@@ -201,14 +223,23 @@ def on_message(client, userdata, msg):
                 telemetry = mesh_pb2.Telemetry()
                 telemetry.ParseFromString(data.payload)
                 if telemetry.HasField("device_metrics"):
+                    if DEBUG_MODE:
+                        print(f"[DEBUG] Télémétrie trouvée: {telemetry.device_metrics.battery_level}%")
                     update_node_data(from_id, "telemetry", {
                         "battery_level": telemetry.device_metrics.battery_level
                     })
+            else:
+                if DEBUG_MODE:
+                    print(f"[DEBUG] Port ignoré: {portnum}")
         
         # Traiter les messages chiffrés
         elif payload_type == "encrypted":
             encrypted_data = mesh_packet.encrypted
             
+            if DEBUG_MODE:
+                print(f"[DEBUG] Message chiffré, tentative de déchiffrement...")
+            
+            decrypted_success = False
             for key_name, test_psk in TEST_KEYS.items():
                 decrypted = decrypt_message(encrypted_data, packet_id, from_id, test_psk)
                 if decrypted:
@@ -219,16 +250,25 @@ def on_message(client, userdata, msg):
                             warnings.simplefilter("ignore")
                             data.ParseFromString(decrypted)
                         
+                        if DEBUG_MODE:
+                            print(f"[DEBUG] Déchiffré avec clé {key_name}, Port: {data.portnum}")
+                        
+                        decrypted_success = True
+                        
                         if data.portnum == 3:  # Position
                             position = mesh_pb2.Position()
                             position.ParseFromString(data.payload)
                             lat = position.latitude_i / 1e7
                             lon = position.longitude_i / 1e7
+                            if DEBUG_MODE:
+                                print(f"[DEBUG] Position trouvée: {lat}, {lon}")
                             update_node_data(from_id, "position", {"lat": lat, "lon": lon})
                         
                         elif data.portnum == 4:  # NodeInfo
                             nodeinfo = mesh_pb2.User()
                             nodeinfo.ParseFromString(data.payload)
+                            if DEBUG_MODE:
+                                print(f"[DEBUG] NodeInfo trouvé: {nodeinfo.long_name}")
                             update_node_data(from_id, "nodeinfo", {
                                 "long_name": nodeinfo.long_name,
                                 "short_name": nodeinfo.short_name
@@ -238,13 +278,23 @@ def on_message(client, userdata, msg):
                             telemetry = mesh_pb2.Telemetry()
                             telemetry.ParseFromString(data.payload)
                             if telemetry.HasField("device_metrics"):
+                                if DEBUG_MODE:
+                                    print(f"[DEBUG] Télémétrie trouvée: {telemetry.device_metrics.battery_level}%")
                                 update_node_data(from_id, "telemetry", {
                                     "battery_level": telemetry.device_metrics.battery_level
                                 })
+                        else:
+                            if DEBUG_MODE:
+                                print(f"[DEBUG] Port ignoré: {data.portnum}")
                         
                         break
-                    except:
+                    except Exception as e:
+                        if DEBUG_MODE:
+                            print(f"[DEBUG] Erreur parsing avec clé {key_name}: {e}")
                         continue
+            
+            if DEBUG_MODE and not decrypted_success:
+                print(f"[DEBUG] Échec déchiffrement pour ce message")
         
         # Afficher les stats périodiquement
         print_stats()

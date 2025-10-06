@@ -124,4 +124,4 @@ REBOOT_PASSWORD = "4242"
 REBOOT_COMMANDS_ENABLED = True
 
 # Variables globales d'état
-DEBUG_MODE = True
+DEBUG_MODE = False
