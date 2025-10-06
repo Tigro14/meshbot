@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte Réseau Meshtastic</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            min-width: 200px;
+        }
+        .stat-item {
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .stat-label {
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-value {
+            color: #0078d4;
+            font-weight: bold;
+        }
+        .link-legend {
+            position: absolute;
+            bottom: 30px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="stats">
+        <div class="stat-item">
+            <span class="stat-label">Nœuds actifs</span>
+            <span class="stat-value" id="activeNodes">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Total nœuds</span>
+            <span class="stat-value" id="totalNodes">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Liaisons</span>
+            <span class="stat-value" id="totalLinks">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Dernier entendu</span>
+            <span class="stat-value" id="lastHeard">Chargement...</span>
+        </div>
+    </div>
+    <div class="link-legend">
+        <strong>Qualité des liaisons</strong>
+        <div class="legend-item">
+            <div class="legend-line" style="background-color: #00ff00;"></div>
+            <span>Excellente (SNR > 10)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background-color: #ffff00;"></div>
+            <span>Bonne (SNR 0-10)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background-color: #ff6600;"></div>
+            <span>Faible (SNR < 0)</span>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialisation de la carte
+        const map = L.map('map').setView([48.8566, 2.3522], 10);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Stockage des markers et lignes
+        const markers = {};
+        const links = {};
+        let linkLayerGroup = L.layerGroup().addTo(map);
+
+        // Fonction pour obtenir la couleur en fonction du SNR
+        function getLinkColor(snr) {
+            if (snr === null || snr === undefined) return '#888888';
+            if (snr > 10) return '#00ff00'; // Vert - Excellent
+            if (snr > 0) return '#ffff00';  // Jaune - Bon
+            return '#ff6600';                // Orange - Faible
+        }
+
+        // Fonction pour obtenir l'opacité en fonction du SNR
+        function getLinkOpacity(snr) {
+            if (snr === null || snr === undefined) return 0.3;
+            if (snr > 10) return 0.8;
+            if (snr > 0) return 0.6;
+            return 0.4;
+        }
+
+        // Fonction pour obtenir l'épaisseur en fonction du SNR
+        function getLinkWeight(snr) {
+            if (snr === null || snr === undefined) return 2;
+            if (snr > 10) return 4;
+            if (snr > 0) return 3;
+            return 2;
+        }
+
+        // Fonction pour dessiner les liaisons
+        function drawLinks(nodesArray) {
+            linkLayerGroup.clearLayers();
+            let linkCount = 0;
+            const drawnLinks = new Set();
+
+            // Convertir le format {"!nodeId": {...}} en tableau si nécessaire
+            const nodes = Array.isArray(nodesArray) ? nodesArray : Object.values(nodesArray);
+
+            // Essayer d'abord avec les vraies infos de voisinage
+            let hasNeighborInfo = false;
+            
+            nodes.forEach(node => {
+                const nodeId = node.user?.id || node.nodeId;
+                if (!node.position || !markers[nodeId]) return;
+
+                // Vérifier si ce node a des informations de voisinage
+                const neighbors = node.neighbors || node.neighbours || [];
+                
+                if (neighbors.length > 0) {
+                    hasNeighborInfo = true;
+                    
+                    neighbors.forEach(neighbor => {
+                        const neighborId = neighbor.nodeId || neighbor.node_id || neighbor.id;
+                        if (!markers[neighborId]) return;
+                        
+                        const linkKey = [nodeId, neighborId].sort().join('-');
+                        if (drawnLinks.has(linkKey)) return;
+                        drawnLinks.add(linkKey);
+
+                        const fromLatLng = markers[nodeId].getLatLng();
+                        const toLatLng = markers[neighborId].getLatLng();
+                        const snr = neighbor.snr || neighbor.SNR || null;
+                        
+                        const line = L.polyline([fromLatLng, toLatLng], {
+                            color: getLinkColor(snr),
+                            weight: getLinkWeight(snr),
+                            opacity: getLinkOpacity(snr),
+                            dashArray: snr === null ? '5, 5' : null
+                        });
+
+                        let popupContent = `<strong>Liaison directe</strong><br>`;
+                        popupContent += `${node.user.shortName || nodeId} ↔ ${markers[neighborId].options.title}<br>`;
+                        if (snr !== null) popupContent += `SNR: ${snr.toFixed(1)} dB`;
+                        
+                        line.bindPopup(popupContent);
+                        linkLayerGroup.addLayer(line);
+                        linkCount++;
+                    });
+                }
+            });
+
+            // Si pas d'infos de voisinage, créer des liaisons inférées basées sur hopsAway et SNR
+            if (!hasNeighborInfo) {
+                console.log('Pas d\'infos de voisinage - utilisation de liaisons inférées');
+                
+                // Trouver le node central (hopsAway = 0 ou undefined)
+                const centralNodes = nodes.filter(n => !n.hopsAway || n.hopsAway === 0);
+                
+                nodes.forEach(node => {
+                    const nodeId = node.user?.id || node.nodeId;
+                    if (!node.position || !markers[nodeId]) return;
+                    
+                    // Créer des liaisons vers les nodes à 1 hop si ce node est à hopsAway > 0
+                    if (node.hopsAway && node.hopsAway > 0) {
+                        // Chercher des nodes potentiels à hopsAway - 1
+                        const targetHops = node.hopsAway - 1;
+                        const potentialParents = nodes.filter(n => {
+                            const nId = n.user?.id || n.nodeId;
+                            return nId !== nodeId && 
+                                   n.position && 
+                                   markers[nId] && 
+                                   (n.hopsAway === targetHops || (!n.hopsAway && targetHops === 0));
+                        });
+                        
+                        // Trouver le meilleur candidat basé sur le SNR
+                        if (potentialParents.length > 0) {
+                            // Trier par SNR décroissant (meilleur signal en premier)
+                            potentialParents.sort((a, b) => {
+                                const snrA = a.snr || -100;
+                                const snrB = b.snr || -100;
+                                return snrB - snrA;
+                            });
+                            
+                            // Prendre le meilleur candidat
+                            const parent = potentialParents[0];
+                            const parentId = parent.user?.id || parent.nodeId;
+                            
+                            const linkKey = [nodeId, parentId].sort().join('-');
+                            if (!drawnLinks.has(linkKey)) {
+                                drawnLinks.add(linkKey);
+                                
+                                const fromLatLng = markers[nodeId].getLatLng();
+                                const toLatLng = markers[parentId].getLatLng();
+                                
+                                const line = L.polyline([fromLatLng, toLatLng], {
+                                    color: getLinkColor(node.snr),
+                                    weight: getLinkWeight(node.snr),
+                                    opacity: getLinkOpacity(node.snr) * 0.6,
+                                    dashArray: '5, 5'
+                                });
+
+                                let popupContent = `<strong>Liaison inférée</strong><br>`;
+                                popupContent += `${node.user.shortName || nodeId} → ${parent.user.shortName || parentId}<br>`;
+                                popupContent += `Distance: ${node.hopsAway} hop(s)<br>`;
+                                if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB`;
+                                
+                                line.bindPopup(popupContent);
+                                linkLayerGroup.addLayer(line);
+                                linkCount++;
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('totalLinks').textContent = linkCount;
+            
+            // Afficher un message si on utilise des liaisons inférées
+            if (!hasNeighborInfo && linkCount > 0) {
+                console.log('⚠️ Liaisons inférées affichées. Pour voir les vraies liaisons, activez le module neighborInfo');
+            }
+        }
+
+        // Fonction pour créer/mettre à jour les markers
+        function updateMarkers(nodesData) {
+            let activeCount = 0;
+            const now = Date.now();
+            const activeThreshold = 15 * 60 * 1000; // 15 minutes
+
+            // Gérer le format {"!nodeId": {...}} de votre JSON
+            const nodes = Array.isArray(nodesData) ? nodesData : Object.values(nodesData);
+
+            nodes.forEach(node => {
+                if (!node.position || !node.position.latitude || !node.position.longitude) return;
+
+                const lat = node.position.latitude;
+                const lon = node.position.longitude;
+                const nodeId = node.user?.id || node.nodeId;
+                const shortName = node.user?.shortName || node.shortName || nodeId;
+                const longName = node.user?.longName || node.longName || shortName;
+                
+                // Vérifier si le nœud est actif
+                const lastHeard = node.lastHeard || 0;
+                const isActive = (now - lastHeard * 1000) < activeThreshold;
+                
+                if (isActive) activeCount++;
+
+                // Couleur selon hopsAway
+                let markerColor;
+                if (node.hopsAway === 0 || !node.hopsAway) {
+                    markerColor = '#0078d4'; // Bleu pour les nodes centraux
+                } else if (node.hopsAway === 1) {
+                    markerColor = '#00b050'; // Vert
+                } else if (node.hopsAway === 2) {
+                    markerColor = '#ffc000'; // Orange
+                } else {
+                    markerColor = '#c00000'; // Rouge pour 3+ hops
+                }
+                
+                if (!isActive) markerColor = '#808080'; // Gris si inactif
+                
+                if (markers[nodeId]) {
+                    // Mettre à jour la position si le marker existe
+                    markers[nodeId].setLatLng([lat, lon]);
+                    markers[nodeId].setStyle({ fillColor: markerColor });
+                } else {
+                    // Créer un nouveau marker
+                    const marker = L.circleMarker([lat, lon], {
+                        radius: 8,
+                        fillColor: markerColor,
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8,
+                        title: shortName
+                    }).addTo(map);
+
+                    // Popup avec informations
+                    let popupContent = `<strong>${longName}</strong><br>`;
+                    popupContent += `ID: ${nodeId}<br>`;
+                    if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB<br>`;
+                    if (node.hopsAway !== undefined) popupContent += `Distance: ${node.hopsAway} hop(s)<br>`;
+                    if (node.neighbors || node.neighbours) {
+                        const neighborCount = (node.neighbors || node.neighbours).length;
+                        popupContent += `Voisins directs: ${neighborCount}<br>`;
+                    }
+                    if (lastHeard) {
+                        const date = new Date(lastHeard * 1000);
+                        popupContent += `Dernier: ${date.toLocaleString('fr-FR')}`;
+                    }
+                    
+                    marker.bindPopup(popupContent);
+                    markers[nodeId] = marker;
+                }
+            });
+
+            document.getElementById('activeNodes').textContent = activeCount;
+            document.getElementById('totalNodes').textContent = nodes.length;
+        }
+
+        // Charger les données
+        async function loadData() {
+            try {
+                const response = await fetch('info.json');
+                const data = await response.json();
+                
+                // Votre JSON a la structure : {"Nodes in mesh": {...}}
+                // Ou peut-être juste un objet avec les nodes
+                let nodesData;
+                
+                if (data['Nodes in mesh']) {
+                    nodesData = data['Nodes in mesh'];
+                } else if (data.nodes) {
+                    nodesData = data.nodes;
+                } else {
+                    // Assumer que data est directement l'objet des nodes
+                    nodesData = data;
+                }
+                
+                updateMarkers(nodesData);
+                drawLinks(nodesData);
+
+                // Ajuster la vue de la carte pour inclure tous les markers
+                if (Object.keys(markers).length > 0) {
+                    const group = L.featureGroup(Object.values(markers));
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+
+                // Mettre à jour le temps
+                const lastUpdate = new Date();
+                document.getElementById('lastHeard').textContent = lastUpdate.toLocaleTimeString('fr-FR');
+
+            } catch (error) {
+                console.error('Erreur lors du chargement des données:', error);
+                document.getElementById('lastHeard').textContent = 'Erreur';
+            }
+        }
+
+        // Charger les données au démarrage
+        loadData();
+
+        // Recharger toutes les 30 secondes
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
