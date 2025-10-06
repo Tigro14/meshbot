@@ -206,16 +206,23 @@
                    lon >= -180 && lon <= 180;
         }
         
-        function getNodeColorByHop(hopsAway) {
-            switch(hopsAway) {
-                case 0: return '#27ae60';  // Vert - Hop 0 (direct)
-                case 1: return '#3498db';  // Bleu - Hop 1
-                case 2: return '#f39c12';  // Orange - Hop 2
-                case 3: return '#e67e22';  // Orange foncé - Hop 3
+	function getNodeColorByHop(hopsAway) {
+	    // Si pas de hopsAway, considérer comme lointain
+	    if (hopsAway === undefined || hopsAway === null) {
+		return '#95a5a6'; // Gris (4+ sauts)
+	    }
+
+	    // Couleurs selon la distance
+	    switch(hopsAway) {
+		case 0: return '#27ae60'; // Vert (direct)
+		case 1: return '#3498db'; // Bleu (1 saut)
+		case 2: return '#9b59b6'; // Violet (2 sauts)
+		case 3: return '#e67e22'; // Orange (3 sauts)
                 case 4: return '#9b59b6';  // Violet - Hop 4
-                default: return '#95a5a6'; // Gris - Hop 5+
-            }
-        }
+		default: return '#95a5a6'; // Gris (5+ sauts)
+	    }
+	}
+
         
         function setTimeFilter(hours) {
             currentFilter = hours;
