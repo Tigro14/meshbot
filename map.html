@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte Réseau Meshtastic - Paris IDF</title>
+    <title>Carte Réseau Meshtastic - Paris IDF (vu par mon node)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -242,15 +242,53 @@
         async function loadMeshData() {
             try {
                 const response = await fetch(CONFIG.dataUrl);
-                if (!response.ok) throw new Error('Erreur réseau');
-                return await response.json();
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+                const text = await response.text();
+                console.log('Contenu brut reçu (premiers 500 caractères):', text.substring(0, 500));
+                
+                // Trouver le début des nœuds (chercher le premier nœud connu)
+                const nodesStart = text.indexOf('"!a2e175ac"');
+                if (nodesStart === -1) {
+                    throw new Error('Format de données invalide: impossible de trouver le nœud de départ');
+                }
+                
+                // Trouver la fin de la section des nœuds
+                const nodesEnd = text.indexOf('\n}\n\nPreferences:');
+                if (nodesEnd === -1) {
+                    throw new Error('Format de données invalide: impossible de trouver la fin des nœuds');
+                }
+                
+                // Extraire uniquement la section JSON des nœuds
+                const nodesJson = '{' + text.substring(nodesStart, nodesEnd) + '\n}';
+                console.log('JSON extrait (premiers 500 caractères):', nodesJson.substring(0, 500));
+                
+                const parsedData = JSON.parse(nodesJson);
+                console.log('Données parsées:', parsedData);
+                
+                return { nodes: parsedData };
+                
             } catch (error) {
                 console.error('Erreur de chargement:', error);
                 throw error;
             }
         }
         
+        function isValidPosition(position) {
+            return position && 
+                   typeof position.latitude === 'number' && 
+                   typeof position.longitude === 'number' &&
+                   !isNaN(position.latitude) && 
+                   !isNaN(position.longitude) &&
+                   position.latitude !== 0 && 
+                   position.longitude !== 0 &&
+                   Math.abs(position.latitude) <= 90 && 
+                   Math.abs(position.longitude) <= 180;
+        }
+        
         function getNodeColor(lastHeard) {
+            if (!lastHeard) return '#6c757d'; // Gris si pas de lastHeard
+            
             const now = Math.floor(Date.now() / 1000);
             const hoursAgo = (now - lastHeard) / 3600;
             
@@ -271,21 +309,35 @@
         
         async function initMap() {
             try {
-                // Initialiser la carte
-                map = L.map('map').setView([48.8566, 2.3522], CONFIG.defaultZoom);
+                // Charger les données
+                meshData = await loadMeshData();
+                console.log('Données mesh chargées:', meshData);
+                
+                // Trouver le nœud principal pour centrer la carte
+                const myNode = meshData.nodes[CONFIG.myNodeId];
+                
+                if (!myNode?.position || !isValidPosition(myNode.position)) {
+                    throw new Error('Position du nœud principal introuvable ou invalide');
+                }
+                
+                // Initialiser la carte centrée sur votre nœud
+                map = L.map('map').setView(
+                    [myNode.position.latitude, myNode.position.longitude],
+                    CONFIG.defaultZoom
+                );
                 
                 // Ajouter la couche de tuiles
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 }).addTo(map);
                 
-                // Charger les données
-                meshData = await loadMeshData();
+                // Créer les marqueurs
                 createMarkers(meshData.nodes);
                 
                 // Mettre à jour les statistiques
-                document.getElementById('totalNodes').textContent = Object.keys(meshData.nodes).length;
-                document.getElementById('owner').textContent = meshData.nodes[CONFIG.myNodeId]?.user?.longName || 'Inconnu';
+                const nodesWithPosition = Object.values(meshData.nodes).filter(n => isValidPosition(n.position)).length;
+                document.getElementById('totalNodes').textContent = `${nodesWithPosition} (${Object.keys(meshData.nodes).length} total)`;
+                document.getElementById('owner').textContent = myNode.user?.longName || 'Inconnu';
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('fr-FR');
                 
                 // Ajouter la légende
@@ -311,6 +363,10 @@
                             <span>&gt; 7 jours</span>
                         </div>
                         <div class="legend-item">
+                            <div class="color-box" style="background-color:#6c757d"></div>
+                            <span>Date inconnue</span>
+                        </div>
+                        <div class="legend-item">
                             <div class="color-box owner-node"></div>
                             <span>Votre nœud</span>
                         </div>
@@ -333,7 +389,7 @@
                 
             } catch (error) {
                 console.error('Erreur initialisation carte:', error);
-                alert('Erreur de chargement des données. Veuillez réessayer.');
+                alert('Erreur de chargement des données: ' + error.message);
             }
         }
         
@@ -348,7 +404,11 @@
             let lastHeardTime = 0;
             
             Object.entries(data).forEach(([id, node]) => {
-                if (!node.position) return;
+                // Validation stricte de la position
+                if (!isValidPosition(node.position)) {
+                    console.log(`Nœud ${id} ignoré: position invalide`, node.position);
+                    return;
+                }
                 
                 const isOwner = CONFIG.ownerNodes.includes(id);
                 const lastHeard = node.lastHeard || 0;
@@ -360,69 +420,75 @@
                     lastHeardNode = node;
                 }
                 
-                // Filtrage temporel
-                if (currentFilterHours !== null && hoursAgo > currentFilterHours) {
+                // Filtrage temporel (sauf pour le filtre "Tout")
+                if (currentFilterHours !== null && lastHeard > 0 && hoursAgo > currentFilterHours) {
                     return;
                 }
                 
-                // Création du marqueur
-                const marker = L.circleMarker(
-                    [node.position.latitude, node.position.longitude],
-                    {
-                        radius: isOwner ? 16 : 12,
-                        className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
-                        fillColor: getNodeColor(lastHeard),
-                        color: '#ffffff',
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    }
-                );
+                // Pour le filtre "Tout", afficher aussi les nœuds sans lastHeard
                 
-                // Interaction au survol (sans animation de déplacement)
-                marker.on('mouseover', function() {
-                    this.setStyle({ fillOpacity: 1 });
-                }).on('mouseout', function() {
-                    this.setStyle({ fillOpacity: 0.9 });
-                });
-                
-                // Construction du contenu de l'infobulle
-                const lastHeardDate = new Date(lastHeard * 1000);
-                const lastHeardStr = lastHeardDate.toLocaleString('fr-FR');
-                const timeAgo = lastHeard ? formatDuration(now - lastHeard) : 'inconnu';
-                
-                const popupContent = `
-                    <div class="popup-content">
-                        <div class="popup-header">
-                            <h3>${node.user?.longName || id}</h3>
-                            ${isOwner ? '<div class="owner-badge">Votre nœud</div>' : ''}
+                try {
+                    // Création du marqueur avec validation
+                    const marker = L.circleMarker(
+                        [node.position.latitude, node.position.longitude],
+                        {
+                            radius: isOwner ? 16 : 12,
+                            className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
+                            fillColor: isOwner ? '#1a73e8' : getNodeColor(lastHeard),
+                            color: '#ffffff',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }
+                    );
+                    
+                    // Interaction au survol (sans animation de déplacement)
+                    marker.on('mouseover', function() {
+                        this.setStyle({ fillOpacity: 1 });
+                    }).on('mouseout', function() {
+                        this.setStyle({ fillOpacity: 0.9 });
+                    });
+                    
+                    // Construction du contenu de l'infobulle
+                    const lastHeardDate = lastHeard ? new Date(lastHeard * 1000) : null;
+                    const lastHeardStr = lastHeardDate ? lastHeardDate.toLocaleString('fr-FR') : 'Jamais';
+                    const timeAgo = lastHeard ? formatDuration(now - lastHeard) : 'inconnu';
+                    
+                    const popupContent = `
+                        <div class="popup-content">
+                            <div class="popup-header">
+                                <h3>${node.user?.longName || id}</h3>
+                                ${isOwner ? '<div class="owner-badge">Votre nœud</div>' : ''}
+                            </div>
+                            <table>
+                                <tr>
+                                    <td class="label">ID:</td>
+                                    <td class="value">${id}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">Position:</td>
+                                    <td class="value">${node.position.latitude.toFixed(5)}, ${node.position.longitude.toFixed(5)}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">Altitude:</td>
+                                    <td class="value">${node.position.altitude ? Math.round(node.position.altitude) + 'm' : 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">SNR:</td>
+                                    <td class="value">${node.snr || 'N/A'}</td>
+                                </tr>
+                            </table>
+                            <div class="last-heard">Dernier contact: ${lastHeardStr}${lastHeard ? ` (il y a ${timeAgo})` : ''}</div>
                         </div>
-                        <table>
-                            <tr>
-                                <td class="label">ID:</td>
-                                <td class="value">${id}</td>
-                            </tr>
-                            <tr>
-                                <td class="label">Position:</td>
-                                <td class="value">${node.position.latitude.toFixed(5)}, ${node.position.longitude.toFixed(5)}</td>
-                            </tr>
-                            <tr>
-                                <td class="label">Altitude:</td>
-                                <td class="value">${Math.round(node.position.altitude)}m</td>
-                            </tr>
-                            <tr>
-                                <td class="label">SNR:</td>
-                                <td class="value">${node.SNR || 'N/A'}</td>
-                            </tr>
-                        </table>
-                        <div class="last-heard">Dernier contact: ${lastHeardStr} (il y a ${timeAgo})</div>
-                    </div>
-                `;
-                
-                marker.bindPopup(popupContent);
-                marker.addTo(map);
-                markers[id] = marker;
-                visibleCount++;
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.addTo(map);
+                    markers[id] = marker;
+                    visibleCount++;
+                } catch (error) {
+                    console.error(`Erreur création marqueur pour ${id}:`, error, node);
+                }
             });
             
             // Mise à jour des statistiques
