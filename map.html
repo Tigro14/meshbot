@@ -206,23 +206,20 @@
                    lon >= -180 && lon <= 180;
         }
         
-	function getNodeColorByHop(hopsAway) {
-	    // Si pas de hopsAway, considérer comme lointain
-	    if (hopsAway === undefined || hopsAway === null) {
-		return '#95a5a6'; // Gris (4+ sauts)
-	    }
+        function getNodeColorByHop(hopsAway) {
+            if (hopsAway === undefined || hopsAway === null) {
+                return '#95a5a6'; // Gris (4+ sauts)
+            }
 
-	    // Couleurs selon la distance
-	    switch(hopsAway) {
-		case 0: return '#27ae60'; // Vert (direct)
-		case 1: return '#3498db'; // Bleu (1 saut)
-		case 2: return '#9b59b6'; // Violet (2 sauts)
-		case 3: return '#e67e22'; // Orange (3 sauts)
-                case 4: return '#9b59b6';  // Violet - Hop 4
-		default: return '#95a5a6'; // Gris (5+ sauts)
-	    }
-	}
-
+            switch(hopsAway) {
+                case 0: return '#27ae60'; // Vert (direct)
+                case 1: return '#3498db'; // Bleu (1 saut)
+                case 2: return '#f39c12'; // Jaune (2 sauts)
+                case 3: return '#e67e22'; // Orange (3 sauts)
+                case 4: return '#9b59b6'; // Violet (4 sauts)
+                default: return '#95a5a6'; // Gris (5+ sauts)
+            }
+        }
         
         function setTimeFilter(hours) {
             currentFilter = hours;
@@ -235,53 +232,16 @@
         
         async function parseNodeInfo() {
             try {
+                // Charger le JSON nettoyé
                 const response = await fetch('https://tigro.fr/info.json');
-                const text = await response.text();
+                const data = await response.json();
                 
-                console.log('=== DEBUT DEBUG ===');
-                console.log('Longueur du texte reçu:', text.length);
+                console.log('✓ JSON chargé avec succès!');
+                console.log('Nombre de nœuds:', Object.keys(data['Nodes in mesh']).length);
                 
-                // Trouver le début et la fin du bloc JSON des nodes
-                const startMarker = '"!a2e175ac"';
-                const endMarker = '\n}\n\nPreferences:';
-                
-                const startIndex = text.indexOf(startMarker);
-                const endIndex = text.indexOf(endMarker);
-                
-                if (startIndex === -1 || endIndex === -1) {
-                    console.error('Marqueurs non trouvés');
-                    console.log('startIndex:', startIndex, 'endIndex:', endIndex);
-                    throw new Error('Structure du fichier non reconnue');
-                }
-                
-                // Extraire le JSON complet (avec l'accolade ouvrante et fermante)
-                const jsonText = '{' + text.substring(startIndex, endIndex + 2);
-                
-                console.log('JSON extrait, longueur:', jsonText.length);
-                console.log('Début du JSON extrait:', jsonText.substring(0, 200));
-                console.log('Fin du JSON extrait:', jsonText.substring(jsonText.length - 100));
-                
-                const nodes = JSON.parse(jsonText);
-                console.log('✓ JSON parsé avec succès!');
-                console.log('Nombre de nœuds:', Object.keys(nodes).length);
-                console.log('IDs des nœuds:', Object.keys(nodes));
-                
-                // Compter les nœuds avec position valide
-                let validCount = 0;
-                Object.entries(nodes).forEach(([id, node]) => {
-                    if (isValidPosition(node.position?.latitude, node.position?.longitude)) {
-                        validCount++;
-                        console.log(`✓ Nœud ${id} (${node.user?.longName}) a une position valide`);
-                    }
-                });
-                
-                console.log(`Total: ${validCount} nœuds avec position valide sur ${Object.keys(nodes).length}`);
-                console.log('=== FIN DEBUG ===');
-                
-                return { nodes };
+                return { nodes: data['Nodes in mesh'] };
             } catch (error) {
-                console.error('ERREUR parsing:', error);
-                console.error('Stack:', error.stack);
+                console.error('ERREUR chargement JSON:', error);
                 throw error;
             }
         }
@@ -358,7 +318,6 @@
         function createMarkers(nodes) {
             console.log('=== DEBUT createMarkers ===');
             console.log('Nombre de nœuds à traiter:', Object.keys(nodes).length);
-            console.log('Filtre actuel:', currentFilter);
             
             Object.values(markers).forEach(marker => map.removeLayer(marker));
             markers = {};
@@ -370,22 +329,16 @@
             const now = Date.now() / 1000;
             
             Object.entries(nodes).forEach(([id, node]) => {
-                console.log(`\nTraitement nœud ${id}:`);
-                
                 if (!isValidPosition(node.position?.latitude, node.position?.longitude)) {
-                    console.log(`  → Position invalide, ignoré`);
                     return;
                 }
-                console.log(`  → Position valide: ${node.position.latitude}, ${node.position.longitude}`);
                 
                 const lastHeard = node.lastHeard || 0;
                 const hoursAgo = (now - lastHeard) / 3600;
-                console.log(`  → Dernière écoute: il y a ${hoursAgo.toFixed(1)}h`);
                 
                 if (currentFilter !== 'all') {
                     const hours = parseInt(currentFilter);
                     if (hoursAgo > hours) {
-                        console.log(`  → Filtré (> ${hours}h)`);
                         return;
                     }
                 }
@@ -399,17 +352,15 @@
                     const lat = node.position.latitude;
                     const lon = node.position.longitude;
                     
-                    // Déterminer la couleur : votre nœud d'abord, sinon par hop
                     let color;
                     if (id === myNodeId) {
-                        color = '#e74c3c';  // Rouge pour votre nœud
-                        console.log(`  → C'est VOTRE nœud! Couleur: rouge`);
+                        color = '#e74c3c';
                     } else {
                         color = getNodeColorByHop(node.hopsAway);
-                        console.log(`  → Hop ${node.hopsAway}, couleur: ${color}`);
                     }
+                    
                     const marker = L.circleMarker([lat, lon], {
-                        radius: id === myNodeId ? 20 : 12,  // 20 pour votre nœud, 12 pour les autres
+                        radius: id === myNodeId ? 20 : 12,
                         fillColor: color,
                         color: '#fff',
                         weight: 2,
@@ -445,13 +396,11 @@
                     marker.addTo(map);
                     markers[id] = marker;
                     visibleCount++;
-                    console.log(`  → ✓ Marqueur créé et ajouté!`);
                 } catch (error) {
-                    console.error(`  → ✗ Erreur création marqueur:`, error);
+                    console.error(`Erreur création marqueur ${id}:`, error);
                 }
             });
             
-            console.log(`\n=== FIN createMarkers ===`);
             console.log(`Total marqueurs créés: ${visibleCount}`);
             
             document.getElementById('visibleNodes').textContent = visibleCount;
@@ -472,4 +421,3 @@
     </script>
 </body>
 </html>
-
