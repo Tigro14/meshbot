@@ -195,7 +195,7 @@
         let markers = {};
         let meshData = null;
         let currentFilter = 'all';
-        let myNodeId = null;
+        let myNodeId = '!a2e175ac';
         
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
@@ -226,6 +226,59 @@
             applyTimeFilter();
         }
         
+        async function parseNodeInfo() {
+            try {
+                const response = await fetch('https://tigro.fr/info.json');
+                const text = await response.text();
+                
+                console.log('=== DEBUT DEBUG ===');
+                console.log('Longueur du texte reçu:', text.length);
+                
+                // Trouver le début et la fin du bloc JSON des nodes
+                const startMarker = '"!a2e175ac"';
+                const endMarker = '\n}\n\nPreferences:';
+                
+                const startIndex = text.indexOf(startMarker);
+                const endIndex = text.indexOf(endMarker);
+                
+                if (startIndex === -1 || endIndex === -1) {
+                    console.error('Marqueurs non trouvés');
+                    console.log('startIndex:', startIndex, 'endIndex:', endIndex);
+                    throw new Error('Structure du fichier non reconnue');
+                }
+                
+                // Extraire le JSON complet (avec l'accolade ouvrante et fermante)
+                const jsonText = '{' + text.substring(startIndex, endIndex + 2);
+                
+                console.log('JSON extrait, longueur:', jsonText.length);
+                console.log('Début du JSON extrait:', jsonText.substring(0, 200));
+                console.log('Fin du JSON extrait:', jsonText.substring(jsonText.length - 100));
+                
+                const nodes = JSON.parse(jsonText);
+                console.log('✓ JSON parsé avec succès!');
+                console.log('Nombre de nœuds:', Object.keys(nodes).length);
+                console.log('IDs des nœuds:', Object.keys(nodes));
+                
+                // Compter les nœuds avec position valide
+                let validCount = 0;
+                Object.entries(nodes).forEach(([id, node]) => {
+                    if (isValidPosition(node.position?.latitude, node.position?.longitude)) {
+                        validCount++;
+                        console.log(`✓ Nœud ${id} (${node.user?.longName}) a une position valide`);
+                    }
+                });
+                
+                console.log(`Total: ${validCount} nœuds avec position valide sur ${Object.keys(nodes).length}`);
+                console.log('=== FIN DEBUG ===');
+                
+                return { nodes };
+            } catch (error) {
+                console.error('ERREUR parsing:', error);
+                console.error('Stack:', error.stack);
+                throw error;
+            }
+        }
+        
         async function initMap() {
             map = L.map('map').setView([48.8566, 2.3522], 11);
             
@@ -234,7 +287,6 @@
                 maxZoom: 19
             }).addTo(map);
             
-            // Ajouter la légende en bas à droite
             const legend = L.control({position: 'bottomright'});
             
             legend.onAdd = () => {
@@ -276,21 +328,31 @@
             legend.addTo(map);
             
             try {
-                const response = await fetch('https://d.meshtastic.fr/api/v1/mesh/meshMap.json');
-                meshData = await response.json();
-                
-                myNodeId = meshData.myNodeId;
+                meshData = await parseNodeInfo();
                 
                 document.getElementById('totalNodes').textContent = Object.keys(meshData.nodes).length;
+                
+                // Centrer la carte sur votre nœud si disponible
+                if (meshData.nodes[myNodeId] && meshData.nodes[myNodeId].position) {
+                    const myNode = meshData.nodes[myNodeId];
+                    if (isValidPosition(myNode.position.latitude, myNode.position.longitude)) {
+                        console.log('Centrage sur votre nœud:', myNode.position.latitude, myNode.position.longitude);
+                        map.setView([myNode.position.latitude, myNode.position.longitude], 13);
+                    }
+                }
                 
                 createMarkers(meshData.nodes);
             } catch (error) {
                 console.error('Erreur chargement données:', error);
-                document.getElementById('lastHeard').textContent = 'Erreur de chargement';
+                document.getElementById('lastHeard').textContent = 'Erreur: ' + error.message;
             }
         }
         
         function createMarkers(nodes) {
+            console.log('=== DEBUT createMarkers ===');
+            console.log('Nombre de nœuds à traiter:', Object.keys(nodes).length);
+            console.log('Filtre actuel:', currentFilter);
+            
             Object.values(markers).forEach(marker => map.removeLayer(marker));
             markers = {};
             
@@ -298,18 +360,27 @@
             let lastHeardTime = 0;
             let lastHeardNode = null;
             
+            const now = Date.now() / 1000;
+            
             Object.entries(nodes).forEach(([id, node]) => {
+                console.log(`\nTraitement nœud ${id}:`);
+                
                 if (!isValidPosition(node.position?.latitude, node.position?.longitude)) {
+                    console.log(`  → Position invalide, ignoré`);
                     return;
                 }
+                console.log(`  → Position valide: ${node.position.latitude}, ${node.position.longitude}`);
                 
-                const now = Date.now() / 1000;
                 const lastHeard = node.lastHeard || 0;
                 const hoursAgo = (now - lastHeard) / 3600;
+                console.log(`  → Dernière écoute: il y a ${hoursAgo.toFixed(1)}h`);
                 
                 if (currentFilter !== 'all') {
                     const hours = parseInt(currentFilter);
-                    if (hoursAgo > hours) return;
+                    if (hoursAgo > hours) {
+                        console.log(`  → Filtré (> ${hours}h)`);
+                        return;
+                    }
                 }
                 
                 if (lastHeard > lastHeardTime) {
@@ -325,8 +396,10 @@
                     let color;
                     if (id === myNodeId) {
                         color = '#e74c3c';  // Rouge pour votre nœud
+                        console.log(`  → C'est VOTRE nœud! Couleur: rouge`);
                     } else {
                         color = getNodeColorByHop(node.hopsAway);
+                        console.log(`  → Hop ${node.hopsAway}, couleur: ${color}`);
                     }
                     
                     const marker = L.circleMarker([lat, lon], {
@@ -366,10 +439,14 @@
                     marker.addTo(map);
                     markers[id] = marker;
                     visibleCount++;
+                    console.log(`  → ✓ Marqueur créé et ajouté!`);
                 } catch (error) {
-                    console.error(`Erreur création marqueur pour ${id}:`, error, node);
+                    console.error(`  → ✗ Erreur création marqueur:`, error);
                 }
             });
+            
+            console.log(`\n=== FIN createMarkers ===`);
+            console.log(`Total marqueurs créés: ${visibleCount}`);
             
             document.getElementById('visibleNodes').textContent = visibleCount;
             if (lastHeardNode) {
