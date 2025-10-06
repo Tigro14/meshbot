@@ -61,34 +61,28 @@
         
         .time-filters {
             position: absolute;
-            top: 20px;
+            bottom: 20px;
             left: 20px;
-            background: rgba(255, 255, 255, 0.85);
-            border-radius: 12px;
-            padding: 10px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            z-index: 1000;
             display: flex;
             gap: 8px;
-            flex-wrap: wrap;
-            max-width: 90%;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 0, 0, 0.1);
+            z-index: 1000;
         }
         
         .time-filter {
-            padding: 8px 12px;
-            border-radius: 8px;
-            background: #f1f3f4;
+            background: rgba(255, 255, 255, 0.85);
             border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
             font-weight: 500;
             cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
             transition: all 0.2s;
-            font-size: 0.85rem;
         }
         
         .time-filter:hover {
-            background: #e8eaed;
+            background: rgba(255, 255, 255, 0.95);
         }
         
         .time-filter.active {
@@ -97,147 +91,135 @@
         }
         
         .legend {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
             background: rgba(255, 255, 255, 0.85);
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 12px;
+            border-radius: 8px;
             font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .legend h4 {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #202124;
         }
         
         .legend-item {
             display: flex;
             align-items: center;
-            margin: 8px 0;
+            margin-bottom: 6px;
         }
         
-        .legend-color {
-            width: 24px;
-            height: 24px;
+        .color-box {
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
-            margin-right: 12px;
+            margin-right: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
         }
         
-        .node-marker {
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s;
+        .owner-node {
+            background-color: #1a73e8;
         }
         
-        .node-marker:hover {
-            transform: scale(1.2);
-            z-index: 1001 !important;
+        .popup-content {
+            min-width: 250px;
+            font-size: 0.95rem;
         }
         
-        .node-marker-owner {
-            width: 32px !important;
-            height: 32px !important;
+        .popup-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
         }
         
-        .node-popup {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        .popup-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
         }
         
-        .node-popup h3 {
-            margin-top: 0;
-            color: #1a73e8;
+        .owner-badge {
+            background-color: #1a73e8;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
         }
         
-        .node-popup table {
+        table {
             width: 100%;
             border-collapse: collapse;
-            margin: 10px 0;
+            margin-bottom: 8px;
         }
         
-        .node-popup td {
-            padding: 4px 8px;
-            border-bottom: 1px solid #eee;
+        tr {
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
         }
         
-        .node-popup tr:last-child td {
-            border-bottom: none;
+        td {
+            padding: 4px 0;
         }
         
-        .node-popup .label {
+        .label {
             font-weight: 500;
             color: #5f6368;
+            padding-right: 10px;
         }
         
-        .node-popup .value {
-            font-weight: 600;
+        .value {
+            font-weight: 400;
+            color: #202124;
             text-align: right;
         }
         
         .last-heard {
             font-size: 0.85rem;
-            color: #70757a;
-            margin-top: 8px;
+            color: #5f6368;
             font-style: italic;
+            margin-top: 6px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
+    <div class="stats">
+        <div class="stats-header">
+            <svg class="stats-icon" viewBox="0 0 24 24" fill="#1a73e8">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-15v6h6v-2h-4V5z"/>
+            </svg>
+            <div class="stats-title">Réseau Meshtastic</div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Votre nœud:</span>
+            <span id="owner" class="stat-value">Chargement...</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Nœuds totaux:</span>
+            <span id="totalNodes" class="stat-value">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Nœuds visibles:</span>
+            <span id="visibleNodes" class="stat-value">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Dernière MAJ:</span>
+            <span id="lastUpdate" class="stat-value">--:--:--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Dernier contact:</span>
+            <span id="lastHeard" class="stat-value">--</span>
+        </div>
+    </div>
+
     <div class="time-filters">
         <button class="time-filter active" data-hours="4">4 heures</button>
         <button class="time-filter" data-hours="24">24 heures</button>
         <button class="time-filter" data-hours="168">7 jours</button>
         <button class="time-filter" data-hours="720">30 jours</button>
-        <button class="time-filter" data-hours="0">Tout</button>
-    </div>
-    
-    <div class="stats">
-        <div class="stats-header">
-            <div class="stats-icon">📡</div>
-            <div class="stats-title">Réseau Meshtastic IDF</div>
-        </div>
-        
-        <div class="stat-row">
-            <span class="stat-label">Nœuds totaux</span>
-            <span class="stat-value" id="totalNodes">-</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Nœuds visibles</span>
-            <span class="stat-value" id="visibleNodes">-</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Dernière MAJ</span>
-            <span class="stat-value" id="lastUpdate">-</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Par le nœud</span>
-            <span class="stat-value" id="lastNode">-</span>
-        </div>
-    </div>
-    
-    <div class="legend">
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: #4CAF50;"></div>
-            <span>Actif (&lt; 4h)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: #FFC107;"></div>
-            <span>Récent (4-24h)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: #FF9800;"></div>
-            <span>Peu actif (1-7j)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: #F44336;"></div>
-            <span>Inactif (&gt; 7j)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: #9C27B0; width: 32px; height: 32px;"></div>
-            <span>Votre nœud</span>
-        </div>
+        <button class="time-filter" data-hours="all">Tout</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
@@ -245,183 +227,106 @@
         // Configuration
         const CONFIG = {
             dataUrl: 'https://tigro.fr/info.json',
-            myNodeId: '!a2e175ac', // Remplacez par votre node ID
+            myNodeId: '!a2e175ac',
             defaultZoom: 12,
             maxAgeDays: 30,
-            ownerNodes: ['!a2e175ac'] // Ajoutez d'autres IDs si nécessaire
+            ownerNodes: ['!a2e175ac']
         };
         
-        // Déclaration des variables globales
+        // Variables globales
         let map;
         let markers = {};
-        let currentFilterHours = 4; // Filtre par défaut
+        let currentFilterHours = 4;
+        let meshData = null;
         
-        // Fonction pour charger les données
         async function loadMeshData() {
             try {
                 const response = await fetch(CONFIG.dataUrl);
-                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                
-                const text = await response.text();
-                const nodesStart = text.indexOf('"!a2e175ac"');
-                const nodesEnd = text.indexOf('\n}\n\nPreferences:');
-                
-                if (nodesStart === -1 || nodesEnd === -1) {
-                    throw new Error('Format de données invalide');
-                }
-                
-                const nodesJson = '{' + text.substring(nodesStart, nodesEnd) + '\n}';
-                const data = JSON.parse(nodesJson);
-                
-                // Trouver le dernier timestamp parmi tous les nœuds
-                let latestTimestamp = 0;
-                let latestNodeName = "Inconnu";
-                
-                Object.entries(data).forEach(([id, node]) => {
-                    if (node.lastHeard > latestTimestamp) {
-                        latestTimestamp = node.lastHeard;
-                        latestNodeName = node.longName || node.shortName || "Nœud sans nom";
-                    }
-                });
-                
-                return {
-                    nodes: data,
-                    latestTimestamp: latestTimestamp,
-                    latestNodeName: latestNodeName
-                };
-                
+                if (!response.ok) throw new Error('Erreur réseau');
+                return await response.json();
             } catch (error) {
                 console.error('Erreur de chargement:', error);
                 throw error;
             }
         }
         
-        // Fonction pour déterminer la couleur en fonction de l'âge
         function getNodeColor(lastHeard) {
             const now = Math.floor(Date.now() / 1000);
             const hoursAgo = (now - lastHeard) / 3600;
             
-            if (hoursAgo < 4) return '#4CAF50';      // Vert - actif
-            if (hoursAgo < 24) return '#FFC107';     // Jaune - récent
-            if (hoursAgo < 168) return '#FF9800';    // Orange - peu actif
-            return '#F44336';                        // Rouge - inactif
+            if (hoursAgo <= 4) return '#28a745';    // Vert - Moins de 4h
+            if (hoursAgo <= 24) return '#ffc107';   // Jaune - Moins de 24h
+            if (hoursAgo <= 168) return '#fd7e14';  // Orange - Moins de 7 jours
+            return '#dc3545';                       // Rouge - Plus de 7 jours
         }
         
-        // Fonction pour formater la durée
         function formatDuration(seconds) {
-            if (seconds < 60) return `${Math.floor(seconds)} secondes`;
-            if (seconds < 3600) return `${Math.floor(seconds/60)} minutes`;
-            if (seconds < 86400) return `${Math.floor(seconds/3600)} heures`;
-            return `${Math.floor(seconds/86400)} jours`;
+            const hours = Math.floor(seconds / 3600);
+            const days = Math.floor(hours / 24);
+            
+            if (days > 0) return `${days} jour${days > 1 ? 's' : ''}`;
+            if (hours > 0) return `${hours} heure${hours > 1 ? 's' : ''}`;
+            return `${Math.floor(seconds / 60)} minutes`;
         }
         
-        // Fonction pour initialiser la carte
         async function initMap() {
             try {
-                const result = await loadMeshData();
-                const data = result.nodes;
-                const latestTimestamp = result.latestTimestamp;
-                const latestNodeName = result.latestNodeName;
+                // Initialiser la carte
+                map = L.map('map').setView([48.8566, 2.3522], CONFIG.defaultZoom);
                 
-                // Mettre à jour l'affichage des stats
-                document.getElementById('totalNodes').textContent = Object.keys(data).length;
-                document.getElementById('lastUpdate').textContent = new Date(latestTimestamp * 1000).toLocaleString('fr-FR');
-                document.getElementById('lastNode').textContent = latestNodeName;
-                
-                // Trouver notre nœud principal
-                const myNode = data[CONFIG.myNodeId];
-                
-                if (!myNode?.position) {
-                    throw new Error('Position du nœud principal introuvable');
-                }
-                
-                // Créer la carte
-                map = L.map('map').setView(
-                    [myNode.position.latitude, myNode.position.longitude],
-                    CONFIG.defaultZoom
-                );
-                
-                // Ajouter le fond de carte
+                // Ajouter la couche de tuiles
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-                    maxZoom: 19
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 }).addTo(map);
                 
-                // Ajouter les marqueurs pour chaque nœud
-                Object.entries(data).forEach(([id, node]) => {
-                    if (!node.position) return;
-                    
-                    const isOwner = CONFIG.ownerNodes.includes(id);
-                    const now = Math.floor(Date.now() / 1000);
-                    const hoursAgo = (now - node.lastHeard) / 3600;
-                    
-                    // Appliquer le filtre temporel
-                    if (currentFilterHours > 0 && hoursAgo > currentFilterHours) {
-                        return;
-                    }
-                    
-                    const marker = L.circleMarker(
-                        [node.position.latitude, node.position.longitude],
-                        {
-                            radius: isOwner ? 16 : 12,
-                            className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
-                            fillColor: getNodeColor(node.lastHeard),
-                            color: '#ffffff',
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.9
-                        }
-                    );
-                    
-                    // Popup d'information
-                    const lastHeardDate = new Date(node.lastHeard * 1000);
-                    const lastHeardStr = lastHeardDate.toLocaleString('fr-FR');
-                    const timeAgo = formatDuration(now - node.lastHeard);
-                    
-                    const popupContent = `
-                        <div class="node-popup">
-                            <h3>${node.longName || node.shortName || 'Nœud sans nom'}</h3>
-                            <table>
-                                <tr>
-                                    <td class="label">ID:</td>
-                                    <td class="value">${id}</td>
-                                </tr>
-                                <tr>
-                                    <td class="label">Batterie:</td>
-                                    <td class="value">${node.batteryLevel || 'N/A'}%</td>
-                                </tr>
-                                <tr>
-                                    <td class="label">Altitude:</td>
-                                    <td class="value">${Math.round(node.position.altitude)}m</td>
-                                </tr>
-                                <tr>
-                                    <td class="label">SNR:</td>
-                                    <td class="value">${node.SNR || 'N/A'}</td>
-                                </tr>
-                            </table>
-                            <div class="last-heard">Dernier contact: ${lastHeardStr} (il y a ${timeAgo})</div>
+                // Charger les données
+                meshData = await loadMeshData();
+                createMarkers(meshData.nodes);
+                
+                // Mettre à jour les statistiques
+                document.getElementById('totalNodes').textContent = Object.keys(meshData.nodes).length;
+                document.getElementById('owner').textContent = meshData.nodes[CONFIG.myNodeId]?.user?.longName || 'Inconnu';
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('fr-FR');
+                
+                // Ajouter la légende
+                const legend = L.control({ position: 'bottomleft' });
+                legend.onAdd = () => {
+                    const div = L.DomUtil.create('div', 'legend');
+                    div.innerHTML = `
+                        <h4>Légende</h4>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#28a745"></div>
+                            <span>&lt; 4 heures</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#ffc107"></div>
+                            <span>&lt; 24 heures</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#fd7e14"></div>
+                            <span>&lt; 7 jours</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#dc3545"></div>
+                            <span>&gt; 7 jours</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box owner-node"></div>
+                            <span>Votre nœud</span>
                         </div>
                     `;
-                    
-                    marker.bindPopup(popupContent);
-                    marker.addTo(map);
-                    markers[id] = marker;
-                });
-                
-                // Mettre à jour le compteur de nœuds visibles
-                document.getElementById('visibleNodes').textContent = Object.keys(markers).length;
+                    return div;
+                };
+                legend.addTo(map);
                 
                 // Gestion des filtres temporels
                 document.querySelectorAll('.time-filter').forEach(button => {
                     button.addEventListener('click', function() {
-                        // Mettre à jour l'état actif
                         document.querySelectorAll('.time-filter').forEach(btn => {
                             btn.classList.remove('active');
                         });
                         this.classList.add('active');
-                        
-                        // Appliquer le nouveau filtre
-                        currentFilterHours = parseInt(this.dataset.hours);
+                        currentFilterHours = this.dataset.hours === 'all' ? null : parseInt(this.dataset.hours);
                         applyTimeFilter();
                     });
                 });
@@ -432,56 +337,107 @@
             }
         }
         
-        // Appliquer le filtre temporel
-        function applyTimeFilter() {
-            const now = Math.floor(Date.now() / 1000);
-            let visibleCount = 0;
-            
-            Object.entries(markers).forEach(([id, marker]) => {
-                if (map.hasLayer(marker)) {
-                    map.removeLayer(marker);
-                }
-            });
-            
+        function createMarkers(data) {
+            // Supprimer les marqueurs existants
+            Object.values(markers).forEach(marker => map.removeLayer(marker));
             markers = {};
             
-            // Recréer les marqueurs avec le nouveau filtre
-            loadMeshData().then(result => {
-                const data = result.nodes;
+            const now = Math.floor(Date.now() / 1000);
+            let visibleCount = 0;
+            let lastHeardNode = null;
+            let lastHeardTime = 0;
+            
+            Object.entries(data).forEach(([id, node]) => {
+                if (!node.position) return;
                 
-                Object.entries(data).forEach(([id, node]) => {
-                    if (!node.position) return;
-                    
-                    const isOwner = CONFIG.ownerNodes.includes(id);
-                    const hoursAgo = (now - node.lastHeard) / 3600;
-                    
-                    // Appliquer le filtre temporel
-                    if (currentFilterHours > 0 && hoursAgo > currentFilterHours) {
-                        return;
+                const isOwner = CONFIG.ownerNodes.includes(id);
+                const lastHeard = node.lastHeard || 0;
+                const hoursAgo = lastHeard ? (now - lastHeard) / 3600 : Infinity;
+                
+                // Détection du nœud le plus récent
+                if (lastHeard > lastHeardTime) {
+                    lastHeardTime = lastHeard;
+                    lastHeardNode = node;
+                }
+                
+                // Filtrage temporel
+                if (currentFilterHours !== null && hoursAgo > currentFilterHours) {
+                    return;
+                }
+                
+                // Création du marqueur
+                const marker = L.circleMarker(
+                    [node.position.latitude, node.position.longitude],
+                    {
+                        radius: isOwner ? 16 : 12,
+                        className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
+                        fillColor: getNodeColor(lastHeard),
+                        color: '#ffffff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.9
                     }
-                    
-                    const marker = L.circleMarker(
-                        [node.position.latitude, node.position.longitude],
-                        {
-                            radius: isOwner ? 16 : 12,
-                            className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
-                            fillColor: getNodeColor(node.lastHeard),
-                            color: '#ffffff',
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.9
-                        }
-                    );
-                    
-                    // Popup d'information (simplifié pour la démo)
-                    marker.bindPopup(`<b>${node.longName || id}</b><br>Dernier contact: ${new Date(node.lastHeard * 1000).toLocaleString('fr-FR')}`);
-                    marker.addTo(map);
-                    markers[id] = marker;
-                    visibleCount++;
+                );
+                
+                // Interaction au survol (sans animation de déplacement)
+                marker.on('mouseover', function() {
+                    this.setStyle({ fillOpacity: 1 });
+                }).on('mouseout', function() {
+                    this.setStyle({ fillOpacity: 0.9 });
                 });
                 
-                document.getElementById('visibleNodes').textContent = visibleCount;
+                // Construction du contenu de l'infobulle
+                const lastHeardDate = new Date(lastHeard * 1000);
+                const lastHeardStr = lastHeardDate.toLocaleString('fr-FR');
+                const timeAgo = lastHeard ? formatDuration(now - lastHeard) : 'inconnu';
+                
+                const popupContent = `
+                    <div class="popup-content">
+                        <div class="popup-header">
+                            <h3>${node.user?.longName || id}</h3>
+                            ${isOwner ? '<div class="owner-badge">Votre nœud</div>' : ''}
+                        </div>
+                        <table>
+                            <tr>
+                                <td class="label">ID:</td>
+                                <td class="value">${id}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Position:</td>
+                                <td class="value">${node.position.latitude.toFixed(5)}, ${node.position.longitude.toFixed(5)}</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Altitude:</td>
+                                <td class="value">${Math.round(node.position.altitude)}m</td>
+                            </tr>
+                            <tr>
+                                <td class="label">SNR:</td>
+                                <td class="value">${node.SNR || 'N/A'}</td>
+                            </tr>
+                        </table>
+                        <div class="last-heard">Dernier contact: ${lastHeardStr} (il y a ${timeAgo})</div>
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                marker.addTo(map);
+                markers[id] = marker;
+                visibleCount++;
             });
+            
+            // Mise à jour des statistiques
+            document.getElementById('visibleNodes').textContent = visibleCount;
+            if (lastHeardNode) {
+                const lastHeardDate = new Date(lastHeardTime * 1000);
+                document.getElementById('lastHeard').textContent = 
+                    `${lastHeardNode.user?.longName || 'Nœud'} à ${lastHeardDate.toLocaleTimeString('fr-FR')}`;
+            }
+        }
+        
+        function applyTimeFilter() {
+            if (meshData) {
+                createMarkers(meshData.nodes);
+            }
         }
         
         // Démarrer l'initialisation
