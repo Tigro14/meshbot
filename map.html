@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte Réseau Meshtastic - Paris IDF</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+        #map { width: 100%; height: 100vh; }
+        
+        .stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 280px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .stats-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .stats-icon {
+            width: 48px;
+            height: 48px;
+            margin-right: 12px;
+        }
+        
+        .stats-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #1a73e8;
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .stat-label {
+            font-weight: 500;
+            color: #5f6368;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #202124;
+        }
+        
+        .time-filters {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            max-width: 90%;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .time-filter {
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: #f1f3f4;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+        }
+        
+        .time-filter:hover {
+            background: #e8eaed;
+        }
+        
+        .time-filter.active {
+            background: #1a73e8;
+            color: white;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            font-size: 0.9rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        
+        .legend-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        
+        .node-marker {
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+        
+        .node-marker:hover {
+            transform: scale(1.2);
+            z-index: 1001 !important;
+        }
+        
+        .node-marker-owner {
+            width: 32px !important;
+            height: 32px !important;
+        }
+        
+        .node-popup {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .node-popup h3 {
+            margin-top: 0;
+            color: #1a73e8;
+        }
+        
+        .node-popup table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        
+        .node-popup td {
+            padding: 4px 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .node-popup tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .node-popup .label {
+            font-weight: 500;
+            color: #5f6368;
+        }
+        
+        .node-popup .value {
+            font-weight: 600;
+            text-align: right;
+        }
+        
+        .last-heard {
+            font-size: 0.85rem;
+            color: #70757a;
+            margin-top: 8px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="time-filters">
+        <button class="time-filter active" data-hours="4">4 heures</button>
+        <button class="time-filter" data-hours="24">24 heures</button>
+        <button class="time-filter" data-hours="168">7 jours</button>
+        <button class="time-filter" data-hours="720">30 jours</button>
+        <button class="time-filter" data-hours="0">Tout</button>
+    </div>
+    
+    <div class="stats">
+        <div class="stats-header">
+            <div class="stats-icon">📡</div>
+            <div class="stats-title">Réseau Meshtastic IDF</div>
+        </div>
+        
+        <div class="stat-row">
+            <span class="stat-label">Nœuds totaux</span>
+            <span class="stat-value" id="totalNodes">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Nœuds visibles</span>
+            <span class="stat-value" id="visibleNodes">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Dernière MAJ</span>
+            <span class="stat-value" id="lastUpdate">-</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Par le nœud</span>
+            <span class="stat-value" id="lastNode">-</span>
+        </div>
+    </div>
+    
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #4CAF50;"></div>
+            <span>Actif (&lt; 4h)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #FFC107;"></div>
+            <span>Récent (4-24h)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #FF9800;"></div>
+            <span>Peu actif (1-7j)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #F44336;"></div>
+            <span>Inactif (&gt; 7j)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #9C27B0; width: 32px; height: 32px;"></div>
+            <span>Votre nœud</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        // Configuration
+        const CONFIG = {
+            dataUrl: 'https://tigro.fr/info.json',
+            myNodeId: '!a2e175ac', // Remplacez par votre node ID
+            defaultZoom: 12,
+            maxAgeDays: 30,
+            ownerNodes: ['!a2e175ac'] // Ajoutez d'autres IDs si nécessaire
+        };
+        
+        // Déclaration des variables globales
+        let map;
+        let markers = {};
+        let currentFilterHours = 4; // Filtre par défaut
+        
+        // Fonction pour charger les données
+        async function loadMeshData() {
+            try {
+                const response = await fetch(CONFIG.dataUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+                const text = await response.text();
+                const nodesStart = text.indexOf('"!a2e175ac"');
+                const nodesEnd = text.indexOf('\n}\n\nPreferences:');
+                
+                if (nodesStart === -1 || nodesEnd === -1) {
+                    throw new Error('Format de données invalide');
+                }
+                
+                const nodesJson = '{' + text.substring(nodesStart, nodesEnd) + '\n}';
+                const data = JSON.parse(nodesJson);
+                
+                // Trouver le dernier timestamp parmi tous les nœuds
+                let latestTimestamp = 0;
+                let latestNodeName = "Inconnu";
+                
+                Object.entries(data).forEach(([id, node]) => {
+                    if (node.lastHeard > latestTimestamp) {
+                        latestTimestamp = node.lastHeard;
+                        latestNodeName = node.longName || node.shortName || "Nœud sans nom";
+                    }
+                });
+                
+                return {
+                    nodes: data,
+                    latestTimestamp: latestTimestamp,
+                    latestNodeName: latestNodeName
+                };
+                
+            } catch (error) {
+                console.error('Erreur de chargement:', error);
+                throw error;
+            }
+        }
+        
+        // Fonction pour déterminer la couleur en fonction de l'âge
+        function getNodeColor(lastHeard) {
+            const now = Math.floor(Date.now() / 1000);
+            const hoursAgo = (now - lastHeard) / 3600;
+            
+            if (hoursAgo < 4) return '#4CAF50';      // Vert - actif
+            if (hoursAgo < 24) return '#FFC107';     // Jaune - récent
+            if (hoursAgo < 168) return '#FF9800';    // Orange - peu actif
+            return '#F44336';                        // Rouge - inactif
+        }
+        
+        // Fonction pour formater la durée
+        function formatDuration(seconds) {
+            if (seconds < 60) return `${Math.floor(seconds)} secondes`;
+            if (seconds < 3600) return `${Math.floor(seconds/60)} minutes`;
+            if (seconds < 86400) return `${Math.floor(seconds/3600)} heures`;
+            return `${Math.floor(seconds/86400)} jours`;
+        }
+        
+        // Fonction pour initialiser la carte
+        async function initMap() {
+            try {
+                const result = await loadMeshData();
+                const data = result.nodes;
+                const latestTimestamp = result.latestTimestamp;
+                const latestNodeName = result.latestNodeName;
+                
+                // Mettre à jour l'affichage des stats
+                document.getElementById('totalNodes').textContent = Object.keys(data).length;
+                document.getElementById('lastUpdate').textContent = new Date(latestTimestamp * 1000).toLocaleString('fr-FR');
+                document.getElementById('lastNode').textContent = latestNodeName;
+                
+                // Trouver notre nœud principal
+                const myNode = data[CONFIG.myNodeId];
+                
+                if (!myNode?.position) {
+                    throw new Error('Position du nœud principal introuvable');
+                }
+                
+                // Créer la carte
+                map = L.map('map').setView(
+                    [myNode.position.latitude, myNode.position.longitude],
+                    CONFIG.defaultZoom
+                );
+                
+                // Ajouter le fond de carte
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                    maxZoom: 19
+                }).addTo(map);
+                
+                // Ajouter les marqueurs pour chaque nœud
+                Object.entries(data).forEach(([id, node]) => {
+                    if (!node.position) return;
+                    
+                    const isOwner = CONFIG.ownerNodes.includes(id);
+                    const now = Math.floor(Date.now() / 1000);
+                    const hoursAgo = (now - node.lastHeard) / 3600;
+                    
+                    // Appliquer le filtre temporel
+                    if (currentFilterHours > 0 && hoursAgo > currentFilterHours) {
+                        return;
+                    }
+                    
+                    const marker = L.circleMarker(
+                        [node.position.latitude, node.position.longitude],
+                        {
+                            radius: isOwner ? 16 : 12,
+                            className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
+                            fillColor: getNodeColor(node.lastHeard),
+                            color: '#ffffff',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }
+                    );
+                    
+                    // Popup d'information
+                    const lastHeardDate = new Date(node.lastHeard * 1000);
+                    const lastHeardStr = lastHeardDate.toLocaleString('fr-FR');
+                    const timeAgo = formatDuration(now - node.lastHeard);
+                    
+                    const popupContent = `
+                        <div class="node-popup">
+                            <h3>${node.longName || node.shortName || 'Nœud sans nom'}</h3>
+                            <table>
+                                <tr>
+                                    <td class="label">ID:</td>
+                                    <td class="value">${id}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">Batterie:</td>
+                                    <td class="value">${node.batteryLevel || 'N/A'}%</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">Altitude:</td>
+                                    <td class="value">${Math.round(node.position.altitude)}m</td>
+                                </tr>
+                                <tr>
+                                    <td class="label">SNR:</td>
+                                    <td class="value">${node.SNR || 'N/A'}</td>
+                                </tr>
+                            </table>
+                            <div class="last-heard">Dernier contact: ${lastHeardStr} (il y a ${timeAgo})</div>
+                        </div>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.addTo(map);
+                    markers[id] = marker;
+                });
+                
+                // Mettre à jour le compteur de nœuds visibles
+                document.getElementById('visibleNodes').textContent = Object.keys(markers).length;
+                
+                // Gestion des filtres temporels
+                document.querySelectorAll('.time-filter').forEach(button => {
+                    button.addEventListener('click', function() {
+                        // Mettre à jour l'état actif
+                        document.querySelectorAll('.time-filter').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        this.classList.add('active');
+                        
+                        // Appliquer le nouveau filtre
+                        currentFilterHours = parseInt(this.dataset.hours);
+                        applyTimeFilter();
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Erreur initialisation carte:', error);
+                alert('Erreur de chargement des données. Veuillez réessayer.');
+            }
+        }
+        
+        // Appliquer le filtre temporel
+        function applyTimeFilter() {
+            const now = Math.floor(Date.now() / 1000);
+            let visibleCount = 0;
+            
+            Object.entries(markers).forEach(([id, marker]) => {
+                if (map.hasLayer(marker)) {
+                    map.removeLayer(marker);
+                }
+            });
+            
+            markers = {};
+            
+            // Recréer les marqueurs avec le nouveau filtre
+            loadMeshData().then(result => {
+                const data = result.nodes;
+                
+                Object.entries(data).forEach(([id, node]) => {
+                    if (!node.position) return;
+                    
+                    const isOwner = CONFIG.ownerNodes.includes(id);
+                    const hoursAgo = (now - node.lastHeard) / 3600;
+                    
+                    // Appliquer le filtre temporel
+                    if (currentFilterHours > 0 && hoursAgo > currentFilterHours) {
+                        return;
+                    }
+                    
+                    const marker = L.circleMarker(
+                        [node.position.latitude, node.position.longitude],
+                        {
+                            radius: isOwner ? 16 : 12,
+                            className: `node-marker ${isOwner ? 'node-marker-owner' : ''}`,
+                            fillColor: getNodeColor(node.lastHeard),
+                            color: '#ffffff',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }
+                    );
+                    
+                    // Popup d'information (simplifié pour la démo)
+                    marker.bindPopup(`<b>${node.longName || id}</b><br>Dernier contact: ${new Date(node.lastHeard * 1000).toLocaleString('fr-FR')}`);
+                    marker.addTo(map);
+                    markers[id] = marker;
+                    visibleCount++;
+                });
+                
+                document.getElementById('visibleNodes').textContent = visibleCount;
+            });
+        }
+        
+        // Démarrer l'initialisation
+        initMap();
+    </script>
+</body>
+</html>
+

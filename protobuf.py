@@ -12,7 +12,8 @@ MQTT_BROKER = "serveurperso.com"
 MQTT_PORT = 1883
 MQTT_USER = "meshdev"
 MQTT_PASS = "large4cats"  
-MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
+#QTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
+MQTT_TOPIC = "msh/EU_868/2/json/MediumFast/#"
 
 NODE_NAMES_FILE = "node_names.json"
 OUTPUT_FILE = "node_positions.json"
@@ -181,8 +182,14 @@ def on_message(client, userdata, msg):
         # Debug : afficher tous les messages
         if DEBUG_MODE and MESSAGE_COUNT % 10 == 0:  # Tous les 10 messages
             from_hex = f"{from_id:08x}"
+            from_dec = from_id
             in_json = "✓" if from_id in NODE_NAMES else "✗"
-            print(f"[DEBUG] Msg {MESSAGE_COUNT}: From !{from_hex} {in_json}, Type: {payload_type}")
+            print(f"[DEBUG] Msg {MESSAGE_COUNT}: From !{from_hex} (dec:{from_dec}) {in_json}, Type: {payload_type}")
+            
+            # Afficher quelques IDs du JSON pour comparaison
+            if MESSAGE_COUNT == 10:
+                sample_ids = list(NODE_NAMES.keys())[:5]
+                print(f"[DEBUG] Exemples d'IDs dans JSON: {[f'{id} (!{id:08x})' for id in sample_ids]}")
         
         # Ignorer si le nœud n'est pas dans notre liste
         if from_id not in NODE_NAMES:
@@ -198,7 +205,7 @@ def on_message(client, userdata, msg):
             portnum = data.portnum
             
             if DEBUG_MODE:
-                print(f"[DEBUG] Message décodé, Port: {portnum}")
+                print(f"[DEBUG] Message décodé (NON CHIFFRÉ), Port: {portnum}")
             
             if portnum == 3:  # POSITION_APP
                 position = mesh_pb2.Position()
@@ -206,7 +213,7 @@ def on_message(client, userdata, msg):
                 lat = position.latitude_i / 1e7
                 lon = position.longitude_i / 1e7
                 if DEBUG_MODE:
-                    print(f"[DEBUG] Position trouvée: {lat}, {lon}")
+                    print(f"[DEBUG] ✅ Position trouvée (non chiffrée): {lat}, {lon}")
                 update_node_data(from_id, "position", {"lat": lat, "lon": lon})
             
             elif portnum == 4:  # NODEINFO_APP
