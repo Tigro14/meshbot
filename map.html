@@ -401,9 +401,9 @@
                         color = getNodeColorByHop(node.hopsAway);
                         console.log(`  → Hop ${node.hopsAway}, couleur: ${color}`);
                     }
-                    
                     const marker = L.circleMarker([lat, lon], {
                         radius: 8,
+                        radius: id === myNodeId ? 20 : 16,  // 20 pour votre nœud, 16 pour les autres
                         fillColor: color,
                         color: '#fff',
                         weight: 2,
