@@ -115,7 +115,7 @@
         // Fonction pour obtenir la couleur en fonction du SNR
         function getLinkColor(snr) {
             if (snr === null || snr === undefined) return '#888888';
-            if (snr > 10) return '#00ff00'; // Vert - Excellent
+            if (snr > 5) return '#00ff00'; // Vert - Excellent
             if (snr > 0) return '#ffff00';  // Jaune - Bon
             return '#ff6600';                // Orange - Faible
         }
@@ -130,10 +130,10 @@
 
         // Fonction pour obtenir l'épaisseur en fonction du SNR
         function getLinkWeight(snr) {
-            if (snr === null || snr === undefined) return 2;
-            if (snr > 10) return 4;
-            if (snr > 0) return 3;
-            return 2;
+            if (snr === null || snr === undefined) return 3;
+            if (snr > 10) return 6;
+            if (snr > 0) return 5;
+            return 4;
         }
 
         // Fonction pour dessiner les liaisons
