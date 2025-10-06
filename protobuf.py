@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from datetime import datetime
 from meshtastic import mesh_pb2, mqtt_pb2
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -13,85 +14,101 @@ MQTT_USER = "meshdev"
 MQTT_PASS = "large4cats"  
 MQTT_TOPIC = "msh/EU_868/2/e/MediumFast/#"
 
-# Fichier des noms de nœuds
 NODE_NAMES_FILE = "node_names.json"
+OUTPUT_FILE = "node_positions.json"
+STATS_INTERVAL = 60  # Afficher les stats toutes les 60 secondes
 
 # Clés à tester
 TEST_KEYS = {
     "default": base64.b64decode("AQ==") + b'\x00' * 31,
     "empty": b'\x00' * 32,
     "ones": b'\x01' * 32,
-    # Ajoutez d'autres clés ici si nécessaire
-    # "custom": base64.b64decode("VotreCléBase64=="),
 }
 
-# Filtrer uniquement certaines clés (mettre None pour tout accepter)
-# Exemples: ["default"], ["default", "empty"], None
-ALLOWED_KEYS = None  # Changez en ["default"] pour filtrer seulement votre clé
-
-# Debug mode (affiche tous les messages reçus, même non déchiffrés)
-DEBUG_MODE = True
-
-# Filtrer par numéro de port (mettre None pour tout accepter)
-# Ports courants:
-#   1: TEXT_MESSAGE_APP (messages texte)
-#   3: POSITION_APP (positions GPS)
-#   4: NODEINFO_APP (infos de nœud)
-#   67: TELEMETRY_APP (télémétrie/batterie)
-# Exemples: [1, 3, 4, 67], [1], None
-ALLOWED_PORTS = None  # Temporairement désactivé pour debug
-
-# Filtrer par nœud (mettre None pour tout accepter)
-# Format : liste d'IDs en hexadécimal (sans le !)
-# Exemples: ["a76f40da"], ["a76f40da", "ea24f40c"], None
-# Si défini, ne montre QUE les messages DE ou VERS ces nœuds
-ALLOWED_NODES = ["a76f40da"]  # Changez en None pour voir tous les nœuds
-
-# ============ CHARGEMENT DES NOMS DE NŒUDS ============
+# ============ DONNÉES GLOBALES ============
 NODE_NAMES = {}
+NODE_DATA = {}  # {node_id: {"name": ..., "position": ..., "last_seen": ..., "telemetry": ...}}
+MESSAGE_COUNT = 0
+LAST_STATS_TIME = datetime.now()
 
+# ============ CHARGEMENT DES NOMS ============
 def load_node_names():
-    """Charge les noms des nœuds depuis le fichier JSON"""
     global NODE_NAMES
     try:
         if os.path.exists(NODE_NAMES_FILE):
             with open(NODE_NAMES_FILE, 'r', encoding='utf-8') as f:
-                # Les IDs dans le JSON sont en décimal (string)
                 data = json.load(f)
-                # Convertir les IDs décimaux en entiers pour la correspondance
                 NODE_NAMES = {int(node_id): name for node_id, name in data.items()}
-            print(f"✅ {len(NODE_NAMES)} noms de nœuds chargés depuis {NODE_NAMES_FILE}")
+            print(f"✅ {len(NODE_NAMES)} noms de nœuds chargés")
         else:
-            print(f"⚠️ Fichier {NODE_NAMES_FILE} non trouvé, utilisation des IDs uniquement")
+            print(f"⚠️  Fichier {NODE_NAMES_FILE} non trouvé")
     except Exception as e:
-        print(f"❌ Erreur lors du chargement des noms: {e}")
+        print(f"❌ Erreur lors du chargement: {e}")
 
-def get_node_name(node_id):
-    """Retourne le nom d'un nœud ou son ID en hex si inconnu"""
-    if node_id in NODE_NAMES:
-        return f"{NODE_NAMES[node_id]} (!{node_id:08x})"
-    else:
-        return f"!{node_id:08x}"
+# ============ SAUVEGARDE DES DONNÉES ============
+def save_node_data():
+    try:
+        output = {}
+        for node_id, data in NODE_DATA.items():
+            node_hex = f"{node_id:08x}"
+            output[node_hex] = {
+                "name": data.get("name", f"!{node_hex}"),
+                "position": data.get("position"),
+                "last_seen": data.get("last_seen"),
+                "telemetry": data.get("telemetry"),
+                "message_count": data.get("message_count", 0)
+            }
+        
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(output, f, indent=2, ensure_ascii=False)
+        print(f"💾 Données sauvegardées dans {OUTPUT_FILE}")
+    except Exception as e:
+        print(f"❌ Erreur sauvegarde: {e}")
+
+# ============ STATISTIQUES ============
+def print_stats():
+    global LAST_STATS_TIME
+    
+    now = datetime.now()
+    if (now - LAST_STATS_TIME).seconds < STATS_INTERVAL:
+        return
+    
+    LAST_STATS_TIME = now
+    
+    print(f"\n{'='*60}")
+    print(f"📊 STATISTIQUES - {now.strftime('%H:%M:%S')}")
+    print(f"{'='*60}")
+    print(f"Messages reçus: {MESSAGE_COUNT}")
+    print(f"Nœuds connus dans JSON: {len(NODE_NAMES)}")
+    print(f"Nœuds détectés sur MQTT: {len(NODE_DATA)}")
+    
+    # Compter les nœuds avec position
+    nodes_with_position = sum(1 for d in NODE_DATA.values() if d.get("position"))
+    print(f"Nœuds avec position GPS: {nodes_with_position}")
+    
+    # Top 5 des nœuds les plus actifs
+    if NODE_DATA:
+        sorted_nodes = sorted(NODE_DATA.items(), 
+                            key=lambda x: x[1].get("message_count", 0), 
+                            reverse=True)[:5]
+        print(f"\n🔝 Top 5 nœuds actifs:")
+        for node_id, data in sorted_nodes:
+            name = data.get("name", f"!{node_id:08x}")
+            count = data.get("message_count", 0)
+            last_seen = data.get("last_seen", "jamais")
+            print(f"  {name}: {count} messages (vu: {last_seen})")
+    
+    print(f"{'='*60}\n")
+    
+    # Sauvegarder périodiquement
+    save_node_data()
 
 # ============ DÉCHIFFREMENT ============
 def decrypt_message(encrypted_data, packet_id, from_node, psk):
-    """Déchiffre un message Meshtastic chiffré avec AES-256-CTR"""
-    # Tester différents formats de nonce (16 octets requis pour AES)
     nonce_variants = [
-        # V1: packet_id (8 LE) + from (4 LE) + padding (4)
-        ("v1_8+4+4", packet_id.to_bytes(8, 'little') + from_node.to_bytes(4, 'little') + b'\x00' * 4),
-        
-        # V2: packet_id (4 LE) + from (4 LE) + padding (8)
-        ("v2_4+4+8", packet_id.to_bytes(4, 'little') + from_node.to_bytes(4, 'little') + b'\x00' * 8),
-        
-        # V3: from (8 LE) + packet_id (8 LE)
-        ("v3_from8+id8", from_node.to_bytes(8, 'little') + packet_id.to_bytes(8, 'little')),
-        
-        # V4: from (4 LE) + packet_id (4 LE) + padding (8)
-        ("v4_from4+id4+8", from_node.to_bytes(4, 'little') + packet_id.to_bytes(4, 'little') + b'\x00' * 8),
-        
-        # V5: packet_id (8 BE) + from (4 BE) + padding (4)
-        ("v5_BE", packet_id.to_bytes(8, 'big') + from_node.to_bytes(4, 'big') + b'\x00' * 4),
+        ("v1", packet_id.to_bytes(8, 'little') + from_node.to_bytes(4, 'little') + b'\x00' * 4),
+        ("v2", packet_id.to_bytes(4, 'little') + from_node.to_bytes(4, 'little') + b'\x00' * 8),
+        ("v3", from_node.to_bytes(8, 'little') + packet_id.to_bytes(8, 'little')),
     ]
     
     for nonce_name, nonce in nonce_variants:
@@ -100,267 +117,162 @@ def decrypt_message(encrypted_data, packet_id, from_node, psk):
             decryptor = cipher.decryptor()
             decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
             
-            # Tester si c'est du protobuf valide
-            try:
-                test_data = mesh_pb2.Data()
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    test_data.ParseFromString(decrypted)
-                
-                # Si on arrive ici, le nonce est bon !
-                if DEBUG_MODE:
-                    print(f"[DEBUG] ✅ Nonce correct trouvé: {nonce_name}")
-                return decrypted
-            except:
-                # Protobuf invalide, essayer le prochain nonce
-                continue
+            test_data = mesh_pb2.Data()
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                test_data.ParseFromString(decrypted)
+            
+            return decrypted
         except:
             continue
     
     return None
 
+# ============ TRAITEMENT DES NŒUDS ============
+def update_node_data(node_id, data_type, data):
+    global NODE_DATA
+    
+    # Ignorer les nœuds non présents dans node_names.json
+    if node_id not in NODE_NAMES:
+        return
+    
+    if node_id not in NODE_DATA:
+        NODE_DATA[node_id] = {
+            "name": NODE_NAMES[node_id],
+            "message_count": 0
+        }
+    
+    NODE_DATA[node_id]["message_count"] += 1
+    NODE_DATA[node_id]["last_seen"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    if data_type == "position":
+        NODE_DATA[node_id]["position"] = data
+        print(f"📍 {NODE_NAMES[node_id]} - Position: {data['lat']:.6f}, {data['lon']:.6f}")
+    
+    elif data_type == "nodeinfo":
+        print(f"👤 {NODE_NAMES[node_id]} - NodeInfo: {data['long_name']} ({data['short_name']})")
+    
+    elif data_type == "telemetry":
+        NODE_DATA[node_id]["telemetry"] = data
+        battery = data.get('battery_level', 'N/A')
+        print(f"🔋 {NODE_NAMES[node_id]} - Batterie: {battery}%")
+
 # ============ CALLBACK MQTT ============
 def on_message(client, userdata, msg):
+    global MESSAGE_COUNT
+    MESSAGE_COUNT += 1
+    
     try:
-        if DEBUG_MODE:
-            print(f"\n[DEBUG] Message reçu sur {msg.topic} - {len(msg.payload)} octets")
-        
-        # 1. Décoder le ServiceEnvelope
         envelope = mqtt_pb2.ServiceEnvelope()
         envelope.ParseFromString(msg.payload)
         
         if not envelope.HasField("packet"):
-            if DEBUG_MODE:
-                print("[DEBUG] Pas de paquet MeshPacket, ignoré")
             return
         
         mesh_packet = envelope.packet
-        
-        # 2. Extraire les infos du paquet
         from_id = getattr(mesh_packet, 'from_', getattr(mesh_packet, 'from'))
         to_id = mesh_packet.to
         packet_id = mesh_packet.id
         
-        # 3. Vérifier le type de payload
         payload_type = mesh_packet.WhichOneof("payload_variant")
         
-        if DEBUG_MODE:
-            print(f"[DEBUG] Type: {payload_type}, From: !{from_id:08x}, To: !{to_id:08x}")
-        
-        # 4. Filtrer par nœud si activé (avant de déchiffrer pour économiser du CPU)
-        if ALLOWED_NODES is not None:
-            from_hex = f"{from_id:08x}"
-            to_hex = f"{to_id:08x}"
-            
-            # Vérifier si le message concerne un des nœuds autorisés
-            node_match = False
-            for allowed_node in ALLOWED_NODES:
-                if from_hex == allowed_node or to_hex == allowed_node:
-                    node_match = True
-                    break
-            
-            if not node_match:
-                if DEBUG_MODE:
-                    print(f"[DEBUG] ⚠️ Message ignoré - ne concerne pas les nœuds filtrés")
-                return
-        
+        # Traiter les messages décodés
         if payload_type == "decoded":
-            # ===== MESSAGE DÉCHIFFRÉ =====
             data = mesh_packet.decoded
             portnum = data.portnum
             
-            if DEBUG_MODE:
-                port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
-                port_name = port_names_debug.get(portnum, f"Port {portnum}")
-                print(f"[DEBUG] Message décodé (non chiffré), Port: {portnum} ({port_name})")
-            
-            # Filtrer par port si activé
-            if ALLOWED_PORTS is not None and portnum not in ALLOWED_PORTS:
-                if DEBUG_MODE:
-                    port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
-                    port_name = port_names_debug.get(portnum, f"Port {portnum}")
-                    print(f"[DEBUG] ⚠️ Port {portnum} ({port_name}) ignoré par le filtre ALLOWED_PORTS")
-                return
-            
-            print(f"\n{'='*60}")
-            print(f"📨 Message sur {msg.topic}")
-            print(f"De: {get_node_name(from_id)}")
-            print(f"Vers: !{to_id:08x}")
-            print(f"ID: {packet_id}, Canal: {envelope.channel_id}, Hop: {mesh_packet.hop_limit}")
-            
-            if portnum == 1:  # TEXT_MESSAGE_APP
-                text = data.payload.decode('utf-8', errors='replace')
-                print(f"📝 Texte: {text}")
-            
-            elif portnum == 3:  # POSITION_APP
+            if portnum == 3:  # POSITION_APP
                 position = mesh_pb2.Position()
                 position.ParseFromString(data.payload)
                 lat = position.latitude_i / 1e7
                 lon = position.longitude_i / 1e7
-                print(f"📍 Position: {lat:.6f}, {lon:.6f}")
+                update_node_data(from_id, "position", {"lat": lat, "lon": lon})
             
             elif portnum == 4:  # NODEINFO_APP
                 nodeinfo = mesh_pb2.User()
                 nodeinfo.ParseFromString(data.payload)
-                print(f"👤 Node: {nodeinfo.long_name} ({nodeinfo.short_name})")
+                update_node_data(from_id, "nodeinfo", {
+                    "long_name": nodeinfo.long_name,
+                    "short_name": nodeinfo.short_name
+                })
             
             elif portnum == 67:  # TELEMETRY_APP
                 telemetry = mesh_pb2.Telemetry()
                 telemetry.ParseFromString(data.payload)
                 if telemetry.HasField("device_metrics"):
-                    print(f"🔋 Batterie: {telemetry.device_metrics.battery_level}%")
-            
-            else:
-                print(f"Port {portnum}: {data.payload.hex()[:50]}...")
+                    update_node_data(from_id, "telemetry", {
+                        "battery_level": telemetry.device_metrics.battery_level
+                    })
         
+        # Traiter les messages chiffrés
         elif payload_type == "encrypted":
-            # ===== MESSAGE CHIFFRÉ =====
             encrypted_data = mesh_packet.encrypted
             
-            # Tester différentes clés
-            message_decoded = False
-            successful_key = None
-            decoded_data = None
-            
             for key_name, test_psk in TEST_KEYS.items():
-                # Si filtre activé, ignorer les clés non autorisées
-                if ALLOWED_KEYS is not None and key_name not in ALLOWED_KEYS:
-                    if DEBUG_MODE:
-                        print(f"[DEBUG] Clé {key_name} ignorée par le filtre")
-                    continue
-                    
                 decrypted = decrypt_message(encrypted_data, packet_id, from_id, test_psk)
                 if decrypted:
                     try:
                         data = mesh_pb2.Data()
-                        # Ignorer les warnings de parsing partiel
                         import warnings
                         with warnings.catch_warnings():
                             warnings.simplefilter("ignore")
                             data.ParseFromString(decrypted)
                         
-                        if DEBUG_MODE:
-                            print(f"[DEBUG] Déchiffré avec succès avec clé: {key_name}")
+                        if data.portnum == 3:  # Position
+                            position = mesh_pb2.Position()
+                            position.ParseFromString(data.payload)
+                            lat = position.latitude_i / 1e7
+                            lon = position.longitude_i / 1e7
+                            update_node_data(from_id, "position", {"lat": lat, "lon": lon})
                         
-                        message_decoded = True
-                        successful_key = key_name
-                        decoded_data = data
-                        break  # Clé trouvée, sortir de la boucle
-                    except Exception as parse_error:
-                        # Cette clé ne fonctionne pas, essayer la suivante
-                        if DEBUG_MODE:
-                            print(f"[DEBUG] Clé {key_name} - erreur de parsing: {parse_error}")
+                        elif data.portnum == 4:  # NodeInfo
+                            nodeinfo = mesh_pb2.User()
+                            nodeinfo.ParseFromString(data.payload)
+                            update_node_data(from_id, "nodeinfo", {
+                                "long_name": nodeinfo.long_name,
+                                "short_name": nodeinfo.short_name
+                            })
+                        
+                        elif data.portnum == 67:  # Telemetry
+                            telemetry = mesh_pb2.Telemetry()
+                            telemetry.ParseFromString(data.payload)
+                            if telemetry.HasField("device_metrics"):
+                                update_node_data(from_id, "telemetry", {
+                                    "battery_level": telemetry.device_metrics.battery_level
+                                })
+                        
+                        break
+                    except:
                         continue
-            
-            # Afficher uniquement si déchiffré avec succès
-            if message_decoded:
-                # Filtrer par port si activé
-                if ALLOWED_PORTS is not None and decoded_data.portnum not in ALLOWED_PORTS:
-                    if DEBUG_MODE:
-                        port_names_debug = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie", 0: "Control"}
-                        port_name = port_names_debug.get(decoded_data.portnum, f"Port {decoded_data.portnum}")
-                        print(f"[DEBUG] ⚠️ Port {decoded_data.portnum} ({port_name}) ignoré par le filtre ALLOWED_PORTS")
-                    return
-                
-                print(f"\n{'='*60}")
-                print(f"📨 Message sur {msg.topic}")
-                print(f"De: {get_node_name(from_id)}")
-                print(f"Vers: !{to_id:08x}")
-                print(f"ID: {packet_id}, Canal: {envelope.channel_id}, Hop: {mesh_packet.hop_limit}")
-                print(f"🔒 Message chiffré ({len(encrypted_data)} octets)")
-                print(f"✅ Clé: {successful_key}")
-                
-                # Traiter le message déchiffré
-                if decoded_data.portnum == 1:  # Texte
-                    text = decoded_data.payload.decode('utf-8', errors='replace')
-                    print(f"🔓 Texte: {text}")
-                elif decoded_data.portnum == 3:  # Position
-                    position = mesh_pb2.Position()
-                    position.ParseFromString(decoded_data.payload)
-                    lat = position.latitude_i / 1e7
-                    lon = position.longitude_i / 1e7
-                    print(f"🔓 Position: {lat:.6f}, {lon:.6f}")
-                elif decoded_data.portnum == 4:  # NodeInfo
-                    nodeinfo = mesh_pb2.User()
-                    nodeinfo.ParseFromString(decoded_data.payload)
-                    print(f"🔓 Node: {nodeinfo.long_name} ({nodeinfo.short_name})")
-                elif decoded_data.portnum == 67:  # Telemetry
-                    telemetry = mesh_pb2.Telemetry()
-                    telemetry.ParseFromString(decoded_data.payload)
-                    if telemetry.HasField("device_metrics"):
-                        print(f"🔓 Batterie: {telemetry.device_metrics.battery_level}%")
-                else:
-                    # Afficher plus de détails pour les ports inconnus
-                    port_names = {
-                        0: "UNKNOWN_APP", 1: "TEXT_MESSAGE_APP", 2: "REMOTE_HARDWARE_APP",
-                        3: "POSITION_APP", 4: "NODEINFO_APP", 5: "ROUTING_APP",
-                        6: "ADMIN_APP", 7: "TEXT_MESSAGE_COMPRESSED_APP", 8: "WAYPOINT_APP",
-                        9: "AUDIO_APP", 10: "DETECTION_SENSOR_APP", 32: "REPLY_APP",
-                        33: "IP_TUNNEL_APP", 34: "PAXCOUNTER_APP", 64: "SERIAL_APP",
-                        65: "STORE_FORWARD_APP", 66: "RANGE_TEST_APP", 67: "TELEMETRY_APP",
-                        68: "ZPS_APP", 69: "SIMULATOR_APP", 71: "TRACEROUTE_APP",
-                        72: "NEIGHBORINFO_APP", 73: "ATAK_PLUGIN", 256: "PRIVATE_APP",
-                        257: "ATAK_FORWARDER", 511: "MAX"
-                    }
-                    port_name = port_names.get(decoded_data.portnum, f"UNKNOWN_{decoded_data.portnum}")
-                    print(f"🔓 Port {decoded_data.portnum} ({port_name})")
-                    print(f"   Payload (hex): {decoded_data.payload.hex()[:100]}...")
-                    print(f"   Payload (len): {len(decoded_data.payload)} octets")
-            # Si filtre désactivé et aucune clé ne fonctionne, afficher l'erreur
-            elif ALLOWED_KEYS is None:
-                print(f"\n{'='*60}")
-                print(f"📨 Message sur {msg.topic}")
-                print(f"De: {get_node_name(from_id)}")
-                print(f"Vers: !{to_id:08x}")
-                print(f"🔒 Message chiffré ({len(encrypted_data)} octets)")
-                print("❌ Aucune clé ne fonctionne")
+        
+        # Afficher les stats périodiquement
+        print_stats()
     
     except Exception as e:
-        print(f"❌ Erreur: {e}")
-        import traceback
-        traceback.print_exc()
+        pass  # Ignorer les erreurs silencieusement
 
 # ============ CONNEXION MQTT ============
 def on_connect(client, userdata, flags, rc, properties=None):
-    print(f"✅ Connecté au broker (code {rc})")
+    print(f"✅ Connecté au broker MQTT")
     client.subscribe(MQTT_TOPIC)
     print(f"📡 Abonné à {MQTT_TOPIC}")
-    
-    if ALLOWED_KEYS is not None and len(ALLOWED_KEYS) > 0:
-        print(f"🔑 Filtrage clés : {', '.join(ALLOWED_KEYS)}")
-    else:
-        print(f"🔓 Pas de filtrage de clés")
-    
-    if ALLOWED_PORTS is not None and len(ALLOWED_PORTS) > 0:
-        port_names = {1: "Texte", 3: "Position", 4: "NodeInfo", 67: "Télémétrie"}
-        port_list = [f"{p} ({port_names.get(p, '?')})" for p in ALLOWED_PORTS]
-        print(f"📊 Filtrage ports : {', '.join(port_list)}")
-    else:
-        print(f"📊 Pas de filtrage de ports")
-    
-    if ALLOWED_NODES is not None and len(ALLOWED_NODES) > 0:
-        # Afficher les noms si disponibles
-        node_list = []
-        for node_hex in ALLOWED_NODES:
-            node_id = int(node_hex, 16)
-            if node_id in NODE_NAMES:
-                node_list.append(f"{NODE_NAMES[node_id]} (!{node_hex})")
-            else:
-                node_list.append(f"!{node_hex}")
-        print(f"👤 Filtrage nœuds : {', '.join(node_list)}")
-    else:
-        print(f"👤 Pas de filtrage de nœuds")
-    
-    if DEBUG_MODE:
-        print(f"🐛 Mode debug activé")
+    print(f"🎯 Collecte des positions des nœuds connus...")
+    print(f"📊 Stats affichées toutes les {STATS_INTERVAL} secondes\n")
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.username_pw_set(MQTT_USER, MQTT_PASS)
 client.on_connect = on_connect
 client.on_message = on_message
 
-print(f"Connexion à {MQTT_BROKER}:{MQTT_PORT}...")
-load_node_names()  # Charger les noms des nœuds
+print(f"🚀 Démarrage du tracker Meshtastic\n")
+load_node_names()
+print(f"\nConnexion à {MQTT_BROKER}:{MQTT_PORT}...")
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
-client.loop_forever()
+
+try:
+    client.loop_forever()
+except KeyboardInterrupt:
+    print(f"\n\n🛑 Arrêt du tracker...")
+    save_node_data()
+    print(f"✅ Données finales sauvegardées dans {OUTPUT_FILE}")
