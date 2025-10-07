@@ -113,6 +113,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("start", self._start_command))
             self.application.add_handler(CommandHandler("help", self._help_command))
             self.application.add_handler(CommandHandler("power", self._power_command))
+            self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
             self.application.add_handler(CommandHandler("sys", self._sys_command))
             self.application.add_handler(CommandHandler("legend", self._legend_command))
@@ -221,18 +222,62 @@ class TelegramIntegration:
     ) 
 
     async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /power"""
+        """Commande /power avec graphiques d'historique"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
         info_print(f"📱 Telegram /power: {user.username}")
-        response = await asyncio.to_thread(
+        
+        # Extraire le nombre d'heures (optionnel, défaut 24)
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(48, hours))  # Entre 1 et 48 heures
+            except ValueError:
+                hours = 24
+        
+        # Message 1 : Données actuelles
+        response_current = await asyncio.to_thread(
             self.message_handler.esphome_client.parse_esphome_data
         )
-        await update.message.reply_text(f"⚡ Power:\n{response}")
-    
+        await update.message.reply_text(f"⚡ Power:\n{response_current}")
+        
+        # Message 2 : Graphiques d'historique
+        response_graphs = await asyncio.to_thread(
+            self.message_handler.esphome_client.get_history_graphs,
+            hours
+        )
+        await update.message.reply_text(response_graphs)
+
+    async def _graphs_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /graphs pour afficher uniquement les graphiques d'historique"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le nombre d'heures (optionnel, défaut 24)
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(48, hours))  # Entre 1 et 48 heures
+            except ValueError:
+                hours = 24
+        
+        info_print(f"📱 Telegram /graphs {hours}h: {user.username}")
+        
+        # Générer les graphiques
+        response = await asyncio.to_thread(
+            self.message_handler.esphome_client.get_history_graphs,
+            hours
+        )
+        await update.message.reply_text(response)
+
+
     async def _rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rx [page]"""
         user = update.effective_user

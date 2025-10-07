@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """
-Client pour l'intégration ESPHome
+Client pour l'intégration ESPHome avec historique
 """
 
 import gc
 from config import *
 from utils import *
+from esphome_history import ESPHomeHistory
 
 class ESPHomeClient:
     def __init__(self):
-        pass
+        self.history = ESPHomeHistory()
     
-    def parse_esphome_data(self):
-        """Parse ESPHome - version optimisée mémoire"""
+    def parse_esphome_data(self, store_history=True):
+        """
+        Parse ESPHome - version optimisée mémoire avec historique
+        
+        Args:
+            store_history: Si True, enregistre les valeurs dans l'historique
+        
+        Returns:
+            str: Données ESPHome formatées
+        """
         try:
             requests_module = lazy_import_requests()
             debug_print("Récupération ESPHome...")
@@ -51,6 +60,36 @@ class ESPHomeClient:
                     resp.close()
                 except:
                     continue
+            
+            # ✅ AJOUT : Enregistrer dans l'historique
+            if store_history:
+                temp = None
+                press = None
+                hum = None
+                
+                # Extraire température
+                if 'bme280_temperature' in found_data:
+                    temp = found_data['bme280_temperature']
+                
+                # Extraire pression
+                if 'bme280_pressure' in found_data:
+                    press = found_data['bme280_pressure']
+                
+                # Extraire hygrométrie (relative en priorité)
+                for hum_key in ['bme280_humidity', 'bme280_relative_humidity']:
+                    if hum_key in found_data:
+                        hum = found_data[hum_key]
+                        break
+                
+                # Enregistrer si on a au moins une valeur
+                if temp is not None or press is not None or hum is not None:
+                    self.history.add_reading(
+                        temperature=temp,
+                        pressure=press,
+                        humidity=hum
+                    )
+                    self.history.save_history()
+                    debug_print("📊 Historique ESPHome mis à jour")
             
             # Formatage simplifié
             if found_data:
@@ -101,3 +140,15 @@ class ESPHomeClient:
         except Exception as e:
             error_print(f"Erreur ESPHome: {e}")
             return f"ESPHome Error: {str(e)[:30]}"
+    
+    def get_history_graphs(self, hours=24):
+        """
+        Obtenir les graphiques d'historique
+        
+        Args:
+            hours: Nombre d'heures à afficher (défaut: 24)
+        
+        Returns:
+            str: Graphiques formatés
+        """
+        return self.history.format_graphs(hours)
