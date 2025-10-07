@@ -46,7 +46,7 @@ class UtilityCommands:
             error_print(f"Erreur commande /help: {e}")
             self.sender.send_single("Erreur génération aide", sender_id, sender_info)
     
-        def handle_graphs_command(self, sender_id, from_id, text_parts):
+    def handle_graphs_command(self, sender_id, from_id, text_parts):
         """
         Commande /graphs - Graphiques température/pression (version compacte)
         Usage: /graphs [heures]
