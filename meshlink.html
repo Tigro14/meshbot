@@ -86,11 +86,11 @@
         <strong>Qualité des liaisons</strong>
         <div class="legend-item">
             <div class="legend-line" style="background-color: #00ff00;"></div>
-            <span>Excellente (SNR > 10)</span>
+            <span>Excellente (SNR > 5)</span>
         </div>
         <div class="legend-item">
             <div class="legend-line" style="background-color: #ffff00;"></div>
-            <span>Bonne (SNR 0-10)</span>
+            <span>Bonne (SNR 0-5)</span>
         </div>
         <div class="legend-item">
             <div class="legend-line" style="background-color: #ff6600;"></div>
@@ -305,7 +305,7 @@
                 } else {
                     // Créer un nouveau marker
                     const marker = L.circleMarker([lat, lon], {
-                        radius: 8,
+                        radius: 16,
                         fillColor: markerColor,
                         color: '#fff',
                         weight: 2,

@@ -95,7 +95,7 @@ class LlamaClient:
         
         try:
             requests_module = lazy_import_requests()
-            debug_print(f"Envoi à llama ({source_type}): '{prompt[:30]}...'")
+            info_print(f"Envoi à llama ({source_type}): '{prompt[:300]}...'")
             
             # Sélectionner la configuration selon la source
             if source_type == "telegram":
