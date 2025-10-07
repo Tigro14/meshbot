@@ -46,6 +46,55 @@ class UtilityCommands:
             error_print(f"Erreur commande /help: {e}")
             self.sender.send_single("Erreur génération aide", sender_id, sender_info)
     
+        def handle_graphs_command(self, sender_id, from_id, text_parts):
+        """
+        Commande /graphs - Graphiques température/pression (version compacte)
+        Usage: /graphs [heures]
+        """
+        from utils import conversation_print, error_print
+
+        try:
+            sender_name = self.node_manager.get_node_name(from_id, self.interface)
+            conversation_print(f"📊 /graphs demandé par {sender_name}")
+
+            # Parser les arguments
+            hours = 12  # Défaut pour Meshtastic
+            if len(text_parts) > 1:
+                try:
+                    requested = int(text_parts[1])
+                    hours = max(1, min(24, requested))  # Entre 1 et 24h
+                except ValueError:
+                    hours = 12
+
+            # Obtenir les graphiques compacts
+            graphs = self.esphome_client.get_history_graphs_compact(hours)
+
+            # Envoyer la réponse
+            self.sender.send_message(sender_id, graphs)
+            conversation_print(f"✅ Graphiques {hours}h envoyés à {sender_name}")
+
+        except Exception as e:
+            error_print(f"Erreur /graphs: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            self.sender.send_message(sender_id, f"Erreur graphs: {str(e)[:30]}")
+
+    def handle_help_command(self, sender_id, from_id):
+        """Aide avec /graphs inclus"""
+        help_text = (
+            "🤖 Bot Meshtastic-Llama\n\n"
+            "Commandes:\n"
+            "• /bot <question> - Chat IA\n"
+            "• /power - Batterie/solaire\n"
+            "• /graphs [h]\n" 
+            "• /rx [page]\n"
+            "• /my \n"
+            "• /sys\n"
+            "• /legend\n"
+            "• /help - Cette aide"
+        )
+        self.sender.send_message(sender_id, help_text)
+
     def handle_echo(self, message, sender_id, sender_info, packet):
         """Gérer la commande /echo - tigrog2 diffuse dans le mesh"""
         # Anti-doublon
