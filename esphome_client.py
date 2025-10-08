@@ -142,13 +142,9 @@ class ESPHomeClient:
             return f"ESPHome Error: {str(e)[:30]}"
     
     def get_history_graphs(self, hours=24):
-        """
-        Obtenir les graphiques d'historique
-        
-        Args:
-            hours: Nombre d'heures à afficher (défaut: 24)
-        
-        Returns:
-            str: Graphiques formatés
-        """
+        """Obtenir les graphiques d'historique (version complète pour Telegram)"""
         return self.history.format_graphs(hours)
+
+    def get_history_graphs_compact(self, hours=12):
+        """Obtenir les graphiques compacts pour Meshtastic"""
+        return self.history.format_graphs_compact(hours)

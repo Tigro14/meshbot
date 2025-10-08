@@ -79,6 +79,45 @@ class UtilityCommands:
             error_print(traceback.format_exc())
             self.sender.send_message(sender_id, f"Erreur graphs: {str(e)[:30]}")
 
+    def handle_graphs(self, message, sender_id, sender_info): 
+        """
+        Gérer la commande /graphs - Graphiques température/pressiona  nouvelle version
+        Version compacte pour Meshtastic
+        """
+        info_print(f"Graphs: {sender_info}")
+        
+        try:
+            # Parser les arguments
+            parts = message.split()
+            hours = 12  # Défaut pour Meshtastic
+            
+            if len(parts) > 1:
+                try:
+                    requested = int(parts[1])
+                    hours = max(1, min(24, requested))
+                except ValueError:
+                    hours = 12
+            
+            # Obtenir les graphiques compacts
+            graphs = self.esphome_client.get_history_graphs_compact(hours)
+            
+            # Log et envoi
+            self.sender.log_conversation(sender_id, sender_info, message, graphs)
+            self.sender.send_single(graphs, sender_id, sender_info)
+            
+            info_print(f"✅ Graphiques {hours}h envoyés à {sender_info}")
+            
+        except Exception as e:
+            error_print(f"Erreur /graphs: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            
+            error_msg = f"Erreur graphs: {str(e)[:30]}"
+            try:
+                self.sender.send_single(error_msg, sender_id, sender_info)
+            except:
+                pass
+
     def handle_help_command(self, sender_id, from_id):
         """Aide avec /graphs inclus"""
         help_text = (

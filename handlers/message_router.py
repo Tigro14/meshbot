@@ -107,8 +107,9 @@ class MessageRouter:
         # Commandes utilitaires
         elif message.startswith('/power'):
             self.utility_handler.handle_power(sender_id, sender_info)
-        elif message.startswith('/graph'):
-            self.utility_handler.handle_graphs_command(sender_id, from_id, text_parts)
+        elif message.startswith('/graphs'):
+#            self.utility_handler.handle_graphs_command(sender_id, from_id, text_parts)
+            self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/echo '):
             self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
         elif message.startswith('/trafic'):
