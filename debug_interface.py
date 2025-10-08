@@ -232,19 +232,19 @@ class DebugInterface:
         print("  quit           - Quitter")
 
     def _handle_cpu_profiling(self):
-    """Profiling CPU détaillé"""
-    try:
-        import psutil
-        import os
-        process = psutil.Process(os.getpid())
-        
-        info_print("🔍 Profiling threads CPU...")
-        for thread in process.threads():
-            info_print(f"  Thread {thread.id}: {thread.user_time + thread.system_time:.2f}s CPU")
-        
-        # Connections réseau
-        connections = process.connections()
-        info_print(f"📡 Connections actives: {len(connections)}")
-        
-    except Exception as e:
-        info_print(f"Erreur profiling: {e}")        
+        """Profiling CPU détaillé"""
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            
+            info_print("🔍 Profiling threads CPU...")
+            for thread in process.threads():
+                info_print(f"  Thread {thread.id}: {thread.user_time + thread.system_time:.2f}s CPU")
+            
+            # Connections réseau
+            connections = process.connections()
+            info_print(f"📡 Connections actives: {len(connections)}")
+            
+        except Exception as e:
+            info_print(f"Erreur profiling: {e}")        
