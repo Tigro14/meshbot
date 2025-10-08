@@ -6,14 +6,14 @@ graph TD
 
     %% Nodes
     RPi5["Raspberry Pi 5\n(Host)"]:::rpi
-    Meshtastic1["Meshtastic Node 1\n(Port Série)"]:::node
-    Meshtastic2["Meshtastic Node 2\n(TCP/IP)"]:::node
+    Meshtastic-bot["Meshtastic Node 1\n(Port Série)"]:::node
+    Meshtastic-router["Meshtastic Node 2\n(TCP/IP)"]:::node
 
     %% Connections
-    RPi5 -- "/dev/ttyXXX\n(UART/USB)" --> Meshtastic1:::connection
-    RPi5 -- "192.168.1.38:PORT\n(WiFi/Ethernet)" --> Meshtastic2:::connection
+    RPi5 -- "/dev/ttyXXX\n(UART/USB)" --> Meshtastic-bot:::connection
+    RPi5 -- "192.168.1.38:PORT\n(WiFi/Ethernet)" --> Meshtastic-router:::connection
 
     %% Notes
-    linkStyle 0 stroke-width:3px,stroke:#f66;
-    linkStyle 1 stroke-width:3px,stroke:#66f;
+    linkStyle 0 stroke-width:3px, stroke:#f66;
+    linkStyle 1 stroke-width:3px, stroke:#66f;
 

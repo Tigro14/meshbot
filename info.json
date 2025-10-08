@@ -15,12 +15,12 @@
         "latitudeI": 488251999,
         "longitudeI": 23622000,
         "altitude": 39,
-        "time": 1759915216,
+        "time": 1759915515,
         "latitude": 48.8251999,
         "longitude": 2.3622
       },
       "snr": 7.25,
-      "lastHeard": 1759915216,
+      "lastHeard": 1759915515,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 0.0,
@@ -143,8 +143,8 @@
         "latitude": 48.87902,
         "longitude": 2.21171
       },
-      "snr": -3.25,
-      "lastHeard": 1759914971,
+      "snr": -6.5,
+      "lastHeard": 1759915469,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 0.0,
@@ -152,7 +152,7 @@
         "airUtilTx": 1.1048611,
         "uptimeSeconds": 1907571
       },
-      "hopsAway": 1
+      "hopsAway": 0
     },
     "!7da9f5ee": {
       "num": 2108290542,
@@ -482,8 +482,8 @@
         "latitude": 48.9258221,
         "longitude": 2.2238323
       },
-      "snr": -6.0,
-      "lastHeard": 1759914261,
+      "snr": 3.25,
+      "lastHeard": 1759915495,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 4.277,
@@ -635,8 +635,8 @@
         "latitude": 48.8253283,
         "longitude": 2.3621716
       },
-      "snr": 11.0,
-      "lastHeard": 1759914400,
+      "snr": 11.5,
+      "lastHeard": 1759915494,
       "deviceMetrics": {
         "batteryLevel": 100,
         "voltage": 4.209,
@@ -691,13 +691,13 @@
         "latitudeI": 488374272,
         "longitudeI": 23330816,
         "altitude": 65,
-        "time": 1755618923,
+        "time": 1755620544,
         "locationSource": "LOC_MANUAL",
         "latitude": 48.8374272,
         "longitude": 2.3330816
       },
-      "snr": -8.0,
-      "lastHeard": 1759913790,
+      "snr": -7.5,
+      "lastHeard": 1759915410,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 4.483,
@@ -810,8 +810,8 @@
         "latitude": 48.726016,
         "longitude": 2.6673152
       },
-      "snr": 4.5,
-      "lastHeard": 1759911845,
+      "snr": 1.5,
+      "lastHeard": 1759915444,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 4.607,
@@ -873,13 +873,13 @@
         "longitude": 2.3855104
       },
       "snr": 3.25,
-      "lastHeard": 1759912918,
+      "lastHeard": 1759915431,
       "deviceMetrics": {
         "batteryLevel": 101,
-        "voltage": 4.288,
-        "channelUtilization": 2.12,
+        "voltage": 4.302,
+        "channelUtilization": 3.4033332,
         "airUtilTx": 0.007861111,
-        "uptimeSeconds": 1420206
+        "uptimeSeconds": 1435387
       },
       "hopsAway": 1
     },
@@ -933,16 +933,16 @@
         "latitude": 48.7706589,
         "longitude": 2.2805709
       },
-      "snr": 9.5,
-      "lastHeard": 1759912315,
+      "snr": 2.0,
+      "lastHeard": 1759915304,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 0.0,
-        "channelUtilization": 4.541667,
-        "airUtilTx": 1.1806667,
-        "uptimeSeconds": 2803239
+        "channelUtilization": 5.21,
+        "airUtilTx": 1.0536667,
+        "uptimeSeconds": 2811039
       },
-      "hopsAway": 2
+      "hopsAway": 1
     },
     "!da585748": {
       "num": 3663222600,
@@ -1507,8 +1507,8 @@
         "latitude": 48.8308736,
         "longitude": 2.3134208
       },
-      "snr": 2.75,
-      "lastHeard": 1759914284,
+      "snr": 2.25,
+      "lastHeard": 1759915234,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": -0.001,
@@ -1842,14 +1842,14 @@
         "latitude": 48.9101041,
         "longitude": 2.1735859
       },
-      "snr": -3.75,
-      "lastHeard": 1759914710,
+      "snr": -13.5,
+      "lastHeard": 1759915270,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 0.0,
-        "channelUtilization": 5.168333,
-        "airUtilTx": 1.2470555,
-        "uptimeSeconds": 821044
+        "channelUtilization": 7.21,
+        "airUtilTx": 1.1617501,
+        "uptimeSeconds": 828905
       },
       "hopsAway": 1
     },
@@ -1868,13 +1868,13 @@
         "latitudeI": 489095168,
         "longitudeI": 21692416,
         "altitude": 59,
-        "time": 1759914328,
+        "time": 1759915409,
         "locationSource": "LOC_EXTERNAL",
         "latitude": 48.9095168,
         "longitude": 2.1692416
       },
-      "snr": -2.25,
-      "lastHeard": 1759914270,
+      "snr": -5.0,
+      "lastHeard": 1759915351,
       "deviceMetrics": {
         "batteryLevel": 98,
         "voltage": 4.171,
@@ -1882,7 +1882,7 @@
         "airUtilTx": 0.027527776,
         "uptimeSeconds": 1615622
       },
-      "hopsAway": 2
+      "hopsAway": 1
     },
     "!da63bc60": {
       "num": 3663969376,
@@ -3044,8 +3044,8 @@
         "hwModel": "RAK4631",
         "publicKey": "syDYPMd4wdICQ3SJfCJgN9p/ab6xLoagGUNHe32SFQs="
       },
-      "snr": 6.25,
-      "lastHeard": 1759913464,
+      "snr": -12.5,
+      "lastHeard": 1759915408,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 4.076,
@@ -3070,19 +3070,19 @@
         "latitudeI": 489340928,
         "longitudeI": 21807104,
         "altitude": 59,
-        "time": 1759913512,
+        "time": 1759915457,
         "locationSource": "LOC_MANUAL",
         "latitude": 48.9340928,
         "longitude": 2.1807104
       },
-      "snr": 0.75,
-      "lastHeard": 1759914347,
+      "snr": -6.0,
+      "lastHeard": 1759915452,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": -0.001,
-        "channelUtilization": 12.9800005,
-        "airUtilTx": 0.019777777,
-        "uptimeSeconds": 673638
+        "channelUtilization": 9.04,
+        "airUtilTx": 0.013583334,
+        "uptimeSeconds": 681438
       },
       "hopsAway": 2
     },
@@ -3295,8 +3295,8 @@
         "latitude": 48.84561,
         "longitude": 2.3466833
       },
-      "snr": 5.25,
-      "lastHeard": 1759911849,
+      "snr": 5.5,
+      "lastHeard": 1759915352,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 3.44,
@@ -3879,8 +3879,8 @@
         "latitude": 48.889856,
         "longitude": 2.0709376
       },
-      "snr": -4.0,
-      "lastHeard": 1759913580,
+      "snr": -4.25,
+      "lastHeard": 1759915293,
       "deviceMetrics": {
         "batteryLevel": 100,
         "voltage": 4.14,
@@ -3888,7 +3888,7 @@
         "airUtilTx": 0.046,
         "uptimeSeconds": 5009547
       },
-      "hopsAway": 2
+      "hopsAway": 1
     },
     "!433b8f34": {
       "num": 1127976756,
@@ -5314,13 +5314,13 @@
         "latitudeI": 487292928,
         "longitudeI": 26705920,
         "altitude": 101,
-        "time": 1759913870,
+        "time": 1759915473,
         "locationSource": "LOC_MANUAL",
         "latitude": 48.7292928,
         "longitude": 2.670592
       },
       "snr": 1.0,
-      "lastHeard": 1759913876,
+      "lastHeard": 1759915475,
       "deviceMetrics": {
         "batteryLevel": 37,
         "voltage": 3.608,
@@ -5547,14 +5547,14 @@
         "latitude": 48.8036275,
         "longitude": 2.4043411
       },
-      "snr": 6.25,
-      "lastHeard": 1759686680,
+      "snr": 5.25,
+      "lastHeard": 1759915461,
       "deviceMetrics": {
-        "batteryLevel": 73,
-        "voltage": 3.927,
-        "channelUtilization": 17.455,
-        "airUtilTx": 0.017111111,
-        "uptimeSeconds": 65
+        "batteryLevel": 49,
+        "voltage": 3.718,
+        "channelUtilization": 2.5033333,
+        "airUtilTx": 0.008527778,
+        "uptimeSeconds": 6545
       },
       "hopsAway": 1
     },
@@ -6124,14 +6124,14 @@
       "position": {
         "latitudeI": 487981056,
         "longitudeI": 21364736,
-        "altitude": 132,
-        "time": 1759914864,
+        "altitude": 147,
+        "time": 1759915354,
         "locationSource": "LOC_INTERNAL",
         "latitude": 48.7981056,
         "longitude": 2.1364736
       },
-      "snr": -7.5,
-      "lastHeard": 1759914845,
+      "snr": -6.75,
+      "lastHeard": 1759915335,
       "deviceMetrics": {
         "batteryLevel": 101,
         "voltage": 4.193,
