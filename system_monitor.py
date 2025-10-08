@@ -52,60 +52,45 @@ class SystemMonitor:
         """Arrêter le monitoring"""
         self.running = False
         info_print("🛑 Monitoring système arrêté")
-    
     def _monitor_loop(self):
         """Boucle principale de monitoring - VERSION OPTIMISÉE"""
         # Délai initial pour laisser le système démarrer
         time.sleep(30)
         
-        # ✅ INITIALISATION DES COMPTEURS (bug fix)
+        # ✅ INITIALISER TOUS LES COMPTEURS
         temp_check_counter = 0
-        tigrog2_check_counter = 0
         cpu_check_counter = 0
-        
-        # ✅ INITIALISATION BASELINE CPU (évite mesure initiale)
-        if CPU_WARNING_ENABLED:
-            try:
-                import psutil
-                import os
-                self.process = psutil.Process(os.getpid())
-                # Mesure initiale non-bloquante pour établir baseline
-                self.process.cpu_percent()
-                self.cpu_baseline_set = True
-                debug_print("✅ Baseline CPU établie")
-            except:
-                pass
+        tigrog2_check_counter = 0
         
         while self.running:
             try:
-                # ✅ TEMPÉRATURE (intervalle configurable)
+                # Monitoring température
                 if TEMP_WARNING_ENABLED:
                     if temp_check_counter >= TEMP_CHECK_INTERVAL:
                         self._check_temperature()
                         temp_check_counter = 0
                     temp_check_counter += 1
 
-                # ✅ CPU (intervalle configurable + mesure optimisée)
-                if CPU_WARNING_ENABLED and self.cpu_baseline_set:
+                # ✅ Monitoring CPU
+                if CPU_WARNING_ENABLED:
                     if cpu_check_counter >= CPU_CHECK_INTERVAL:
-                        self._check_cpu_optimized()
+                        self._check_cpu()
                         cpu_check_counter = 0
-                    cpu_check_counter += 1
+                    cpu_check_counter += 1 
 
-                # ✅ TIGROG2 (intervalle configurable)
+                # Monitoring tigrog2
                 if TIGROG2_MONITORING_ENABLED:
                     if tigrog2_check_counter >= TIGROG2_CHECK_INTERVAL:
                         self._check_tigrog2()
                         tigrog2_check_counter = 0
                     tigrog2_check_counter += 1
                 
-                # ✅ SLEEP PLUS LONG (réduit charge CPU)
-                time.sleep(5)  # 5 secondes au lieu de 1
+                time.sleep(1)  # Check toutes les secondes
                 
             except Exception as e:
                 error_print(f"Erreur boucle monitoring: {e}")
                 time.sleep(10)
-    
+
     def _check_temperature(self):
         """Vérifier la température CPU et alerter si nécessaire"""
         try:
