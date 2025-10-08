@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Module de surveillance système pour alertes Telegram - VERSION OPTIMISÉE
+Module de surveillance système pour alertes Telegram
 - Monitoring température CPU
+- Monitoring CPU du bot
 - Monitoring état tigrog2
-- Monitoring CPU du bot (OPTIMISÉ)
+✅ VERSION COMPLÈTE AVEC TOUTES LES MÉTHODES
 """
 
 import time
@@ -29,7 +30,6 @@ class SystemMonitor:
         self.last_cpu_alert = 0
         self.cpu_alert_cooldown = 1800  # 30 minutes
         self.process = None
-        self.cpu_baseline_set = False  # ✅ NOUVEAU : pour initialisation
          
         # État tigrog2
         self.tigrog2_last_seen = None
@@ -46,21 +46,27 @@ class SystemMonitor:
         self.running = True
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.monitor_thread.start()
-        info_print("🔍 Monitoring système démarré")
+        info_print("📊 Monitoring système démarré")
     
     def stop(self):
         """Arrêter le monitoring"""
         self.running = False
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=5)
         info_print("🛑 Monitoring système arrêté")
+    
     def _monitor_loop(self):
-        """Boucle principale de monitoring - VERSION OPTIMISÉE"""
+        """Boucle principale de monitoring - ✅ VERSION CORRIGÉE"""
         # Délai initial pour laisser le système démarrer
+        info_print("⏳ Monitoring système : délai initial 30s...")
         time.sleep(30)
         
-        # ✅ INITIALISER TOUS LES COMPTEURS
+        # ✅ CORRECTION : Initialiser TOUS les compteurs
         temp_check_counter = 0
-        cpu_check_counter = 0
+        cpu_check_counter = 0  # ← CRITIQUE : était manquant
         tigrog2_check_counter = 0
+        
+        info_print("✅ Monitoring système : boucle démarrée")
         
         while self.running:
             try:
@@ -71,12 +77,12 @@ class SystemMonitor:
                         temp_check_counter = 0
                     temp_check_counter += 1
 
-                # ✅ Monitoring CPU
+                # Monitoring CPU
                 if CPU_WARNING_ENABLED:
                     if cpu_check_counter >= CPU_CHECK_INTERVAL:
                         self._check_cpu()
                         cpu_check_counter = 0
-                    cpu_check_counter += 1 
+                    cpu_check_counter += 1
 
                 # Monitoring tigrog2
                 if TIGROG2_MONITORING_ENABLED:
@@ -85,12 +91,18 @@ class SystemMonitor:
                         tigrog2_check_counter = 0
                     tigrog2_check_counter += 1
                 
-                time.sleep(1)  # Check toutes les secondes
+                # Sleep 1 seconde entre chaque itération
+                time.sleep(1)
                 
             except Exception as e:
                 error_print(f"Erreur boucle monitoring: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                # Sleep même en cas d'erreur pour éviter boucle folle
                 time.sleep(10)
-
+        
+        info_print("🛑 Boucle monitoring terminée")
+    
     def _check_temperature(self):
         """Vérifier la température CPU et alerter si nécessaire"""
         try:
@@ -123,7 +135,6 @@ class SystemMonitor:
                             self.last_temp_alert = current_time
                             info_print(f"⚠️ TEMPÉRATURE ÉLEVÉE: {temp_celsius:.1f}°C depuis {int(duration/60)}min")
             else:
-                # Température normale
                 if self.temp_high_since is not None:
                     debug_print(f"✅ Température revenue à la normale: {temp_celsius:.1f}°C")
                     self.temp_high_since = None
@@ -131,23 +142,27 @@ class SystemMonitor:
         except Exception as e:
             error_print(f"Erreur vérification température: {e}")
 
-    def _check_cpu_optimized(self):
-        """
-        ✅ VERSION OPTIMISÉE - Vérifier l'utilisation CPU sans bloquer
-        Utilise une mesure non-bloquante qui ne consomme pas de CPU
-        """
+    def _check_cpu(self):
+        """Vérifier l'utilisation CPU du bot et alerter si nécessaire"""
         try:
+            # Initialiser psutil.Process si nécessaire
             if self.process is None:
-                import psutil
-                import os
-                self.process = psutil.Process(os.getpid())
+                try:
+                    import psutil
+                    import os
+                    self.process = psutil.Process(os.getpid())
+                    debug_print("✅ psutil.Process initialisé pour monitoring CPU")
+                except ImportError:
+                    error_print("❌ Module psutil non installé - monitoring CPU désactivé")
+                    # Désactiver le monitoring CPU si psutil absent
+                    import config
+                    config.CPU_WARNING_ENABLED = False
+                    return
             
-            # ✅ MESURE NON-BLOQUANTE (ne prend pas 1 seconde)
-            # La première fois retourne 0.0, les suivantes donnent la moyenne depuis le dernier appel
-            cpu_percent = self.process.cpu_percent()
+            # Obtenir l'utilisation CPU (moyenne sur 1 seconde)
+            cpu_percent = self.process.cpu_percent(interval=1.0)
             
-            # Ignorer si pas de données (première mesure après baseline)
-            if cpu_percent == 0.0:
+            if cpu_percent is None:
                 return
             
             current_time = time.time()
@@ -174,13 +189,14 @@ class SystemMonitor:
                             self.last_cpu_alert = current_time
                             info_print(f"⚠️ CPU ÉLEVÉ: {cpu_percent:.1f}% depuis {int(duration/60)}min")
             else:
-                # CPU normal
                 if self.cpu_high_since is not None:
                     debug_print(f"✅ CPU revenu à la normale: {cpu_percent:.1f}%")
                     self.cpu_high_since = None
             
         except Exception as e:
             error_print(f"Erreur vérification CPU: {e}")
+            import traceback
+            error_print(traceback.format_exc())
 
     def _check_tigrog2(self):
         """Vérifier l'état de tigrog2 et alerter si nécessaire"""

@@ -124,6 +124,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
             self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
+            self.application.add_handler(CommandHandler("clearcontext", self._clearcontext_command))
             
             # Handler pour messages texte
             self.application.add_handler(
@@ -695,6 +696,28 @@ class TelegramIntegration:
         if update and hasattr(update, 'message') and update.message:
             await update.message.reply_text("❌ Erreur interne")
     
+    async def _clearcontext_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /clearcontext - Nettoyer le contexte"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        info_print(f"📱 Telegram /clearcontext: {user.username}")
+
+        # Utiliser le mapping
+        mesh_identity = self._get_mesh_identity(user.id)
+        node_id = mesh_identity['node_id'] if mesh_identity else (user.id & 0xFFFFFFFF)
+
+        # Nettoyer le contexte
+        if node_id in self.context_manager.conversation_context:
+            msg_count = len(self.context_manager.conversation_context[node_id])
+            del self.context_manager.conversation_context[node_id]
+            await update.message.reply_text(f"✅ Contexte nettoyé ({msg_count} messages supprimés)")
+        else:
+            await update.message.reply_text("ℹ️ Pas de contexte actif")
+
+
     def send_alert(self, message):
         """
         Envoyer une alerte à tous les utilisateurs configurés
