@@ -164,6 +164,18 @@ class TelegramIntegration:
             import traceback
             error_print(traceback.format_exc())
 
+    async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /graph - À définir selon vos besoins"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        info_print(f"📱 Telegram /graph: {user.username}")
+        
+        # TODO: Implémenter selon vos besoins
+        await update.message.reply_text("🚧 Commande /graph en cours d'implémentation")
+
     async def _shutdown(self):
         """Arrêter proprement le bot"""
         if self.application:
@@ -219,7 +231,7 @@ class TelegramIntegration:
         await update.message.reply_text(
             help_text,
             parse_mode='Markdown'
-    ) 
+        ) 
 
     async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /power avec graphiques d'historique"""

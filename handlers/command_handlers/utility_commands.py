@@ -215,6 +215,7 @@ class UtilityCommands:
         ⚡ **SYSTÈME & MONITORING**
         - `/power` - Télémétrie complète
           → Batterie, solaire, température, pression, humidité
+        - `/graphs` - Télémétrie complète
 
         - `/sys` - Informations système Pi5
           → CPU, RAM, load average, uptime
@@ -224,20 +225,16 @@ class UtilityCommands:
           → Affiche 8 nœuds par page avec signal SNR
           → Filtre : nœuds vus dans les derniers 3 jours
 
-        - `/nodes` - Liste complète des nœuds tigrog2
-          → Tous les nœuds directs triés par SNR
-          → Avec temps depuis dernière réception
+        - `/nodes` - Liste complète des nœuds directs depuis tigro g2 PV
 
         - `/fullnodes [jours]` - Liste alphabétique complète
           → Par défaut : 30 derniers jours (max 90j)
           → Tri par longName pour faciliter la recherche
-          → Exemple : `/fullnodes 7` (dernière semaine)
 
         📊 **ANALYSE TRAFIC**
         - `/trafic [heures]` - Historique messages publics
           → Par défaut : 8 dernières heures (max 24h)
           → Statistiques détaillées et top émetteurs
-          → Exemple : `/trafic 2` (2 dernières heures)
 
         📢 **DIFFUSION**
         - `/echo <message>` - Diffuser sur le réseau
@@ -247,8 +244,6 @@ class UtilityCommands:
 
         ℹ️ **UTILITAIRES**
         - `/legend` - Légende des indicateurs de signal
-          → Explication complète SNR et RSSI
-          → Estimation de distance
 
         - `/help` - Cette aide complète
 
