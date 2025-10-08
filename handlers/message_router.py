@@ -75,7 +75,13 @@ class MessageRouter:
     
     def _route_command(self, message, sender_id, sender_info, packet):
         """Router une commande vers le bon gestionnaire"""
-        
+
+        from_id = packet.get('from', 0)  # ← CETTE LIGNE 
+        text_parts = message[1:].strip().split()
+        if not text_parts:
+            return
+
+        command = text_parts[0].lower()
         # Commandes IA
         if message.startswith('/bot '):
             self.ai_handler.handle_bot(message, sender_id, sender_info)
