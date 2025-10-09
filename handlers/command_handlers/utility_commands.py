@@ -234,79 +234,85 @@ class UtilityCommands:
         help_lines = [
             "• /bot IA",
             "• /power",
-            "• /rx [page]",
             "• /sys ",
             "• /echo <msg>",
             "• /nodes",
+            "• /top",
+            "• /trace",
+            "• /packets",
             "• /legend ",
             "• /help"
         ]
         return "\n".join(help_lines)
 
-    def _format_help_telegram(self):
+    def _format_help_telegram(self, user_id=None):
         """Format aide détaillée pour Telegram (sans contrainte de taille)"""
-        help_text = """📖 **AIDE COMPLÈTE - BOT MESHTASTIC**
+        help_text = """📖 AIDE COMPLÈTE - BOT MESHTASTIC
 
-        🤖 **CHAT IA**
-        - Message direct → Conversation avec l'IA (Contexte maintenu 30min)
+        🤖 CHAT IA
+        Message direct → Conversation avec l'IA
+        Contexte conversationnel maintenu 30min
+        Réponses détaillées possibles sur Telegram
 
-        ⚡ **SYSTÈME & MONITORING**
-        - `/power` - Télémétrie complète
-          → Batterie, solaire, température, pression, humidité
+        ⚡ SYSTÈME & MONITORING
+        /power - Télémétrie complète
+        → Batterie, solaire, température, pression, humidité
+        /graphs - Graphiques historiques
+        /sys - Informations système Pi5
+        → CPU, RAM, load average, uptime
 
-        - `/sys` - Informations système Pi5
-          → CPU, RAM, load average, uptime
+        📡 RÉSEAU MESHTASTIC
+        /nodes - Liste complète des nœuds directs depuis tigrog2 PV
+        /fullnodes [jours] - Liste alphabétique complète
+        → Par défaut : 30 derniers jours (max 90j)
+        → Tri par longName
 
-        📡 **RÉSEAU MESHTASTIC**
-        - `/nodes` - Liste complète des nœuds directs depuis tigro g2 PV
+        📊 ANALYSE TRAFIC
+        /trafic [heures] - Historique messages publics
+        → Par défaut : 8 dernières heures (max 24h)
+        → Statistiques détaillées et top émetteurs
+        /trace <short_id> - Traceroute mesh vers node short_id 4 digits
+        → Analyse le chemin des messages
+        → Identifie les relays potentiels
 
-        - `/fullnodes [jours]` - Liste alphabétique complète
-          → Par défaut : 30 derniers jours (max 90j) Tri par longName
+        📢 DIFFUSION
+        /echo <message> - Diffuser sur le réseau
+        → Préfixe automatique avec votre nom court
+        → Diffusé via tigrog2 en broadcast
+        → Exemple : /echo Bonjour à tous!
 
-        📊 **ANALYSE TRAFIC & STATISTIQUES**
-        - `/trafic [heures]` - Historique messages publics
-          → Par défaut : 8 dernières heures (max 24h)
-          → Statistiques détaillées et top émetteurs
+        ℹ️ UTILITAIRES
+        /legend - Légende des indicateurs de signal
+        /help - Cette aide complète
 
-        - `/top [heures]` - Top talkers (TOUS paquets)
-          → Messages, télémétrie, position, routage... par type
+        🔧 ADMINISTRATION (si autorisé)
+        /rebootg2 - Redémarrage tigrog2
+        → Redémarre le nœud + envoi télémétrie
+        /rebootpi - Redémarrage Pi5
+        → Redémarrage complet du système
+        → Traçabilité complète dans les logs
 
-       - `/packets [heures]` - Distribution des types
-          → Analyse détaillée des types de paquets (hops, signal)
+        📋 LIMITES & INFORMATIONS
+        Throttling : 5 commandes/5min par utilisateur
+        Contexte IA : 6 messages max, timeout 30min
+        Historique trafic : 1000 messages, rétention 24h
+        Nœuds distants : filtre 3 jours par défaut
 
-        - `/trace <short_id>` - Traceroute mesh vers node short_id 4 digits
-         → Analyse le chemin des messages, Identifie les relais potentiels
+        💡 ASTUCES
+        Les réponses Telegram peuvent être plus longues que sur LoRa
+        Le contexte conversationnel est partagé entre Telegram et Mesh
+        Utilisez /trafic 2 pour voir l'activité récente
+        /fullnodes 7 pour une vue hebdomadaire du réseau
 
-        📢 **DIFFUSION**
-        - `/echo <message>` - Diffuser sur mesh via le ROUTER
-          → Préfixe automatique avec votre nom court
-          → Exemple : `/echo Bonjour à tous!`
+        🔐 SÉCURITÉ
+        Accès réservé aux utilisateurs autorisés
+        Toutes les actions sont tracées dans les logs
+        Les redémarrages incluent l'identité du demandeur
 
-        ℹ️ **UTILITAIRES**
-        - `/legend` - Légende des indicateurs de signal
-        - `/help` - Cette aide complète
+        Votre ID Telegram: {}""".format(user_id if user_id else "non disponible")
 
-        🔧 **ADMINISTRATION** *(si autorisé)*
-        - `/rebootg2` - Redémarrage tigrog2
-          → Redémarre le nœud + envoi télémétrie
-
-        - `/rebootpi` - Redémarrage Pi5
-          → Redémarrage complet du système
-          → Traçabilité complète dans les logs
-
-        📋 **LIMITES & INFORMATIONS**
-        - Throttling : 5 commandes/5min par utilisateur
-        - Contexte IA : 6 messages max, timeout 30min
-        - Historique trafic : 1000 messages, rétention 24h
-        - Nœuds distants : filtre 3 jours par défaut
-
-        Votre ID Telegram : {user_id}
-        """
         return help_text
 
-
-    # === DANS utility_commands.py ===
-    
     def handle_top(self, message, sender_id, sender_info):
         """
         Gérer la commande /top [heures]
