@@ -20,7 +20,7 @@ graph TD
     %% Connections
     RPi5 -- "/dev/ttyXXX (UART/USB)" --> Meshtastic-bot:::connection
     RPi5 -- "192.168.1.38:PORT (WiFi/Ethernet)" --> Meshtastic-router:::connection
-
+```
 
 ```markdown
 ## Fonctionnalités
