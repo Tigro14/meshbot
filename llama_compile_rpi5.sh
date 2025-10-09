@@ -57,20 +57,7 @@ rm -rf "$BUILD_DIR"
 mkdir "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Configuration CMAKE de Claude
 echo "Configuration CMAKE..."
-#cmake .. \
-#    -DCMAKE_BUILD_TYPE=Release \
-#    -DGGML_NATIVE=ON \
-#    -DGGML_OPENBLAS=ON \
-#    -DGGML_OPENMP=ON \
-#    -DLLAMA_BUILD_SERVER=ON \
-#    -DLLAMA_BUILD_EXAMPLES=ON \
-#    -DLLAMA_BUILD_TESTS=OFF \
-#    -DCMAKE_INSTALL_PREFIX="/home//dietpi/llama.cpp" \
-#    -DCMAKE_C_FLAGS="-O3 -march=native -mtune=native" \
-#    -DCMAKE_CXX_FLAGS="-O3 -march=native -mtune=native"
-
 
 cmake .. \
     -DBUILD_SHARED_LIBS=OFF \
@@ -78,7 +65,7 @@ cmake .. \
     -DGGML_BLAS=ON \
     -DGGML_BLAS_VENDOR=OpenBLAS \
     -DLLAMA_CURL=ON \
-    -DCMAKE_INSTALL_PREFIX="/home//dietpi/llama.cpp" \
+    -DCMAKE_INSTALL_PREFIX="/home/dietpi/llama.cpp" \
 
 
 # Compilation
@@ -86,23 +73,9 @@ echo "=== Début de la compilation ==="
 echo "Utilisation de $(nproc) threads"
 echo "RAM disponible: $(free -h | awk '/^Mem:/ {print $7}')"
 
-# Monitoring de la température pendant la compilation
-./monitor_temp.sh &
-MONITOR_PID=$!
-
-# Fonction de nettoyage
-cleanup() {
-    kill $MONITOR_PID 2>/dev/null || true
-    echo "Nettoyage terminé"
-}
-trap cleanup EXIT
 
 # Compilation avec limitation pour éviter la surchauffe
 time make -j$(nproc) --load-average=$(nproc)
-
-# Arrêt du monitoring
-kill $MONITOR_PID 2>/dev/null || true
-trap - EXIT
 
 echo "=== Compilation terminée ==="
 
