@@ -165,7 +165,7 @@ class TelegramIntegration:
             # ✅ Boucle d'attente OPTIMISÉE avec nettoyage des traces
             cleanup_counter = 0
             while self.running:
-                await asyncio.sleep(10)  # 10 secondes
+                await asyncio.sleep(60)  # 60 secondes
 
                 cleanup_counter += 1
                 if cleanup_counter % 6 == 0:  # Toutes les 60 secondes

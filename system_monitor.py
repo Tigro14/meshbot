@@ -91,8 +91,8 @@ class SystemMonitor:
                         tigrog2_check_counter = 0
                     tigrog2_check_counter += 1
                 
-                # Sleep 1 seconde entre chaque itération
-                time.sleep(20)
+                # Sleep 30 secondes entre chaque itération
+                time.sleep(30)
                 
             except Exception as e:
                 error_print(f"Erreur boucle monitoring: {e}")
