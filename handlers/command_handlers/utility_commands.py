@@ -270,7 +270,7 @@ class UtilityCommands:
           → Par défaut : 8 dernières heures (max 24h)
           → Statistiques détaillées et top émetteurs
 
-        - `/trace` - Traceroute mesh vers vous  # ← AJOUTER
+        - `/trace <short_id>` - Traceroute mesh vers node short_id 4 digits
         → Analyse le chemin des messages, Identifie les relays potentiels
 
         📢 **DIFFUSION**
