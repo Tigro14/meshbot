@@ -1,6 +1,6 @@
 Installation sur DietPi RPI5
 
-__Préambule: toute cette documentation n'aurait pas pu être rédigée sans les conseils bienveillant et le suppport de serveurperso.com__
+__Préambule: toute cette documentation n'aurait pas pu être rédigée sans les conseils bienveillants et le suppport de serveurperso.com__
 
 ## Prérequis NVMe sur Raspberry Pi5
 
