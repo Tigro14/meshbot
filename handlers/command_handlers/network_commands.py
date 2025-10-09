@@ -186,3 +186,164 @@ class NetworkCommands:
                         pass
         
         threading.Thread(target=send_broadcast, daemon=True).start()
+
+    
+    def handle_trace(self, message, sender_id, sender_info, packet):
+        """
+        Gérer la commande /trace - Traceroute mesh
+        Analyse le chemin du message et identifie les relays potentiels
+        """
+        info_print(f"Trace: {sender_info}")
+        
+        def analyze_route():
+            try:
+                # === ANALYSE DU PACKET ===
+                hop_limit = packet.get('hopLimit', 0)
+                hop_start = packet.get('hopStart', 5)
+                rssi = packet.get('rssi', 0)
+                snr = packet.get('snr', 0.0)
+                
+                # Calculer le nombre de hops effectués
+                hops_taken = hop_start - hop_limit
+                
+                debug_print(f"📊 Trace analysis: hopStart={hop_start}, hopLimit={hop_limit}, hops={hops_taken}")
+                
+                # === CONSTRUCTION DU RAPPORT ===
+                response_parts = []
+                response_parts.append(f"🔍 Traceroute → {sender_info}")
+                response_parts.append("")
+                
+                # === CAS 1: DIRECT (0 hop) ===
+                if hops_taken == 0:
+                    response_parts.append("✅ Liaison DIRECTE")
+                    response_parts.append(f"Hops: 0 (direct)")
+                    
+                    # Signal
+                    if rssi != 0 or snr != 0:
+                        rssi_icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+                        rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
+                        snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
+                        response_parts.append(f"{rssi_icon} Signal: {rssi_str} | {snr_str}")
+                        
+                        # Qualité
+                        quality = get_signal_quality_description(rssi, snr)
+                        response_parts.append(f"📈 Qualité: {quality}")
+                        
+                        # Distance estimée
+                        if rssi != 0 and rssi > -150:
+                            distance = estimate_distance_from_rssi(rssi)
+                            response_parts.append(f"📏 Distance: ~{distance}")
+                    
+                    response_parts.append("")
+                    response_parts.append(f"Route: {sender_info} ← bot")
+                    
+                # === CAS 2: RELAYÉ (1+ hops) ===
+                else:
+                    response_parts.append("🔀 Liaison RELAYÉE")
+                    response_parts.append(f"Hops: {hops_taken}")
+                    
+                    # Signal final
+                    if rssi != 0 or snr != 0:
+                        rssi_icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+                        rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
+                        snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
+                        response_parts.append(f"{rssi_icon} Signal final: {rssi_str} | {snr_str}")
+                    
+                    response_parts.append("")
+                    
+                    # === ANALYSE DE LA TOPOLOGIE ===
+                    try:
+                        # Récupérer les nœuds de tigrog2
+                        remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                        
+                        if remote_nodes:
+                            # Chercher le nœud émetteur dans tigrog2
+                            sender_id_normalized = sender_id & 0xFFFFFFFF
+                            sender_in_tigrog2 = False
+                            
+                            for node in remote_nodes:
+                                node_id_normalized = node['id'] & 0xFFFFFFFF
+                                if node_id_normalized == sender_id_normalized:
+                                    sender_in_tigrog2 = True
+                                    break
+                            
+                            if sender_in_tigrog2:
+                                response_parts.append(f"ℹ️ {sender_info} connu par {REMOTE_NODE_NAME}")
+                                response_parts.append("⚠️ Mais messages relayés (pas direct)")
+                            else:
+                                response_parts.append(f"📡 {sender_info} hors portée {REMOTE_NODE_NAME}")
+                            
+                            response_parts.append("")
+                            
+                            # === IDENTIFICATION DES RELAYS POTENTIELS ===
+                            response_parts.append("🔍 Relays potentiels:")
+                            
+                            # Trouver les meilleurs relays
+                            potential_relays = find_best_relays(remote_nodes, max_relays=3)
+                            
+                            if potential_relays:
+                                for i, relay in enumerate(potential_relays, 1):
+                                    relay_name = truncate_text(relay['name'], 12)
+                                    relay_rssi = relay.get('rssi', 0)
+                                    relay_snr = relay.get('snr', 0.0)
+                                    
+                                    relay_icon = get_signal_quality_icon(relay_rssi)
+                                    
+                                    if relay_rssi != 0:
+                                        response_parts.append(
+                                            f"  {i}. {relay_icon} {relay_name} "
+                                            f"({relay_rssi}dBm, SNR:{relay_snr:.1f})"
+                                        )
+                                    else:
+                                        response_parts.append(f"  {i}. {relay_icon} {relay_name}")
+                                
+                                response_parts.append("")
+                                response_parts.append("Route probable:")
+                                if hops_taken == 1:
+                                    response_parts.append(
+                                        f"{sender_info} → [relay] → bot"
+                                    )
+                                else:
+                                    response_parts.append(
+                                        f"{sender_info} → [relay×{hops_taken}] → bot"
+                                    )
+                            else:
+                                response_parts.append("  ❓ Relays non identifiables")
+                                response_parts.append(f"  Route: {sender_info} → [mesh×{hops_taken}] → bot")
+                        
+                        else:
+                            response_parts.append("⚠️ Impossible d'analyser la topologie")
+                            response_parts.append(f"Route: {sender_info} → [mesh×{hops_taken}] → bot")
+                        
+                    except Exception as topo_error:
+                        debug_print(f"Erreur analyse topologie: {topo_error}")
+                        response_parts.append("⚠️ Analyse topologie échouée")
+                        response_parts.append(f"Route: {sender_info} → [mesh×{hops_taken}] → bot")
+                
+                # === FOOTER TECHNIQUE ===
+                response_parts.append("")
+                response_parts.append(f"📋 Détails:")
+                response_parts.append(f"  • hopStart: {hop_start}")
+                response_parts.append(f"  • hopLimit: {hop_limit}")
+                response_parts.append(f"  • Node ID: !{sender_id:08x}")
+                
+                # === ASSEMBLAGE ET ENVOI ===
+                response = "\n".join(response_parts)
+                
+                self.sender.log_conversation(sender_id, sender_info, "/trace", response)
+                self.sender.send_chunks(response, sender_id, sender_info)
+                
+                info_print(f"✅ Trace rapport envoyé à {sender_info}")
+                
+            except Exception as e:
+                error_print(f"Erreur commande /trace: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                try:
+                    error_response = f"⚠️ Erreur trace: {str(e)[:30]}"
+                    self.sender.send_single(error_response, sender_id, sender_info)
+                except:
+                    pass
+        
+        threading.Thread(target=analyze_route, daemon=True).start()
+

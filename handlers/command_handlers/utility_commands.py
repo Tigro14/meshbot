@@ -124,13 +124,13 @@ class UtilityCommands:
             "🤖 Bot Meshtastic-Llama\n\n"
             "Commandes:\n"
             "• /bot <question> - Chat IA\n"
-            "• /power - Batterie/solaire\n"
-            "• /graphs [h]\n" 
-            "• /rx [page]\n"
-            "• /my \n"
-            "• /sys\n"
+            "• /my\n"
             "• /legend\n"
-            "• /help - Cette aide"
+            "• /nodes\n"
+            "• /power\n"
+            "• /sys\n"
+            "• /trace\n", 
+            "• /help"
         )
         self.sender.send_message(sender_id, help_text)
 
@@ -260,20 +260,18 @@ class UtilityCommands:
           → CPU, RAM, load average, uptime
 
         📡 **RÉSEAU MESHTASTIC**
-        - `/rx [page]` - Nœuds directs de tigrog2 (paginé)
-          → Affiche 8 nœuds par page avec signal SNR
-          → Filtre : nœuds vus dans les derniers 3 jours
-
         - `/nodes` - Liste complète des nœuds directs depuis tigro g2 PV
 
         - `/fullnodes [jours]` - Liste alphabétique complète
-          → Par défaut : 30 derniers jours (max 90j)
-          → Tri par longName pour faciliter la recherche
+          → Par défaut : 30 derniers jours (max 90j) Tri par longName
 
         📊 **ANALYSE TRAFIC**
         - `/trafic [heures]` - Historique messages publics
           → Par défaut : 8 dernières heures (max 24h)
           → Statistiques détaillées et top émetteurs
+
+        - `/trace` - Traceroute mesh vers vous  # ← AJOUTER
+        → Analyse le chemin des messages, Identifie les relays potentiels
 
         📢 **DIFFUSION**
         - `/echo <message>` - Diffuser sur le réseau
