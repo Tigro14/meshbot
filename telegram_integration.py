@@ -856,86 +856,111 @@ class TelegramIntegration:
 
         info_print(f"🎯 Traceroute actif demandé vers: {target_short_name}")
 
-        def execute_active_trace():
-            try:
-                # 1. Trouver le node_id correspondant au short_name
-                target_node_id = self._find_node_by_short_name(target_short_name)
-
-                if not target_node_id:
-                    asyncio.run_coroutine_threadsafe(
-                        update.message.reply_text(
-                            f"❌ Nœud '{target_short_name}' introuvable\n"
-                            f"Utilisez /nodes pour voir la liste"
-                        ),
-                        self.loop
-                    )
-                    return
-
-                target_full_name = self.node_manager.get_node_name(target_node_id)
-                info_print(f"✅ Nœud trouvé: {target_full_name} (!{target_node_id:08x})")
-
-                # 2. Enregistrer la requête de trace
-                self.pending_traces[target_node_id] = {
-                    'telegram_chat_id': update.effective_chat.id,
-                    'timestamp': time.time(),
-                    'short_name': target_short_name,
-                    'full_name': target_full_name
-                }
-
-                info_print(f"📝 Trace enregistrée pour {target_full_name}")
-
-                # 3. Envoyer la commande /trace au nœud mesh
-                try:
-                    self.message_handler.interface.sendText(
-                        "/trace",
-                        destinationId=target_node_id
-                    )
-                    info_print(f"📤 Commande /trace envoyée à {target_full_name}")
-                except Exception as e:
-                    error_print(f"Erreur envoi /trace: {e}")
-                    # Essayer format hex
-                    try:
-                        hex_id = f"!{target_node_id:08x}"
-                        self.message_handler.interface.sendText(
-                            "/trace",
-                            destinationId=hex_id
-                        )
-                        info_print(f"📤 Commande /trace envoyée (hex) à {target_full_name}")
-                    except Exception as e2:
-                        error_print(f"Erreur envoi /trace (hex): {e2}")
-                        asyncio.run_coroutine_threadsafe(
-                            update.message.reply_text(
-                                f"❌ Impossible d'envoyer la commande au nœud\n"
-                                f"Erreur: {str(e)[:50]}"
-                            ),
-                            self.loop
-                        )
-                        del self.pending_traces[target_node_id]
-                        return
-
-                # 4. Confirmer l'envoi à l'utilisateur
+    def execute_active_trace():
+        try:
+            info_print("=" * 60)
+            info_print("🚀 execute_active_trace() démarré")
+            info_print(f"   Target: {target_short_name}")
+            info_print("=" * 60)
+            
+            # 1. Trouver le node_id
+            info_print("🔍 Étape 1: Recherche du node_id...")
+            target_node_id = self._find_node_by_short_name(target_short_name)
+            
+            if not target_node_id:
+                error_print(f"❌ Nœud '{target_short_name}' introuvable")
                 asyncio.run_coroutine_threadsafe(
                     update.message.reply_text(
-                        f"⏳ Traceroute lancé vers {target_full_name}\n"
-                        f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
-                        f"ℹ️ La réponse arrivera automatiquement ici"
+                        f"❌ Nœud '{target_short_name}' introuvable\n"
+                        f"Utilisez /nodes pour voir la liste"
                     ),
                     self.loop
                 )
-
-                info_print(f"✅ Traceroute actif lancé vers {target_full_name}")
-
-            except Exception as e:
-                error_print(f"Erreur execute_active_trace: {e}")
-                import traceback
-                error_print(traceback.format_exc())
-                asyncio.run_coroutine_threadsafe(
-                    update.message.reply_text(f"❌ Erreur: {str(e)[:100]}"),
-                    self.loop
+                return
+            
+            target_full_name = self.node_manager.get_node_name(target_node_id)
+            info_print(f"✅ Nœud trouvé: {target_full_name}")
+            info_print(f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
+            
+            # 2. Enregistrer la requête
+            info_print("📝 Étape 2: Enregistrement de la trace...")
+            self.pending_traces[target_node_id] = {
+                'telegram_chat_id': update.effective_chat.id,
+                'timestamp': time.time(),
+                'short_name': target_short_name,
+                'full_name': target_full_name
+            }
+            info_print(f"✅ Trace enregistrée")
+            info_print(f"   Chat ID: {update.effective_chat.id}")
+            info_print(f"   Timestamp: {time.time()}")
+            info_print(f"📋 Total traces en attente: {len(self.pending_traces)}")
+            
+            # 3. Envoyer la commande /trace
+            info_print("📤 Étape 3: Envoi de /trace au nœud mesh...")
+            info_print(f"   Destination: 0x{target_node_id:08x}")
+            info_print(f"   Message: '/trace'")
+            
+            try:
+                # Essai 1: Format standard
+                info_print("   Tentative 1: Format décimal...")
+                self.message_handler.interface.sendText(
+                    "/trace",
+                    destinationId=target_node_id
                 )
-
-        # Exécuter dans un thread séparé
-        threading.Thread(target=execute_active_trace, daemon=True).start()
+                info_print(f"✅ Commande envoyée (format décimal)")
+                
+            except Exception as e1:
+                error_print(f"❌ Échec format décimal: {e1}")
+                
+                try:
+                    # Essai 2: Format hex
+                    hex_id = f"!{target_node_id:08x}"
+                    info_print(f"   Tentative 2: Format hex ({hex_id})...")
+                    self.message_handler.interface.sendText(
+                        "/trace",
+                        destinationId=hex_id
+                    )
+                    info_print(f"✅ Commande envoyée (format hex)")
+                    
+                except Exception as e2:
+                    error_print(f"❌ Échec format hex: {e2}")
+                    error_print(f"❌ IMPOSSIBLE d'envoyer la commande")
+                    
+                    asyncio.run_coroutine_threadsafe(
+                        update.message.reply_text(
+                            f"❌ Impossible d'envoyer la commande\n"
+                            f"Erreur: {str(e1)[:50]}"
+                        ),
+                        self.loop
+                    )
+                    del self.pending_traces[target_node_id]
+                    return
+            
+            # 4. Confirmer à l'utilisateur
+            info_print("📱 Étape 4: Confirmation Telegram...")
+            asyncio.run_coroutine_threadsafe(
+                update.message.reply_text(
+                    f"⏳ Traceroute lancé vers {target_full_name}\n"
+                    f"ID: 0x{target_node_id:08x}\n"
+                    f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
+                    f"ℹ️ La réponse arrivera automatiquement ici"
+                ),
+                self.loop
+            )
+            
+            info_print("=" * 60)
+            info_print(f"✅ execute_active_trace() terminé avec succès")
+            info_print(f"   En attente de réponse de 0x{target_node_id:08x}")
+            info_print("=" * 60)
+            
+        except Exception as e:
+            error_print(f"❌ EXCEPTION execute_active_trace: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            asyncio.run_coroutine_threadsafe(
+                update.message.reply_text(f"❌ Erreur: {str(e)[:100]}"),
+                self.loop
+            )
 
     # === NOUVELLE MÉTHODE : Trouver un nœud par nom ou ID ===
     def _find_node_by_short_name(self, identifier):
@@ -1133,69 +1158,116 @@ class TelegramIntegration:
         except Exception as e:
             error_print(f"Erreur cleanup_expired_traces: {e}")
 
-    # === NOUVELLE MÉTHODE : Traiter une réponse de traceroute ===
+
+    
     def handle_trace_response(self, from_id, message_text):
         """
         Traiter une réponse de traceroute depuis le mesh
-        Appelé depuis main_bot.py dans on_message()
-
-        Returns:
-            bool: True si le message a été traité comme une réponse de trace
+        VERSION AVEC DEBUG INTENSIF
         """
         try:
-            # Vérifier si c'est une réponse de trace attendue
+            info_print("=" * 60)
+            info_print("🔍 DEBUG handle_trace_response() appelé")
+            info_print(f"   from_id: {from_id} (0x{from_id:08x})")
+            info_print(f"   message length: {len(message_text)} chars")
+            info_print(f"   message preview: {message_text[:100]}...")
+            info_print("=" * 60)
+            
+            # Debug: Afficher l'état des traces en attente
+            info_print(f"📋 Traces en attente: {len(self.pending_traces)}")
+            for node_id, trace_data in self.pending_traces.items():
+                info_print(f"   - 0x{node_id:08x} ({trace_data['full_name']}) depuis {time.time() - trace_data['timestamp']:.1f}s")
+            
+            # Vérifier si c'est une réponse attendue
             if from_id not in self.pending_traces:
+                info_print(f"❌ from_id 0x{from_id:08x} NOT in pending_traces")
+                info_print(f"   Ce n'est PAS une réponse de trace attendue")
                 return False
-
+            
+            info_print(f"✅ from_id 0x{from_id:08x} IS in pending_traces!")
+            
             # Vérifier que le message ressemble à un traceroute
             trace_indicators = [
                 "Traceroute",
+                "🔍",
                 "Hops:",
                 "Route:",
                 "Signal:",
                 "hopStart:",
                 "hopLimit:"
             ]
-
-            if not any(indicator in message_text for indicator in trace_indicators):
-                debug_print(f"Message de {from_id} ne semble pas être une trace")
+            
+            info_print("🔍 Vérification des indicateurs de traceroute:")
+            matches = []
+            for indicator in trace_indicators:
+                if indicator in message_text:
+                    matches.append(indicator)
+                    info_print(f"   ✅ Trouvé: '{indicator}'")
+                else:
+                    info_print(f"   ❌ Absent: '{indicator}'")
+            
+            if not matches:
+                info_print(f"⚠️ Message de 0x{from_id:08x} ne contient AUCUN indicateur de trace")
+                info_print(f"   Message complet:\n{message_text}")
                 return False
-
+            
+            info_print(f"✅ Message contient {len(matches)} indicateurs de trace: {matches}")
+            
             # C'est bien une réponse de trace !
             trace_data = self.pending_traces[from_id]
             chat_id = trace_data['telegram_chat_id']
             node_name = trace_data['full_name']
-
-            info_print(f"📥 Réponse de traceroute reçue de {node_name}")
-
+            elapsed_time = time.time() - trace_data['timestamp']
+            
+            info_print(f"🎯 RÉPONSE DE TRACE CONFIRMÉE!")
+            info_print(f"   Node: {node_name}")
+            info_print(f"   Chat ID: {chat_id}")
+            info_print(f"   Temps écoulé: {elapsed_time:.1f}s")
+            
             # Formater le message pour Telegram
             telegram_message = (
                 f"📊 **Traceroute reçu de {node_name}**\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{message_text}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⏱️ Temps de réponse: {time.time() - trace_data['timestamp']:.1f}s"
+                f"⏱️ Temps de réponse: {elapsed_time:.1f}s"
             )
-
+            
+            info_print(f"📤 Envoi à Telegram...")
+            info_print(f"   Chat ID: {chat_id}")
+            info_print(f"   Message length: {len(telegram_message)} chars")
+            
             # Envoyer à Telegram
-            asyncio.run_coroutine_threadsafe(
-                self.application.bot.send_message(
-                    chat_id=chat_id,
-                    text=telegram_message,
-                    parse_mode='Markdown'
-                ),
-                self.loop
-            )
-
-            info_print(f"✅ Traceroute forwarded à Telegram pour {node_name}")
-
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=telegram_message,
+                        parse_mode='Markdown'
+                    ),
+                    self.loop
+                ).result(timeout=10)  # Attendre max 10s
+                
+                info_print(f"✅ Message envoyé avec succès à Telegram!")
+                
+            except Exception as telegram_error:
+                error_print(f"❌ ERREUR envoi Telegram: {telegram_error}")
+                import traceback
+                error_print(traceback.format_exc())
+            
             # Supprimer la trace de la liste
             del self.pending_traces[from_id]
-
+            info_print(f"🧹 Trace supprimée de pending_traces")
+            info_print(f"📋 Traces restantes: {len(self.pending_traces)}")
+            
+            info_print("=" * 60)
+            info_print("✅ handle_trace_response() terminé avec succès")
+            info_print("=" * 60)
+            
             return True
-
+            
         except Exception as e:
-            error_print(f"Erreur handle_trace_response: {e}")
+            error_print(f"❌ EXCEPTION dans handle_trace_response: {e}")
             import traceback
             error_print(traceback.format_exc())
             return False

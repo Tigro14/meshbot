@@ -89,22 +89,63 @@ class DebugMeshBot:
             decoded = packet['decoded']
             portnum = decoded.get('portnum', '')
         
-            # Traitement des messages texte
+            # Traitement des messages texte ----------------------------------
             if portnum == 'TEXT_MESSAGE_APP':
+                from_id = packet.get('from', 0)
                 sender_name = self.node_manager.get_node_name(from_id, self.interface)
-                debug_print(f"Message texte de {sender_name}")
-                
+
+                info_print("=" * 60)
+                info_print(f"📥 MESSAGE TEXTE REÇU")
+                info_print(f"   From: {sender_name} (0x{from_id:08x})")
+                info_print("=" * 60)
+
                 message = self._extract_message_text(decoded)
 
+                if message:
+                    info_print(f"   Message: {message[:100]}...")
+
+                # === HOOK TRACEROUTE - VERSION DEBUG ===
                 if message and self.telegram_integration:
-                    trace_handled = self.telegram_integration.handle_trace_response(
-                        from_id, 
-                        message
-                    )
-                    if trace_handled:
-                        debug_print(f"✅ Message traité comme réponse de traceroute")
-                        # Ne pas traiter plus loin ce message
-                        return
+                    info_print("🔍 Vérification si réponse de traceroute...")
+                    info_print(f"   telegram_integration présent: {self.telegram_integration is not None}")
+                    info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
+
+                    try:
+                        trace_handled = self.telegram_integration.handle_trace_response(
+                            from_id,
+                            message
+                        )
+
+                        if trace_handled:
+                            info_print("✅ Message traité comme réponse de traceroute")
+                            info_print("   Arrêt du traitement (pas de forward au message_handler)")
+                            info_print("=" * 60)
+                            return  # Ne pas traiter plus loin
+                        else:
+                            info_print("ℹ️ Message N'EST PAS une réponse de traceroute")
+                            info_print("   Traitement normal continue...")
+
+                    except Exception as trace_error:
+                        error_print(f"❌ ERREUR dans handle_trace_response: {trace_error}")
+                        import traceback
+                        error_print(traceback.format_exc())
+                        # Continuer le traitement normal en cas d'erreur
+                else:
+                    if not message:
+                        info_print("⚠️ Message vide, pas de vérification traceroute")
+                    if not self.telegram_integration:
+                        info_print("⚠️ telegram_integration absent, pas de vérification traceroute")
+
+                # === TRAITEMENT NORMAL ===
+                info_print("➡️ Traitement normal du message...")
+
+                if message and is_broadcast and not is_from_me:
+                    self.traffic_monitor.add_public_message(packet, message)
+
+                if message and self.message_handler:
+                    self.message_handler.process_text_message(packet, decoded, message)
+
+                info_print("=" * 60)
 
                 if message and is_broadcast and not is_from_me:
                     self.traffic_monitor.add_public_message(packet, message)
