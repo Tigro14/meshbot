@@ -124,6 +124,8 @@ class MessageRouter:
             self.utility_handler.handle_top(message, sender_id, sender_info)
         elif message.startswith('/trace'):  
             self.network_handler.handle_trace(message, sender_id, sender_info, packet)
+        elif message.startswith('/packets'):
+           self.utility_handler.handle_packets(message, sender_id, sender_info)
         elif message.startswith('/legend'):
             self.utility_handler.handle_legend(sender_id, sender_info)
         elif message.startswith('/help'):
