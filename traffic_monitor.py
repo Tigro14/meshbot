@@ -679,5 +679,3 @@ class TrafficMonitor:
         except Exception as e:
             error_print(f"Erreur génération rapport trafic: {e}")
             return f"Erreur génération rapport: {str(e)[:50]}"
-
-

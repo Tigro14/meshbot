@@ -1749,12 +1749,16 @@ class TelegramIntegration:
                 lines.append(f"• Dernière heure: {len(active_nodes_1h)}")
                 lines.append(f"• Dernières 24h: {len(active_nodes_24h)}")
                 lines.append(f"• Total connus: {len(self.node_manager.node_names)}")
-                
-                # Stats globales
-                if tm.global_stats['busiest_hour']:
-                    lines.append(f"\n**⏰ Patterns:**")
-                    lines.append(f"• Heure de pointe: {tm.global_stats['busiest_hour']}")
-                    lines.append(f"• Heure creuse: {tm.global_stats['quietest_hour']}")
+               
+                # ✅ FIX : Vérifier que les stats existent avant de les afficher
+                if hasattr(tm, 'global_stats'):
+                    busiest_hour = tm.global_stats.get('busiest_hour')
+                    quietest_hour = tm.global_stats.get('quietest_hour')
+                    
+                    if busiest_hour and quietest_hour:
+                        lines.append(f"\n⏰ Patterns:")
+                        lines.append(f"• Heure de pointe: {busiest_hour}")
+                        lines.append(f"• Heure creuse: {quietest_hour}")
                 
                 # Top 3 des dernières heures
                 quick_stats = tm.get_quick_stats()
