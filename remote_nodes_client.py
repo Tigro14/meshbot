@@ -68,7 +68,7 @@ class RemoteNodesClient:
                         # Si hopsAway existe, l'utiliser comme critère principal
                         if hops_away is not None:
                             if hops_away > 0:
-                                debug_print(f"Nœud {node_id} ignoré (hopsAway={hops_away})")
+                                # debug_print(f"Nœud {node_id} ignoré (hopsAway={hops_away})")
                                 continue
                             else:
                                 debug_print(f"Nœud {node_id} accepté (hopsAway={hops_away})")

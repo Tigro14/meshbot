@@ -171,9 +171,9 @@ class NodeManager:
             hops_taken = hop_start - hop_limit
             
             # Ne traiter que les messages reçus directement (0 hop)
-            if hops_taken > 0:
-                debug_print(f"🔄 Ignoré (relayé {hops_taken} hop): {self.get_node_name(from_id)}")
-                return
+            #if hops_taken > 0:
+            #    debug_print(f"🔄 Ignoré (relayé {hops_taken} hop): {self.get_node_name(from_id)}")
+            #    return
             
             # Extraire UNIQUEMENT le SNR (ignorer RSSI)
             snr = packet.get('snr', 0.0)
