@@ -600,3 +600,84 @@ class TrafficMonitor:
         except Exception as e:
             error_print(f"Erreur export: {e}")
             return "{}"
+    
+    def get_message_count(self, hours=None):
+        """Obtenir le nombre de messages dans la période"""
+        if hours is None:
+            hours = self.traffic_retention_hours
+
+        current_time = time.time()
+        cutoff_time = current_time - (hours * 3600)
+
+        return sum(1 for msg in self.public_messages if msg['timestamp'] >= cutoff_time)
+
+    def get_traffic_report(self, hours=None):
+        """ 
+        Générer un rapport du trafic public des dernières heures
+                
+        Args:   
+            hours: Nombre d'heures à inclure (défaut: 8)
+            
+        Returns:
+            str: Rapport formaté du trafic
+        """ 
+        if hours is None:
+            hours = 8  # ✅ Défaut à 8h pour compatibilité
+
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+                    
+            # Filtrer les messages dans la période
+            recent_messages = [
+                msg for msg in self.public_messages
+                if msg['timestamp'] >= cutoff_time
+            ]
+            
+            if not recent_messages:
+                return f"📭 Aucun message public dans les {hours}h"
+
+            # ✅ CORRECTION: Adapter la limite selon la période demandée
+            # Plus la période est longue, plus on peut afficher de messages
+            if hours <= 2:
+                max_display = 50
+            elif hours <= 8:
+                max_display = 100
+            elif hours <= 12:
+                max_display = 150 
+            else:  # 24h
+                max_display = 200
+
+            # Construire le rapport
+            lines = []
+            lines.append(f"📡 Trafic public ({len(recent_messages)} msgs - {hours}h):")
+            lines.append("")
+
+            # ✅ Prendre les messages les plus récents selon la limite
+            display_messages = recent_messages[-max_display:]
+
+            # ✅ OPTIMISATION: Grouper par heure pour les longues périodes
+            if hours > 12 and len(display_messages) > 100:
+                lines.extend(self._format_grouped_messages(display_messages))
+            else:
+                # Format détaillé pour les courtes périodes
+                for msg in display_messages:
+                    line = self._format_message_line(msg)
+                    lines.append(line)
+
+            # Ajouter footer si messages tronqués
+            if len(recent_messages) > max_display:
+                lines.append("")
+                lines.append(f"... et {len(recent_messages) - max_display} messages plus anciens")
+
+            # Statistiques rapides
+            lines.append("")
+            lines.append(self._get_traffic_stats(recent_messages, hours))
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur génération rapport trafic: {e}")
+            return f"Erreur génération rapport: {str(e)[:50]}"
+
+
