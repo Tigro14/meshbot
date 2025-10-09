@@ -176,12 +176,12 @@ Le fichier `/var/log/bot-reboot.log` contient :
 
 ### Commandes cachées (administration)
 - `/rebootpi` - Redémarrage du Pi5 (nécessite configuration)
-- `/rebootg2` - Redémarrage de tigrog2 + télémétrie
-- `/g2` - Configuration et statistiques de tigrog2
+- `/rebootg2` - Redémarrage du node ROUTER via le MeshBOT en admin à distance + télémétrie
 
 ### Les commandes depuis Telegram sont différentes
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
 - `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
+- `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
 - voir /help pour pour d'info
 
 ## Configuration
