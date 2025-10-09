@@ -3,7 +3,7 @@
 Bot pour réseau Meshtastic (+ Telegram, optionel)  avec intégration Llama et fonctionnalités avancées.
 
 Mon cas d'usage
-- Un node Mesh ROUTER_LATE accessible en Wifi
+- Un node Mesh ROUTER(_LATE) accessible en Wifi
 - Un node Mesh bot connecté en série sur le RPi5
 
 ```mermaid
@@ -52,7 +52,8 @@ graph TD
 
 ## Configuration du redémarrage à distance
 
-Le bot dispose d'une commande cachée `/rebootpi` qui permet de redémarrer le Pi5 à distance. Pour des raisons de sécurité, cette fonctionnalité utilise un système de fichier signal.
+Le bot dispose d'une commande cachée `/rebootpi` qui permet de redémarrer le Pi5 à distance. 
+Pour des raisons de sécurité, cette fonctionnalité utilise un système de fichier signal.
 
 ### 1. Script de surveillance
 
