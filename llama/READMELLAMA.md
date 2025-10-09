@@ -38,6 +38,7 @@ cmake --fresh . -DBUILD_SHARED_LIBS=OFF -DGGML_LTO=ON -DGGML_STATIC=OFF -DGGML_B
 
 J'ai fait un script pratique qui effectue tout cela: https://github.com/Tigro14/meshbot/blob/main/llama_compile_rpi5.sh
 
+Puis on récupère le dernier modèle adapté à 15GB de RAM testé/validé sur RPi5:
 ```
 wget https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
 ```
