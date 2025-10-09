@@ -93,33 +93,46 @@ class SystemCommands:
     def _check_reboot_authorization_mesh(self, from_id, command_name, message_parts):
         """
         Vérifier autorisation pour commande reboot depuis Meshtastic
-        
-        Args:
-            from_id: Node ID demandeur
-            command_name: '/rebootpi' ou '/rebootg2'
-            message_parts: ['/rebootpi', 'password']
-        
-        Returns:
-            tuple: (authorized: bool, error_message: str or None)
+        VERSION DEBUG INTENSIVE
         """
         node_name = self.node_manager.get_node_name(from_id, self.interface)
         
+        info_print("=" * 60)
+        info_print(f"🔍 DEBUG AUTORISATION {command_name}")
+        info_print(f"   from_id: 0x{from_id:08x} ({from_id})")
+        info_print(f"   node_name: {node_name}")
+        info_print(f"   message_parts: {message_parts}")
+        info_print("=" * 60)
+        
         # 1. Vérifier activation globale
+        info_print(f"CHECK 1: REBOOT_COMMANDS_ENABLED = {REBOOT_COMMANDS_ENABLED}")
         if not REBOOT_COMMANDS_ENABLED:
             info_print(f"🚫 {command_name} refusé (désactivé): {node_name}")
             return False, "❌ Commandes de redémarrage désactivées"
         
         # 2. Vérifier liste restreinte
+        info_print(f"CHECK 2: REBOOT_AUTHORIZED_USERS = {REBOOT_AUTHORIZED_USERS}")
+        info_print(f"         from_id in list? {from_id in REBOOT_AUTHORIZED_USERS if REBOOT_AUTHORIZED_USERS else 'N/A (liste vide)'}")
+        
         if REBOOT_AUTHORIZED_USERS and from_id not in REBOOT_AUTHORIZED_USERS:
             info_print(f"🚫 {command_name} refusé (non autorisé): {node_name} (0x{from_id:08x})")
+            info_print(f"   IDs autorisés: {[f'0x{x:08x}' for x in REBOOT_AUTHORIZED_USERS]}")
             return False, "❌ Non autorisé pour cette commande"
         
         # 3. Vérifier mot de passe
+        info_print(f"CHECK 3: Vérification mot de passe")
+        info_print(f"         Nombre d'arguments: {len(message_parts)}")
+        
         if len(message_parts) < 2:
             debug_print(f"⚠️ {command_name} sans mot de passe: {node_name}")
             return False, f"⚠️ Usage: {command_name} <password>"
         
         provided_password = message_parts[1]
+        expected_password = REBOOT_PASSWORD
+        
+        info_print(f"         Mot de passe fourni: '{provided_password}'")
+        info_print(f"         Mot de passe attendu: '{expected_password}'")
+        info_print(f"         Match? {provided_password == expected_password}")
         
         if provided_password != REBOOT_PASSWORD:
             info_print(f"🚫 {command_name} refusé (mauvais MDP): {node_name} (0x{from_id:08x})")
@@ -127,12 +140,8 @@ class SystemCommands:
         
         # OK
         info_print(f"🔐 {command_name} autorisé: {node_name} (0x{from_id:08x})")
+        info_print("=" * 60)
         return True, None
-
-
-    # ==========================================
-    # REMPLACEMENT DE handle_reboot_command
-    # ==========================================
 
     def handle_reboot_command(self, from_id, message_parts):
         """

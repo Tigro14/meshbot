@@ -640,55 +640,132 @@ class TelegramIntegration:
     async def _rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rebootg2 - Redémarrage tigrog2"""
         user = update.effective_user
+        
+        info_print("=" * 60)
+        info_print("🔥 _rebootg2_command() APPELÉ !")
+        info_print(f"   User Telegram: {user.username}")
+        info_print(f"   User ID Telegram: {user.id}")
+        info_print(f"   Arguments: {context.args}")
+        info_print("=" * 60)
+        
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        info_print(f"📱 Telegram /rebootg2: {user.username}")
-        sender_id = user.id & 0xFFFFFFFF
-        sender_info = f"TG:{user.username}"
+        # Parser les arguments (mot de passe)
+        password = context.args[0] if context.args else ""
+        message_parts = ["/rebootg2", password] if password else ["/rebootg2"]
         
-        await update.message.reply_text("🔄 Redémarrage tigrog2...")
+        info_print(f"📝 message_parts construit: {message_parts}")
+        
+        # Utiliser le mapping Telegram → Meshtastic
+        mesh_identity = self._get_mesh_identity(user.id)
+        
+        info_print(f"🔍 Recherche mapping pour user.id={user.id}")
+        
+        if mesh_identity:
+            sender_id = mesh_identity['node_id']
+            sender_info = mesh_identity['display_name']
+            info_print(f"✅ Mapping trouvé:")
+            info_print(f"   → node_id: 0x{sender_id:08x} ({sender_id})")
+            info_print(f"   → display_name: {sender_info}")
+        else:
+            sender_id = user.id & 0xFFFFFFFF
+            sender_info = f"TG:{user.username}"
+            info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
+            info_print(f"   → sender_id: 0x{sender_id:08x} ({sender_id})")
+            info_print(f"   → sender_info: {sender_info}")
+        
+        info_print("=" * 60)
         
         def reboot_g2():
             try:
-                self.message_handler.handle_rebootg2_command(sender_id, sender_info)
-                return "✅ Commande envoyée"
+                info_print(f"📞 Appel handle_rebootg2_command avec:")
+                info_print(f"   sender_id: 0x{sender_id:08x}")
+                info_print(f"   message_parts: {message_parts}")
+                
+                # ✅ FIX : Appeler via le router.system_handler
+                response = self.message_handler.router.system_handler.handle_rebootg2_command(
+                    sender_id, 
+                    message_parts
+                )
+                
+                info_print(f"📬 Réponse reçue: {response}")
+                return response
             except Exception as e:
+                error_print(f"❌ Exception dans reboot_g2: {e}")
+                import traceback
+                error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
-
-        await asyncio.to_thread(reboot_g2)
+        
+        response = await asyncio.to_thread(reboot_g2)
+        info_print(f"📤 Envoi réponse à Telegram: {response}")
+        await update.message.reply_text(response)
 
     async def _rebootpi_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rebootpi - Redémarrage Pi5"""
         user = update.effective_user
+        
+        info_print("=" * 60)
+        info_print("🔥 _rebootpi_command() APPELÉ !")
+        info_print(f"   User Telegram: {user.username}")
+        info_print(f"   User ID Telegram: {user.id}")
+        info_print(f"   Arguments: {context.args}")
+        info_print("=" * 60)
+        
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        info_print(f"🚨 Telegram /rebootpi: {user.username}")
-
+        # Parser les arguments (mot de passe)
+        password = context.args[0] if context.args else ""
+        message_parts = ["/rebootpi", password] if password else ["/rebootpi"]
+        
+        info_print(f"📝 message_parts construit: {message_parts}")
+        
         # Utiliser le mapping Telegram → Meshtastic
         mesh_identity = self._get_mesh_identity(user.id)
-
+        
+        info_print(f"🔍 Recherche mapping pour user.id={user.id}")
+        
         if mesh_identity:
             sender_id = mesh_identity['node_id']
-            info_print(f"🔄 Mapping: {user.username} → {mesh_identity['display_name']} (0x{sender_id:08x})")
+            sender_info = mesh_identity['display_name']
+            info_print(f"✅ Mapping trouvé:")
+            info_print(f"   → node_id: 0x{sender_id:08x} ({sender_id})")
+            info_print(f"   → display_name: {sender_info}")
         else:
-           sender_id = user.id & 0xFFFFFFFF
-           info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
-           sender_info = f"TG:{user.username}"
+            sender_id = user.id & 0xFFFFFFFF
+            sender_info = f"TG:{user.username}"
+            info_print(f"⚠️ Pas de mapping, utilisation ID Telegram")
+            info_print(f"   → sender_id: 0x{sender_id:08x} ({sender_id})")
+            info_print(f"   → sender_info: {sender_info}")
         
-        await update.message.reply_text("🔄 Redémarrage Pi5 en cours...")
+        info_print("=" * 60)
         
         def reboot_pi():
             try:
-                self.message_handler.handle_reboot_command(sender_id, sender_info)
-                return "✅ Signal créé"
+                info_print(f"📞 Appel handle_reboot_command avec:")
+                info_print(f"   sender_id: 0x{sender_id:08x}")
+                info_print(f"   message_parts: {message_parts}")
+                
+                # ✅ FIX : Appeler via le router.system_handler
+                response = self.message_handler.router.system_handler.handle_reboot_command(
+                    sender_id, 
+                    message_parts
+                )
+                
+                info_print(f"📬 Réponse reçue: {response}")
+                return response
             except Exception as e:
+                error_print(f"❌ Exception dans reboot_pi: {e}")
+                import traceback
+                error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
-        await asyncio.to_thread(reboot_pi)
+        response = await asyncio.to_thread(reboot_pi)
+        info_print(f"📤 Envoi réponse à Telegram: {response}")
+        await update.message.reply_text(response)
 
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Messages texte = /bot (Chat IA)"""
