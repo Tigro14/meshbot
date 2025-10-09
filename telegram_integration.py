@@ -37,6 +37,8 @@ class TelegramIntegration:
         self.loop = None
         # Liste des utilisateurs pour les alertes
         self.alert_users = TELEGRAM_ALERT_USERS if TELEGRAM_ALERT_USERS else TELEGRAM_AUTHORIZED_USERS
+        self.pending_traces = {}  # node_id -> {'telegram_chat_id': int, 'timestamp': float, 'short_name': str}
+        self.trace_timeout = 45  # 45 secondes pour recevoir la réponse
 
     def start(self):
         """Démarrer le bot Telegram dans un thread séparé"""
@@ -797,37 +799,33 @@ class TelegramIntegration:
             error_print(traceback.format_exc())
     
     async def _trace_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Commande /trace depuis Telegram"""
-    user = update.effective_user
-    if not self._check_authorization(user.id):
-        await update.message.reply_text("❌ Non autorisé")
-        return
-    
-    info_print(f"📱 Telegram /trace: {user.username}")
-    
-    # Créer un packet simulé pour Telegram
-    # Utiliser le mapping si disponible
-    mesh_identity = self._get_mesh_identity(user.id)
-    
-    if mesh_identity:
-        node_id = mesh_identity['node_id']
-        display_name = mesh_identity['display_name']
-    else:
-        node_id = user.id & 0xFFFFFFFF
-        display_name = user.username or user.first_name
-    
-    # Packet simulé (Telegram = direct)
-    simulated_packet = {
-        'from': node_id,
-        'to': 0xFFFFFFFF,
-        'hopLimit': 3,
-        'hopStart': 3,  # 0 hops = direct
-        'rssi': 0,  # Pas de RSSI depuis Telegram
-        'snr': 0.0   # Pas de SNR depuis Telegram
-    }
-    
-    def get_trace():
-        try:
+        """
+        Commande /trace [short_id] - Traceroute mesh actif
+
+        Sans argument : trace depuis bot vers l'utilisateur (mode passif)
+        Avec argument : trace depuis le nœud spécifié vers bot (mode actif)
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        info_print(f"📱 Telegram /trace: {user.username}")
+
+        # Vérifier si un short_id est fourni
+        args = context.args
+
+        if not args or len(args) == 0:
+            # === MODE PASSIF : Trace depuis bot vers utilisateur ===
+            mesh_identity = self._get_mesh_identity(user.id)
+
+            if mesh_identity:
+                node_id = mesh_identity['node_id']
+                display_name = mesh_identity['display_name']
+            else:
+                node_id = user.id & 0xFFFFFFFF
+                display_name = user.username or user.first_name
+
             response_parts = []
             response_parts.append(f"🔍 Traceroute Telegram → {display_name}")
             response_parts.append("")
@@ -841,16 +839,244 @@ class TelegramIntegration:
             response_parts.append("Les commandes Telegram ne passent")
             response_parts.append("pas par le réseau mesh LoRa.")
             response_parts.append("")
-            response_parts.append(f"Votre ID Telegram: {user.id}")
-            if mesh_identity:
-                response_parts.append(f"Mappé sur node: !{node_id:08x}")
-            
-            return "\n".join(response_parts)
+            response_parts.append("💡 Astuce:")
+            response_parts.append("Utilisez /trace <short_id> pour tracer")
+            response_parts.append("depuis un nœud mesh vers le bot.")
+
+            await update.message.reply_text("\n".join(response_parts))
+            return
+
+        # === MODE ACTIF : Trace depuis nœud mesh vers bot ===
+        target_short_name = args[0].strip()
+
+        info_print(f"🎯 Traceroute actif demandé vers: {target_short_name}")
+
+        def execute_active_trace():
+            try:
+                # 1. Trouver le node_id correspondant au short_name
+                target_node_id = self._find_node_by_short_name(target_short_name)
+
+                if not target_node_id:
+                    asyncio.run_coroutine_threadsafe(
+                        update.message.reply_text(
+                            f"❌ Nœud '{target_short_name}' introuvable\n"
+                            f"Utilisez /nodes pour voir la liste"
+                        ),
+                        self.loop
+                    )
+                    return
+
+                target_full_name = self.node_manager.get_node_name(target_node_id)
+                info_print(f"✅ Nœud trouvé: {target_full_name} (!{target_node_id:08x})")
+
+                # 2. Enregistrer la requête de trace
+                self.pending_traces[target_node_id] = {
+                    'telegram_chat_id': update.effective_chat.id,
+                    'timestamp': time.time(),
+                    'short_name': target_short_name,
+                    'full_name': target_full_name
+                }
+
+                info_print(f"📝 Trace enregistrée pour {target_full_name}")
+
+                # 3. Envoyer la commande /trace au nœud mesh
+                try:
+                    self.message_handler.interface.sendText(
+                        "/trace",
+                        destinationId=target_node_id
+                    )
+                    info_print(f"📤 Commande /trace envoyée à {target_full_name}")
+                except Exception as e:
+                    error_print(f"Erreur envoi /trace: {e}")
+                    # Essayer format hex
+                    try:
+                        hex_id = f"!{target_node_id:08x}"
+                        self.message_handler.interface.sendText(
+                            "/trace",
+                            destinationId=hex_id
+                        )
+                        info_print(f"📤 Commande /trace envoyée (hex) à {target_full_name}")
+                    except Exception as e2:
+                        error_print(f"Erreur envoi /trace (hex): {e2}")
+                        asyncio.run_coroutine_threadsafe(
+                            update.message.reply_text(
+                                f"❌ Impossible d'envoyer la commande au nœud\n"
+                                f"Erreur: {str(e)[:50]}"
+                            ),
+                            self.loop
+                        )
+                        del self.pending_traces[target_node_id]
+                        return
+
+                # 4. Confirmer l'envoi à l'utilisateur
+                asyncio.run_coroutine_threadsafe(
+                    update.message.reply_text(
+                        f"⏳ Traceroute lancé vers {target_full_name}\n"
+                        f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
+                        f"ℹ️ La réponse arrivera automatiquement ici"
+                    ),
+                    self.loop
+                )
+
+                info_print(f"✅ Traceroute actif lancé vers {target_full_name}")
+
+            except Exception as e:
+                error_print(f"Erreur execute_active_trace: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                asyncio.run_coroutine_threadsafe(
+                    update.message.reply_text(f"❌ Erreur: {str(e)[:100]}"),
+                    self.loop
+                )
+
+        # Exécuter dans un thread séparé
+        threading.Thread(target=execute_active_trace, daemon=True).start()
+
+    def _find_node_by_short_name(self, short_name):
+        """
+        Trouver le node_id d'un nœud par son nom court
+        Recherche dans la base locale ET dans l'interface
+        """
+        short_name_lower = short_name.lower().strip()
+
+        # 1. Chercher dans la base locale de node_manager
+        for node_id, full_name in self.node_manager.node_names.items():
+            # Extraire le short name (première partie avant espace)
+            node_short = full_name.split()[0].lower() if ' ' in full_name else full_name.lower()
+
+            if node_short == short_name_lower or full_name.lower() == short_name_lower:
+                debug_print(f"✅ Nœud trouvé dans base locale: {full_name}")
+                return node_id
+
+        # 2. Chercher dans l'interface en temps réel
+        try:
+            if hasattr(self.message_handler.interface, 'nodes'):
+                nodes = self.message_handler.interface.nodes
+
+                for node_id, node_info in nodes.items():
+                    if isinstance(node_info, dict) and 'user' in node_info:
+                        user_info = node_info['user']
+                        if isinstance(user_info, dict):
+                            short = user_info.get('shortName', '').lower().strip()
+                            long_name = user_info.get('longName', '').lower().strip()
+
+                            if short == short_name_lower or long_name == short_name_lower:
+                                # Convertir node_id si nécessaire
+                                if isinstance(node_id, str):
+                                    if node_id.startswith('!'):
+                                        node_id_int = int(node_id[1:], 16)
+                                    else:
+                                        node_id_int = int(node_id, 16)
+                                else:
+                                    node_id_int = int(node_id)
+
+                                debug_print(f"✅ Nœud trouvé dans interface: {long_name or short}")
+                                return node_id_int
         except Exception as e:
-            return f"❌ Erreur: {str(e)[:50]}"
-    
-    response = await asyncio.to_thread(get_trace)
-    await update.message.reply_text(response)
+            debug_print(f"Erreur recherche dans interface: {e}")
 
+        # 3. Pas trouvé
+        debug_print(f"❌ Nœud '{short_name}' introuvable")
+        return None
 
-    
+    def cleanup_expired_traces(self):
+        """Nettoyer les traces expirées (appelé périodiquement)"""
+        try:
+            current_time = time.time()
+            expired = []
+
+            for node_id, trace_data in self.pending_traces.items():
+                if current_time - trace_data['timestamp'] > self.trace_timeout:
+                    expired.append(node_id)
+
+            for node_id in expired:
+                trace_data = self.pending_traces[node_id]
+                info_print(f"⏱️ Trace expirée pour {trace_data['full_name']}")
+
+                # Notifier l'utilisateur Telegram
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=trace_data['telegram_chat_id'],
+                            text=f"⏱️ Timeout: Pas de réponse de {trace_data['full_name']}\n"
+                                 f"Le nœud est peut-être hors ligne ou hors de portée."
+                        ),
+                        self.loop
+                    )
+                except Exception as e:
+                    error_print(f"Erreur notification timeout: {e}")
+
+                del self.pending_traces[node_id]
+
+            if expired:
+                debug_print(f"🧹 {len(expired)} traces expirées nettoyées")
+
+        except Exception as e:
+            error_print(f"Erreur cleanup_expired_traces: {e}")
+
+    def handle_trace_response(self, from_id, message_text):
+        """
+        Traiter une réponse de traceroute depuis le mesh
+        Appelé depuis main_bot.py dans on_message()
+
+        Returns:
+            bool: True si le message a été traité comme une réponse de trace
+        """
+        try:
+            # Vérifier si c'est une réponse de trace attendue
+            if from_id not in self.pending_traces:
+                return False
+
+            # Vérifier que le message ressemble à un traceroute
+            trace_indicators = [
+                "Traceroute",
+                "Hops:",
+                "Route:",
+                "Signal:",
+                "hopStart:",
+                "hopLimit:"
+            ]
+
+            if not any(indicator in message_text for indicator in trace_indicators):
+                debug_print(f"Message de {from_id} ne semble pas être une trace")
+                return False
+
+            # C'est bien une réponse de trace !
+            trace_data = self.pending_traces[from_id]
+            chat_id = trace_data['telegram_chat_id']
+            node_name = trace_data['full_name']
+
+            info_print(f"📥 Réponse de traceroute reçue de {node_name}")
+
+            # Formater le message pour Telegram
+            telegram_message = (
+                f"📊 **Traceroute reçu de {node_name}**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{message_text}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏱️ Temps de réponse: {time.time() - trace_data['timestamp']:.1f}s"
+            )
+
+            # Envoyer à Telegram
+            asyncio.run_coroutine_threadsafe(
+                self.application.bot.send_message(
+                    chat_id=chat_id,
+                    text=telegram_message,
+                    parse_mode='Markdown'
+                ),
+                self.loop
+            )
+
+            info_print(f"✅ Traceroute forwarded à Telegram pour {node_name}")
+
+            # Supprimer la trace de la liste
+            del self.pending_traces[from_id]
+
+            return True
+
+        except Exception as e:
+            error_print(f"Erreur handle_trace_response: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return False
+

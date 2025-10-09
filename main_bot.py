@@ -95,7 +95,18 @@ class DebugMeshBot:
                 debug_print(f"Message texte de {sender_name}")
                 
                 message = self._extract_message_text(decoded)
-                
+
+                # === NOUVEAU : Vérifier si c'est une réponse de traceroute ===
+                if message and self.telegram_integration:
+                    trace_handled = self.telegram_integration.handle_trace_response(
+                        from_id, 
+                        message
+                    )
+                    if trace_handled:
+                        debug_print(f"✅ Message traité comme réponse de traceroute")
+                        # Ne pas traiter plus loin ce message
+                        return
+
                 if message and is_broadcast and not is_from_me:
                     self.traffic_monitor.add_public_message(packet, message)
                 
