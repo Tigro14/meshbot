@@ -64,7 +64,7 @@ while true; do
 done
 ```
 
-### 2. Service systemd
+### 2. Service systemd pour permettre le reboot du Pi à distance
 
 Créer le fichier `/etc/systemd/system/rebootpi-watcher.service` :
 
@@ -121,6 +121,8 @@ sudo journalctl -u rebootpi-watcher.service -f
 # Tester le mécanisme (ATTENTION: redémarre le système!)
 echo "Test manuel" > /tmp/reboot_requested
 ```
+
+Proceder de même avec meshbot.service 
 
 ### Sécurité
 
