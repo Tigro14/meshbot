@@ -34,7 +34,8 @@ graph TD
 
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
-- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama/READMELLAMA.md
+- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, 
+  voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama/READMELLAMA.md
 
 ## Installation
 
@@ -145,9 +146,10 @@ sudo journalctl -u rebootpi-watcher.service -f
 echo "Test manuel" > /tmp/reboot_requested
 ```
 
-- Proceder de même avec https://github.com/Tigro14/meshbot/blob/main/meshbot.service pour le bot Mesh+Telegram
+Proceder de même avec :
 
-- Proceder de même avec https://github.com/Tigro14/meshbot/blob/main/llama/llamacpp.service pour llama.cpp
+- https://github.com/Tigro14/meshbot/blob/main/meshbot.service pour le bot Mesh+Telegram
+- https://github.com/Tigro14/meshbot/blob/main/llama/llamacpp.service pour llama.cpp
 
 ### Sécurité
 
