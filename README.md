@@ -172,6 +172,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/power` - Données ESPHome (batterie, solaire, météo)
 - `/nodes` - Nœuds directs vus par tigrog2 avec niveau SNR
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
+- `/trace` - Le traceroute retour vers vous (lookinglass)
 - `/sys` - Informations système (CPU, RAM, uptime)
 - `/echo <message>` - Diffuser un message via tigrog2
 - `/legend` - Légende des indicateurs de signal
@@ -184,6 +185,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 ### Les commandes depuis Telegram sont différentes
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
 - `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
+- `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
 - `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
 - voir /help pour pour d'info
 
