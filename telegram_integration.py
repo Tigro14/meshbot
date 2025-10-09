@@ -120,6 +120,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
+            self.application.add_handler(CommandHandler("trace", self._trace_command))
             self.application.add_handler(CommandHandler("cpu", self._cpu_command))
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
@@ -794,4 +795,62 @@ class TelegramIntegration:
             error_print(f"Erreur _send_alert_async: {e}")
             import traceback
             error_print(traceback.format_exc())
+    
+    async def _trace_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Commande /trace depuis Telegram"""
+    user = update.effective_user
+    if not self._check_authorization(user.id):
+        await update.message.reply_text("❌ Non autorisé")
+        return
+    
+    info_print(f"📱 Telegram /trace: {user.username}")
+    
+    # Créer un packet simulé pour Telegram
+    # Utiliser le mapping si disponible
+    mesh_identity = self._get_mesh_identity(user.id)
+    
+    if mesh_identity:
+        node_id = mesh_identity['node_id']
+        display_name = mesh_identity['display_name']
+    else:
+        node_id = user.id & 0xFFFFFFFF
+        display_name = user.username or user.first_name
+    
+    # Packet simulé (Telegram = direct)
+    simulated_packet = {
+        'from': node_id,
+        'to': 0xFFFFFFFF,
+        'hopLimit': 3,
+        'hopStart': 3,  # 0 hops = direct
+        'rssi': 0,  # Pas de RSSI depuis Telegram
+        'snr': 0.0   # Pas de SNR depuis Telegram
+    }
+    
+    def get_trace():
+        try:
+            response_parts = []
+            response_parts.append(f"🔍 Traceroute Telegram → {display_name}")
+            response_parts.append("")
+            response_parts.append("✅ Connexion DIRECTE")
+            response_parts.append("📱 Via: Internet/Telegram")
+            response_parts.append("🔒 Protocol: HTTPS/TLS")
+            response_parts.append("")
+            response_parts.append(f"Route: Telegram → bot")
+            response_parts.append("")
+            response_parts.append("ℹ️ Note:")
+            response_parts.append("Les commandes Telegram ne passent")
+            response_parts.append("pas par le réseau mesh LoRa.")
+            response_parts.append("")
+            response_parts.append(f"Votre ID Telegram: {user.id}")
+            if mesh_identity:
+                response_parts.append(f"Mappé sur node: !{node_id:08x}")
+            
+            return "\n".join(response_parts)
+        except Exception as e:
+            return f"❌ Erreur: {str(e)[:50]}"
+    
+    response = await asyncio.to_thread(get_trace)
+    await update.message.reply_text(response)
+
+
     
