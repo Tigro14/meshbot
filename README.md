@@ -174,6 +174,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
 - `/trace` - Le traceroute retour vers vous (lookinglass)
 - `/sys` - Informations système (CPU, RAM, uptime)
+- `/top` - Top talkers en 24h sur le canal
 - `/echo <message>` - Diffuser un message via tigrog2
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
@@ -186,6 +187,8 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
 - `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
 - `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
+- `/top` - Top talkers en 24h sur le canal
+- `/stats` - Statistiques d'utilisation du canal mesh sur 24h
 - `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
 - voir /help pour pour d'info
 
