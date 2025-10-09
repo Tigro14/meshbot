@@ -679,3 +679,24 @@ class TrafficMonitor:
         except Exception as e:
             error_print(f"Erreur génération rapport trafic: {e}")
             return f"Erreur génération rapport: {str(e)[:50]}"
+    
+    def _update_global_statistics(self, timestamp):
+        """Mettre à jour les statistiques globales"""
+        self.global_stats['total_messages'] += 1
+        self.global_stats['total_unique_nodes'] = len(self.node_stats)
+
+        # Calculer l'heure la plus active
+        all_hourly = defaultdict(int)
+        for node_stats in self.node_stats.values():
+            for hour, count in node_stats['hourly_activity'].items():
+                all_hourly[hour] += count
+
+        if all_hourly:
+            busiest = max(all_hourly.items(), key=lambda x: x[1])
+            quietest = min(all_hourly.items(), key=lambda x: x[1])
+            self.global_stats['busiest_hour'] = f"{busiest[0]}h ({busiest[1]} msgs)"
+            self.global_stats['quietest_hour'] = f"{quietest[0]}h ({quietest[1]} msgs)"
+        else:
+            # ✅ FIX : Initialiser à None si pas de données
+            self.global_stats['busiest_hour'] = None
+            self.global_stats['quietest_hour'] = None
