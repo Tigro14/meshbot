@@ -88,7 +88,33 @@ class TrafficMonitor:
             'quietest_hour': None,
             'last_reset': time.time()
         }
+        # Statistiques par node_id
+        self.node_stats = defaultdict(lambda: {
+            'total_messages': 0,
+            'total_chars': 0,
+            'first_seen': None,
+            'last_seen': None,
+            'hourly_activity': defaultdict(int),  # Heure -> nombre de messages
+            'daily_activity': defaultdict(int),   # Jour -> nombre de messages
+            'avg_message_length': 0,
+            'peak_hour': None,
+            'commands_sent': 0,
+            'echo_sent': 0
+        }) 
         
+        # Top mots utilisés (optionnel)
+        self.word_frequency = defaultdict(int)
+
+        # Statistiques globales
+        self.global_stats = {
+            'total_messages': 0,
+            'total_unique_nodes': 0,
+            'busiest_hour': None,
+            'quietest_hour': None,
+            'avg_messages_per_hour': 0,
+            'peak_activity_time': None,
+            'last_reset': time.time()
+        }
         # === STATISTIQUES RÉSEAU ===
         self.network_stats = {
             'total_hops': 0,
