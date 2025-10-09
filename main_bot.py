@@ -221,7 +221,6 @@ class DebugMeshBot:
                 
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
-            time.sleep(60)  # Attendre avant de réessayer
 
     def cleanup_cache(self):
         """Nettoyage périodique général"""
