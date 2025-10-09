@@ -153,9 +153,14 @@ class TelegramIntegration:
                 pool_timeout=10            # ✅ Timeout pool
             )
             
-            # ✅ Boucle d'attente OPTIMISÉE - Ne pas vérifier trop souvent
+            # ✅ Boucle d'attente OPTIMISÉE avec nettoyage des traces
+            cleanup_counter = 0
             while self.running:
-                await asyncio.sleep(10)  # ✅ 10 secondes au lieu de 5
+                await asyncio.sleep(10)  # 10 secondes
+
+                cleanup_counter += 1
+                if cleanup_counter % 6 == 0:  # Toutes les 60 secondes
+                    self.cleanup_expired_traces()
 
             # Arrêter proprement
             info_print("Arrêt du polling Telegram...")
@@ -932,23 +937,120 @@ class TelegramIntegration:
         # Exécuter dans un thread séparé
         threading.Thread(target=execute_active_trace, daemon=True).start()
 
-    def _find_node_by_short_name(self, short_name):
+    # === NOUVELLE MÉTHODE : Trouver un nœud par nom ou ID ===
+    def _find_node_by_short_name(self, identifier):
         """
-        Trouver le node_id d'un nœud par son nom court
-        Recherche dans la base locale ET dans l'interface
-        """
-        short_name_lower = short_name.lower().strip()
+        Trouver le node_id d'un nœud par plusieurs méthodes:
+        - Short name: "tigro"
+        - Long name: "tigro Tigro Network"
+        - Hex ID: "3c7c", "!3c7c", "0x3c7c", "a76f40da", "!a76f40da"
+        - Decimal ID: "15484", "2807920858"
 
-        # 1. Chercher dans la base locale de node_manager
+        Returns:
+            int: node_id si trouvé, None sinon
+        """
+        identifier = identifier.strip()
+        identifier_lower = identifier.lower()
+
+        # === ÉTAPE 1 : Détection si c'est un ID numérique ===
+        node_id_candidate = None
+
+        # Format: !hex (ex: !3c7c ou !a76f40da)
+        if identifier.startswith('!'):
+            try:
+                node_id_candidate = int(identifier[1:], 16)
+                debug_print(f"🔍 Format détecté: Hex avec ! → 0x{node_id_candidate:08x}")
+            except ValueError:
+                pass
+
+        # Format: 0xhex (ex: 0x3c7c)
+        elif identifier_lower.startswith('0x'):
+            try:
+                node_id_candidate = int(identifier, 16)
+                debug_print(f"🔍 Format détecté: Hex avec 0x → 0x{node_id_candidate:08x}")
+            except ValueError:
+                pass
+
+        # Format: hex pur (ex: 3c7c ou a76f40da)
+        elif len(identifier) in [4, 8] and all(c in '0123456789abcdefABCDEF' for c in identifier):
+            try:
+                node_id_candidate = int(identifier, 16)
+                debug_print(f"🔍 Format détecté: Hex pur → 0x{node_id_candidate:08x}")
+            except ValueError:
+                pass
+
+        # Format: decimal (ex: 15484 ou 2807920858)
+        elif identifier.isdigit():
+            try:
+                node_id_candidate = int(identifier)
+                debug_print(f"🔍 Format détecté: Décimal → 0x{node_id_candidate:08x}")
+            except ValueError:
+                pass
+
+        # === ÉTAPE 2 : Si c'est un ID, vérifier qu'il existe ===
+        if node_id_candidate is not None:
+            # Normaliser (32 bits)
+            node_id_candidate = node_id_candidate & 0xFFFFFFFF
+
+            # Vérifier dans la base locale
+            if node_id_candidate in self.node_manager.node_names:
+                node_name = self.node_manager.node_names[node_id_candidate]
+                info_print(f"✅ Nœud trouvé par ID: {node_name} (!{node_id_candidate:08x})")
+                return node_id_candidate
+
+            # Vérifier dans l'interface
+            try:
+                if hasattr(self.message_handler.interface, 'nodes'):
+                    nodes = self.message_handler.interface.nodes
+
+                    for node_id, node_info in nodes.items():
+                        # Normaliser node_id de l'interface
+                        if isinstance(node_id, str):
+                            if node_id.startswith('!'):
+                                node_id_int = int(node_id[1:], 16) & 0xFFFFFFFF
+                            else:
+                                node_id_int = int(node_id, 16) & 0xFFFFFFFF
+                        else:
+                            node_id_int = int(node_id) & 0xFFFFFFFF
+
+                        if node_id_int == node_id_candidate:
+                            # Récupérer le nom
+                            node_name = "Unknown"
+                            if isinstance(node_info, dict) and 'user' in node_info:
+                                user_info = node_info['user']
+                                if isinstance(user_info, dict):
+                                    node_name = user_info.get('longName') or user_info.get('shortName') or "Unknown"
+
+                            info_print(f"✅ Nœud trouvé par ID dans interface: {node_name} (!{node_id_candidate:08x})")
+                            return node_id_candidate
+            except Exception as e:
+                debug_print(f"Erreur recherche ID dans interface: {e}")
+
+            # ID fourni mais nœud n'existe pas
+            debug_print(f"⚠️ ID 0x{node_id_candidate:08x} fourni mais nœud inconnu")
+            # Retourner quand même l'ID (peut être un nœud hors ligne mais valide)
+            info_print(f"ℹ️ Utilisation de l'ID 0x{node_id_candidate:08x} (nœud peut être hors ligne)")
+            return node_id_candidate
+
+        # === ÉTAPE 3 : Recherche par nom (short ou long) ===
+        # 3.1. Chercher dans la base locale
         for node_id, full_name in self.node_manager.node_names.items():
-            # Extraire le short name (première partie avant espace)
-            node_short = full_name.split()[0].lower() if ' ' in full_name else full_name.lower()
+            full_name_lower = full_name.lower()
 
-            if node_short == short_name_lower or full_name.lower() == short_name_lower:
-                debug_print(f"✅ Nœud trouvé dans base locale: {full_name}")
+            # Extraire le short name (première partie avant espace)
+            node_short = full_name.split()[0].lower() if ' ' in full_name else full_name_lower
+
+            # Match sur short name OU long name
+            if node_short == identifier_lower or full_name_lower == identifier_lower:
+                info_print(f"✅ Nœud trouvé par nom dans base locale: {full_name} (!{node_id:08x})")
                 return node_id
 
-        # 2. Chercher dans l'interface en temps réel
+            # Match partiel sur long name (contient)
+            if identifier_lower in full_name_lower and len(identifier) >= 3:
+                info_print(f"✅ Nœud trouvé par nom partiel: {full_name} (!{node_id:08x})")
+                return node_id
+
+        # 3.2. Chercher dans l'interface en temps réel
         try:
             if hasattr(self.message_handler.interface, 'nodes'):
                 nodes = self.message_handler.interface.nodes
@@ -960,25 +1062,42 @@ class TelegramIntegration:
                             short = user_info.get('shortName', '').lower().strip()
                             long_name = user_info.get('longName', '').lower().strip()
 
-                            if short == short_name_lower or long_name == short_name_lower:
-                                # Convertir node_id si nécessaire
+                            # Match exact
+                            if short == identifier_lower or long_name == identifier_lower:
+                                # Convertir node_id
                                 if isinstance(node_id, str):
                                     if node_id.startswith('!'):
-                                        node_id_int = int(node_id[1:], 16)
+                                        node_id_int = int(node_id[1:], 16) & 0xFFFFFFFF
                                     else:
-                                        node_id_int = int(node_id, 16)
+                                        node_id_int = int(node_id, 16) & 0xFFFFFFFF
                                 else:
-                                    node_id_int = int(node_id)
+                                    node_id_int = int(node_id) & 0xFFFFFFFF
 
-                                debug_print(f"✅ Nœud trouvé dans interface: {long_name or short}")
+                                display_name = long_name or short
+                                info_print(f"✅ Nœud trouvé par nom dans interface: {display_name} (!{node_id_int:08x})")
+                                return node_id_int
+
+                            # Match partiel
+                            if len(identifier) >= 3 and (identifier_lower in short or identifier_lower in long_name):
+                                if isinstance(node_id, str):
+                                    if node_id.startswith('!'):
+                                        node_id_int = int(node_id[1:], 16) & 0xFFFFFFFF
+                                    else:
+                                        node_id_int = int(node_id, 16) & 0xFFFFFFFF
+                                else:
+                                    node_id_int = int(node_id) & 0xFFFFFFFF
+
+                                display_name = long_name or short
+                                info_print(f"✅ Nœud trouvé par nom partiel dans interface: {display_name} (!{node_id_int:08x})")
                                 return node_id_int
         except Exception as e:
-            debug_print(f"Erreur recherche dans interface: {e}")
+            debug_print(f"Erreur recherche nom dans interface: {e}")
 
-        # 3. Pas trouvé
-        debug_print(f"❌ Nœud '{short_name}' introuvable")
+        # === ÉTAPE 4 : Rien trouvé ===
+        debug_print(f"❌ Nœud '{identifier}' introuvable")
         return None
 
+    # === NOUVELLE MÉTHODE : Nettoyage périodique des traces expirées ===
     def cleanup_expired_traces(self):
         """Nettoyer les traces expirées (appelé périodiquement)"""
         try:
@@ -1014,6 +1133,7 @@ class TelegramIntegration:
         except Exception as e:
             error_print(f"Erreur cleanup_expired_traces: {e}")
 
+    # === NOUVELLE MÉTHODE : Traiter une réponse de traceroute ===
     def handle_trace_response(self, from_id, message_text):
         """
         Traiter une réponse de traceroute depuis le mesh
@@ -1079,4 +1199,5 @@ class TelegramIntegration:
             import traceback
             error_print(traceback.format_exc())
             return False
+
 

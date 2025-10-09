@@ -96,7 +96,6 @@ class DebugMeshBot:
                 
                 message = self._extract_message_text(decoded)
 
-                # === NOUVEAU : Vérifier si c'est une réponse de traceroute ===
                 if message and self.telegram_integration:
                     trace_handled = self.telegram_integration.handle_trace_response(
                         from_id, 
