@@ -9,13 +9,14 @@ Mon cas d'usage
 ```mermaid
 graph TD
     %% Styles
-    classDef node fill:#f91
-    classDef rpi fill:#bb1
-    
+    classDef node fill:#f9f,color:#000
+    classDef rpi fill:#bbf,color:#000
+    classDef connection stroke:#333,color:#000
+
     %% Nodes
     RPi5["Raspberry Pi 5 (Host)"]:::rpi
-    Meshtastic-bot["Meshtastic Node BOT (Port Série)"]:::node
-    Meshtastic-router["Meshtastic Node ROUTER(_LATE) (TCP/IP)"]:::node
+    Meshtastic-bot["Meshtastic Node 1 (Port Série)"]:::node
+    Meshtastic-router["Meshtastic Node 2 (TCP/IP)"]:::node
 
     %% Connections
     RPi5 -- "/dev/ttyXXX (UART/USB)" --> Meshtastic-bot:::connection
