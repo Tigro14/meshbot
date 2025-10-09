@@ -248,14 +248,11 @@ class UtilityCommands:
         help_text = """📖 **AIDE COMPLÈTE - BOT MESHTASTIC**
 
         🤖 **CHAT IA**
-        - Message direct → Conversation avec l'IA
-        - Contexte conversationnel maintenu 30min
-        - Réponses détaillées possibles sur Telegram
+        - Message direct → Conversation avec l'IA (Contexte maintenu 30min)
 
         ⚡ **SYSTÈME & MONITORING**
         - `/power` - Télémétrie complète
           → Batterie, solaire, température, pression, humidité
-        - `/graphs` - Télémétrie complète
 
         - `/sys` - Informations système Pi5
           → CPU, RAM, load average, uptime
@@ -272,25 +269,21 @@ class UtilityCommands:
           → Statistiques détaillées et top émetteurs
 
         - `/top [heures]` - Top talkers (TOUS paquets)
-          → Messages, télémétrie, position, routage...
-          → Breakdown par type de paquet
+          → Messages, télémétrie, position, routage... par type
 
        - `/packets [heures]` - Distribution des types
-          → Analyse détaillée des types de paquets
-          → Statistiques réseau (hops, signal)
+          → Analyse détaillée des types de paquets (hops, signal)
 
         - `/trace <short_id>` - Traceroute mesh vers node short_id 4 digits
-         → Analyse le chemin des messages, Identifie les relays potentiels
+         → Analyse le chemin des messages, Identifie les relais potentiels
 
         📢 **DIFFUSION**
-        - `/echo <message>` - Diffuser sur le réseau
+        - `/echo <message>` - Diffuser sur mesh via le ROUTER
           → Préfixe automatique avec votre nom court
-          → Diffusé via tigrog2 en broadcast
           → Exemple : `/echo Bonjour à tous!`
 
         ℹ️ **UTILITAIRES**
         - `/legend` - Légende des indicateurs de signal
-
         - `/help` - Cette aide complète
 
         🔧 **ADMINISTRATION** *(si autorisé)*
@@ -306,17 +299,6 @@ class UtilityCommands:
         - Contexte IA : 6 messages max, timeout 30min
         - Historique trafic : 1000 messages, rétention 24h
         - Nœuds distants : filtre 3 jours par défaut
-
-        💡 **ASTUCES**
-        - Les réponses Telegram peuvent être plus longues que sur LoRa
-        - Le contexte conversationnel est partagé entre Telegram et Mesh
-        - Utilisez `/trafic 2` pour voir l'activité récente
-        - `/fullnodes 7` pour une vue hebdomadaire du réseau
-
-        🔐 **SÉCURITÉ**
-        - Accès réservé aux utilisateurs autorisés
-        - Toutes les actions sont tracées dans les logs
-        - Les redémarrages incluent l'identité du demandeur
 
         Votre ID Telegram : {user_id}
         """
