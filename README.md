@@ -9,8 +9,8 @@ Mon cas d'usage
 ```mermaid
 graph TD
     %% Styles
-    classDef node fill:#f9f
-    classDef rpi fill:#bbf
+    classDef node fill:#f91
+    classDef rpi fill:#bb1
     
     %% Nodes
     RPi5["Raspberry Pi 5 (Host)"]:::rpi
