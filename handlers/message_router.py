@@ -56,12 +56,6 @@ class MessageRouter:
                 self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
-        # Messages publics - ignorer les autres commandes
-        #if is_broadcast and not is_from_me:
-        #    if DEBUG_MODE and not message.startswith('/echo') and not message.startswith('/my'):
-        #         debug_print(f"Message public ignoré: '{message}'")
-        #    return
-
         # Log messages pour nous
         if is_for_me or DEBUG_MODE:
             info_print(f"MESSAGE REÇU de {sender_info}: '{message}'")
@@ -76,12 +70,13 @@ class MessageRouter:
     def _route_command(self, message, sender_id, sender_info, packet):
         """Router une commande vers le bon gestionnaire"""
 
-        from_id = packet.get('from', 0)  # ← CETTE LIGNE 
-        text_parts = message[1:].strip().split()
+        from_id = packet.get('from', 0)
+        text_parts = message.split()
         if not text_parts:
             return
 
         command = text_parts[0].lower()
+        
         # Commandes IA
         if message.startswith('/bot '):
             self.ai_handler.handle_bot(message, sender_id, sender_info)
@@ -92,23 +87,34 @@ class MessageRouter:
         elif message.startswith('/my'):
             self.network_handler.handle_my(sender_id, sender_info, is_broadcast=False)
         
-        # Commandes système
+        # ===================================================================
+        # Commandes système avec authentification
+        # ===================================================================
         elif message.startswith('/sys'):
             self.system_handler.handle_sys(sender_id, sender_info)
+        
         elif message.startswith('/rebootpi'):
-            parts = message.split()
-            response = self.handle_reboot_command(from_id, parts)
+            # ✅ Parser les arguments et appeler avec vérification d'auth
+            parts = message.split()  # ['/rebootpi', 'password']
+            response = self.system_handler.handle_reboot_command(from_id, parts)
+            self.sender.send_single(response, sender_id, sender_info)
+            self.sender.log_conversation(sender_id, sender_info, message, response)
+        
         elif message.startswith('/rebootg2'):
-            parts = message.split()
-            response = self.handle_rebootg2_command(from_id, parts)
+            # ✅ Parser les arguments et appeler avec vérification d'auth
+            parts = message.split()  # ['/rebootg2', 'password']
+            response = self.system_handler.handle_rebootg2_command(from_id, parts)
+            self.sender.send_single(response, sender_id, sender_info)
+            self.sender.log_conversation(sender_id, sender_info, message, response)
+        
         elif message.startswith('/g2'):
             self.system_handler.handle_g2(sender_id, sender_info)
+        # ===================================================================
         
         # Commandes utilitaires
         elif message.startswith('/power'):
             self.utility_handler.handle_power(sender_id, sender_info)
         elif message.startswith('/graphs'):
-#            self.utility_handler.handle_graphs_command(sender_id, from_id, text_parts)
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/echo '):
             self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
@@ -116,8 +122,6 @@ class MessageRouter:
             self.utility_handler.handle_trafic(message, sender_id, sender_info)
         elif message.startswith('/top'):
             self.utility_handler.handle_top(message, sender_id, sender_info)
-        elif message.startswith('/packets'):
-            self.utility_handler.handle_packets(message, sender_id, sender_info)
         elif message.startswith('/trace'):  
             self.network_handler.handle_trace(message, sender_id, sender_info, packet)
         elif message.startswith('/legend'):
