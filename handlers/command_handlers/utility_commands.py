@@ -129,6 +129,7 @@ class UtilityCommands:
             "• /nodes\n"
             "• /power\n"
             "• /sys\n"
+            "• /top\n"
             "• /trace\n", 
             "• /help"
         )
@@ -270,8 +271,11 @@ class UtilityCommands:
           → Par défaut : 8 dernières heures (max 24h)
           → Statistiques détaillées et top émetteurs
 
+        - `/top` - 
+         → Analyse les top talkers du canal sur 24h 
+
         - `/trace <short_id>` - Traceroute mesh vers node short_id 4 digits
-        → Analyse le chemin des messages, Identifie les relays potentiels
+         → Analyse le chemin des messages, Identifie les relays potentiels
 
         📢 **DIFFUSION**
         - `/echo <message>` - Diffuser sur le réseau
@@ -312,3 +316,39 @@ class UtilityCommands:
         Votre ID Telegram : {user_id}
         """
         return help_text
+
+
+    def handle_top(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /top [heures]
+        Affiche les top talkers du réseau mesh
+        """
+        info_print(f"Top: {sender_info}")
+
+        # Parser les arguments
+        parts = message.split()
+        hours = 3  # Défaut: 3 heures pour Meshtastic (concis)
+
+        if len(parts) > 1:
+            try:
+                requested = int(parts[1])
+                hours = max(1, min(24, requested))  # Entre 1 et 24h
+            except ValueError:
+                hours = 3
+
+        if not self.traffic_monitor:
+            self.sender.send_single("❌ Traffic monitor non disponible", sender_id, sender_info)
+            return
+
+        try:
+            # Version concise pour Meshtastic
+            report = self.traffic_monitor.get_quick_stats()
+
+            self.sender.log_conversation(sender_id, sender_info,
+                                        f"/top {hours}" if hours != 3 else "/top",
+                                        report)
+            self.sender.send_single(report, sender_id, sender_info)
+
+        except Exception as e:
+            error_msg = f"❌ Erreur top: {str(e)[:50]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)

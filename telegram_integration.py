@@ -134,6 +134,8 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
             self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
             self.application.add_handler(CommandHandler("clearcontext", self._clearcontext_command))
+            self.application.add_handler(CommandHandler("top", self._top_command))
+            self.application.add_handler(CommandHandler("stats", self._stats_command))
             
             # Handler pour messages texte
             self.application.add_handler(
@@ -223,6 +225,8 @@ class TelegramIntegration:
             f"• /nodes \n"
             f"• /fullnodes [jours]  Liste complète alphabétique (défaut: 30j)\n"
             f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
+            f"• /top [h] [n] - Top talkers\n"  
+            f"• /stats - Stats globales\n"     
             f"• /legend \n"
             f"• /cpu \n"
             f"• /help - Aide\n\n"
@@ -1614,3 +1618,162 @@ class TelegramIntegration:
             import traceback
             error_print(traceback.format_exc())
 
+    # Ajouter ces méthodes dans la classe TelegramIntegration
+    
+    async def _top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /top [heures] [nombre]
+        Affiche les top talkers avec statistiques détaillées
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        # Parser les arguments
+        hours = 24  # Défaut pour Telegram
+        top_n = 10  # Top 10 par défaut
+        
+        args = context.args
+        if args and len(args) > 0:
+            try:
+                hours = int(args[0])
+                hours = max(1, min(168, hours))  # Max 7 jours
+            except ValueError:
+                hours = 24
+        
+        if args and len(args) > 1:
+            try:
+                top_n = int(args[1])
+                top_n = max(3, min(20, top_n))  # Entre 3 et 20
+            except ValueError:
+                top_n = 10
+        
+        info_print(f"📱 Telegram /top {hours}h top{top_n}: {user.username}")
+        
+        # Message d'attente
+        await update.message.reply_text(f"📊 Calcul des statistiques ({hours}h)...")
+        
+        def get_detailed_stats():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                # Rapport détaillé des top talkers
+                report = self.message_handler.traffic_monitor.get_top_talkers_report(hours, top_n)
+                
+                # Ajouter le pattern d'activité si demandé sur 24h ou moins
+                if hours <= 24:
+                    pattern = self.message_handler.traffic_monitor.get_activity_pattern(hours)
+                    if pattern:
+                        report += "\n\n" + pattern
+                
+                return report
+                
+            except Exception as e:
+                error_print(f"Erreur get_detailed_stats: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        # Générer le rapport
+        response = await asyncio.to_thread(get_detailed_stats)
+        
+        # Si le message est trop long, le diviser
+        if len(response) > 4000:
+            # Diviser intelligemment par sections
+            sections = response.split('\n\n')
+            current_msg = ""
+            
+            for section in sections:
+                if len(current_msg) + len(section) + 2 < 4000:
+                    if current_msg:
+                        current_msg += "\n\n"
+                    current_msg += section
+                else:
+                    if current_msg:
+                        await update.message.reply_text(current_msg)
+                        await asyncio.sleep(0.5)
+                    current_msg = section
+            
+            if current_msg:
+                await update.message.reply_text(current_msg)
+        else:
+            await update.message.reply_text(response)
+    
+    async def _stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /stats - Statistiques globales du réseau
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        info_print(f"📱 Telegram /stats: {user.username}")
+        
+        def get_global_stats():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                tm = self.message_handler.traffic_monitor
+                
+                lines = []
+                lines.append("📊 **STATISTIQUES RÉSEAU MESH**")
+                lines.append("=" * 40)
+                
+                # Messages dernières 24h
+                msg_24h = tm.get_message_count(24)
+                msg_1h = tm.get_message_count(1)
+                msg_total = len(tm.public_messages)
+                
+                lines.append(f"\n**📨 Messages:**")
+                lines.append(f"• Dernière heure: {msg_1h}")
+                lines.append(f"• Dernières 24h: {msg_24h}")
+                lines.append(f"• En mémoire: {msg_total}")
+                
+                # Nœuds actifs
+                active_nodes_1h = set()
+                active_nodes_24h = set()
+                current_time = time.time()
+                
+                for msg in tm.public_messages:
+                    if msg['timestamp'] >= current_time - 3600:
+                        active_nodes_1h.add(msg['from_id'])
+                    if msg['timestamp'] >= current_time - 86400:
+                        active_nodes_24h.add(msg['from_id'])
+                
+                lines.append(f"\n**👥 Nœuds actifs:**")
+                lines.append(f"• Dernière heure: {len(active_nodes_1h)}")
+                lines.append(f"• Dernières 24h: {len(active_nodes_24h)}")
+                lines.append(f"• Total connus: {len(self.node_manager.node_names)}")
+                
+                # Stats globales
+                if tm.global_stats['busiest_hour']:
+                    lines.append(f"\n**⏰ Patterns:**")
+                    lines.append(f"• Heure de pointe: {tm.global_stats['busiest_hour']}")
+                    lines.append(f"• Heure creuse: {tm.global_stats['quietest_hour']}")
+                
+                # Top 3 des dernières heures
+                quick_stats = tm.get_quick_stats()
+                if quick_stats and "TOP" in quick_stats:
+                    lines.append(f"\n**🏆 Actifs récents (3h):**")
+                    for line in quick_stats.split('\n')[1:]:  # Skip header
+                        lines.append(f"• {line}")
+                
+                # Uptime du monitoring
+                uptime_seconds = current_time - tm.global_stats.get('last_reset', current_time)
+                uptime_hours = int(uptime_seconds / 3600)
+                lines.append(f"\n**🕐 Monitoring:**")
+                lines.append(f"• Uptime: {uptime_hours}h")
+                lines.append(f"• Dernière réinitialisation: {datetime.fromtimestamp(tm.global_stats.get('last_reset', 0)).strftime('%Y-%m-%d %H:%M')}")
+                
+                return "\n".join(lines)
+                
+            except Exception as e:
+                error_print(f"Erreur stats globales: {e}")
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        response = await asyncio.to_thread(get_global_stats)
+        await update.message.reply_text(response, parse_mode='Markdown')
