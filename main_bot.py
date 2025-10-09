@@ -158,8 +158,8 @@ class DebugMeshBot:
                     self.message_handler.process_text_message(packet, decoded, message)
             else:
                 # Autres types de packets (télémétrie, etc.) - juste pour debug
-                if DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
-                    debug_print(f"Packet {portnum} de {self.node_manager.get_node_name(from_id, self.interface)}")
+                #if DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
+                #    debug_print(f"Packet {portnum} de {self.node_manager.get_node_name(from_id, self.interface)}")
             
         except Exception as e:
             error_print(f"Erreur traitement: {e}")

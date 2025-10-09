@@ -59,7 +59,7 @@ class MessageRouter:
         # Messages publics - ignorer les autres commandes
         if is_broadcast and not is_from_me:
             if DEBUG_MODE and not message.startswith('/echo') and not message.startswith('/my'):
-                debug_print(f"Message public ignoré: '{message}'")
+                # debug_print(f"Message public ignoré: '{message}'")
             return
 
         # Log messages pour nous
