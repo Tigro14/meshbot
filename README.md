@@ -1,7 +1,28 @@
 # Bot Meshtastic-Llama
 
-Bot intelligent pour réseau Meshtastic avec intégration Llama et fonctionnalités avancées.
+Bot pour réseau Meshtastic (+ Telegram, optionel)  avec intégration Llama et fonctionnalités avancées.
 
+Mon cas d'usage
+- Un node Mesh ROUTER_LATE accessible en Wifi
+- Un node Mesh bot connecté en série sur le RPi5
+
+```mermaid
+graph TD
+    %% Styles
+    classDef node fill:#f9f
+    classDef rpi fill:#bbf
+    
+    %% Nodes
+    RPi5["Raspberry Pi 5 (Host)"]:::rpi
+    Meshtastic-bot["Meshtastic Node BOT (Port Série)"]:::node
+    Meshtastic-router["Meshtastic Node ROUTER(_LATE) (TCP/IP)"]:::node
+
+    %% Connections
+    RPi5 -- "/dev/ttyXXX (UART/USB)" --> Meshtastic-bot:::connection
+    RPi5 -- "192.168.1.38:PORT (WiFi/Ethernet)" --> Meshtastic-router:::connection
+
+
+```markdown
 ## Fonctionnalités
 
 - **Chat IA** : Intégration Llama via `/bot <question>`
@@ -10,9 +31,9 @@ Bot intelligent pour réseau Meshtastic avec intégration Llama et fonctionnalit
 - **Données ESPHome** : `/power` pour télémétrie solaire/batterie
 - **Administration** : Commandes cachées pour gestion à distance
 
-- genere une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
+- genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
-- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, voir le fichier READMELLAMA.md
+- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama/READMELLAMA.md
 
 ## Installation
 
@@ -126,7 +147,6 @@ echo "Test manuel" > /tmp/reboot_requested
 
 - Proceder de même avec https://github.com/Tigro14/meshbot/blob/main/llama/llamacpp.service pour llama.cpp
 
-
 ### Sécurité
 
 - La commande `/rebootpi` n'apparaît pas dans l'aide publique
@@ -158,10 +178,16 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/rebootg2` - Redémarrage de tigrog2 + télémétrie
 - `/g2` - Configuration et statistiques de tigrog2
 
+### Les commandes depuis Telegram sont différentes
+- le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
+- `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
+- voir /help pour pour d'info
+
 ## Configuration
 
 Le fichier `config.py` contient tous les paramètres configurables :
 - Ports série et réseau
+- Token telegram 
 - Limites de throttling
 - Configuration des nœuds distants
 - Paramètres d'affichage
