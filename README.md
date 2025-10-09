@@ -122,7 +122,10 @@ sudo journalctl -u rebootpi-watcher.service -f
 echo "Test manuel" > /tmp/reboot_requested
 ```
 
-Proceder de même avec meshbot.service 
+- Proceder de même avec https://github.com/Tigro14/meshbot/blob/main/meshbot.service pour le bot Mesh+Telegram
+
+- Proceder de même avec https://github.com/Tigro14/meshbot/blob/main/llama/llamacpp.service pour llama.cpp
+
 
 ### Sécurité
 
