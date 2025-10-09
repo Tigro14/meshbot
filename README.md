@@ -170,8 +170,8 @@ Le fichier `/var/log/bot-reboot.log` contient :
 ### Commandes publiques MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/rx [page]` - Nœuds distants vus par tigrog2
-- `/my` - Vos signaux vus par tigrog2
+- `/nodes` - Nœuds directs vus par tigrog2 avec niveau SNR
+- `/my` - Vos signaux vus par tigrog2 (lookinglass)
 - `/sys` - Informations système (CPU, RAM, uptime)
 - `/echo <message>` - Diffuser un message via tigrog2
 - `/legend` - Légende des indicateurs de signal
