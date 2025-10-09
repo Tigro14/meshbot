@@ -22,8 +22,9 @@ gpu_mem=128
 force_turbo=1
 dtoverlay=disable-bt
 ```
-Ici je désactive BlueTooth sur le RPi5 parceque je ne l'utilise pas.
+
 Ce hack est nécessaire pour activer PCIe 3.0 dans le RPi5, il est par défaut en PCIe 2.0 préconisé par fiabilité par le constructeur, mais sérieusement bridé en performances.
+Notez qu'ici, je désactive BlueTooth sur le RPi5 parceque je ne l'utilise pas.
 
 ## Compilation spécialisé RPi5 de llama.cpp (sur les conseils de serveurperso.com)
 
