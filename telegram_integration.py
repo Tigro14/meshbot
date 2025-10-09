@@ -42,10 +42,7 @@ class TelegramIntegration:
         self.telegram_thread = None
         self.application = None
         self.loop = None
-            'total_messages': 0,
-    'total_unique_nodes': 0,
-    'busiest_hour': None,
-    'quietest_hour': None,
+
         # Liste des utilisateurs pour les alertes
         self.alert_users = TELEGRAM_ALERT_USERS if TELEGRAM_ALERT_USERS else TELEGRAM_AUTHORIZED_USERS
         self.pending_traces = {}  # node_id -> {'telegram_chat_id': int, 'timestamp': float, 'short_name': str}
