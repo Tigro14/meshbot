@@ -56,40 +56,44 @@ class DebugMeshBot:
             
             # Mise à jour de l'historique RX pour tous les packets
             self.node_manager.update_rx_history(packet)
-            
-            # Vérifier si message pour nous
+            # Vérifier le type de message
             to_id = packet.get('to', 0)
             from_id = packet.get('from', 0)
             my_id = None
             
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-                debug_print(f"Mon ID détecté: {my_id:08x}")
-            else:
-                debug_print("ATTENTION: localNode non disponible")
             
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
-            is_broadcast = to_id in [0xFFFFFFFF, 0]  # Messages broadcast
+            is_broadcast = to_id in [0xFFFFFFFF, 0]
             
-            if DEBUG_MODE:
-                debug_print(f"Packet: From:{from_id:08x} To:{to_id:08x} ForMe:{is_for_me} FromMe:{is_from_me} Broadcast:{is_broadcast}")
-            
-            # Ne traiter que si c'est pour nous, de nous, ou broadcast
             if not (is_for_me or is_from_me or is_broadcast):
-                if DEBUG_MODE:
-                    debug_print("Packet ignoré (pas pour nous)")
                 return
             
             if 'decoded' not in packet:
-                if DEBUG_MODE:
-                    debug_print("Packet non décodé")
                 return
             
             decoded = packet['decoded']
             portnum = decoded.get('portnum', '')
-        
-            # Traitement des messages texte ----------------------------------
+            
+            # === Traitement des TRACEROUTE_APP ===
+            if portnum == 'TRACEROUTE_APP':
+                info_print("=" * 60)
+                info_print(f"📥 TRACEROUTE_APP reçu de {self.node_manager.get_node_name(from_id)}")
+                info_print("=" * 60)
+                
+                if self.telegram_integration:
+                    try:
+                        self.telegram_integration.handle_traceroute_response(packet, decoded)
+                    except Exception as trace_error:
+                        error_print(f"❌ Erreur handle_traceroute_response: {trace_error}")
+                        import traceback
+                        error_print(traceback.format_exc())
+                
+                return  # Pas de traitement supplémentaire
+         
+            # Traitement des messages texte
             if portnum == 'TEXT_MESSAGE_APP':
                 from_id = packet.get('from', 0)
                 sender_name = self.node_manager.get_node_name(from_id, self.interface)
@@ -264,6 +268,9 @@ class DebugMeshBot:
                 )
                 self.telegram_integration.start()
                 info_print("✅ Interface Telegram intégrée")
+                # Test du système
+                time.sleep(5)  # Attendre que Telegram démarre
+                self.telegram_integration.test_trace_system()
 
                 # ✅ Démarrer le monitoring système avec Telegram
                 from system_monitor import SystemMonitor
