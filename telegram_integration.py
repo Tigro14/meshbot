@@ -135,6 +135,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
             self.application.add_handler(CommandHandler("clearcontext", self._clearcontext_command))
             self.application.add_handler(CommandHandler("top", self._top_command))
+            self.application.add_handler(CommandHandler("packets", self._packets_command))
             self.application.add_handler(CommandHandler("stats", self._stats_command))
             
             # Handler pour messages texte
@@ -1777,3 +1778,143 @@ class TelegramIntegration:
         
         response = await asyncio.to_thread(get_global_stats)
         await update.message.reply_text(response, parse_mode='Markdown')
+
+    async def _top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /top [heures] [nombre]
+        Version améliorée avec tous les types de paquets
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        # Parser les arguments
+        hours = 24  # Défaut pour Telegram
+        top_n = 10  # Top 10 par défaut
+        
+        args = context.args
+        if args and len(args) > 0:
+            try:
+                hours = int(args[0])
+                hours = max(1, min(168, hours))
+            except ValueError:
+                hours = 24
+        
+        if args and len(args) > 1:
+            try:
+                top_n = int(args[1])
+                top_n = max(3, min(20, top_n))
+            except ValueError:
+                top_n = 10
+        
+        info_print(f"📱 Telegram /top {hours}h top{top_n}: {user.username}")
+        
+        # Message d'attente
+        await update.message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
+        
+        def get_detailed_stats():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                # Rapport détaillé avec types de paquets
+                report = self.message_handler.traffic_monitor.get_top_talkers_report(
+                    hours, top_n, include_packet_types=True
+                )
+                
+                # Ajouter le résumé des types de paquets
+                packet_summary = self.message_handler.traffic_monitor.get_packet_type_summary(hours)
+                if packet_summary:
+                    report += "\n\n" + packet_summary
+                
+                return report
+                
+            except Exception as e:
+                error_print(f"Erreur get_detailed_stats: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        # Générer le rapport
+        response = await asyncio.to_thread(get_detailed_stats)
+        
+        # Si le message est trop long, le diviser
+        if len(response) > 4000:
+            sections = response.split('\n\n')
+            current_msg = ""
+            
+            for section in sections:
+                if len(current_msg) + len(section) + 2 < 4000:
+                    if current_msg:
+                        current_msg += "\n\n"
+                    current_msg += section
+                else:
+                    if current_msg:
+                        await update.message.reply_text(current_msg)
+                        await asyncio.sleep(0.5)
+                    current_msg = section
+            
+            if current_msg:
+                await update.message.reply_text(current_msg)
+        else:
+            await update.message.reply_text(response)
+    
+    async def _packets_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /packets [heures]
+        Affiche la distribution des types de paquets
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        hours = 1
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))
+            except ValueError:
+                hours = 1
+        
+        info_print(f"📱 Telegram /packets {hours}h: {user.username}")
+        
+        def get_packet_stats():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                tm = self.message_handler.traffic_monitor
+                
+                # Résumé détaillé des types
+                summary = tm.get_packet_type_summary(hours)
+                
+                # Ajouter les stats réseau
+                lines = [summary, "\n🌐 **Statistiques réseau:**"]
+                lines.append(f"• Paquets directs: {tm.network_stats['packets_direct']}")
+                lines.append(f"• Paquets relayés: {tm.network_stats['packets_relayed']}")
+                
+                if tm.network_stats['max_hops_seen'] > 0:
+                    lines.append(f"• Max hops vus: {tm.network_stats['max_hops_seen']}")
+                
+                if tm.network_stats['avg_rssi'] != 0:
+                    lines.append(f"• RSSI moyen: {tm.network_stats['avg_rssi']:.1f}dBm")
+                
+                if tm.network_stats['avg_snr'] != 0:
+                    lines.append(f"• SNR moyen: {tm.network_stats['avg_snr']:.1f}dB")
+                
+                # Total de données
+                total_kb = tm.global_packet_stats['total_bytes'] / 1024
+                lines.append(f"\n📊 **Volume total:**")
+                lines.append(f"• {tm.global_packet_stats['total_packets']} paquets")
+                lines.append(f"• {total_kb:.1f}KB de données")
+                
+                return "\n".join(lines)
+                
+            except Exception as e:
+                error_print(f"Erreur packet stats: {e}")
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        response = await asyncio.to_thread(get_packet_stats)
+        await update.message.reply_text(response, parse_mode='Markdown')        
