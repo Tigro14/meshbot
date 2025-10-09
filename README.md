@@ -10,6 +10,10 @@ Bot intelligent pour réseau Meshtastic avec intégration Llama et fonctionnalit
 - **Données ESPHome** : `/power` pour télémétrie solaire/batterie
 - **Administration** : Commandes cachées pour gestion à distance
 
+- genere une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
+
+- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, voir le fichier READMELLAMA.md
+
 ## Installation
 
 ### Prérequis
@@ -20,7 +24,7 @@ Bot intelligent pour réseau Meshtastic avec intégration Llama et fonctionnalit
 
 ### Configuration
 1. Cloner le repository
-2. Installer les dépendances : `pip install -r requirements.txt`
+2. Installer les dépendances : `pip install -r requirements.txt` #TODO
 3. Configurer `config.py` avec vos paramètres
 4. Lancer : `python main_script.py`
 
@@ -134,7 +138,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 
 ## Commandes disponibles
 
-### Commandes publiques
+### Commandes publiques MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
 - `/rx [page]` - Nœuds distants vus par tigrog2

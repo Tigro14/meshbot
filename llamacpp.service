@@ -1,0 +1,42 @@
+# /etc/systemd/system/llamacpp.service
+[Unit]
+Description=Llama.cpp Server - Qwen
+After=network.target
+
+[Service]
+Type=simple
+User=dietpi
+WorkingDirectory=/home/dietpi/llama.cpp/build/bin
+ExecStart=/home/dietpi/llama.cpp/build/bin/llama-server \
+    -m /home/dietpi/Qwen3-30B-A3B-Instruct-2507.i1-Q4_K_M.gguf \
+    --host 0.0.0.0 \
+    --temp 0.6 \
+    --top-p 0.95 \
+    --top-k 20 \
+    --min-p 0 \
+    --ctx-size 16384 \
+    --no-warmup \
+    --port 8080 \
+    --mlock \
+    --threads -1 \
+    --batch-size 512 \
+    --parallel 1 \
+    --timeout 300 \
+    --reasoning-format none
+
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+PIDFile=/var/run/llama-server.pid
+
+StandardOutput=journal
+StandardError=journal
+
+WorkingDirectory=/home/dietpi/llama.cpp
+User=dietpi
+Restart=always
+SyslogIdentifier=llama
+
+[Install]
+WantedBy=multi-user.target
+
