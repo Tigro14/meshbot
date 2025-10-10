@@ -161,8 +161,8 @@ class UtilityCommands:
                     portNumber=4403
                 )
                 
-                # ✅ CRITIQUE : Réduire à 1s
-                time.sleep(1)
+                # ✅ Attendre stabilisation
+                time.sleep(2)
                 
                 author_short = self.sender.get_short_name(sender_id)
                 echo_response = f"{author_short}: {echo_text}"
@@ -170,8 +170,8 @@ class UtilityCommands:
                 debug_print(f"Envoi broadcast: '{echo_response}'")
                 remote_interface.sendText(echo_response)
                 
-                # ✅ Réduire à 2s au lieu de 4s
-                time.sleep(2)
+                # ✅ Attendre envoi (1s suffit après l'envoi)
+                time.sleep(1)
                 
                 debug_print(f"✅ Echo diffusé via tigrog2: '{echo_response}'")
                 self.sender.log_conversation(sender_id, sender_info, message, echo_response)

@@ -155,12 +155,12 @@ class TelegramIntegration:
             await self.application.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True,
-                poll_interval=10.0,        # ✅ 10 secondes 
-                timeout=10,                # ✅ Timeout plus court
-                read_timeout=10,           # ✅ Timeout lecture
-                write_timeout=10,          # ✅ Timeout écriture
-                connect_timeout=10,        # ✅ Timeout connexion
-                pool_timeout=10            # ✅ Timeout pool
+                poll_interval=30.0,        # ✅ 30 secondes (économie CPU)
+                timeout=30,                # ✅ 30s pour le polling
+                read_timeout=60,           # ✅ 60s lecture (connexions lentes)
+                write_timeout=60,          # ✅ 60s écriture
+                connect_timeout=60,        # ✅ 60s connexion (critique!)
+                pool_timeout=60            # ✅ 60s pool
             )
             
             # ✅ Boucle d'attente OPTIMISÉE avec nettoyage des traces
