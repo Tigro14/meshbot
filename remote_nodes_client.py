@@ -183,6 +183,10 @@ class RemoteNodesClient:
             if remote_interface:
                 try:
                     debug_print(f"Fermeture connexion {remote_host}")
+                    remote_interface.close()
+                    del remote_interface
+                    import gc
+                    gc.collect()
                 except Exception as e:
                     debug_print(f"Erreur fermeture: {e}")
 
@@ -310,6 +314,10 @@ class RemoteNodesClient:
             if remote_interface:
                 try:
                     debug_print(f"Fermeture connexion {remote_host}")
+                    remote_interface.close()
+                    del remote_interface
+                    import gc
+                    gc.collect()
                 except Exception as e:
                     debug_print(f"Erreur fermeture: {e}")
 
