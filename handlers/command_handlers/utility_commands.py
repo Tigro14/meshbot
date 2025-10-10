@@ -257,7 +257,6 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         /power - Télémétrie complète
         → Batterie, solaire, température, pression, humidité
-        /graphs - Graphiques historiques
         /sys - Informations système Pi5
         → CPU, RAM, load average, uptime
 
@@ -271,7 +270,7 @@ class UtilityCommands:
         /trafic [heures] - Historique messages publics
         → Par défaut : 8 dernières heures (max 24h)
         → Statistiques détaillées et top émetteurs
-        /trace <short_id> - Traceroute mesh vers node short_id 4 digits
+        /trace <node> - Traceroute mesh vers node (id; longname, short, ...)
         → Analyse le chemin des messages
         → Identifie les relays potentiels
 
