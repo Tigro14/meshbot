@@ -155,7 +155,7 @@ class TelegramIntegration:
             await self.application.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True,
-                poll_interval=5.0,        # ✅ 5 secondes au lieu de 2
+                poll_interval=10.0,        # ✅ 10 secondes 
                 timeout=10,                # ✅ Timeout plus court
                 read_timeout=10,           # ✅ Timeout lecture
                 write_timeout=10,          # ✅ Timeout écriture
@@ -469,13 +469,13 @@ class TelegramIntegration:
 
                 measurements = []
                 for i in range(10):
-                    cpu = process.cpu_percent(interval=1.0)
+                    cpu = process.cpu_percent(interval=0)
                     threads = len(process.threads())
                     mem = process.memory_info().rss / 1024 / 1024
                     measurements.append(f"[{i+1}/10] CPU: {cpu:.1f}% | Threads: {threads} | RAM: {mem:.0f}MB")
 
                 # Moyenne finale
-                cpu_avg = process.cpu_percent(interval=1.0)
+                cpu_avg = process.cpu_percent(interval=0)
 
                 report = "📊 Monitoring CPU (10s):\n\n"
                 report += "\n".join(measurements)
