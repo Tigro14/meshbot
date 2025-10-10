@@ -44,14 +44,14 @@ class RemoteNodesClient:
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
             
-            # Tenter une connexion TCP au nœud distant
+            # ✅ OPTIMISATION : Timeout court pour éviter blocage
             remote_interface = meshtastic.tcp_interface.TCPInterface(
                 hostname=remote_host, 
                 portNumber=remote_port
             )
             
-            # Attendre que les données se chargent
-            time.sleep(2)
+            # ✅ CRITIQUE : Réduire le temps d'attente (1s au lieu de 2s)
+            time.sleep(1)        
             
             # Récupérer les nœuds
             remote_nodes = remote_interface.nodes

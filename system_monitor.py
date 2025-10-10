@@ -214,7 +214,7 @@ class SystemMonitor:
                     portNumber=4403
                 )
                 
-                time.sleep(3)
+                time.sleep(1)
                 
                 if hasattr(remote_interface, 'localNode'):
                     local_node = remote_interface.localNode

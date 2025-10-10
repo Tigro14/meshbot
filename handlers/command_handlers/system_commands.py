@@ -224,12 +224,12 @@ class SystemCommands:
                 hostname=REMOTE_NODE_HOST,
                 portNumber=4403
             )
-            time.sleep(3)
+            time.sleep(2)
             
             remote_interface.sendText("/reboot")
             info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
             
-            time.sleep(2)
+            time.sleep(1)
             remote_interface.close()
             
             return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
@@ -237,52 +237,52 @@ class SystemCommands:
         except Exception as e:
             error_print(f"Erreur reboot {REMOTE_NODE_NAME}: {e}")
             return f"❌ Erreur: {str(e)[:50]}"
-
+    
     def handle_g2(self, sender_id, sender_info):
         """Gérer la commande /g2"""
         info_print(f"G2 Config: {sender_info}")
-        
+
         def get_g2_config():
+            remote_interface = None
             try:
                 debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
                 remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
+                    hostname=REMOTE_NODE_HOST,
                     portNumber=4403
                 )
-                
-                time.sleep(2)
-                
+
+                # ✅ CRITIQUE : Réduire à 1s au lieu de 2s
+                time.sleep(1)
+
                 config_info = []
-                
+
                 if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
                     local_node = remote_interface.localNode
-                    
+
                     if hasattr(local_node, 'shortName'):
                         config_info.append(f"📡 {local_node.shortName}")
-                    
+
                     if hasattr(local_node, 'nodeNum'):
                         config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
-                    
+
                     if hasattr(local_node, 'firmwareVersion'):
                         config_info.append(f"📦 FW: {local_node.firmwareVersion}")
-                
+
                 nodes_count = len(getattr(remote_interface, 'nodes', {}))
                 config_info.append(f"🗂️ Nœuds: {nodes_count}")
-                
+
                 try:
                     nodes = getattr(remote_interface, 'nodes', {})
                     direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
                     config_info.append(f"🎯 Direct: {direct_nodes}")
                 except:
                     pass
-                
-                remote_interface.close()
-                
+
                 response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
-                
+
                 self.sender.log_conversation(sender_id, sender_info, "/g2", response)
                 self.sender.send_chunks(response, sender_id, sender_info)
-                
+
             except Exception as e:
                 error_msg = f"⚠️ Erreur config: {str(e)[:50]}"
                 error_print(f"Erreur G2: {e}")
@@ -290,5 +290,16 @@ class SystemCommands:
                     self.sender.send_single(error_msg, sender_id, sender_info)
                 except:
                     pass
-        
+            finally:
+                # ✅ CRITIQUE : TOUJOURS fermer
+                if remote_interface:
+                    try:
+                        debug_print(f"🔒 Fermeture FORCÉE connexion {REMOTE_NODE_HOST}")
+                        remote_interface.close()
+                        del remote_interface
+                        import gc
+                        gc.collect()
+                    except Exception as close_error:
+                        debug_print(f"Erreur fermeture: {close_error}")
+
         threading.Thread(target=get_g2_config, daemon=True).start()

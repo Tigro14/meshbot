@@ -152,7 +152,7 @@ class UtilityCommands:
         
         info_print(f"Echo via tigrog2: {sender_info} -> '{echo_text}'")
         
-        def send_echo_via_tigrog2():
+    def send_echo_via_tigrog2():
             remote_interface = None
             try:
                 debug_print(f"Connexion TCP à tigrog2 pour echo...")
@@ -161,14 +161,17 @@ class UtilityCommands:
                     portNumber=4403
                 )
                 
-                time.sleep(3)
+                # ✅ CRITIQUE : Réduire à 1s
+                time.sleep(1)
                 
                 author_short = self.sender.get_short_name(sender_id)
                 echo_response = f"{author_short}: {echo_text}"
                 
                 debug_print(f"Envoi broadcast: '{echo_response}'")
                 remote_interface.sendText(echo_response)
-                time.sleep(4)
+                
+                # ✅ Réduire à 2s au lieu de 4s
+                time.sleep(2)
                 
                 debug_print(f"✅ Echo diffusé via tigrog2: '{echo_response}'")
                 self.sender.log_conversation(sender_id, sender_info, message, echo_response)
@@ -181,14 +184,17 @@ class UtilityCommands:
                 except:
                     pass
             finally:
+                # ✅ CRITIQUE : TOUJOURS fermer
                 if remote_interface:
                     try:
+                        debug_print(f"🔒 Fermeture FORCÉE connexion tigrog2")
                         remote_interface.close()
-                    except:
-                        pass
-        
-        threading.Thread(target=send_echo_via_tigrog2, daemon=True).start()
-    
+                        del remote_interface
+                        import gc
+                        gc.collect()
+                    except Exception as close_error:
+                        debug_print(f"Erreur fermeture: {close_error}")
+
     def handle_trafic(self, message, sender_id, sender_info):
         """Gérer la commande /trafic"""
         info_print(f"Trafic: {sender_info}")

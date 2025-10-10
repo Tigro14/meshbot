@@ -166,12 +166,14 @@ class NetworkCommands:
                     portNumber=4403
                 )
                 
-                time.sleep(3)
+                # ✅ CRITIQUE : Réduire à 1s
+                time.sleep(1)
                 
                 debug_print(f"Envoi broadcast: '{message[:50]}...'")
                 remote_interface.sendText(message)
                 
-                time.sleep(4)
+                # ✅ Réduire à 2s au lieu de 4s
+                time.sleep(2)
                 
                 debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
                 self.sender.log_conversation(sender_id, sender_info, command, message)
@@ -179,15 +181,19 @@ class NetworkCommands:
             except Exception as e:
                 error_print(f"Erreur broadcast {command} via tigrog2: {e}")
             finally:
+                # ✅ CRITIQUE : TOUJOURS fermer
                 if remote_interface:
                     try:
+                        debug_print(f"🔒 Fermeture FORCÉE connexion tigrog2")
                         remote_interface.close()
-                    except:
-                        pass
+                        del remote_interface
+                        import gc
+                        gc.collect()
+                    except Exception as close_error:
+                        debug_print(f"Erreur fermeture: {close_error}")
         
         threading.Thread(target=send_broadcast, daemon=True).start()
 
-    
     def handle_trace(self, message, sender_id, sender_info, packet):
         """
         Gérer la commande /trace - Traceroute mesh
