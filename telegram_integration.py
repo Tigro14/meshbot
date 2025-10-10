@@ -154,8 +154,7 @@ class TelegramIntegration:
             info_print("Bot Telegram en écoute (polling optimisé)...")
             
             await self.application.updater.start_polling(
-                poll_interval=60.0,        # 1 minute
-                #poll_interval=30.0,        # ✅ 30 secondes (économie CPU)
+                poll_interval=5.0,        # ✅ 10 secondes (économie CPU)
                 timeout=30,                # 30s polling
                 read_timeout=120,          # 2 minutes
                 write_timeout=120,         # 2 minutes
