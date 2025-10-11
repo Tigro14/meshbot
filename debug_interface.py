@@ -63,6 +63,8 @@ class DebugInterface:
             self._handle_tigrog2_test(command)
         elif command.startswith('nodes '):
             self._handle_nodes_command(command)
+        elif command == 'channels':
+            self._handle_channels_command()
         elif command == 'nodes':
             self.bot.node_manager.list_known_nodes()
         elif command == 'update':
@@ -219,6 +221,8 @@ class DebugInterface:
         print("  legend         - Légende des indicateurs")
         print("  help           - Cette aide")
         print("  tigrog2 [page] - Nœuds de tigrog2 (page 1-4)")
+        print("  channels       - Inspecter canaux tigrog2")  # ✅ NOUVEAU
+        print("  echotest <msg> - Tester echo sur tous canaux")  # ✅ NOUVEAU
         print("  config         - Voir config affichage")
         print("  config <opt> <true/false> - Changer config")
         print("  nodes          - Lister nœuds connus")
@@ -248,3 +252,78 @@ class DebugInterface:
             
         except Exception as e:
             info_print(f"Erreur profiling: {e}")        
+
+    def _handle_channels_command(self):
+        """Inspecter les canaux de tigrog2"""
+        try:
+            import meshtastic.tcp_interface
+            from config import REMOTE_NODE_HOST
+            
+            info_print(f"Connexion à tigrog2 pour inspecter les canaux...")
+            
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST,
+                portNumber=4403
+            )
+            
+            time.sleep(3)
+            
+            info_print("=" * 60)
+            info_print("📻 CONFIGURATION DES CANAUX TIGROG2")
+            info_print("=" * 60)
+            
+            # Récupérer les channels
+            if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                local_node = remote_interface.localNode
+                
+                # Node info
+                if hasattr(local_node, 'shortName'):
+                    info_print(f"Node: {local_node.shortName}")
+                if hasattr(local_node, 'nodeNum'):
+                    info_print(f"ID: !{local_node.nodeNum:08x}")
+                
+                info_print("")
+                
+                # Channels
+                if hasattr(local_node, 'channels'):
+                    channels = local_node.channels
+                    info_print(f"Nombre de canaux configurés: {len(channels)}")
+                    info_print("")
+                    
+                    for i, channel in enumerate(channels):
+                        if channel and hasattr(channel, 'settings'):
+                            settings = channel.settings
+                            
+                            info_print(f"CANAL {i}:")
+                            
+                            if hasattr(settings, 'name'):
+                                name = settings.name or "(sans nom)"
+                                info_print(f"  Nom: {name}")
+                            
+                            if hasattr(settings, 'psk'):
+                                psk_len = len(settings.psk) if settings.psk else 0
+                                info_print(f"  PSK: {'Oui' if psk_len > 0 else 'Non'} ({psk_len} bytes)")
+                            
+                            if hasattr(channel, 'role'):
+                                role = channel.role
+                                role_str = {0: 'DISABLED', 1: 'PRIMARY', 2: 'SECONDARY'}.get(role, f'UNKNOWN({role})')
+                                info_print(f"  Rôle: {role_str}")
+                            
+                            if hasattr(settings, 'module_settings'):
+                                info_print(f"  Module: {settings.module_settings}")
+                            
+                            info_print("")
+                else:
+                    info_print("⚠️ Impossible de récupérer les canaux")
+            else:
+                info_print("⚠️ localNode non disponible")
+            
+            info_print("=" * 60)
+            
+            remote_interface.close()
+            info_print("✅ Inspection terminée")
+            
+        except Exception as e:
+            error_print(f"Erreur inspection canaux: {e}")
+            import traceback
+            error_print(traceback.format_exc())
