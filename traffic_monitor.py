@@ -837,7 +837,7 @@ class TrafficMonitor:
             # Limiter à 5 derniers messages pour tenir dans 200 chars
             lines = [f"📨 {len(recent_messages)}msg ({hours}h):"]
             
-            for msg in recent_messages[-5:]:
+            for msg in recent_messages[-15:]:
                 msg_time = datetime.fromtimestamp(msg['timestamp'])
                 time_str = msg_time.strftime("%H:%M")
                 sender = truncate_text(msg['sender_name'], 8)
