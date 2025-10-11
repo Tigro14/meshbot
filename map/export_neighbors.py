@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script d'export des informations de voisinage Meshtastic
-Version corrigée avec gestion des neighborinfo et sérialisation JSON
+Version ultra-robuste avec sérialisation récursive complète
 """
 
 import json
@@ -9,127 +9,111 @@ import time
 import meshtastic.tcp_interface
 from datetime import datetime
 
-def serialize_node_data(node_id, node_info):
+def make_json_safe(obj, max_depth=10, current_depth=0):
     """
-    Convertir un nœud Meshtastic en dictionnaire sérialisable
+    Convertir récursivement n'importe quel objet en type JSON-safe
+    Gère tous les types Meshtastic, protobuf, etc.
     """
-    try:
-        node_data = {
-            'node_id': f"!{node_id:08x}" if isinstance(node_id, int) else str(node_id),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # Informations utilisateur
-        if hasattr(node_info, 'user'):
-            user = node_info.user
-            node_data['user'] = {
-                'longName': getattr(user, 'longName', ''),
-                'shortName': getattr(user, 'shortName', ''),
-                'macaddr': getattr(user, 'macaddr', '').hex() if hasattr(user, 'macaddr') else '',
-                'hwModel': getattr(user, 'hwModel', 0)
-            }
-        elif isinstance(node_info, dict) and 'user' in node_info:
-            user = node_info['user']
-            if isinstance(user, dict):
-                node_data['user'] = user
-            else:
-                node_data['user'] = {
-                    'longName': getattr(user, 'longName', ''),
-                    'shortName': getattr(user, 'shortName', ''),
-                }
-        
-        # Position
-        if hasattr(node_info, 'position'):
-            pos = node_info.position
-            node_data['position'] = {
-                'latitude': getattr(pos, 'latitude', 0) / 1e7 if hasattr(pos, 'latitude') else 0,
-                'longitude': getattr(pos, 'longitude', 0) / 1e7 if hasattr(pos, 'longitude') else 0,
-                'altitude': getattr(pos, 'altitude', 0)
-            }
-        elif isinstance(node_info, dict) and 'position' in node_info:
-            pos = node_info['position']
-            if isinstance(pos, dict):
-                node_data['position'] = pos
-        
-        # Métriques
-        node_data['metrics'] = {
-            'snr': getattr(node_info, 'snr', 0) if hasattr(node_info, 'snr') else node_info.get('snr', 0),
-            'rssi': getattr(node_info, 'rssi', 0) if hasattr(node_info, 'rssi') else node_info.get('rssi', 0),
-            'lastHeard': getattr(node_info, 'lastHeard', 0) if hasattr(node_info, 'lastHeard') else node_info.get('lastHeard', 0),
-            'hopsAway': getattr(node_info, 'hopsAway', 0) if hasattr(node_info, 'hopsAway') else node_info.get('hopsAway', 0)
-        }
-        
-        return node_data
-        
-    except Exception as e:
-        print(f"  ⚠ Erreur sérialisation nœud {node_id}: {e}")
+    # Protection contre récursion infinie
+    if current_depth > max_depth:
+        return str(obj)
+    
+    # Types déjà JSON-safe
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    
+    # Bytes -> hex string
+    if isinstance(obj, bytes):
+        return obj.hex()
+    
+    # Liste
+    if isinstance(obj, (list, tuple)):
+        return [make_json_safe(item, max_depth, current_depth + 1) for item in obj]
+    
+    # Dictionnaire
+    if isinstance(obj, dict):
         return {
-            'node_id': str(node_id),
-            'error': str(e)
+            str(k): make_json_safe(v, max_depth, current_depth + 1) 
+            for k, v in obj.items()
         }
+    
+    # Objets protobuf ou Meshtastic
+    # Essayer d'extraire les attributs
+    try:
+        # Si l'objet a une méthode __dict__, l'utiliser
+        if hasattr(obj, '__dict__'):
+            obj_dict = {}
+            for key, value in obj.__dict__.items():
+                if not key.startswith('_'):  # Ignorer les attributs privés
+                    obj_dict[key] = make_json_safe(value, max_depth, current_depth + 1)
+            return obj_dict
+        
+        # Sinon, essayer dir() pour lister les attributs
+        obj_dict = {}
+        for attr_name in dir(obj):
+            if not attr_name.startswith('_') and not callable(getattr(obj, attr_name, None)):
+                try:
+                    value = getattr(obj, attr_name)
+                    obj_dict[attr_name] = make_json_safe(value, max_depth, current_depth + 1)
+                except:
+                    continue
+        
+        if obj_dict:
+            return obj_dict
+        
+        # En dernier recours, convertir en string
+        return str(obj)
+        
+    except:
+        return str(obj)
 
 def extract_neighbors(node_info):
     """
     Extraire les informations de voisinage d'un nœud
-    Gère plusieurs formats possibles
     """
     neighbors = []
     
     try:
-        # Méthode 1 : neighborinfo (protobuf)
-        if hasattr(node_info, 'neighborinfo') and node_info.neighborinfo:
-            neighborinfo = node_info.neighborinfo
-            
-            # Les voisins sont dans neighborinfo.neighbors
-            if hasattr(neighborinfo, 'neighbors'):
-                for neighbor in neighborinfo.neighbors:
-                    neighbor_data = {
-                        'node_id': f"!{neighbor.node_id:08x}",
-                        'snr': neighbor.snr if hasattr(neighbor, 'snr') else 0
-                    }
-                    neighbors.append(neighbor_data)
-                    
-            print(f"  ✓ {len(neighbors)} voisins depuis neighborinfo.neighbors")
-            return neighbors
-        
-        # Méthode 2 : neighbors (dictionnaire)
-        if isinstance(node_info, dict) and 'neighborinfo' in node_info:
-            neighborinfo = node_info['neighborinfo']
-            
-            if isinstance(neighborinfo, dict) and 'neighbors' in neighborinfo:
-                for neighbor in neighborinfo['neighbors']:
-                    if isinstance(neighbor, dict):
-                        neighbors.append(neighbor)
-                    else:
-                        neighbor_data = {
-                            'node_id': f"!{neighbor.node_id:08x}",
-                            'snr': getattr(neighbor, 'snr', 0)
-                        }
-                        neighbors.append(neighbor_data)
-                        
-            print(f"  ✓ {len(neighbors)} voisins depuis dict neighborinfo")
-            return neighbors
-        
-        # Méthode 3 : Vérifier les attributs directs
-        for attr_name in ['neighbors', 'neighbour_info', 'neighborInfo']:
+        # Chercher dans tous les attributs possibles
+        for attr_name in ['neighborinfo', 'neighbour_info', 'neighborInfo', 'neighbors']:
             if hasattr(node_info, attr_name):
                 attr = getattr(node_info, attr_name)
-                if attr:
-                    print(f"  ℹ Attribut '{attr_name}' trouvé: {type(attr)}")
-                    # Tenter d'extraire les données
-                    if isinstance(attr, list):
-                        for item in attr:
-                            if hasattr(item, 'node_id'):
-                                neighbors.append({
-                                    'node_id': f"!{item.node_id:08x}",
-                                    'snr': getattr(item, 'snr', 0)
-                                })
+                
+                if attr is None:
+                    continue
+                
+                # Si c'est neighborinfo, chercher neighbors dedans
+                if attr_name in ['neighborinfo', 'neighbour_info', 'neighborInfo']:
+                    if hasattr(attr, 'neighbors'):
+                        neighbor_list = getattr(attr, 'neighbors')
+                        if neighbor_list:
+                            print(f"  ✓ Trouvé {len(neighbor_list)} voisins dans {attr_name}.neighbors")
+                            
+                            for neighbor in neighbor_list:
+                                # Convertir le voisin en dict JSON-safe
+                                neighbor_data = make_json_safe(neighbor)
+                                neighbors.append(neighbor_data)
+                            
+                            return neighbors
+                
+                # Si c'est directement neighbors
+                elif attr_name == 'neighbors' and attr:
+                    print(f"  ✓ Trouvé {len(attr)} voisins dans {attr_name}")
+                    for neighbor in attr:
+                        neighbor_data = make_json_safe(neighbor)
+                        neighbors.append(neighbor_data)
+                    return neighbors
         
-        if neighbors:
-            print(f"  ✓ {len(neighbors)} voisins depuis attributs directs")
-            return neighbors
+        # Si dict
+        if isinstance(node_info, dict):
+            for key in ['neighborinfo', 'neighbour_info', 'neighborInfo']:
+                if key in node_info and node_info[key]:
+                    neighborinfo = node_info[key]
+                    if isinstance(neighborinfo, dict) and 'neighbors' in neighborinfo:
+                        neighbors_list = neighborinfo['neighbors']
+                        print(f"  ✓ Trouvé {len(neighbors_list)} voisins dans dict[{key}]['neighbors']")
+                        return [make_json_safe(n) for n in neighbors_list]
         
-        # Aucun voisin trouvé
         print(f"  ⚠ Pas d'infos de voisinage détectées")
         return []
         
@@ -141,7 +125,7 @@ def extract_neighbors(node_info):
 
 def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
     """
-    Se connecter à un nœud et exporter toutes les données de voisinage
+    Se connecter à un nœud et exporter toutes les données
     """
     print(f"🔌 Connexion à {host}:{port}...")
     
@@ -151,11 +135,9 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
             portNumber=port
         )
         
-        # Attendre que les données se chargent
-        print("⏳ Chargement des données...")
-        time.sleep(5)
+        print("⏳ Chargement des données (10 secondes)...")
+        time.sleep(10)  # Attendre plus longtemps
         
-        # Récupérer tous les nœuds
         nodes = interface.nodes
         print(f"📊 {len(nodes)} nœuds trouvés\n")
         
@@ -180,27 +162,29 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
             
             print(f"Traitement de {node_id_clean}...")
             
-            # Sérialiser les données du nœud
-            node_data = serialize_node_data(node_id, node_info)
+            # Convertir TOUT le nœud en JSON-safe
+            node_data = make_json_safe(node_info)
             
-            # Extraire les voisins
+            # Ajouter timestamp
+            node_data['export_timestamp'] = datetime.now().isoformat()
+            
+            # Extraire et ajouter les voisins
             neighbors = extract_neighbors(node_info)
-            node_data['neighbors'] = neighbors
+            node_data['neighbors_extracted'] = neighbors
             node_data['neighbor_count'] = len(neighbors)
             
             output_data['nodes'][node_id_clean] = node_data
         
-        # Fermer l'interface
         interface.close()
         
-        # Statistiques finales
+        # Statistiques
         total_neighbors = sum(
-            len(node.get('neighbors', [])) 
+            len(node.get('neighbors_extracted', [])) 
             for node in output_data['nodes'].values()
         )
         nodes_with_neighbors = sum(
             1 for node in output_data['nodes'].values() 
-            if len(node.get('neighbors', [])) > 0
+            if len(node.get('neighbors_extracted', [])) > 0
         )
         
         output_data['statistics'] = {
@@ -209,7 +193,7 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
             'average_neighbors': total_neighbors / len(nodes) if nodes else 0
         }
         
-        # Écrire le fichier JSON
+        # Écrire le JSON
         print(f"\n💾 Écriture dans {output_file}...")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
@@ -218,7 +202,8 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
         print(f"📊 Statistiques:")
         print(f"   • Nœuds avec voisins: {nodes_with_neighbors}/{len(nodes)}")
         print(f"   • Total entrées voisins: {total_neighbors}")
-        print(f"   • Moyenne voisins/nœud: {total_neighbors / len(nodes):.1f}")
+        if nodes:
+            print(f"   • Moyenne voisins/nœud: {total_neighbors / len(nodes):.1f}")
         
         return True
         
@@ -230,7 +215,7 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
 
 def debug_node_structure(host, port=4403):
     """
-    Mode debug : afficher la structure d'un nœud pour diagnostic
+    Mode debug : afficher la structure détaillée d'un nœud
     """
     print(f"🔍 MODE DEBUG - Analyse structure nœud sur {host}:{port}\n")
     
@@ -240,39 +225,86 @@ def debug_node_structure(host, port=4403):
             portNumber=port
         )
         
-        time.sleep(5)
-        nodes = interface.nodes
+        print("⏳ Chargement des données (10 secondes)...")
+        time.sleep(10)
         
-        # Prendre le premier nœud
+        nodes = interface.nodes
+        print(f"📊 {len(nodes)} nœuds trouvés\n")
+        
         if not nodes:
             print("❌ Aucun nœud trouvé")
+            interface.close()
             return
         
+        # Prendre le premier nœud avec le plus d'infos
         node_id, node_info = next(iter(nodes.items()))
         
-        print(f"📋 Structure du nœud {node_id}:")
-        print(f"   Type: {type(node_info)}")
-        print(f"   Attributs: {dir(node_info)}")
+        print(f"{'='*60}")
+        print(f"📋 ANALYSE DU NŒUD {node_id}")
+        print(f"{'='*60}\n")
         
-        # Vérifier neighborinfo
-        if hasattr(node_info, 'neighborinfo'):
-            print(f"\n✓ node_info.neighborinfo existe")
-            neighborinfo = node_info.neighborinfo
-            print(f"   Type: {type(neighborinfo)}")
-            print(f"   Attributs: {dir(neighborinfo)}")
-            
-            if hasattr(neighborinfo, 'neighbors'):
-                print(f"\n✓ neighborinfo.neighbors existe")
-                print(f"   Type: {type(neighborinfo.neighbors)}")
-                print(f"   Contenu: {neighborinfo.neighbors}")
-        else:
-            print(f"\n✗ node_info.neighborinfo n'existe pas")
+        print(f"Type: {type(node_info)}")
+        print(f"\n📦 Attributs disponibles:")
         
-        # Afficher toutes les clés si c'est un dict
+        for attr_name in sorted(dir(node_info)):
+            if not attr_name.startswith('_'):
+                try:
+                    value = getattr(node_info, attr_name)
+                    if not callable(value):
+                        print(f"   • {attr_name}: {type(value).__name__}")
+                        
+                        # Si c'est un objet intéressant, afficher plus de détails
+                        if attr_name in ['neighborinfo', 'neighbour_info', 'neighbors']:
+                            print(f"     └─ Contenu: {value}")
+                            if hasattr(value, '__dict__'):
+                                print(f"     └─ Sous-attributs: {dir(value)}")
+                except Exception as e:
+                    print(f"   • {attr_name}: [Erreur: {e}]")
+        
+        # Si c'est un dict
         if isinstance(node_info, dict):
             print(f"\n📦 Clés du dictionnaire:")
-            for key in node_info.keys():
-                print(f"   • {key}: {type(node_info[key])}")
+            for key in sorted(node_info.keys()):
+                print(f"   • {key}: {type(node_info[key]).__name__}")
+        
+        # Vérification spécifique neighborinfo
+        print(f"\n{'='*60}")
+        print(f"🔍 RECHERCHE SPÉCIFIQUE NEIGHBORINFO")
+        print(f"{'='*60}\n")
+        
+        found_neighborinfo = False
+        
+        # Méthode 1
+        if hasattr(node_info, 'neighborinfo'):
+            neighborinfo = node_info.neighborinfo
+            print(f"✓ node_info.neighborinfo existe")
+            print(f"  Type: {type(neighborinfo)}")
+            print(f"  Valeur: {neighborinfo}")
+            
+            if hasattr(neighborinfo, 'neighbors'):
+                neighbors = neighborinfo.neighbors
+                print(f"  └─ .neighbors existe")
+                print(f"     Type: {type(neighbors)}")
+                print(f"     Longueur: {len(neighbors) if hasattr(neighbors, '__len__') else 'N/A'}")
+                print(f"     Contenu: {neighbors}")
+                found_neighborinfo = True
+        else:
+            print(f"✗ node_info.neighborinfo n'existe pas")
+        
+        # Méthode 2
+        if isinstance(node_info, dict) and 'neighborinfo' in node_info:
+            print(f"\n✓ node_info['neighborinfo'] existe (dict)")
+            neighborinfo = node_info['neighborinfo']
+            print(f"  Type: {type(neighborinfo)}")
+            print(f"  Contenu: {neighborinfo}")
+            found_neighborinfo = True
+        
+        if not found_neighborinfo:
+            print(f"\n⚠️  AUCUNE INFO DE VOISINAGE TROUVÉE")
+            print(f"\nCela signifie probablement que:")
+            print(f"  1. Le module neighbor_info n'est pas activé sur les nœuds")
+            print(f"  2. Les nœuds n'ont pas encore envoyé d'infos de voisinage")
+            print(f"  3. Le temps d'attente est insuffisant (essayer 30s+)")
         
         interface.close()
         
@@ -285,7 +317,7 @@ if __name__ == "__main__":
     import sys
     
     # Configuration
-    HOST = "192.168.1.38"  # Adresse de tigrog2
+    HOST = "192.168.1.38"  # tigrog2
     PORT = 4403
     OUTPUT_FILE = "mesh_neighbors.json"
     

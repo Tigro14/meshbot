@@ -24,7 +24,7 @@ class AICommands:
             end_time = time.time()
             
             self.sender.log_conversation(sender_id, sender_info, prompt, response, end_time - start_time)
-            self.sender.send_single(response, sender_id, sender_info)
+            self.sender.send_chunks(response, sender_id, sender_info)
             
             # Nettoyage après traitement
             self.llama_client.cleanup_cache()
