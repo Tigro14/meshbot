@@ -71,6 +71,8 @@ class DebugInterface:
             self.bot.node_manager.update_node_database(self.bot.interface)
         elif command == 'save':
             self.bot.node_manager.save_node_names(force=True)
+        elif command.startswith('send '):
+            self._handle_direct_send(command)
         elif command == 'reload':
             self.bot.node_manager.load_node_names()
         elif command == 'mem':
@@ -223,6 +225,7 @@ class DebugInterface:
         print("  tigrog2 [page] - Nœuds de tigrog2 (page 1-4)")
         print("  channels       - Inspecter canaux tigrog2")  # ✅ NOUVEAU
         print("  echotest <msg> - Tester echo sur tous canaux")  # ✅ NOUVEAU
+        print("  send <msg>     - send direct message")  # ✅ NOUVEAU
         print("  config         - Voir config affichage")
         print("  config <opt> <true/false> - Changer config")
         print("  nodes          - Lister nœuds connus")
@@ -325,5 +328,37 @@ class DebugInterface:
             
         except Exception as e:
             error_print(f"Erreur inspection canaux: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+
+
+
+    def _handle_direct_send(self, command):
+        """Envoyer un message direct via tigrog2 (debug)"""
+        try:
+            parts = command.split(' ', 1)
+            if len(parts) < 2:
+                info_print("Usage: send <message>")
+                return
+
+            message = parts[1]
+
+            import meshtastic.tcp_interface
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST,
+                portNumber=4403
+            )
+
+            time.sleep(3)
+
+            info_print(f"Envoi direct: '{message}'")
+            remote_interface.sendText(message)
+            info_print("✅ Message envoyé")
+
+            time.sleep(5)
+            remote_interface.close()
+
+        except Exception as e:
+            error_print(f"Erreur: {e}")
             import traceback
             error_print(traceback.format_exc())

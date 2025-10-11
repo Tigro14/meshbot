@@ -153,70 +153,113 @@ class UtilityCommands:
         info_print(f"Echo via tigrog2: {sender_info} -> '{echo_text}'")
         
     def send_echo_via_tigrog2():
-            remote_interface = None
+        remote_interface = None
+        try:
+            info_print("=" * 60)
+            info_print("🔊 DÉBUT ENVOI ECHO VIA TIGROG2")
+            info_print("=" * 60)
+            
+            info_print(f"Connexion TCP à {REMOTE_NODE_HOST}:4403...")
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST, 
+                portNumber=4403
+            )
+            
+            info_print("✅ Connexion établie")
+            time.sleep(3)
+            info_print("✅ Attente 3s terminée")
+            
+            author_short = self.sender.get_short_name(sender_id)
+            echo_response = f"{author_short}: {echo_text}"
+            
+            info_print(f"📝 Message à envoyer: '{echo_response}'")
+            info_print(f"   Longueur: {len(echo_response)} caractères")
+            
+            # Vérifier que l'interface est prête
+            if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                node_info = remote_interface.localNode
+                if hasattr(node_info, 'shortName'):
+                    info_print(f"✅ Node connecté: {node_info.shortName}")
+                if hasattr(node_info, 'nodeNum'):
+                    info_print(f"✅ Node ID: !{node_info.nodeNum:08x}")
+            else:
+                error_print("⚠️ localNode non disponible")
+            
+            info_print("")
+            info_print("📤 TENTATIVE D'ENVOI...")
+            info_print(f"   Méthode: sendText()")
+            info_print(f"   Destination: '^all' (broadcast)")
+            info_print(f"   Canal: 0 (PRIMARY)")
+            info_print(f"   Message: '{echo_response}'")
+            
             try:
-                debug_print(f"Connexion TCP à tigrog2 pour echo...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
+                # Envoi avec tous les paramètres explicites
+                remote_interface.sendText(
+                    text=echo_response,
+                    destinationId='^all',
+                    channelIndex=0,
+                    wantAck=False,  # Pas d'accusé de réception pour broadcast
+                    wantResponse=False
                 )
+                info_print("✅ sendText() exécuté sans erreur")
                 
-                # ✅ Attendre stabilisation
-                time.sleep(2)
+            except TypeError as te:
+                # Peut-être que certains paramètres ne sont pas supportés
+                error_print(f"⚠️ TypeError avec paramètres complets: {te}")
+                info_print("Tentative avec paramètres minimaux...")
                 
-                author_short = self.sender.get_short_name(sender_id)
-                echo_response = f"{author_short}: {echo_text}"
-                
-                debug_print(f"Envoi broadcast: '{echo_response}'")
-                # ✅ FIX : Forcer le broadcast explicitement
-                # Méthode 1 : destinationId vide ou '^all'
                 try:
                     remote_interface.sendText(
                         echo_response,
-                        destinationId='^all',  # Broadcast explicite
-                        channelIndex=0  # ✅ Canal primaire explicite
+                        destinationId='^all',
+                        channelIndex=0
                     )
-                    info_print("✅ Echo envoyé en broadcast via destinationId='^all sur le canal 0'")
-                except Exception as e1:
-                    debug_print(f"Échec méthode 1 ('^all'): {e1}")
-                    # Méthode 2 : Broadcast ID numérique
-                    try:
-                        remote_interface.sendText(
-                            echo_response,
-                            destinationId=0xFFFFFFFF  # Broadcast explicite
-                        )
-                        info_print("✅ Echo envoyé en broadcast via destinationId=0xFFFFFFFF")
-                    except Exception as e2:
-                        debug_print(f"Échec méthode 2 (0xFFFFFFFF): {e2}")
-                        # Méthode 3 : Sans destinationId (comportement par défaut)
-                        remote_interface.sendText(echo_response)
-                    info_print("✅ Echo envoyé via sendText() par défaut")
-
-                
-                # ✅ Attendre envoi (1s suffit après l'envoi)
-                time.sleep(1)
-                
-                debug_print(f"✅ Echo diffusé via tigrog2: '{echo_response}'")
-                self.sender.log_conversation(sender_id, sender_info, message, echo_response)
-                
+                    info_print("✅ sendText() avec paramètres minimaux réussi")
+                    
+                except Exception as e2:
+                    error_print(f"❌ Échec paramètres minimaux: {e2}")
+                    raise
+                    
             except Exception as e:
-                error_print(f"Erreur echo via tigrog2: {e}")
+                error_print(f"❌ Erreur sendText(): {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                raise
+            
+            info_print("")
+            info_print("⏳ Attente 4s pour transmission...")
+            time.sleep(4)
+            info_print("✅ Attente terminée")
+            
+            info_print("")
+            info_print("=" * 60)
+            info_print("✅ PROCESSUS ECHO TERMINÉ")
+            info_print("=" * 60)
+            
+            self.sender.log_conversation(sender_id, sender_info, message, echo_response)
+            
+        except Exception as e:
+            error_print("=" * 60)
+            error_print("❌ ERREUR DANS SEND_ECHO_VIA_TIGROG2")
+            error_print("=" * 60)
+            error_print(f"Erreur: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            error_print("=" * 60)
+            
+            try:
+                error_response = f"Erreur echo: {str(e)[:30]}"
+                self.sender.send_single(error_response, sender_id, sender_info)
+            except:
+                pass
+        finally:
+            if remote_interface:
                 try:
-                    error_response = f"Erreur echo tigrog2: {str(e)[:30]}"
-                    self.sender.send_single(error_response, sender_id, sender_info)
-                except:
-                    pass
-            finally:
-                # ✅ CRITIQUE : TOUJOURS fermer
-                if remote_interface:
-                    try:
-                        debug_print(f"🔒 Fermeture FORCÉE connexion tigrog2")
-                        remote_interface.close()
-                        del remote_interface
-                        import gc
-                        gc.collect()
-                    except Exception as close_error:
-                        debug_print(f"Erreur fermeture: {close_error}")
+                    info_print("🔌 Fermeture connexion tigrog2...")
+                    remote_interface.close()
+                    info_print("✅ Connexion fermée")
+                except Exception as e:
+                    error_print(f"Erreur fermeture: {e}")
 
     def handle_trafic(self, message, sender_id, sender_info):
         """Gérer la commande /trafic"""
