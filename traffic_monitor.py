@@ -726,95 +726,130 @@ class TrafficMonitor:
             # ✅ FIX : Initialiser à None si pas de données
             self.global_stats['busiest_hour'] = None
             self.global_stats['quietest_hour'] = None
-
     def get_traffic_report(self, hours=8):
         """
-        Générer un rapport de trafic complet pour une période donnée
-        Combine messages publics + top talkers
+        Afficher l'historique complet des messages publics (VERSION TELEGRAM)
         
         Args:
-            hours: Période à analyser (défaut: 8h)
+            hours: Période à afficher (défaut: 8h)
         
         Returns:
-            str: Rapport formaté
+            str: Liste complète des messages publics formatée
         """
         try:
             current_time = time.time()
             cutoff_time = current_time - (hours * 3600)
             
-            # Compter les messages de la période
+            # Filtrer les messages de la période
             recent_messages = [
                 msg for msg in self.public_messages
                 if msg['timestamp'] >= cutoff_time
             ]
             
             if not recent_messages:
-                return f"📊 Aucune activité publique dans les {hours}h"
+                return f"📭 Aucun message public dans les {hours}h"
             
-            # Statistiques de base
+            # Trier par timestamp (chronologique)
+            recent_messages.sort(key=lambda x: x['timestamp'])
+            
+            # Construire le rapport complet
             lines = []
-            lines.append(f"📊 TRAFIC PUBLIC ({hours}h)")
-            lines.append(f"{'='*30}")
-            lines.append(f"Messages: {len(recent_messages)}")
-            
-            # Nœuds actifs
-            unique_nodes = set(msg['from_id'] for msg in recent_messages)
-            lines.append(f"Nœuds actifs: {len(unique_nodes)}")
-            
-            # Moyenne messages/heure
-            avg_per_hour = len(recent_messages) / hours
-            lines.append(f"Moy: {avg_per_hour:.1f} msg/h")
-            
+            lines.append(f"📨 **MESSAGES PUBLICS ({hours}h)**")
+            lines.append(f"{'='*40}")
+            lines.append(f"Total: {len(recent_messages)} messages")
             lines.append("")
             
-            # Top 5 talkers de la période
-            talker_counts = defaultdict(lambda: {'count': 0, 'name': ''})
+            # Afficher tous les messages (Telegram peut gérer de longs messages)
             for msg in recent_messages:
-                from_id = msg['from_id']
-                talker_counts[from_id]['count'] += 1
-                talker_counts[from_id]['name'] = msg['sender_name']
+                # Formater le timestamp
+                msg_time = datetime.fromtimestamp(msg['timestamp'])
+                time_str = msg_time.strftime("%H:%M:%S")
+                
+                # Nom de l'expéditeur
+                sender = msg['sender_name']
+                
+                # Message complet
+                content = msg['message']
+                
+                # Format: [HH:MM:SS] Sender:
+                #           message
+                lines.append(f"[{time_str}] **{sender}:**")
+                lines.append(f"  {content}")
+                lines.append("")
             
-            # Trier par nombre de messages
-            sorted_talkers = sorted(
-                talker_counts.items(),
-                key=lambda x: x[1]['count'],
-                reverse=True
-            )[:5]
+            result = "\n".join(lines)
             
-            if sorted_talkers:
-                lines.append("🏆 TOP 5:")
-                for i, (node_id, data) in enumerate(sorted_talkers, 1):
-                    name_short = truncate_text(data['name'], 10)
-                    count = data['count']
-                    percentage = (count / len(recent_messages) * 100)
+            # Si vraiment trop long pour Telegram (>4000 chars), limiter
+            if len(result) > 3800:
+                lines = []
+                lines.append(f"📨 **DERNIERS 20 MESSAGES ({hours}h)**")
+                lines.append(f"{'='*40}")
+                lines.append(f"(Total: {len(recent_messages)} messages - affichage limité)")
+                lines.append("")
+                
+                # Prendre les 20 plus récents
+                for msg in recent_messages[-20:]:
+                    msg_time = datetime.fromtimestamp(msg['timestamp'])
+                    time_str = msg_time.strftime("%H:%M:%S")
+                    sender = msg['sender_name']
+                    content = msg['message']
                     
-                    # Emoji selon le rang
-                    if i == 1:
-                        emoji = "🥇"
-                    elif i == 2:
-                        emoji = "🥈"
-                    elif i == 3:
-                        emoji = "🥉"
-                    else:
-                        emoji = f"{i}."
-                    
-                    lines.append(f"{emoji} {name_short}: {count} ({percentage:.0f}%)")
+                    lines.append(f"[{time_str}] **{sender}:**")
+                    lines.append(f"  {content}")
+                    lines.append("")
+                
+                result = "\n".join(lines)
             
-            # Heure de pointe
-            lines.append("")
-            hourly_distribution = defaultdict(int)
-            for msg in recent_messages:
-                hour = datetime.fromtimestamp(msg['timestamp']).hour
-                hourly_distribution[hour] += 1
+            return result
             
-            if hourly_distribution:
-                peak = max(hourly_distribution.items(), key=lambda x: x[1])
-                lines.append(f"⏰ Pointe: {peak[0]:02d}h00 ({peak[1]} msgs)")
+        except Exception as e:
+            error_print(f"Erreur génération historique complet: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+
+    def get_traffic_report_compact(self, hours=8):
+        """
+        Afficher l'historique compact des messages publics (VERSION MESHTASTIC)
+        
+        Args:
+            hours: Période à afficher (défaut: 8h)
+        
+        Returns:
+            str: Liste compacte des messages publics (max ~180 chars)
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            # Filtrer les messages de la période
+            recent_messages = [
+                msg for msg in self.public_messages
+                if msg['timestamp'] >= cutoff_time
+            ]
+            
+            if not recent_messages:
+                return f"📭 Silence ({hours}h)"
+            
+            # Trier par timestamp (chronologique)
+            recent_messages.sort(key=lambda x: x['timestamp'])
+            
+            # Limiter à 5 derniers messages pour tenir dans 200 chars
+            lines = [f"📨 {len(recent_messages)}msg ({hours}h):"]
+            
+            for msg in recent_messages[-5:]:
+                msg_time = datetime.fromtimestamp(msg['timestamp'])
+                time_str = msg_time.strftime("%H:%M")
+                sender = truncate_text(msg['sender_name'], 8)
+                content = truncate_text(msg['message'], 25)
+                
+                lines.append(f"{time_str} {sender}: {content}")
+            
+            if len(recent_messages) > 5:
+                lines.append(f"(+{len(recent_messages)-5} plus)")
             
             return "\n".join(lines)
             
         except Exception as e:
-            error_print(f"Erreur génération rapport trafic: {e}")
-            import traceback
-            error_print(traceback.format_exc())
-            return f"❌ Erreur: {str(e)[:50]}"
+            error_print(f"Erreur génération historique compact: {e}")
+            return f"Erreur: {str(e)[:30]}"

@@ -214,7 +214,8 @@ class UtilityCommands:
             return
         
         try:
-            report = self.traffic_monitor.get_traffic_report(hours)
+            #report = self.traffic_monitor.get_traffic_report(hours)
+            report = self.traffic_monitor.get_traffic_report_compact(hours)
             self.sender.log_conversation(sender_id, sender_info, 
                                         f"/trafic {hours}" if hours != 8 else "/trafic", 
                                         report)
