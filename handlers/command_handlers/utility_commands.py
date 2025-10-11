@@ -168,7 +168,30 @@ class UtilityCommands:
                 echo_response = f"{author_short}: {echo_text}"
                 
                 debug_print(f"Envoi broadcast: '{echo_response}'")
-                remote_interface.sendText(echo_response)
+                # ✅ FIX : Forcer le broadcast explicitement
+                # Méthode 1 : destinationId vide ou '^all'
+                try:
+                    remote_interface.sendText(
+                        echo_response,
+                        destinationId='^all',  # Broadcast explicite
+                        channelIndex=0  # ✅ Canal primaire explicite
+                    )
+                    info_print("✅ Echo envoyé en broadcast via destinationId='^all sur le canal 0'")
+                except Exception as e1:
+                    debug_print(f"Échec méthode 1 ('^all'): {e1}")
+                    # Méthode 2 : Broadcast ID numérique
+                    try:
+                        remote_interface.sendText(
+                            echo_response,
+                            destinationId=0xFFFFFFFF  # Broadcast explicite
+                        )
+                        info_print("✅ Echo envoyé en broadcast via destinationId=0xFFFFFFFF")
+                    except Exception as e2:
+                        debug_print(f"Échec méthode 2 (0xFFFFFFFF): {e2}")
+                        # Méthode 3 : Sans destinationId (comportement par défaut)
+                        remote_interface.sendText(echo_response)
+                    info_print("✅ Echo envoyé via sendText() par défaut")
+
                 
                 # ✅ Attendre envoi (1s suffit après l'envoi)
                 time.sleep(1)
