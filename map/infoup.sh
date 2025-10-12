@@ -3,7 +3,7 @@
 
 # Chemin vers le fichier info.json
 JSON_FILE="/home/dietpi/bot/map/info.json"
-JSON_LINKS_FILE="/home/dietpi/bot/map/info_neighbours.json"
+JSON_LINKS_FILE="/home/dietpi/bot/map/info_neighbors.json"
 
 cd /home/dietpi/bot/map
 
