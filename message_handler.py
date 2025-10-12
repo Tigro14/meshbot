@@ -14,7 +14,8 @@ class MessageHandler:
     """
     
     def __init__(self, llama_client, esphome_client, remote_nodes_client, 
-                 node_manager, context_manager, interface, traffic_monitor=None):
+                 node_manager, context_manager, interface, traffic_monitor=None,
+                 bot_start_time=None):
         
         # Créer le router qui gère tout
         self.router = MessageRouter(
