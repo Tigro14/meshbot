@@ -131,7 +131,7 @@ class SystemChecks:
                 
                 if battery_voltage < LLAMA_MIN_BATTERY_VOLTAGE:
                     reason = (
-                        f"🔋 Batterie faible: {battery_voltage:.1f}V\n"
+                        f"🔋 Batterie solaire faible: {battery_voltage:.1f}V\n"
                         f"Seuil: {LLAMA_MIN_BATTERY_VOLTAGE}V\n"
                         f"Requêtes IA désactivées temporairement"
                     )
@@ -167,7 +167,7 @@ class SystemChecks:
         
         if battery_voltage is not None:
             volt_icon = "🟢" if battery_voltage >= LLAMA_MIN_BATTERY_VOLTAGE else "🔴"
-            lines.append(f"  {volt_icon} Batterie: {battery_voltage:.1f}V (min: {LLAMA_MIN_BATTERY_VOLTAGE}V)")
+            lines.append(f"  {volt_icon} Batterie solaire: {battery_voltage:.1f}V (min: {LLAMA_MIN_BATTERY_VOLTAGE}V)")
         else:
             lines.append("  ⚠️ Batterie: Non disponible")
         
