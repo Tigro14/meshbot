@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Client pour l'API Llama avec configurations différenciées et debug agressif
+Client pour l'API Llama avec configurations différenciées et protections système
+VERSION AVEC VÉRIFICATIONS TEMPÉRATURE CPU ET BATTERIE
 """
 
 import time
 import gc
 from config import *
 from utils import *
+from system_checks import SystemChecks
 
 class LlamaClient:
     def __init__(self, context_manager):
@@ -72,7 +74,7 @@ class LlamaClient:
         return self.query_llama(prompt, node_id, "mesh")
     
     def query_llama_telegram(self, prompt, node_id=None):
-        """Requête optimisée pour Telegram (réponses étendues) avec debug agressif"""
+        """Requête optimisée pour Telegram (réponses étendues)"""
         info_print("=== DEBUT query_llama_telegram ===")
         
         try:
@@ -89,8 +91,28 @@ class LlamaClient:
         """
         Requête au serveur llama avec contexte conversationnel
         source_type: "mesh" ou "telegram" pour adapter les paramètres
-        VERSION DEBUG AGGRESSIVE
+        
+        ⚡ VERSION AVEC PROTECTION TEMPÉRATURE CPU ET BATTERIE ⚡
         """
+        info_print(f"STEP 0: Vérification conditions système...")
+        
+        # === NOUVELLE VÉRIFICATION: CONDITIONS SYSTÈME ===
+        try:
+            allowed, block_reason = SystemChecks.check_llm_conditions()
+            
+            if not allowed:
+                info_print(f"🚫 LLM BLOQUÉ: {block_reason}")
+                # Retourner le message d'erreur à l'utilisateur
+                return block_reason
+            
+            info_print("✅ Conditions système OK, poursuite requête LLM")
+            
+        except Exception as check_error:
+            # Si la vérification échoue, on log mais on continue (fail-open)
+            error_print(f"⚠️ Erreur vérification système: {check_error}")
+            info_print("⚠️ Vérification système échouée, autorisation par défaut")
+        
+        # === SUITE DU CODE NORMAL ===
         info_print(f"STEP 1: Début query_llama source_type={source_type}")
         
         try:
