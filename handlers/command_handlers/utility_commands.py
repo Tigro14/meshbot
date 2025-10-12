@@ -137,112 +137,132 @@ class UtilityCommands:
 
     def handle_echo(self, message, sender_id, sender_info, packet):
         """Gérer la commande /echo - tigrog2 diffuse dans le mesh"""
+        
+        info_print("=" * 60)
+        info_print("🔊 HANDLE_ECHO APPELÉ")
+        info_print("=" * 60)
+        info_print(f"Message brut: '{message}'")
+        info_print(f"Sender ID: 0x{sender_id:08x}")
+        info_print(f"Sender info: {sender_info}")
+        
         # Anti-doublon
         message_id = f"{sender_id}_{message}_{int(time.time())}"
-        if hasattr(self.sender, '_last_echo_id') and self.sender._last_echo_id == message_id:
-            debug_print("⚠️ Echo déjà traité, ignoré")
-            return
+        info_print(f"Message ID: {message_id}")
+        
+        if hasattr(self.sender, '_last_echo_id'):
+            info_print(f"Last echo ID: {self.sender._last_echo_id}")
+            if self.sender._last_echo_id == message_id:
+                info_print("⚠️ Echo déjà traité, ignoré")
+                return
+        
         self.sender._last_echo_id = message_id
+        info_print("✅ Anti-doublon OK")
         
         echo_text = message[6:].strip()
+        info_print(f"Texte extrait: '{echo_text}'")
+        info_print(f"Longueur: {len(echo_text)} caractères")
         
         if not echo_text:
+            info_print("❌ Texte vide")
             self.sender.send_single("Usage: /echo <texte>", sender_id, sender_info)
             return
         
-        info_print(f"Echo via tigrog2: {sender_info} -> '{echo_text}'")
+        info_print(f"✅ Texte valide: '{echo_text}'")
+        info_print("🚀 Lancement thread d'envoi...")
         
-    def send_echo_via_tigrog2():
-        remote_interface = None
-        try:
-            info_print("=" * 60)
-            info_print("🔊 DÉBUT ENVOI ECHO VIA TIGROG2")
-            info_print("=" * 60)
-            
-            info_print(f"Connexion TCP à {REMOTE_NODE_HOST}:4403...")
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=REMOTE_NODE_HOST, 
-                portNumber=4403
-            )
-            
-            info_print("✅ Connexion établie")
+        def send_echo_via_tigrog2():
+            remote_interface = None
+            try:
+                info_print("")
+                info_print("=" * 60)
+                info_print("🔊 THREAD ECHO DÉMARRÉ")
+                info_print("=" * 60)
+                
+                info_print(f"Connexion TCP à {REMOTE_NODE_HOST}:4403...")
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
+                
+                info_print("✅ Connexion établie")
+                info_print("⏳ Attente stabilisation (5s)...")
             time.sleep(5)
-            info_print("✅ Attente 5s terminée")
+            info_print("✅ Stabilisation OK")
             
             author_short = self.sender.get_short_name(sender_id)
             echo_response = f"{author_short}: {echo_text}"
             
-            info_print(f"📝 Message à envoyer: '{echo_response}'")
-            info_print(f"   Longueur: {len(echo_response)} caractères")
+            info_print(f"📝 Message final: '{echo_response}'")
+            info_print(f"   Auteur short: {author_short}")
+            info_print(f"   Longueur finale: {len(echo_response)} caractères")
             
-            # Vérifier que l'interface est prête
+            # Vérifier node info
             if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
-                node_info = remote_interface.localNode
-                if hasattr(node_info, 'shortName'):
-                    info_print(f"✅ Node connecté: {node_info.shortName}")
-                if hasattr(node_info, 'nodeNum'):
-                    info_print(f"✅ Node ID: !{node_info.nodeNum:08x}")
-            else:
-                error_print("⚠️ localNode non disponible")
+                node = remote_interface.localNode
+                if hasattr(node, 'shortName'):
+                    info_print(f"✅ Node connecté: {node.shortName}")
             
             info_print("")
-            info_print("📤 TENTATIVE D'ENVOI...")
-            info_print(f"   Méthode: sendText()")
-            info_print(f"   Destination: '^all' (broadcast)")
-            info_print(f"   Canal: 0 (PRIMARY)")
-            info_print(f"   Message: '{echo_response}'")
+            info_print("📤 ENVOI DU MESSAGE...")
             
+            # Essayer les 3 méthodes
+            success = False
+            
+            # Méthode 1: Simple
             try:
-                # Envoi avec tous les paramètres explicites
-                remote_interface.sendText(
-                    text=echo_response,
-                    destinationId='^all',
-                    channelIndex=0,
-                    wantAck=False,  # Pas d'accusé de réception pour broadcast
-                    wantResponse=False
-                )
-                info_print("✅ sendText() exécuté sans erreur")
-                
-            except TypeError as te:
-                # Peut-être que certains paramètres ne sont pas supportés
-                error_print(f"⚠️ TypeError avec paramètres complets: {te}")
-                info_print("Tentative avec paramètres minimaux...")
-                
+                info_print("Méthode 1: sendText() simple")
+                remote_interface.sendText(echo_response)
+                info_print("✅ Méthode 1 exécutée")
+                success = True
+            except Exception as e1:
+                error_print(f"❌ Méthode 1 échouée: {e1}")
+            
+            if not success:
+                # Méthode 2: Avec destinationId
                 try:
+                    info_print("Méthode 2: sendText() avec destinationId")
+                    remote_interface.sendText(echo_response, destinationId='^all')
+                    info_print("✅ Méthode 2 exécutée")
+                    success = True
+                except Exception as e2:
+                    error_print(f"❌ Méthode 2 échouée: {e2}")
+            
+            if not success:
+                # Méthode 3: Avec channelIndex
+                try:
+                    info_print("Méthode 3: sendText() avec channelIndex")
                     remote_interface.sendText(
                         echo_response,
                         destinationId='^all',
                         channelIndex=0
                     )
-                    info_print("✅ sendText() avec paramètres minimaux réussi")
-                    
-                except Exception as e2:
-                    error_print(f"❌ Échec paramètres minimaux: {e2}")
-                    raise
-                    
-            except Exception as e:
-                error_print(f"❌ Erreur sendText(): {e}")
-                import traceback
-                error_print(traceback.format_exc())
-                raise
+                    info_print("✅ Méthode 3 exécutée")
+                    success = True
+                except Exception as e3:
+                    error_print(f"❌ Méthode 3 échouée: {e3}")
+            
+            if not success:
+                error_print("❌ TOUTES LES MÉTHODES ONT ÉCHOUÉ")
+                raise Exception("Impossible d'envoyer le message")
             
             info_print("")
-            info_print("⏳ Attente 4s pour transmission...")
-            time.sleep(4)
+            info_print("⏳ Attente transmission (10s)...")
+            time.sleep(10)
             info_print("✅ Attente terminée")
             
             info_print("")
             info_print("=" * 60)
-            info_print("✅ PROCESSUS ECHO TERMINÉ")
+            info_print("✅ THREAD ECHO TERMINÉ")
             info_print("=" * 60)
             
             self.sender.log_conversation(sender_id, sender_info, message, echo_response)
             
         except Exception as e:
+            error_print("")
             error_print("=" * 60)
-            error_print("❌ ERREUR DANS SEND_ECHO_VIA_TIGROG2")
+            error_print("❌ ERREUR DANS THREAD ECHO")
             error_print("=" * 60)
-            error_print(f"Erreur: {e}")
+            error_print(f"Exception: {e}")
             import traceback
             error_print(traceback.format_exc())
             error_print("=" * 60)
@@ -255,11 +275,17 @@ class UtilityCommands:
         finally:
             if remote_interface:
                 try:
-                    info_print("🔌 Fermeture connexion tigrog2...")
+                    info_print("🔌 Fermeture connexion...")
                     remote_interface.close()
                     info_print("✅ Connexion fermée")
                 except Exception as e:
                     error_print(f"Erreur fermeture: {e}")
+    
+        # Lancer le thread
+        thread = threading.Thread(target=send_echo_via_tigrog2, daemon=True)
+        thread.start()
+        info_print(f"✅ Thread lancé: {thread.name}")
+        info_print("=" * 60)
 
     def handle_trafic(self, message, sender_id, sender_info):
         """Gérer la commande /trafic"""

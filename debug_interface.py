@@ -362,3 +362,82 @@ class DebugInterface:
             error_print(f"Erreur: {e}")
             import traceback
             error_print(traceback.format_exc())
+
+    def _handle_send_test(self, command):
+        """Tester l'envoi direct via tigrog2"""
+        try:
+            parts = command.split(' ', 1)
+            if len(parts) < 2:
+                info_print("Usage: send <message>")
+                return
+            
+            message = parts[1]
+            
+            import meshtastic.tcp_interface
+            from config import REMOTE_NODE_HOST
+            
+            info_print("=" * 60)
+            info_print(f"📤 TEST ENVOI DIRECT: '{message}'")
+            info_print("=" * 60)
+            
+            info_print(f"Connexion à {REMOTE_NODE_HOST}...")
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST,
+                portNumber=4403
+            )
+            
+            info_print("✅ Connecté")
+            info_print("⏳ Attente 5s...")
+            time.sleep(5)
+            
+            info_print(f"📤 Envoi message: '{message}'")
+            
+            # TEST 1: Sans paramètres
+            info_print("\n--- TEST 1: sendText() simple ---")
+            try:
+                remote_interface.sendText(message)
+                info_print("✅ Envoyé sans paramètres")
+            except Exception as e:
+                error_print(f"❌ Échec: {e}")
+            
+            time.sleep(10)
+            
+            # TEST 2: Avec destinationId
+            info_print("\n--- TEST 2: sendText() avec destinationId ---")
+            try:
+                remote_interface.sendText(
+                    message + " [TEST2]",
+                    destinationId='^all'
+                )
+                info_print("✅ Envoyé avec destinationId='^all'")
+            except Exception as e:
+                error_print(f"❌ Échec: {e}")
+            
+            time.sleep(10)
+            
+            # TEST 3: Avec tous les paramètres
+            info_print("\n--- TEST 3: sendText() avec tous paramètres ---")
+            try:
+                remote_interface.sendText(
+                    text=message + " [TEST3]",
+                    destinationId='^all',
+                    channelIndex=0,
+                    wantAck=False,
+                    wantResponse=False
+                )
+                info_print("✅ Envoyé avec tous paramètres")
+            except Exception as e:
+                error_print(f"❌ Échec: {e}")
+            
+            time.sleep(10)
+            
+            info_print("\n🔌 Fermeture connexion...")
+            remote_interface.close()
+            info_print("=" * 60)
+            info_print("✅ Tests terminés - vérifiez votre radio mesh")
+            info_print("=" * 60)
+            
+        except Exception as e:
+            error_print(f"❌ Erreur test: {e}")
+            import traceback
+            error_print(traceback.format_exc())            
