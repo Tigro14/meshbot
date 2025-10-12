@@ -166,8 +166,8 @@ class UtilityCommands:
             )
             
             info_print("✅ Connexion établie")
-            time.sleep(3)
-            info_print("✅ Attente 3s terminée")
+            time.sleep(5)
+            info_print("✅ Attente 5s terminée")
             
             author_short = self.sender.get_short_name(sender_id)
             echo_response = f"{author_short}: {echo_text}"
