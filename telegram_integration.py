@@ -243,7 +243,7 @@ class TelegramIntegration:
             f"Votre ID: {user.id}"
         )
         await update.message.reply_text(welcome_msg)
-    
+
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /help - Version détaillée pour Telegram"""
         user = update.effective_user
@@ -256,11 +256,22 @@ class TelegramIntegration:
         # Utiliser la version détaillée pour Telegram
         help_text = self.message_handler.format_help_telegram(user.id)
         
-        # Envoyer en mode Markdown pour le formatage
-        await update.message.reply_text(
-            help_text,
-            parse_mode='Markdown'
-        ) 
+        # 🔍 DEBUG
+        info_print(f"DEBUG help_text length: {len(help_text) if help_text else 'None'}")
+        info_print(f"DEBUG help_text preview: {help_text[:100] if help_text else 'None'}")
+        
+        if not help_text or len(help_text.strip()) == 0:
+            await update.message.reply_text("❌ Erreur: texte d'aide vide")
+            return
+        
+        # Envoyer SANS Markdown d'abord
+        try:
+            await update.message.reply_text(help_text)
+            info_print("✅ /help envoyé avec succès (sans Markdown)")
+        except Exception as e:
+            error_print(f"Erreur envoi /help: {e}")
+            await update.message.reply_text("❌ Erreur envoi aide")
+
 
     async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /power avec graphiques d'historique"""
