@@ -342,71 +342,74 @@ class UtilityCommands:
         ]
         return "\n".join(help_lines)
 
-    def _format_help_telegram(self, user_id=None):
+    def _format_help_telegram(self):
         """Format aide détaillée pour Telegram (sans contrainte de taille)"""
-        help_text = """📖 AIDE COMPLÈTE - BOT MESHTASTIC
+        import textwrap
+        
+        help_text = textwrap.dedent("""
+        📖 AIDE COMPLÈTE - BOT MESHTASTIC
 
         🤖 CHAT IA
-        Message direct → Conversation avec l'IA
-        Contexte conversationnel maintenu 30min
-        Réponses détaillées possibles sur Telegram
+        • Message direct → Conversation avec l'IA
+        • Contexte conversationnel maintenu 30min
+        • Réponses détaillées possibles sur Telegram
 
         ⚡ SYSTÈME & MONITORING
-        /power - Télémétrie complète
-        → Batterie, solaire, température, pression, humidité
-        /sys - Informations système Pi5
-        → CPU, RAM, load average, uptime
+        • /power - Télémétrie complète
+          Batterie, solaire, température, pression, humidité
+        • /graphs [heures] - Graphiques historiques
+          Défaut: 24h, max 48h
+        • /sys - Informations système Pi5
+          CPU, RAM, load average, uptime
 
         📡 RÉSEAU MESHTASTIC
-        /nodes - Liste complète des nœuds directs depuis tigrog2 PV
-        /fullnodes [jours] - Liste alphabétique complète
-        → Par défaut : 30 derniers jours (max 90j)
-        → Tri par longName
+        • /nodes - Liste nœuds directs tigrog2
+        • /fullnodes [jours] - Liste alphabétique complète
+          Défaut: 30j, max 365j, tri par longName
 
         📊 ANALYSE TRAFIC
-        /trafic [heures] - Historique messages publics
-        → Par défaut : 8 dernières heures (max 24h)
-        → Statistiques détaillées et top émetteurs
-        /trace <node> - Traceroute mesh vers node (id; longname, short, ...)
-        → Analyse le chemin des messages
-        → Identifie les relays potentiels
+        • /trafic [heures] - Historique messages publics
+          Défaut: 8h, max 24h, stats détaillées
+        • /top [heures] [nombre] - Top talkers
+          Défaut: 24h, top 10
+        • /stats - Statistiques globales du réseau
+        • /trace [short_id] - Traceroute mesh
+          Analyse chemin, identifie relays
 
         📢 DIFFUSION
-        /echo <message> - Diffuser sur le réseau
-        → Préfixe automatique avec votre nom court
-        → Diffusé via tigrog2 en broadcast
-        → Exemple : /echo Bonjour à tous!
+        • /echo <message> - Diffuser sur le réseau
+          Préfixe auto, broadcast via tigrog2
+          Ex: /echo Bonjour à tous!
 
         ℹ️ UTILITAIRES
-        /legend - Légende des indicateurs de signal
-        /help - Cette aide complète
+        • /legend - Légende indicateurs signal
+        • /help - Cette aide complète
 
         🔧 ADMINISTRATION (si autorisé)
-        /rebootg2 - Redémarrage tigrog2
-        → Redémarre le nœud + envoi télémétrie
-        /rebootpi - Redémarrage Pi5
-        → Redémarrage complet du système
-        → Traçabilité complète dans les logs
+        • /rebootg2 [mdp] - Redémarrage tigrog2
+        • /rebootpi [mdp] - Redémarrage Pi5
+        • /cpu - Monitoring CPU temps réel (10s)
 
         📋 LIMITES & INFORMATIONS
-        Throttling : 5 commandes/5min par utilisateur
-        Contexte IA : 6 messages max, timeout 30min
-        Historique trafic : 1000 messages, rétention 24h
-        Nœuds distants : filtre 3 jours par défaut
+        • Throttling: 5 commandes/5min par utilisateur
+        • Contexte IA: 6 messages max, timeout 30min
+        • Historique trafic: 2000 messages, rétention 24h
+        • Nœuds distants: filtre 3j par défaut
 
         💡 ASTUCES
-        Les réponses Telegram peuvent être plus longues que sur LoRa
-        Le contexte conversationnel est partagé entre Telegram et Mesh
-        Utilisez /trafic 2 pour voir l'activité récente
-        /fullnodes 7 pour une vue hebdomadaire du réseau
+        • Réponses Telegram plus longues que LoRa
+        • Contexte partagé entre Telegram et Mesh
+        • /trafic 2 pour activité récente
+        • /fullnodes 7 pour vue hebdomadaire
 
         🔐 SÉCURITÉ
-        Accès réservé aux utilisateurs autorisés
-        Toutes les actions sont tracées dans les logs
-        Les redémarrages incluent l'identité du demandeur
+        • Accès réservé utilisateurs autorisés
+        • Actions tracées dans les logs
+        • Redémarrages incluent identité demandeur
 
-        Votre ID Telegram: {}""".format(user_id if user_id else "non disponible")
-
+        Votre ID Telegram: {user_id}
+        """).strip()
+        
         return help_text
 
     def handle_top(self, message, sender_id, sender_info):
