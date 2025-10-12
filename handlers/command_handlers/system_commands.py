@@ -57,6 +57,7 @@ class SystemCommands:
             try:
                 system_info = []
 
+                info_print(f"DEBUG: bot_start_time = {self.bot_start_time}")
                 # AJOUT : Uptime du bot Python
                 # ========================================
                 if self.bot_start_time:
