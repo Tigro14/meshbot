@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 """
 Interface de débogage interactive
 """
@@ -334,7 +335,6 @@ class DebugInterface:
             
         except Exception as e:
             error_print(f"Erreur inspection canaux: {e}")
-            import traceback
             error_print(traceback.format_exc())
 
 
@@ -366,7 +366,6 @@ class DebugInterface:
 
         except Exception as e:
             error_print(f"Erreur: {e}")
-            import traceback
             error_print(traceback.format_exc())
 
     def _handle_send_test(self, command):
@@ -445,7 +444,6 @@ class DebugInterface:
             
         except Exception as e:
             error_print(f"❌ Erreur test: {e}")
-            import traceback
             error_print(traceback.format_exc())            
 
     
@@ -498,7 +496,6 @@ class DebugInterface:
             
         except Exception as e:
             info_print(f"→ Erreur: {e}")
-            import traceback
             traceback.print_exc()
 
 
@@ -571,7 +568,6 @@ class DebugInterface:
             
         except Exception as e:
             info_print(f"  Erreur: {e}")
-            import traceback
             traceback.print_exc()
 
 

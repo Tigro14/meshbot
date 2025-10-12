@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 """
 Module de surveillance du trafic avec statistiques avancées
 Collecte TOUS les types de paquets Meshtastic
@@ -484,7 +485,6 @@ class TrafficMonitor:
             
         except Exception as e:
             error_print(f"Erreur génération top talkers: {e}")
-            import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
     
@@ -824,7 +824,6 @@ class TrafficMonitor:
             
         except Exception as e:
             error_print(f"Erreur génération historique complet: {e}")
-            import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
 
@@ -1005,7 +1004,6 @@ class TrafficMonitor:
             
         except Exception as e:
             error_print(f"Erreur génération histogramme: {e}")
-            import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
 

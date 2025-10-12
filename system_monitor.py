@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 # -*- coding: utf-8 -*-
 """
 Module de surveillance système pour alertes Telegram
@@ -96,7 +97,6 @@ class SystemMonitor:
                 
             except Exception as e:
                 error_print(f"Erreur boucle monitoring: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 # Sleep même en cas d'erreur pour éviter boucle folle
                 time.sleep(10)
@@ -195,7 +195,6 @@ class SystemMonitor:
             
         except Exception as e:
             error_print(f"Erreur vérification CPU: {e}")
-            import traceback
             error_print(traceback.format_exc())
 
     def _check_tigrog2(self):

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 # -*- coding: utf-8 -*-
 """
 Gestionnaire des commandes utilitaires
@@ -75,7 +76,6 @@ class UtilityCommands:
 
         except Exception as e:
             error_print(f"Erreur /graphs: {e}")
-            import traceback
             error_print(traceback.format_exc())
             self.sender.send_message(sender_id, f"Erreur graphs: {str(e)[:30]}")
 
@@ -109,7 +109,6 @@ class UtilityCommands:
             
         except Exception as e:
             error_print(f"Erreur /graphs: {e}")
-            import traceback
             error_print(traceback.format_exc())
             
             error_msg = f"Erreur graphs: {str(e)[:30]}"
@@ -263,7 +262,6 @@ class UtilityCommands:
                 error_print("❌ ERREUR DANS THREAD ECHO")
                 error_print("=" * 60)
                 error_print(f"Exception: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 error_print("=" * 60)
                 
@@ -553,7 +551,6 @@ class UtilityCommands:
             
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
-            import traceback
             error_print(traceback.format_exc())
             
             error_msg = f"❌ Erreur histo: {str(e)[:30]}"

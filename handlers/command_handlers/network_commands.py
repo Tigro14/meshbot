@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 # -*- coding: utf-8 -*-
 """
 Gestionnaire des commandes réseau et nœuds
@@ -82,7 +83,6 @@ class NetworkCommands:
                 
             except Exception as e:
                 error_print(f"Erreur commande /my: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 try:
                     error_response = f"⚠️ Erreur: {str(e)[:30]}"
@@ -343,7 +343,6 @@ class NetworkCommands:
                 
             except Exception as e:
                 error_print(f"Erreur commande /trace: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 try:
                     error_response = f"⚠️ Erreur trace: {str(e)[:30]}"

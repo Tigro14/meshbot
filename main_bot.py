@@ -6,6 +6,7 @@ Bot Mesh Debug - Version refactorisée avec architecture modulaire
 import time
 import threading
 import gc
+import traceback
 import meshtastic
 import meshtastic.serial_interface
 from pubsub import pub
@@ -94,7 +95,6 @@ class DebugMeshBot:
                         self.telegram_integration.handle_traceroute_response(packet, decoded)
                     except Exception as trace_error:
                         error_print(f"❌ Erreur handle_traceroute_response: {trace_error}")
-                        import traceback
                         error_print(traceback.format_exc())
                 
                 return  # Pas de traitement supplémentaire
@@ -137,7 +137,6 @@ class DebugMeshBot:
 
                     except Exception as trace_error:
                         error_print(f"❌ ERREUR dans handle_trace_response: {trace_error}")
-                        import traceback
                         error_print(traceback.format_exc())
                         # Continuer le traitement normal en cas d'erreur
                 else:
@@ -169,7 +168,6 @@ class DebugMeshBot:
             
         except Exception as e:
             error_print(f"Erreur traitement: {e}")
-            import traceback
         error_print(traceback.format_exc())
 
 

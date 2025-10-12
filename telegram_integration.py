@@ -7,6 +7,7 @@ Gère directement l'API Telegram sans fichiers queue
 
 import time
 import threading
+import traceback
 from config import *
 from utils import *
 
@@ -102,7 +103,6 @@ class TelegramIntegration:
             
         except Exception as e:
             error_print(f"Erreur bot Telegram: {e}")
-            import traceback
             error_print(traceback.format_exc())
         finally:
             # Nettoyer l'event loop
@@ -182,7 +182,6 @@ class TelegramIntegration:
             
         except Exception as e:
             error_print(f"Erreur démarrage Telegram: {e}")
-            import traceback
             error_print(traceback.format_exc())
 
     async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -553,7 +552,6 @@ class TelegramIntegration:
                 return report
             except Exception as e:
                 error_print(f"Erreur get_traffic: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -637,7 +635,6 @@ class TelegramIntegration:
                 return self.message_handler.remote_nodes_client.get_all_nodes_alphabetical(days)
             except Exception as e:
                 error_print(f"Erreur get_full_nodes: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"Erreur: {str(e)[:100]}"
         
@@ -729,7 +726,6 @@ class TelegramIntegration:
                 return response
             except Exception as e:
                 error_print(f"❌ Exception dans reboot_g2: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -794,7 +790,6 @@ class TelegramIntegration:
                 return response
             except Exception as e:
                 error_print(f"❌ Exception dans reboot_pi: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -823,7 +818,6 @@ class TelegramIntegration:
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire d'erreurs"""
         error_print(f"❌ Erreur Telegram: {context.error}")
-        import traceback
         error_print(traceback.format_exc())
         if update and hasattr(update, 'message') and update.message:
             await update.message.reply_text("❌ Erreur interne")
@@ -890,7 +884,6 @@ class TelegramIntegration:
                 
         except Exception as e:
             error_print(f"Erreur envoi alerte Telegram: {e}")
-            import traceback
             error_print(traceback.format_exc())
     
     async def _send_alert_async(self, message):
@@ -924,7 +917,6 @@ class TelegramIntegration:
                 
         except Exception as e:
             error_print(f"Erreur _send_alert_async: {e}")
-            import traceback
             error_print(traceback.format_exc())
     
     def _find_node_by_short_name(self, identifier):
@@ -1215,7 +1207,6 @@ class TelegramIntegration:
                 
             except Exception as telegram_error:
                 error_print(f"❌ ERREUR envoi Telegram: {telegram_error}")
-                import traceback
                 error_print(traceback.format_exc())
             
             # Supprimer la trace de la liste
@@ -1231,7 +1222,6 @@ class TelegramIntegration:
             
         except Exception as e:
             error_print(f"❌ EXCEPTION dans handle_trace_response: {e}")
-            import traceback
             error_print(traceback.format_exc())
             return False
 
@@ -1348,7 +1338,6 @@ class TelegramIntegration:
             
         except Exception as thread_error:
             error_print(f"❌ ERREUR lancement thread: {thread_error}")
-            import traceback
             error_print(traceback.format_exc())
             await update.message.reply_text(f"❌ Erreur technique: {str(thread_error)[:100]}")
 
@@ -1369,7 +1358,6 @@ class TelegramIntegration:
                 self._execute_active_trace(target_short_name, chat_id, username)
             except Exception as e:
                 error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 
                 # Notifier l'utilisateur
@@ -1402,7 +1390,6 @@ class TelegramIntegration:
                 target_node_id = self._find_node_by_short_name(target_short_name)
             except Exception as find_error:
                 error_print(f"❌ ERREUR _find_node_by_short_name: {find_error}")
-                import traceback
                 error_print(traceback.format_exc())
                 
                 asyncio.run_coroutine_threadsafe(
@@ -1463,7 +1450,6 @@ class TelegramIntegration:
                 
             except Exception as e1:
                 error_print(f"❌ Échec envoi traceroute: {e1}")
-                import traceback
                 error_print(traceback.format_exc())
                 
                 asyncio.run_coroutine_threadsafe(
@@ -1497,7 +1483,6 @@ class TelegramIntegration:
             
         except Exception as e:
             error_print(f"❌ EXCEPTION _execute_active_trace: {e}")
-            import traceback
             error_print(traceback.format_exc())
             
             try:
@@ -1583,7 +1568,6 @@ class TelegramIntegration:
             
         except Exception as thread_error:
             error_print(f"❌ ERREUR lancement thread: {thread_error}")
-            import traceback
             error_print(traceback.format_exc())
             await update.message.reply_text(f"❌ Erreur technique: {str(thread_error)[:100]}")
 
@@ -1604,7 +1588,6 @@ class TelegramIntegration:
             self._execute_active_trace(target_short_name, chat_id, username)
         except Exception as e:
             error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
-            import traceback
             error_print(traceback.format_exc())
             
             # Notifier l'utilisateur
@@ -1729,7 +1712,6 @@ class TelegramIntegration:
 
         except Exception as e:
             error_print(f"❌ Erreur handle_traceroute_response: {e}")
-            import traceback
             error_print(traceback.format_exc())
 
     # Ajouter ces méthodes dans la classe TelegramIntegration
@@ -1786,7 +1768,6 @@ class TelegramIntegration:
                 
             except Exception as e:
                 error_print(f"Erreur get_detailed_stats: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -1949,7 +1930,6 @@ class TelegramIntegration:
                 
             except Exception as e:
                 error_print(f"Erreur get_detailed_stats: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -2106,7 +2086,6 @@ class TelegramIntegration:
                 
             except Exception as e:
                 error_print(f"Erreur histogramme Telegram: {e}")
-                import traceback
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 # -*- coding: utf-8 -*-
 """
 Client pour l'API Llama avec configurations différenciées et protections système
@@ -83,7 +84,6 @@ class LlamaClient:
             return result
         except Exception as e:
             error_print(f"=== ERREUR query_llama_telegram: {e} ===")
-            import traceback
             error_print(f"Stack trace: {traceback.format_exc()}")
             return f"Erreur Telegram: {str(e)}"
     
@@ -255,7 +255,6 @@ class LlamaClient:
         except Exception as e:
             error_msg = f"Erreur IA ({source_type}): {str(e)[:50]}"
             error_print(f"EXCEPTION GLOBALE: {error_msg}")
-            import traceback
             error_print(f"Stack trace complet: {traceback.format_exc()}")
             return error_msg
     
