@@ -318,7 +318,7 @@ class DebugMeshBot:
             # Boucle principale avec nettoyage périodique
             cleanup_counter = 0
             while self.running:
-                time.sleep(10)
+                time.sleep(30)  # CPU fix: 10s → 30s
                 cleanup_counter += 1
                 if cleanup_counter % 300 == 0:  # Toutes les 5 minutes
                     self.cleanup_cache()

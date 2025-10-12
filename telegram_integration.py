@@ -170,7 +170,7 @@ class TelegramIntegration:
                 await asyncio.sleep(60)  # 60 secondes
 
                 cleanup_counter += 1
-                if cleanup_counter % 6 == 0:  # Toutes les 60 secondes
+                if cleanup_counter % 2 == 0:  # CPU fix: Toutes les 60 secondes
                     self.cleanup_expired_traces()
 
             # Arrêter proprement
