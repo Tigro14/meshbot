@@ -151,9 +151,14 @@ class MessageRouter:
         """Format aide détaillée pour Telegram"""
         help_text = self.utility_handler._format_help_telegram()
 
+        # 🔍 DEBUG
+        info_print(f"DEBUG help_text in router length: {len(help_text) if help_text else 'None'}")
+        info_print(f"DEBUG help_text in router preview: {help_text[:100] if help_text else 'None'}")
+
         # Remplacer le placeholder user_id si fourni
         if user_id:
             help_text = help_text.replace("{user_id}", str(user_id))
         else:
             help_text = help_text.replace("\nVotre ID Telegram : {user_id}", "")
 
+        return help_text

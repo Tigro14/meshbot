@@ -375,6 +375,12 @@ class UtilityCommands:
         • /stats - Statistiques globales du réseau
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
+        • /histo [type] [h] 
+          Types disponibles:
+             - all : tous les paquets (défaut)
+             - messages : messages texte uniquement
+             - pos : positions uniquement
+             - info : nodeinfo uniquement
 
         📢 DIFFUSION
         • /echo <message> - Diffuser sur le réseau
@@ -409,7 +415,7 @@ class UtilityCommands:
 
         Votre ID Telegram: {user_id}
         """).strip()
-        
+    
         return help_text
 
     def handle_top(self, message, sender_id, sender_info):
