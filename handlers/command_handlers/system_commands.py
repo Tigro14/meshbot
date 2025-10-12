@@ -56,7 +56,29 @@ class SystemCommands:
         def get_system_info():
             try:
                 system_info = []
-                
+
+                # AJOUT : Uptime du bot Python
+                # ========================================
+                if self.bot_start_time:
+                    bot_uptime_seconds = int(time.time() - self.bot_start_time)
+                    
+                    # Formater l'uptime
+                    days = bot_uptime_seconds // 86400
+                    hours = (bot_uptime_seconds % 86400) // 3600
+                    minutes = (bot_uptime_seconds % 3600) // 60
+                    
+                    # Construction du format lisible
+                    uptime_parts = []
+                    if days > 0:
+                        uptime_parts.append(f"{days}j")
+                    if hours > 0:
+                        uptime_parts.append(f"{hours}h")
+                    if minutes > 0 or len(uptime_parts) == 0:  # Toujours afficher les minutes si < 1h
+                        uptime_parts.append(f"{minutes}m")
+                    
+                    bot_uptime_str = " ".join(uptime_parts)
+                    system_info.append(f"🤖 Bot: {bot_uptime_str}")
+
                 # === UPTIME BOT PYTHON ===
                 if self.bot_start_time:
                     bot_uptime_seconds = time.time() - self.bot_start_time

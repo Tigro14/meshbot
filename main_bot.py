@@ -28,6 +28,7 @@ class DebugMeshBot:
         self.interface = None
         self.running = False
         
+        self.start_time = time.time()  # ← AJOUT : timestamp de démarrage du bot
         # Initialisation des gestionnaires
         self.node_manager = NodeManager()
         self.context_manager = ContextManager(self.node_manager)
@@ -265,7 +266,8 @@ class DebugMeshBot:
                 self.node_manager,
                 self.context_manager,
                 self.interface,
-                self.traffic_monitor
+                self.traffic_monitor,
+                self.start_time  
             )
             
             # Intégration Telegram

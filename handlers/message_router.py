@@ -17,7 +17,8 @@ from .command_handlers import (
 
 class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client, 
-                 node_manager, context_manager, interface, traffic_monitor=None):
+                 node_manager, context_manager, interface, traffic_monitor=None,     
+                 bot_start_time=None):
         
         # Dépendances
         self.node_manager = node_manager
