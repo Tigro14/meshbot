@@ -50,33 +50,17 @@ class DebugMeshBot:
     
 
     def on_message(self, packet, interface):
-        """Gestionnaire des messages - version avec collecte TOUS paquets"""
+        """Gestionnaire des messages - version optimisée avec modules"""
         try:
-            # === NOUVEAU : COLLECTE DE TOUS LES PAQUETS ===
-            # Collecter les statistiques pour TOUS les types de paquets
-            # (pas seulement les messages texte)
-            if self.traffic_monitor and packet:
-                from_id = packet.get('from', 0)
-                to_id = packet.get('to', 0)
-                my_id = None
-                
-                if hasattr(self.interface, 'localNode') and self.interface.localNode:
-                    my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-                
-                is_from_me = (from_id == my_id) if my_id else False
-                
-                # Collecter tous les paquets sauf ceux qu'on a envoyés
-                if not is_from_me:
-                    self.traffic_monitor.add_packet(packet)
-                    debug_print(f"📦 Paquet collecté de {from_id:08x}")
-            
-            # === SUITE DU TRAITEMENT NORMAL ===
-            
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.node_manager.update_node_from_packet(packet)
             
             # Mise à jour de l'historique RX pour tous les packets
             self.node_manager.update_rx_history(packet)
+            
+            # === NOUVEAU: Enregistrer TOUS les paquets pour l'histogramme ===
+            if self.traffic_monitor:
+                self.traffic_monitor.add_packet_to_history(packet)
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
@@ -130,7 +114,7 @@ class DebugMeshBot:
                 if message:
                     info_print(f"   Message: {message[:100]}...")
 
-                # === HOOK TRACEROUTE ===
+                # === HOOK TRACEROUTE - VERSION DEBUG ===
                 if message and self.telegram_integration:
                     info_print("🔍 Vérification si réponse de traceroute...")
                     info_print(f"   telegram_integration présent: {self.telegram_integration is not None}")
@@ -144,39 +128,50 @@ class DebugMeshBot:
 
                         if trace_handled:
                             info_print("✅ Message traité comme réponse de traceroute")
-                            info_print("   Arrêt du traitement")
+                            info_print("   Arrêt du traitement (pas de forward au message_handler)")
                             info_print("=" * 60)
-                            return
+                            return  # Ne pas traiter plus loin
                         else:
                             info_print("ℹ️ Message N'EST PAS une réponse de traceroute")
+                            info_print("   Traitement normal continue...")
 
                     except Exception as trace_error:
                         error_print(f"❌ ERREUR dans handle_trace_response: {trace_error}")
                         import traceback
                         error_print(traceback.format_exc())
+                        # Continuer le traitement normal en cas d'erreur
+                else:
+                    if not message:
+                        info_print("⚠️ Message vide, pas de vérification traceroute")
+                    if not self.telegram_integration:
+                        info_print("⚠️ telegram_integration absent, pas de vérification traceroute")
 
                 # === TRAITEMENT NORMAL ===
                 info_print("➡️ Traitement normal du message...")
 
-                # Note: La collecte des messages publics est maintenant faite
-                # automatiquement par add_packet() plus haut
-                
+                if message and is_broadcast and not is_from_me:
+                    self.traffic_monitor.add_public_message(packet, message)
+
                 if message and self.message_handler:
                     self.message_handler.process_text_message(packet, decoded, message)
 
                 info_print("=" * 60)
-            
-            # === TELEMETRIE ET AUTRES TYPES ===
-            # Ces paquets sont maintenant collectés automatiquement
-            # par add_packet() plus haut, pas besoin de traitement spécial
-            elif DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
-                sender_name = self.node_manager.get_node_name(from_id, self.interface)
-                debug_print(f"📦 {portnum} de {sender_name} (collecté)")
+
+                if message and is_broadcast and not is_from_me:
+                    self.traffic_monitor.add_public_message(packet, message)
+                
+                if message and self.message_handler:
+                    self.message_handler.process_text_message(packet, decoded, message)
+            #else:
+                # Autres types de packets (télémétrie, etc.) - juste pour debug
+                #if DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
+                #    debug_print(f"Packet {portnum} de {self.node_manager.get_node_name(from_id, self.interface)}")
             
         except Exception as e:
             error_print(f"Erreur traitement: {e}")
             import traceback
-            error_print(traceback.format_exc())
+        error_print(traceback.format_exc())
+
 
     def _extract_message_text(self, decoded):
         """Extraire le texte du message décodé"""

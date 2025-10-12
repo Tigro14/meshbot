@@ -130,6 +130,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("trace", self._trace_command))
+            self.application.add_handler(CommandHandler("histo", self._histo_command))
             self.application.add_handler(CommandHandler("cpu", self._cpu_command))
             self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
             self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
@@ -228,6 +229,13 @@ class TelegramIntegration:
             f"• /nodes \n"
             f"• /fullnodes [jours]  Liste complète alphabétique (défaut: 30j)\n"
             f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
+            f"• /histo [type] [h] \n" 
+            f"•         Types disponibles:\n"
+            f"•         - all : tous les paquets (défaut)\n"
+            f"•         - messages : messages texte uniquement\n"
+            f"•         - pos : positions uniquement\n"
+            f"•         - info : nodeinfo uniquement\n"
+            f"•         - telemetry : télémétrie uniquement\n"
             f"• /top [h] [n] - Top talkers\n"  
             f"• /stats - Stats globales\n"     
             f"• /legend \n"
@@ -2027,3 +2035,111 @@ class TelegramIntegration:
         
         response = await asyncio.to_thread(get_packet_stats)
         await update.message.reply_text(response)        
+
+    async def _histo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /histo [type] [heures] - Histogramme distribution horaire
+        
+        Types disponibles:
+        - all : tous les paquets (défaut)
+        - messages : messages texte uniquement
+        - pos : positions uniquement
+        - info : nodeinfo uniquement
+        - telemetry : télémétrie uniquement
+        
+        Usage:
+        /histo
+        /histo messages
+        /histo pos 12
+        /histo all 48
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        # Parser les arguments
+        args = context.args
+        packet_filter = 'all'  # Défaut
+        hours = 24  # Défaut
+        
+        if args and len(args) > 0:
+            # Premier argument = type
+            requested_filter = args[0].lower()
+            valid_filters = ['all', 'messages', 'pos', 'info', 'telemetry', 'traceroute', 'routing']
+            if requested_filter in valid_filters:
+                packet_filter = requested_filter
+            else:
+                # Si ce n'est pas un filtre valide, peut-être un nombre d'heures
+                try:
+                    hours = int(requested_filter)
+                    hours = max(1, min(168, hours))  # Max 7 jours pour Telegram
+                except ValueError:
+                    pass
+        
+        if args and len(args) > 1:
+            # Deuxième argument = heures
+            try:
+                requested_hours = int(args[1])
+                hours = max(1, min(168, requested_hours))  # Max 7 jours
+            except ValueError:
+                pass
+        
+        info_print(f"📱 Telegram /histo {packet_filter} {hours}h: {user.username}")
+        
+        # Message d'attente pour les périodes longues
+        if hours > 48:
+            await update.message.reply_text(f"📊 Analyse de {hours}h en cours...")
+        
+        def get_histogram():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                # Générer l'histogramme
+                histogram = self.message_handler.traffic_monitor.get_hourly_histogram(
+                    packet_filter, 
+                    hours
+                )
+                
+                return histogram
+                
+            except Exception as e:
+                error_print(f"Erreur histogramme Telegram: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        # Générer le rapport
+        response = await asyncio.to_thread(get_histogram)
+        
+        # Si le message est trop long, le diviser
+        if len(response) > 4000:
+            # Diviser en chunks de 4000 caractères
+            chunks = []
+            lines = response.split('\n')
+            current_chunk = []
+            current_length = 0
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 pour le \n
+                if current_length + line_length > 4000:
+                    chunks.append('\n'.join(current_chunk))
+                    current_chunk = [line]
+                    current_length = line_length
+                else:
+                    current_chunk.append(line)
+                    current_length += line_length
+            
+            if current_chunk:
+                chunks.append('\n'.join(current_chunk))
+            
+            # Envoyer les chunks
+            for i, chunk in enumerate(chunks):
+                if i > 0:
+                    await asyncio.sleep(0.5)  # Éviter rate limiting
+                await update.message.reply_text(chunk)
+        else:
+            await update.message.reply_text(response)
+
+

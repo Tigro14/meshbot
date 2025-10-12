@@ -79,6 +79,10 @@ class DebugInterface:
             self._handle_memory_command()
         elif command == 'cpu':
             self._handle_cpu_command()
+        elif command.startswith('histo'):
+            self._handle_histo_test(command)
+        elif command == 'pstats':
+            self._handle_packet_stats()
         elif command == 'help':
             self._show_help()
         else:
@@ -236,6 +240,8 @@ class DebugInterface:
         print("  reload         - Recharger base nœuds")
         print("  mem            - Mémoire utilisée")
         print("  cpu            - Monitoring CPU 10s")
+        print("  histo [type] [h] - Histogramme distribution horaire")
+        print("  pstats           - Statistiques paquets collectés")
         print("  quit           - Quitter")
 
     def _handle_cpu_profiling(self):
@@ -441,3 +447,131 @@ class DebugInterface:
             error_print(f"❌ Erreur test: {e}")
             import traceback
             error_print(traceback.format_exc())            
+
+    
+    def _handle_histo_test(self, command):
+        """
+        Tester la commande /histo en mode debug
+        
+        Usage:
+        > histo
+        > histo messages
+        > histo pos 12
+        > histo all 48
+        """
+        info_print("TEST Histo:")
+        
+        # Parser les arguments
+        parts = command.split()
+        packet_filter = 'all'  # Défaut
+        hours = 24  # Défaut
+        
+        if len(parts) > 1:
+            packet_filter = parts[1]
+        
+        if len(parts) > 2:
+            try:
+                hours = int(parts[2])
+                hours = max(1, min(72, hours))
+            except ValueError:
+                hours = 24
+        
+        try:
+            histogram = self.bot.traffic_monitor.get_hourly_histogram(packet_filter, hours)
+            info_print(f"→ {histogram}")
+            
+            # Afficher aussi le nombre de paquets en mémoire
+            total_packets = len(self.bot.traffic_monitor.packet_history)
+            info_print(f"\n📊 Total paquets en mémoire: {total_packets}")
+            
+            # Afficher la répartition par type
+            type_counts = {}
+            for pkt in self.bot.traffic_monitor.packet_history:
+                pkt_type = pkt['type']
+                type_counts[pkt_type] = type_counts.get(pkt_type, 0) + 1
+            
+            if type_counts:
+                info_print("📋 Répartition par type:")
+                for pkt_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+                    percentage = (count / total_packets * 100) if total_packets > 0 else 0
+                    info_print(f"   {pkt_type:15s}: {count:4d} ({percentage:5.1f}%)")
+            
+        except Exception as e:
+            info_print(f"→ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+    # ============================================================
+    # AJOUT: Méthode _handle_packet_stats dans DebugInterface
+    # ============================================================
+
+    def _handle_packet_stats(self):
+        """
+        Afficher les statistiques détaillées des paquets collectés
+        
+        Usage:
+        > pstats
+        """
+        info_print("📊 Statistiques paquets:")
+        
+        try:
+            total_packets = len(self.bot.traffic_monitor.packet_history)
+            
+            if total_packets == 0:
+                info_print("  Aucun paquet en mémoire")
+                return
+            
+            info_print(f"  Total paquets: {total_packets}")
+            
+            # Répartition par type
+            type_counts = defaultdict(int)
+            for pkt in self.bot.traffic_monitor.packet_history:
+                type_counts[pkt['type']] += 1
+            
+            info_print("\n  Par type:")
+            for pkt_type in sorted(type_counts.keys()):
+                count = type_counts[pkt_type]
+                percentage = (count / total_packets * 100)
+                bar_length = int(percentage / 5)  # Max 20 chars
+                bar = "█" * bar_length + "░" * (20 - bar_length)
+                info_print(f"    {pkt_type:15s} {bar} {count:4d} ({percentage:5.1f}%)")
+            
+            # Nœuds actifs
+            unique_nodes = set(pkt['from_id'] for pkt in self.bot.traffic_monitor.packet_history)
+            info_print(f"\n  Nœuds uniques: {len(unique_nodes)}")
+            
+            # Top 5 émetteurs
+            node_counts = defaultdict(int)
+            for pkt in self.bot.traffic_monitor.packet_history:
+                node_counts[pkt['sender_name']] += 1
+            
+            top_nodes = sorted(node_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            
+            if top_nodes:
+                info_print("\n  Top 5 émetteurs:")
+                for i, (name, count) in enumerate(top_nodes, 1):
+                    percentage = (count / total_packets * 100)
+                    info_print(f"    {i}. {name:20s}: {count:4d} ({percentage:5.1f}%)")
+            
+            # Période couverte
+            if self.bot.traffic_monitor.packet_history:
+                oldest = min(pkt['timestamp'] for pkt in self.bot.traffic_monitor.packet_history)
+                newest = max(pkt['timestamp'] for pkt in self.bot.traffic_monitor.packet_history)
+                
+                from datetime import datetime
+                oldest_dt = datetime.fromtimestamp(oldest)
+                newest_dt = datetime.fromtimestamp(newest)
+                duration_hours = (newest - oldest) / 3600
+                
+                info_print(f"\n  Période:")
+                info_print(f"    Plus ancien: {oldest_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                info_print(f"    Plus récent: {newest_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                info_print(f"    Durée: {duration_hours:.1f}h")
+            
+        except Exception as e:
+            info_print(f"  Erreur: {e}")
+            import traceback
+            traceback.print_exc()
+
+

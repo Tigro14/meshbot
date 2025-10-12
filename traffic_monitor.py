@@ -19,6 +19,17 @@ class TrafficMonitor:
         # File de TOUS les paquets
         self.all_packets = deque(maxlen=5000)  # Plus grand pour tous les types
         self.traffic_retention_hours = 24
+
+        # === HISTOGRAMME : COLLECTE PAR TYPE DE PAQUET ===
+        self.packet_history = deque(maxlen=5000)  # Tous les paquets (24h)
+        self.packet_types = {
+            'TEXT_MESSAGE_APP': 'messages',
+            'POSITION_APP': 'pos',
+            'NODEINFO_APP': 'info',
+            'TELEMETRY_APP': 'telemetry',
+            'TRACEROUTE_APP': 'traceroute',
+            'ROUTING_APP': 'routing'
+        }
         
         # === MAPPING DES TYPES DE PAQUETS ===
         self.packet_type_names = {
@@ -564,6 +575,15 @@ class TrafficMonitor:
             old_count = sum(1 for p in self.all_packets if p['timestamp'] < cutoff_time)
             if old_count > 0:
                 debug_print(f"🧹 {old_count} paquets anciens expirés")
+
+            # Nettoyer aussi l'historique des paquets
+            try:
+                old_packet_count = sum(1 for pkt in self.packet_history
+                                      if pkt['timestamp'] < cutoff_time)
+                if old_packet_count > 0:
+                    debug_print(f"🧹 {old_packet_count} paquets anciens dans historique")
+            except Exception as e:
+                debug_print(f"Erreur nettoyage historique paquets: {e}")
                 
         except Exception as e:
             debug_print(f"Erreur nettoyage: {e}")
@@ -853,3 +873,140 @@ class TrafficMonitor:
         except Exception as e:
             error_print(f"Erreur génération historique compact: {e}")
             return f"Erreur: {str(e)[:30]}"
+
+    # ============================================================
+    # AJOUT 2: Nouvelle méthode add_packet_to_history
+    # ============================================================
+
+    def add_packet_to_history(self, packet):
+        """
+        Enregistrer un paquet dans l'historique pour l'histogramme
+        Appelé pour TOUS les paquets reçus
+        """
+        try:
+            from_id = packet.get('from', 0)
+            timestamp = time.time()
+            
+            # Déterminer le type de paquet
+            packet_type = 'unknown'
+            if 'decoded' in packet:
+                portnum = packet['decoded'].get('portnum', '')
+                packet_type = self.packet_types.get(portnum, portnum)
+            
+            # Obtenir le nom du nœud
+            sender_name = self.node_manager.get_node_name(from_id)
+            
+            # Enregistrer le paquet
+            packet_entry = {
+                'timestamp': timestamp,
+                'from_id': from_id,
+                'sender_name': sender_name,
+                'type': packet_type,
+                'rssi': packet.get('rssi', 0),
+                'snr': packet.get('snr', 0.0)
+            }
+            
+            self.packet_history.append(packet_entry)
+            
+            debug_print(f"📊 Paquet enregistré: {packet_type} de {sender_name}")
+            
+        except Exception as e:
+            debug_print(f"Erreur enregistrement paquet: {e}")
+
+
+    # ============================================================
+    # AJOUT 3: Méthode get_hourly_histogram
+    # ============================================================
+
+    def get_hourly_histogram(self, packet_filter='all', hours=24):
+        """
+        Générer un histogramme de distribution horaire des paquets
+        
+        Args:
+            packet_filter: 'all', 'messages', 'pos', 'info', 'telemetry', etc.
+            hours: Nombre d'heures à analyser (défaut: 24)
+        
+        Returns:
+            str: Histogramme ASCII formaté
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            # Filtrer les paquets par période et type
+            filtered_packets = []
+            for pkt in self.packet_history:
+                if pkt['timestamp'] >= cutoff_time:
+                    if packet_filter == 'all' or pkt['type'] == packet_filter:
+                        filtered_packets.append(pkt)
+            
+            if not filtered_packets:
+                return f"📊 Aucun paquet '{packet_filter}' dans les {hours}h"
+            
+            # Compter les paquets par heure
+            hourly_counts = defaultdict(int)
+            for pkt in filtered_packets:
+                dt = datetime.fromtimestamp(pkt['timestamp'])
+                hour = dt.hour
+                hourly_counts[hour] += 1
+            
+            # Statistiques
+            total_packets = len(filtered_packets)
+            unique_nodes = len(set(pkt['from_id'] for pkt in filtered_packets))
+            
+            # Construire le graphique
+            lines = []
+            
+            # Header avec stats
+            filter_label = {
+                'all': 'TOUS TYPES',
+                'messages': 'MESSAGES TEXTE',
+                'pos': 'POSITIONS',
+                'info': 'NODEINFO',
+                'telemetry': 'TÉLÉMÉTRIE',
+                'traceroute': 'TRACEROUTE',
+                'routing': 'ROUTING'
+            }.get(packet_filter, packet_filter.upper())
+            
+            lines.append(f"📊 HISTOGRAMME {filter_label} ({hours}h)")
+            lines.append("=" * 40)
+            lines.append(f"Total: {total_packets} paquets | {unique_nodes} nœuds")
+            lines.append("")
+            
+            # Trouver le max pour l'échelle
+            max_count = max(hourly_counts.values()) if hourly_counts else 1
+            
+            # Graphique par heure (0-23)
+            for hour in range(24):
+                count = hourly_counts.get(hour, 0)
+                
+                # Barre de progression (max 20 caractères)
+                bar_length = int((count / max_count * 20)) if max_count > 0 else 0
+                bar = "█" * bar_length + "░" * (20 - bar_length)
+                
+                # Pourcentage
+                percentage = (count / total_packets * 100) if total_packets > 0 else 0
+                
+                lines.append(f"{hour:02d}h {bar} {count:4d} ({percentage:4.1f}%)")
+            
+            lines.append("")
+            lines.append("=" * 40)
+            
+            # Heure de pointe
+            if hourly_counts:
+                peak_hour = max(hourly_counts.items(), key=lambda x: x[1])
+                lines.append(f"🏆 Pointe: {peak_hour[0]:02d}h00 ({peak_hour[1]} paquets)")
+            
+            # Moyenne par heure
+            avg_per_hour = total_packets / hours if hours > 0 else 0
+            lines.append(f"📊 Moyenne: {avg_per_hour:.1f} paquets/heure")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur génération histogramme: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+
+            
