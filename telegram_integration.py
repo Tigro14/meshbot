@@ -340,7 +340,33 @@ class TelegramIntegration:
         def get_sys_info():
             import subprocess
             system_info = []
-            
+            # ========================================
+            # AJOUT : Uptime du bot
+            # ========================================
+            try:
+                if hasattr(self.message_handler, 'router') and \
+                   hasattr(self.message_handler.router, 'system_handler') and \
+                   self.message_handler.router.system_handler.bot_start_time:
+                    
+                    bot_uptime_seconds = int(time.time() - self.message_handler.router.system_handler.bot_start_time)
+                    
+                    days = bot_uptime_seconds // 86400
+                    hours = (bot_uptime_seconds % 86400) // 3600
+                    minutes = (bot_uptime_seconds % 3600) // 60
+                    
+                    uptime_parts = []
+                    if days > 0:
+                        uptime_parts.append(f"{days}j")
+                    if hours > 0:
+                        uptime_parts.append(f"{hours}h")
+                    if minutes > 0 or len(uptime_parts) == 0:
+                        uptime_parts.append(f"{minutes}m")
+                    
+                    bot_uptime_str = " ".join(uptime_parts)
+                    system_info.append(f"🤖 Bot: {bot_uptime_str}")
+            except:
+                pass
+
             try:
                 temp_cmd = ['vcgencmd', 'measure_temp']
                 temp_result = subprocess.run(temp_cmd, capture_output=True, text=True, timeout=5)
