@@ -11,6 +11,7 @@ import meshtastic.tcp_interface
 from config import *
 from utils import *
 from .signal_utils import *
+from tcp_connection_manager import tcp_manager
 
 class NetworkCommands:
     def __init__(self, remote_nodes_client, sender):
@@ -161,22 +162,27 @@ class NetworkCommands:
             remote_interface = None
             try:
                 debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
+
+                # ✅ Utiliser le gestionnaire de connexions
+                with tcp_manager.get_connection(
+                    REMOTE_NODE_HOST,
+                    4403,
+                    purpose=f"broadcast_{command}"
+                ) as remote_interface:
+                    debug_print(f"Envoi broadcast: '{message[:50]}...'")
+                    remote_interface.sendText(message)
+                    
+                    time.sleep(2)  # Attendre que le message soit envoyé
+                    
+                    debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
+                    self.sender.log_conversation(sender_id, sender_info, command, message)
+                
+                # ✅ La connexion est automatiquement fermée ici
+
                 remote_interface = meshtastic.tcp_interface.TCPInterface(
                     hostname=REMOTE_NODE_HOST, 
                     portNumber=4403
                 )
-                
-                # ✅ CRITIQUE : Réduire à 1s
-                time.sleep(1)
-                
-                debug_print(f"Envoi broadcast: '{message[:50]}...'")
-                remote_interface.sendText(message)
-                
-                # ✅ Réduire à 2s au lieu de 4s
-                time.sleep(2)
-                
-                debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
-                self.sender.log_conversation(sender_id, sender_info, command, message)
                 
             except Exception as e:
                 error_print(f"Erreur broadcast {command} via tigrog2: {e}")

@@ -10,6 +10,7 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
 
 class UtilityCommands:
     def __init__(self, esphome_client, traffic_monitor, sender):
@@ -178,83 +179,33 @@ class UtilityCommands:
                 info_print("=" * 60)
                 
                 info_print(f"Connexion TCP à {REMOTE_NODE_HOST}:4403...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
-                )
-                
-                info_print("✅ Connexion établie")
-                info_print("⏳ Attente stabilisation (5s)...")
-                time.sleep(5)
-                info_print("✅ Stabilisation OK")
-                
-                author_short = self.sender.get_short_name(sender_id)
-                echo_response = f"{author_short}: {echo_text}"
-                
-                info_print(f"📝 Message final: '{echo_response}'")
-                info_print(f"   Auteur short: {author_short}")
-                info_print(f"   Longueur finale: {len(echo_response)} caractères")
-                
-                # Vérifier node info
-                if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
-                    node = remote_interface.localNode
-                    if hasattr(node, 'shortName'):
-                        info_print(f"✅ Node connecté: {node.shortName}")
-                
-                info_print("")
-                info_print("📤 ENVOI DU MESSAGE...")
-                
-                # Essayer les 3 méthodes
-                success = False
-            
-                # Méthode 1: Simple
-                try:
-                    info_print("Méthode 1: sendText() simple")
-                    remote_interface.sendText(echo_response)
-                    info_print("✅ Méthode 1 exécutée")
-                    success = True
-                except Exception as e1:
-                    error_print(f"❌ Méthode 1 échouée: {e1}")
-                
-                if not success:
+                                # ✅ Utiliser le gestionnaire de connexions
+                with tcp_manager.get_connection(
+                    REMOTE_NODE_HOST,
+                    4403,
+                    purpose="echo"
+                ) as remote_interface:
+                    author_short = self.sender.get_short_name(sender_id)
+                    echo_response = f"{author_short}: {echo_text}"
+                    
+                    debug_print(f"Envoi broadcast: '{echo_response}'")
+                    # Méthode 1: Simple
+                    #                   remote_interface.sendText(echo_response)
                     # Méthode 2: Avec destinationId
-                    try:
-                        info_print("Méthode 2: sendText() avec destinationId")
-                        remote_interface.sendText(echo_response, destinationId='^all')
-                        info_print("✅ Méthode 2 exécutée")
-                        success = True
-                    except Exception as e2:
-                        error_print(f"❌ Méthode 2 échouée: {e2}")
-                
-                if not success:
+                    #                   remote_interface.sendText(echo_response, destinationId='^all')
                     # Méthode 3: Avec channelIndex
-                    try:
-                        info_print("Méthode 3: sendText() avec channelIndex")
-                        remote_interface.sendText(
-                            echo_response,
-                            destinationId='^all',
-                            channelIndex=0
-                        )
-                        info_print("✅ Méthode 3 exécutée")
-                        success = True
-                    except Exception as e3:
-                        error_print(f"❌ Méthode 3 échouée: {e3}")
+                    #                   remote_interface.sendText( echo_response, destinationId='^all', channelIndex=0 )
+                    # remote_interface.sendText(echo_response) method 1
+                    remote_interface.sendText( echo_response, destinationId='^all', channelIndex=0 )
+                    time.sleep(2)
+                    
+                    debug_print(f"✅ Echo diffusé via tigrog2: '{echo_response}'")
+                    self.sender.log_conversation(sender_id, sender_info, message, echo_response)
                 
-                if not success:
-                    error_print("❌ TOUTES LES MÉTHODES ONT ÉCHOUÉ")
-                    raise Exception("Impossible d'envoyer le message")
+                # ✅ La connexion est automatiquement fermée ici
+
+            
                 
-                info_print("")
-                info_print("⏳ Attente transmission (10s)...")
-                time.sleep(10)
-                info_print("✅ Attente terminée")
-                
-                info_print("")
-                info_print("=" * 60)
-                info_print("✅ THREAD ECHO TERMINÉ")
-                info_print("=" * 60)
-                
-                self.sender.log_conversation(sender_id, sender_info, message, echo_response)
             
             except Exception as e:
                 error_print("")

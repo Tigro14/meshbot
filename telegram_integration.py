@@ -10,6 +10,7 @@ import threading
 import traceback
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
 
 # Import Telegram (optionnel)
 try:
@@ -1382,130 +1383,145 @@ class TelegramIntegration:
                     ).result(timeout=5)
                 except:
                     error_print("❌ Impossible de notifier l'utilisateur")
+    
+        def _execute_active_trace(self, target_short_name, chat_id, username):
+            """
+            Exécuter le traceroute actif NATIF Meshtastic
+            Utilise le protocole TRACEROUTE_APP
+            VERSION CORRIGÉE avec gestion robuste des connexions
+            """
+            try:
+                info_print("=" * 60)
+                info_print("🚀 Traceroute NATIF Meshtastic démarré")
+                info_print(f"   Target: {target_short_name}")
+                info_print("=" * 60)
 
-    def _execute_active_trace(self, target_short_name, chat_id, username):
-        """
-        Exécuter le traceroute actif NATIF Meshtastic
-        Utilise le protocole TRACEROUTE_APP
-        """
-        try:
-            info_print("=" * 60)
-            info_print("🚀 Traceroute NATIF Meshtastic démarré")
-            info_print(f"   Target: {target_short_name}")
-            info_print("=" * 60)
-            
-            # 1. Trouver le node_id
-            info_print("🔍 Étape 1: Recherche du node_id...")
-            
-            try:
-                target_node_id = self._find_node_by_short_name(target_short_name)
-            except Exception as find_error:
-                error_print(f"❌ ERREUR _find_node_by_short_name: {find_error}")
+                # 1. Trouver le node_id
+                info_print("🔍 Étape 1: Recherche du node_id...")
+
+                try:
+                    target_node_id = self._find_node_by_short_name(target_short_name)
+                except Exception as find_error:
+                    error_print(f"❌ ERREUR _find_node_by_short_name: {find_error}")
+                    import traceback
+                    error_print(traceback.format_exc())
+
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
+                        ),
+                        self.loop
+                    ).result(timeout=5)
+                    return
+
+                if not target_node_id:
+                    error_print(f"❌ Nœud '{target_short_name}' introuvable")
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"❌ Nœud '{target_short_name}' introuvable\n"
+                                 f"Utilisez /nodes pour voir la liste"
+                        ),
+                        self.loop
+                    ).result(timeout=5)
+                    return
+
+                target_full_name = self.node_manager.get_node_name(target_node_id)
+                info_print(f"✅ Nœud trouvé: {target_full_name}")
+                info_print(f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
+
+                # 2. Enregistrer la requête
+                info_print("📝 Étape 2: Enregistrement de la trace...")
+                self.pending_traces[target_node_id] = {
+                    'telegram_chat_id': chat_id,
+                    'timestamp': time.time(),
+                    'short_name': target_short_name,
+                    'full_name': target_full_name,
+                    'route': []
+                }
+                info_print(f"✅ Trace enregistrée")
+
+                # 3. Envoyer la requête TRACEROUTE native
+                info_print("📤 Étape 3: Envoi requête TRACEROUTE native...")
+                info_print(f"   Destination: 0x{target_node_id:08x}")
+
+                try:
+                    # ✅ IMPORTANT: On utilise l'interface série du bot, PAS une connexion TCP
+                    # Les traceroutes passent par l'interface locale, pas par TCP
+                    info_print("   Tentative envoi traceroute natif...")
+
+                    # Utiliser l'interface du message_handler
+                    self.message_handler.interface.sendData(
+                        b'',  # Payload vide pour traceroute
+                        destinationId=target_node_id,
+                        portNum=portnums_pb2.PortNum.TRACEROUTE_APP,
+                        wantAck=True,
+                        wantResponse=True
+                    )
+
+                    info_print(f"✅ Requête traceroute native envoyée")
+
+                except Exception as e1:
+                    error_print(f"❌ Échec envoi traceroute: {e1}")
+                    import traceback
+                    error_print(traceback.format_exc())
+
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"❌ Impossible d'envoyer le traceroute\n"
+                                 f"Erreur: {str(e1)[:50]}"
+                        ),
+                        self.loop
+                    ).result(timeout=5)
+                    del self.pending_traces[target_node_id]
+                    return
+
+                # 4. Confirmer à l'utilisateur
+                info_print("📱 Étape 4: Confirmation Telegram...")
+                asyncio.run_coroutine_threadsafe(
+                    self.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"⏳ Traceroute lancé vers {target_full_name}\n"
+                             f"ID: 0x{target_node_id:08x}\n"
+                             f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
+                             f"ℹ️ La route complète arrivera automatiquement ici"
+                    ),
+                    self.loop
+                ).result(timeout=5)
+
+                info_print("=" * 60)
+                info_print(f"✅ Traceroute natif envoyé avec succès")
+                info_print(f"   En attente de réponse TRACEROUTE_APP de 0x{target_node_id:08x}")
+                info_print("=" * 60)
+
+            except Exception as e:
+                error_print(f"❌ EXCETION _execute_active_trace: {e}")
+                import traceback
                 error_print(traceback.format_exc())
-                
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
-                    ),
-                    self.loop
-                ).result(timeout=5)
-                return
-            
-            if not target_node_id:
-                error_print(f"❌ Nœud '{target_short_name}' introuvable")
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Nœud '{target_short_name}' introuvable\n"
-                             f"Utilisez /nodes pour voir la liste"
-                    ),
-                    self.loop
-                ).result(timeout=5)
-                return
-            
-            target_full_name = self.node_manager.get_node_name(target_node_id)
-            info_print(f"✅ Nœud trouvé: {target_full_name}")
-            info_print(f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
-            
-            # 2. Enregistrer la requête
-            info_print("📝 Étape 2: Enregistrement de la trace...")
-            self.pending_traces[target_node_id] = {
-                'telegram_chat_id': chat_id,
-                'timestamp': time.time(),
-                'short_name': target_short_name,
-                'full_name': target_full_name,
-                'route': []  # Pour stocker la route
-            }
-            info_print(f"✅ Trace enregistrée")
-            
-            # 3. Envoyer la requête TRACEROUTE native
-            info_print("📤 Étape 3: Envoi requête TRACEROUTE native...")
-            info_print(f"   Destination: 0x{target_node_id:08x}")
-            
-            try:
-                # Créer une requête de traceroute Meshtastic
-                # Le protocole Meshtastic envoie automatiquement la requête
-                info_print("   Tentative envoi traceroute natif...")
-                
-                # Méthode 1: Via sendData avec TRACEROUTE_APP
-                self.message_handler.interface.sendData(
-                    b'',  # Payload vide pour traceroute
-                    destinationId=target_node_id,
-                    portNum=portnums_pb2.PortNum.TRACEROUTE_APP,
-                    wantAck=True,
-                    wantResponse=True
-                )
-                
-                info_print(f"✅ Requête traceroute native envoyée")
-                
-            except Exception as e1:
-                error_print(f"❌ Échec envoi traceroute: {e1}")
-                error_print(traceback.format_exc())
-                
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Impossible d'envoyer le traceroute\n"
-                             f"Erreur: {str(e1)[:50]}"
-                    ),
-                    self.loop
-                ).result(timeout=5)
-                del self.pending_traces[target_node_id]
-                return
-            
-            # 4. Confirmer à l'utilisateur
-            info_print("📱 Étape 4: Confirmation Telegram...")
-            asyncio.run_coroutine_threadsafe(
-                self.application.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"⏳ Traceroute lancé vers {target_full_name}\n"
-                         f"ID: 0x{target_node_id:08x}\n"
-                         f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
-                         f"ℹ️ La route complète arrivera automatiquement ici"
-                ),
-                self.loop
-            ).result(timeout=5)
-            
-            info_print("=" * 60)
-            info_print(f"✅ Traceroute natif envoyé avec succès")
-            info_print(f"   En attente de réponse TRACEROUTE_APP de 0x{target_node_id:08x}")
-            info_print("=" * 60)
-            
-        except Exception as e:
-            error_print(f"❌ EXCEPTION _execute_active_trace: {e}")
-            error_print(traceback.format_exc())
-            
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
+
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
                         text=f"❌ Erreur: {str(e)[:100]}"
                     ),
                     self.loop
                 ).result(timeout=5)
-            except:
-                error_print("❌ Impossible de notifier l'erreur à l'utilisateur")
+                except:
+                    error_print("❌ Impossible de notifier l'erreur à l'utilisateur")
+
+    # ============================================
+    # NOTE IMPORTANTE:
+    # La méthode _execute_active_trace N'UTILISE PAS de connexion TCP !
+    # Elle utilise l'interface série locale du bot.
+    # Les connexions TCP sont utilisées SEULEMENT pour:
+    # - Récupérer les nœuds distants (remote_nodes_client.py)
+    # - Envoyer des broadcasts (echo, my)
+    # - Redémarrer des nœuds distants (rebootg2)
+    # ============================================
+
     
     async def _trace_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -1877,7 +1893,7 @@ class TelegramIntegration:
                 uptime_hours = int(uptime_seconds / 3600)
                 lines.append(f"\n**🕐 Monitoring:**")
                 lines.append(f"• Uptime: {uptime_hours}h")
-                lines.append(f"• Dernière réinitialisation: {datetime.fromtimestamp(tm.global_stats.get('last_reset', 0)).strftime('%Y-%m-%d %H:%M')}")
+                lines.append(f"• Dernière réinitialisation: {datetime.fromtimestamp(tm.global_stats.get('last_reset', 0)).strftime('%Y-%m-%d %H:%M')} UTC")
                 
                 return "\n".join(lines)
                 
