@@ -184,9 +184,17 @@ class DebugMeshBot:
                 #    debug_print(f"Packet {portnum} de {self.node_manager.get_node_name(from_id, self.interface)}")
             
         except Exception as e:
-            error_print(f"Erreur traitement: {e}")
-        error_print(traceback.format_exc())
-
+#            error_print(f"Erreur traitement: {e}")
+#            error_print(traceback.format_exc())
+            # ✅ AMÉLIORATION : Logging détaillé
+            error_print(f"❌ EXCEPTION dans on_message:")
+            error_print(f"   Type: {type(e).__name__}")
+            error_print(f"   Message: {str(e)}")
+            error_print(f"   Packet from: {packet.get('from', 'unknown')}")
+            error_print(f"   Packet type: {packet.get('decoded', {}).get('portnum', 'unknown')}")
+            import traceback
+            error_print(f"   Traceback complet:")
+            error_print(traceback.format_exc())
 
     def _extract_message_text(self, decoded):
         """Extraire le texte du message décodé"""
