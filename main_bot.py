@@ -114,7 +114,6 @@ class DebugMeshBot:
                     info_print("✅ Bridge trafic tigrog2 activé")
                 except Exception as e:
                     error_print(f"⚠️ Bridge tigrog2 non disponible: {e}")
-                    import traceback
                     error_print(traceback.format_exc())
 
             # Traitement des messages texte

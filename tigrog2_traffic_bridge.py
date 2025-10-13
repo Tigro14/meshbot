@@ -55,15 +55,14 @@ class TigroG2TrafficBridge:
         """Boucle principale de connexion/reconnexion"""
         info_print("⏳ Bridge : délai initial 15s...")
         time.sleep(15)
-        
+       
         while self.running:
             try:
-                if not self.remote_interface:
-                    self._connect_to_tigrog2()
-                
-                time.sleep(30)
-                self._cleanup_dedup_cache()
-                
+                data = self.tcp_interface.read()
+                if data:
+                    self.process(data)
+                # CRITIQUE : Ajouter un sleep
+                time.sleep(0.5)  # 500ms entre lectures
             except Exception as e:
                 error_print(f"Erreur bridge loop: {e}")
                 self.remote_interface = None
