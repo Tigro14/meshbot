@@ -9,7 +9,6 @@ import gc
 import traceback
 import meshtastic
 import meshtastic.serial_interface
-from tcp_connection_manager import start_connection_monitor, tcp_manager
 from pubsub import pub
 
 # Imports des modules
@@ -251,9 +250,6 @@ class DebugMeshBot:
             time.sleep(3)
             
             info_print("Interface Meshtastic OK")
-            # ✅ Démarrer le monitoring des connexions P
-            start_connection_monitor()
-            info_print("✅ Monitoring connexions TCP démarré")
             
             # Initialiser le gestionnaire de messages maintenant que l'interface existe
             self.message_handler = MessageHandler(
@@ -342,12 +338,6 @@ class DebugMeshBot:
         # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
-
-        # ✅ Fermer toutes les connexions TCP
-        try:
-            tcp_manager.force_close_all()
-        except Exception as e:
-            error_print(f"Erreur fermeture connexions TCP: {e}")
 
         if self.interface:
             self.interface.close()

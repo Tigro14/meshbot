@@ -11,8 +11,6 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
-from tcp_connection_manager import tcp_manager
-
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):
@@ -261,18 +259,20 @@ class SystemCommands:
             node_name = self.node_manager.get_node_name(from_id, self.interface)
             info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
             
-            # ✅ Utiliser le gestionnaire de connexions
-            with tcp_manager.get_connection(
-                REMOTE_NODE_HOST,
-                4403,
-                purpose="reboot_g2"
-            ) as remote_interface:
-                remote_interface.sendText("/reboot")
-                info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
-                
-                time.sleep(2)
-            # ✅ La connexion est automatiquement fermée ici
-             
+            remote_interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=REMOTE_NODE_HOST,
+                portNumber=4403
+            )
+            time.sleep(3)
+            
+            remote_interface.sendText("/reboot")
+            info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
+            
+            time.sleep(2)
+            remote_interface.close()
+            
+            return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
+            
         except Exception as e:
             error_print(f"Erreur reboot {REMOTE_NODE_NAME}: {e}")
             return f"❌ Erreur: {str(e)[:50]}"
@@ -284,39 +284,38 @@ class SystemCommands:
         def get_g2_config():
             try:
                 debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
-
-                # ✅ Utiliser le gestionnaire de connexions
-                with tcp_manager.get_connection(
-                    REMOTE_NODE_HOST,
-                    4403,
-                    purpose="get_g2_config"
-                ) as remote_interface:
-                    config_info = []
-                    
-                    if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
-                        local_node = remote_interface.localNode
-                        
-                        if hasattr(local_node, 'shortName'):
-                            config_info.append(f"📡 {local_node.shortName}")
-                        
-                        if hasattr(local_node, 'nodeNum'):
-                            config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
-                        
-                        if hasattr(local_node, 'firmwareVersion'):
-                            config_info.append(f"📦 FW: {local_node.firmwareVersion}")
-                    
-                    nodes_count = len(getattr(remote_interface, 'nodes', {}))
-                    config_info.append(f"🗂️ Nœuds: {nodes_count}")
-                    
-                    try:
-                        nodes = getattr(remote_interface, 'nodes', {})
-                        direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
-                        config_info.append(f"🎯 Direct: {direct_nodes}")
-                    except:
-                        pass
+                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                    hostname=REMOTE_NODE_HOST, 
+                    portNumber=4403
+                )
                 
-                # ✅ La connexion est automatiquement fermée ici
-
+                time.sleep(2)
+                
+                config_info = []
+                
+                if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                    local_node = remote_interface.localNode
+                    
+                    if hasattr(local_node, 'shortName'):
+                        config_info.append(f"📡 {local_node.shortName}")
+                    
+                    if hasattr(local_node, 'nodeNum'):
+                        config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
+                    
+                    if hasattr(local_node, 'firmwareVersion'):
+                        config_info.append(f"📦 FW: {local_node.firmwareVersion}")
+                
+                nodes_count = len(getattr(remote_interface, 'nodes', {}))
+                config_info.append(f"🗂️ Nœuds: {nodes_count}")
+                
+                try:
+                    nodes = getattr(remote_interface, 'nodes', {})
+                    direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
+                    config_info.append(f"🎯 Direct: {direct_nodes}")
+                except:
+                    pass
+                
+                remote_interface.close()
                 
                 response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
                 
