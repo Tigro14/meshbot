@@ -120,11 +120,11 @@ class TelegramIntegration:
             
             # Handlers de commandes
             self.application.add_handler(CommandHandler("start", self._start_command))
-            self.application.add_handler(CommandHandler("help", self._help_command))
-            self.application.add_handler(CommandHandler("power", self._power_command))
+            self.application.add_handler(CommandHandler("tigrohelp", self._help_command))
+            self.application.add_handler(CommandHandler("tigropower", self._power_command))
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
-            self.application.add_handler(CommandHandler("sys", self._sys_command))
+            self.application.add_handler(CommandHandler("tigrosys", self._sys_command))
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
@@ -221,9 +221,9 @@ class TelegramIntegration:
             f"Salut {user.first_name} !\n\n"
             f"Commandes:\n"
             f"• Message direct → Chat IA\n"
-            f"• /power - Batterie/solaire\n"
+            f"• /tigropower - Batterie/solaire\n"
             f"• /rx [page]\n"
-            f"• /sys \n"
+            f"• /tigrosys \n"
             f"• /echo <msg>\n"
             f"• /nodes \n"
             f"• /fullnodes [jours]  Liste complète alphabétique (défaut: 30j)\n"
@@ -239,7 +239,7 @@ class TelegramIntegration:
             f"• /stats - Stats globales\n"     
             f"• /legend \n"
             f"• /cpu \n"
-            f"• /help - Aide\n\n"
+            f"• /tigrohelp - Aide\n\n"
             f"Votre ID: {user.id}"
         )
         await update.message.reply_text(welcome_msg)
