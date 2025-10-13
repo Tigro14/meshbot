@@ -769,6 +769,18 @@ class TrafficMonitor:
             if not recent_messages:
                 return f"📭 Aucun message public dans les {hours}h"
             
+            # Compter par source
+            local_count = sum(1 for m in recent_messages if m.get('source') == 'local')
+            tigrog2_count = sum(1 for m in recent_messages if m.get('source') == 'tigrog2')
+
+            lines = []
+            lines.append(f"📊 TRAFIC PUBLIC ({hours}h)")
+            lines.append(f"{'='*30}")
+            lines.append(f"Total: {len(recent_messages)} messages")
+            lines.append(f"  📻 Local: {local_count}")
+            lines.append(f"  📡 TigroG2: {tigrog2_count}")
+            lines.append("")
+
             # Trier par timestamp (chronologique)
             recent_messages.sort(key=lambda x: x['timestamp'])
             
@@ -1008,3 +1020,65 @@ class TrafficMonitor:
             return f"❌ Erreur: {str(e)[:50]}"
 
             
+    def add_public_message(self, packet, message_text, source='local'):
+        """
+        Enregistrer un message public avec source
+        
+        Args:
+            packet: Packet Meshtastic
+            message_text: Texte du message
+            source: 'local' (série) ou 'tigrog2' (TCP)
+        """
+        try:
+            from_id = packet.get('from', 0)
+            timestamp = time.time()
+            
+            # Obtenir le nom du nœud
+            sender_name = self.node_manager.get_node_name(from_id)
+            
+            # Enregistrer le message avec source
+            message_entry = {
+                'timestamp': timestamp,
+                'from_id': from_id,
+                'sender_name': sender_name,
+                'message': message_text,
+                'rssi': packet.get('rssi', 0),
+                'snr': packet.get('snr', 0.0),
+                'message_length': len(message_text),
+                'source': source  # ← NOUVEAU
+            }
+            
+            # Déduplication basique (même message dans les 5 dernières secondes)
+            if self._is_duplicate(message_entry):
+                debug_print(f"🔄 Message dupliqué ignoré: {sender_name}")
+                return
+            
+            self.public_messages.append(message_entry)
+            
+            # Mise à jour des statistiques (existant)
+            self._update_node_statistics(from_id, sender_name, message_text, timestamp)
+            self._update_global_statistics(timestamp)
+            
+            # Source dans le log
+            source_icon = "📡" if source == 'tigrog2' else "📻"
+            debug_print(f"{source_icon} Stats mises à jour pour {sender_name}: {self.node_stats[from_id]['total_messages']} msgs")
+            
+        except Exception as e:
+            debug_print(f"Erreur enregistrement message public: {e}")
+
+    def _is_duplicate(self, new_message):
+        """Vérifier si le message est un doublon récent"""
+        if not self.public_messages:
+            return False
+        
+        # Vérifier les 10 derniers messages
+        recent = list(self.public_messages)[-10:]
+        
+        for msg in reversed(recent):
+            # Même expéditeur, même texte, < 5 secondes d'écart
+            if (msg['from_id'] == new_message['from_id'] and
+                msg['message'] == new_message['message'] and
+                abs(msg['timestamp'] - new_message['timestamp']) < 5):
+                return True
+        
+        return False        
