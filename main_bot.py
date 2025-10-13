@@ -54,6 +54,10 @@ class DebugMeshBot:
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
         try:
+            # ✅ CRITIQUE : Filtrer seulement les messages de NOTRE interface locale
+            if interface != self.interface:
+                return  # Ignorer les messages du bridge tigrog2
+
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.node_manager.update_node_from_packet(packet)
             
@@ -99,7 +103,20 @@ class DebugMeshBot:
                         error_print(traceback.format_exc())
                 
                 return  # Pas de traitement supplémentaire
-         
+            if TIGROG2_TRAFFIC_BRIDGE_ENABLED:
+                try:
+                    from tigrog2_traffic_bridge import TigroG2TrafficBridge
+                    self.tigrog2_bridge = TigroG2TrafficBridge(
+                        self.traffic_monitor,
+                        self.node_manager
+                    )
+                    self.tigrog2_bridge.start()
+                    info_print("✅ Bridge trafic tigrog2 activé")
+                except Exception as e:
+                    error_print(f"⚠️ Bridge tigrog2 non disponible: {e}")
+                    import traceback
+                    error_print(traceback.format_exc())
+
             # Traitement des messages texte
             if portnum == 'TEXT_MESSAGE_APP':
                 from_id = packet.get('from', 0)
@@ -350,6 +367,10 @@ class DebugMeshBot:
         # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
+
+        # ✅ AJOUT : Arrêter le bridge
+        if self.tigrog2_bridge:
+            self.tigrog2_bridge.stop()
 
         if self.interface:
             self.interface.close()

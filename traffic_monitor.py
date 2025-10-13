@@ -353,7 +353,47 @@ class TrafficMonitor:
                 'last_seen': 0,
                 'name': ''
             })
+                   # ✅ AJOUT : Compter par source
+            local_count = 0
+            tigrog2_count = 0
             
+            for msg in self.public_messages:
+                if msg['timestamp'] >= cutoff_time:
+                    from_id = msg['from_id']
+                    period_stats[from_id]['messages'] += 1
+                    period_stats[from_id]['chars'] += msg['message_length']
+                    period_stats[from_id]['last_seen'] = msg['timestamp']
+                    period_stats[from_id]['name'] = msg['sender_name']
+                    
+                    # Compter par source
+                    if msg.get('source') == 'tigrog2':
+                        tigrog2_count += 1
+                    else:
+                        local_count += 1
+            
+            if not period_stats:
+                return f"📊 Aucune activité dans les {hours}h"
+            
+            # Trier par nombre de messages
+            sorted_nodes = sorted(
+                period_stats.items(),
+                key=lambda x: x[1]['messages'],
+                reverse=True
+            )[:top_n]
+            
+            # Construire le rapport
+            lines = []
+            lines.append(f"🏆 TOP TALKERS ({hours}h)")
+            lines.append(f"{'='*30}")
+            
+            total_messages = sum(s['messages'] for _, s in period_stats.items())
+        
+            # ✅ AJOUT : Afficher les sources
+            lines.append(f"Total: {total_messages} messages")
+            lines.append(f"  📻 Local: {local_count}")
+            lines.append(f"  📡 TigroG2: {tigrog2_count}")
+            lines.append("")
+
             # Parcourir tous les paquets
             for packet in self.all_packets:
                 if packet['timestamp'] >= cutoff_time:
@@ -924,11 +964,6 @@ class TrafficMonitor:
         except Exception as e:
             debug_print(f"Erreur enregistrement paquet: {e}")
 
-
-    # ============================================================
-    # AJOUT 3: Méthode get_hourly_histogram
-    # ============================================================
-
     def get_hourly_histogram(self, packet_filter='all', hours=24):
         """
         Générer un histogramme de distribution horaire des paquets
@@ -1018,11 +1053,10 @@ class TrafficMonitor:
             error_print(f"Erreur génération histogramme: {e}")
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
-
             
     def add_public_message(self, packet, message_text, source='local'):
         """
-        Enregistrer un message public avec source
+        Enregistrer un message public avec collecte de statistiques avancées
         
         Args:
             packet: Packet Meshtastic
@@ -1045,26 +1079,29 @@ class TrafficMonitor:
                 'rssi': packet.get('rssi', 0),
                 'snr': packet.get('snr', 0.0),
                 'message_length': len(message_text),
-                'source': source  # ← NOUVEAU
+                'source': source  # ← AJOUT
             }
-            
-            # Déduplication basique (même message dans les 5 dernières secondes)
-            if self._is_duplicate(message_entry):
-                debug_print(f"🔄 Message dupliqué ignoré: {sender_name}")
-                return
             
             self.public_messages.append(message_entry)
             
-            # Mise à jour des statistiques (existant)
+            # === MISE À JOUR DES STATISTIQUES ===
             self._update_node_statistics(from_id, sender_name, message_text, timestamp)
             self._update_global_statistics(timestamp)
             
-            # Source dans le log
+            # Analyser les commandes
+            if message_text.startswith('/'):
+                self.node_stats[from_id]['commands_sent'] += 1
+                if message_text.startswith('/echo'):
+                    self.node_stats[from_id]['echo_sent'] += 1
+            
+            # Log avec icône source
             source_icon = "📡" if source == 'tigrog2' else "📻"
             debug_print(f"{source_icon} Stats mises à jour pour {sender_name}: {self.node_stats[from_id]['total_messages']} msgs")
             
         except Exception as e:
             debug_print(f"Erreur enregistrement message public: {e}")
+            import traceback
+            debug_print(traceback.format_exc())
 
     def _is_duplicate(self, new_message):
         """Vérifier si le message est un doublon récent"""
@@ -1082,3 +1119,49 @@ class TrafficMonitor:
                 return True
         
         return False        
+
+    def _update_node_statistics(self, node_id, sender_name, message_text, timestamp):
+        """Mettre à jour les statistiques d'un nœud"""
+        stats = self.node_stats[node_id]
+        
+        # Compteurs de base
+        stats['total_messages'] += 1
+        stats['total_chars'] += len(message_text)
+        
+        # Timestamps
+        if stats['first_seen'] is None:
+            stats['first_seen'] = timestamp
+        stats['last_seen'] = timestamp
+        
+        # Activité horaire et journalière
+        dt = datetime.fromtimestamp(timestamp)
+        hour = dt.hour
+        day_key = dt.strftime("%Y-%m-%d")
+        
+        stats['hourly_activity'][hour] += 1
+        stats['daily_activity'][day_key] += 1
+        
+        # Moyenne de longueur de message
+        stats['avg_message_length'] = stats['total_chars'] / stats['total_messages']
+        
+        # Heure de pointe pour ce nœud
+        if stats['hourly_activity']:
+            peak_hour = max(stats['hourly_activity'].items(), key=lambda x: x[1])
+            stats['peak_hour'] = peak_hour[0]
+
+    def _update_global_statistics(self, timestamp):
+        """Mettre à jour les statistiques globales"""
+        self.global_stats['total_messages'] += 1
+        self.global_stats['total_unique_nodes'] = len(self.node_stats)
+        
+        # Calculer l'heure la plus active
+        all_hourly = defaultdict(int)
+        for node_stats in self.node_stats.values():
+            for hour, count in node_stats['hourly_activity'].items():
+                all_hourly[hour] += count
+        
+        if all_hourly:
+            busiest = max(all_hourly.items(), key=lambda x: x[1])
+            quietest = min(all_hourly.items(), key=lambda x: x[1])
+            self.global_stats['busiest_hour'] = f"{busiest[0]}h ({busiest[1]} msgs)"
+            self.global_stats['quietest_hour'] = f"{quietest[0]}h ({quietest[1]} msgs)"    
