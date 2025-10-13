@@ -125,6 +125,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
             self.application.add_handler(CommandHandler("tigrosys", self._sys_command))
+            self.application.add_handler(CommandHandler("tigrobot", self._tigrobot_command)) 
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
@@ -139,11 +140,6 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("top", self._top_command))
             self.application.add_handler(CommandHandler("packets", self._packets_command))
             self.application.add_handler(CommandHandler("stats", self._stats_command))
-            
-            # Handler pour messages texte
-            self.application.add_handler(
-                MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
-            )
             
             # Gestionnaire d'erreurs
             self.application.add_error_handler(self._error_handler)
@@ -220,7 +216,7 @@ class TelegramIntegration:
             f"🤖 Bot Meshtastic Bridge\n\n"
             f"Salut {user.first_name} !\n\n"
             f"Commandes:\n"
-            f"• Message direct → Chat IA\n"
+            f"• /tigrobot - Chat IA\n"
             f"• /tigropower - Batterie/solaire\n"
             f"• /rx [page]\n"
             f"• /tigrosys \n"
@@ -808,23 +804,43 @@ class TelegramIntegration:
         info_print(f"📤 Envoi réponse à Telegram: {response}")
         await update.message.reply_text(response)
 
-    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Messages texte = /bot (Chat IA)"""
+    async def _tigrobot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /tigrobot <question> - Chat avec l'IA
+        """
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        message_text = update.message.text
-        info_print(f"📱 Telegram message: {user.username} -> '{message_text[:50]}'")
+        # Vérifier qu'il y a bien une question
+        if not context.args or len(context.args) == 0:
+            await update.message.reply_text(
+                "Usage: /tigrobot <question>\n"
+                "Exemple: /tigrobot Quelle est la météo ?"
+            )
+            return
+        
+        # Reconstruire la question complète
+        question = ' '.join(context.args)
+        
+        info_print(f"📱 Telegram /tigrobot: {user.username} -> '{question[:50]}'")
         
         sender_id = user.id & 0xFFFFFFFF
         
-        def query_ai():
-            return self.message_handler.llama_client.query_llama_telegram(message_text, sender_id)
+        # Message d'attente pour les longues questions
+        if len(question) > 100:
+            await update.message.reply_text("🤔 Réflexion en cours...")
         
-        response = await asyncio.to_thread(query_ai)
-        await update.message.reply_text(response)
+        def query_ai():
+            return self.message_handler.llama_client.query_llama_telegram(question, sender_id)
+        
+        try:
+            response = await asyncio.to_thread(query_ai)
+            await update.message.reply_text(response)
+        except Exception as e:
+            error_print(f"Erreur /tigrobot: {e}")
+            await update.message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Gestionnaire d'erreurs"""

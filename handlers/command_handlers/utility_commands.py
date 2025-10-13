@@ -350,9 +350,9 @@ class UtilityCommands:
         📖 AIDE COMPLÈTE - BOT MESHTASTIC
 
         🤖 CHAT IA
-        • Message direct → Conversation avec l'IA
+        • /tigrobot <question> → Conversation avec l'IA
         • Contexte conversationnel maintenu 30min
-        • Réponses détaillées possibles sur Telegram
+        • Réponses plus détaillées possibles sur Telegram vs mesh
 
         ⚡ SYSTÈME & MONITORING
         • /tigropower - Télémétrie complète
@@ -399,7 +399,7 @@ class UtilityCommands:
         📋 LIMITES & INFORMATIONS
         • Throttling: 5 commandes/5min par utilisateur
         • Contexte IA: 6 messages max, timeout 30min
-        • Historique trafic: 2000 messages, rétention 24h
+        • Historique trafic mesh: 2000 messages, rétention 24h
         • Nœuds distants: filtre 3j par défaut
 
         💡 ASTUCES
