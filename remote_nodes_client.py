@@ -17,6 +17,14 @@ from utils import (
 
 class RemoteNodesClient:
     def __init__(self):
+        # ✅ AJOUT: Système de cache pour éviter connexions répétées
+        self._cache = {}           # Stockage des résultats
+        self._cache_ttl = 60       # Cache valide 60 secondes
+        self._cache_stats = {      # Statistiques pour monitoring
+            'hits': 0,
+            'misses': 0,
+            'last_cleanup': time.time()
+        }
         pass
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant
@@ -29,8 +37,33 @@ class RemoteNodesClient:
         Returns:
             list: Liste de nœuds avec leurs infos, DÉJÀ FILTRÉS PAR DATE
         """
+    def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
+        """
+        Récupérer la liste des nœuds directs avec système de cache
         
-        # ✅ AJOUT : Calcul du seuil temporel
+        ✅ OPTIMISATIONS:
+        - Cache 60s pour éviter connexions répétées
+        - Sleep réduit de 2s à 1s
+        - Fermeture immédiate de la connexion
+        
+        Args:
+            remote_host: IP du nœud distant
+            remote_port: Port TCP (défaut: 4403)
+            days_filter: Nombre de jours pour filtrer les nœuds (défaut: 3)
+            
+        Returns:
+            list: Liste de nœuds avec leurs infos, filtrés par date
+        """
+        
+        # ✅ ÉTAPE 1: Vérifier le cache d'abord
+        cache_key = f"{remote_host}:{remote_port}:{days_filter}"
+        cached_data, is_hit = self._cache_get(cache_key)
+        
+        if is_hit:
+            info_print(f"📦 Nœuds de {remote_host} depuis cache (économie connexion TCP)")
+            return cached_data
+        
+        # ✅ ÉTAPE 2: Calcul du seuil temporel
         current_time = time.time()
         cutoff_time = current_time - (days_filter * 24 * 3600)
         debug_print(f"Filtre temporel: derniers {days_filter} jours")
@@ -40,18 +73,17 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_metrics = 0
         
-        remote_interface = None  # ✅ Initialiser
+        remote_interface = None
         try:
-            debug_print(f"Connexion au nœud distant {remote_host}...")
+            info_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
             
-            # ✅ OPTIMISATION : Timeout court pour éviter blocage
             remote_interface = meshtastic.tcp_interface.TCPInterface(
                 hostname=remote_host, 
                 portNumber=remote_port
             )
             
-            # ✅ CRITIQUE : Réduire le temps d'attente (1s au lieu de 2s)
-            time.sleep(1)        
+            # ✅ OPTIMISATION: Sleep réduit de 2s à 1s
+            time.sleep(1)
             
             # Récupérer les nœuds
             remote_nodes = remote_interface.nodes
@@ -166,6 +198,7 @@ class RemoteNodesClient:
                     debug_print(f"Erreur traitement nœud {node_id}: {e}")
                     continue
             
+            # ✅ OPTIMISATION: Fermeture immédiate
             remote_interface.close()
             debug_print(f"✅ {len(node_list)} nœuds DIRECTS récupérés de {remote_host}")
             debug_print(f"✅ Résultats pour {remote_host} (filtre: {days_filter}j):")
@@ -174,6 +207,9 @@ class RemoteNodesClient:
             debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
             debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}") 
 
+            # ✅ ÉTAPE 3: Mettre en cache
+            self._cache_set(cache_key, node_list)
+            
             return node_list
             
         except Exception as e:
@@ -484,3 +520,72 @@ class RemoteNodesClient:
             line_parts.append(f"SNR:{node['snr']:.1f}")
         
         return " ".join(line_parts)
+        def _cache_get(self, key):
+        """
+        Récupérer une valeur du cache
+
+        Returns:
+            tuple: (data, is_hit) où is_hit=True si trouvé et valide
+        """
+        if key not in self._cache:
+            self._cache_stats['misses'] += 1
+            return None, False
+
+        cached_data, cached_time = self._cache[key]
+        current_time = time.time()
+
+        # Vérifier si le cache est encore valide
+        if current_time - cached_time < self._cache_ttl:
+            self._cache_stats['hits'] += 1
+            debug_print(f"✅ Cache HIT pour {key} (âge: {int(current_time - cached_time)}s)")
+            return cached_data, True
+        else:
+            # Cache expiré
+            debug_print(f"⏰ Cache EXPIRED pour {key}")
+            del self._cache[key]
+            self._cache_stats['misses'] += 1
+            return None, False
+
+    def _cache_set(self, key, data):
+        """Enregistrer une valeur dans le cache"""
+        current_time = time.time()
+        self._cache[key] = (data, current_time)
+        debug_print(f"💾 Cache SET pour {key}")
+
+        # Nettoyage automatique si cache trop gros
+        if len(self._cache) > 10:
+            self._cache_cleanup()
+
+    def _cache_cleanup(self):
+        """Nettoyer les entrées expirées du cache"""
+        current_time = time.time()
+
+        # Ne nettoyer que toutes les 5 minutes max
+        if current_time - self._cache_stats['last_cleanup'] < 300:
+            return
+
+        expired_keys = []
+        for key, (data, timestamp) in self._cache.items():
+            if current_time - timestamp >= self._cache_ttl:
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            del self._cache[key]
+
+        if expired_keys:
+            debug_print(f"🧹 Cache cleanup: {len(expired_keys)} entrées expirées supprimées")
+
+        self._cache_stats['last_cleanup'] = current_time
+
+    def get_cache_stats(self):
+        """Obtenir les statistiques du cache"""
+        total_requests = self._cache_stats['hits'] + self._cache_stats['misses']
+        hit_rate = (self._cache_stats['hits'] / total_requests * 100) if total_requests > 0 else 0
+
+        return {
+            'hits': self._cache_stats['hits'],
+            'misses': self._cache_stats['misses'],
+            'hit_rate': hit_rate,
+            'cache_size': len(self._cache),
+            'cache_ttl': self._cache_ttl
+        }
