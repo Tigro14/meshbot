@@ -70,7 +70,11 @@ class DebugMeshBot:
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
+            if not to_id:
+                return
             from_id = packet.get('from', 0)
+            if not from_id:
+                return
             my_id = None
             
             if hasattr(self.interface, 'localNode') and self.interface.localNode:

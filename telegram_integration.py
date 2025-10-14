@@ -151,7 +151,7 @@ class TelegramIntegration:
             info_print("Bot Telegram en écoute (polling optimisé)...")
             
             await self.application.updater.start_polling(
-                poll_interval=10.0,        # ✅ 10 secondes (économie CPU)
+                poll_interval=15.0,        # ✅ 10 secondes (économie CPU)
                 timeout=30,                # 30s polling
                 read_timeout=120,          # 2 minutes
                 write_timeout=120,         # 2 minutes
@@ -167,7 +167,7 @@ class TelegramIntegration:
                 await asyncio.sleep(60)  # 60 secondes
 
                 cleanup_counter += 1
-                if cleanup_counter % 2 == 0:  # CPU fix: Toutes les 60 secondes
+                if cleanup_counter % 6 == 0:  # CPU fix: Toutes les 3 mn
                     self.cleanup_expired_traces()
 
             # Arrêter proprement
