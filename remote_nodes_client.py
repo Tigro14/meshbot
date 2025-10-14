@@ -520,7 +520,8 @@ class RemoteNodesClient:
             line_parts.append(f"SNR:{node['snr']:.1f}")
         
         return " ".join(line_parts)
-        def _cache_get(self, key):
+
+    def _cache_get(self, key):
         """
         Récupérer une valeur du cache
 
