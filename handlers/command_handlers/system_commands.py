@@ -11,6 +11,7 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):
@@ -284,43 +285,42 @@ class SystemCommands:
         def get_g2_config():
             try:
                 debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
-                )
-                
-                time.sleep(2)
-                
-                config_info = []
-                
-                if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
-                    local_node = remote_interface.localNode
-                    
-                    if hasattr(local_node, 'shortName'):
-                        config_info.append(f"📡 {local_node.shortName}")
-                    
-                    if hasattr(local_node, 'nodeNum'):
-                        config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
-                    
-                    if hasattr(local_node, 'firmwareVersion'):
-                        config_info.append(f"📦 FW: {local_node.firmwareVersion}")
-                
-                nodes_count = len(getattr(remote_interface, 'nodes', {}))
-                config_info.append(f"🗂️ Nœuds: {nodes_count}")
-                
                 try:
-                    nodes = getattr(remote_interface, 'nodes', {})
-                    direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
-                    config_info.append(f"🎯 Direct: {direct_nodes}")
-                except:
-                    pass
+                    with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=10) as remote_interface:
+                        config_info = []
+
+                    if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                        local_node = remote_interface.localNode
+                        
+                        if hasattr(local_node, 'shortName'):
+                            config_info.append(f"📡 {local_node.shortName}")
+                        
+                        if hasattr(local_node, 'nodeNum'):
+                            config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
+                        
+                        if hasattr(local_node, 'firmwareVersion'):
+                            config_info.append(f"📦 FW: {local_node.firmwareVersion}")
+                    
+                    nodes_count = len(getattr(remote_interface, 'nodes', {}))
+                    config_info.append(f"🗂️ Nœuds: {nodes_count}")
+                    
+                    try:
+                        nodes = getattr(remote_interface, 'nodes', {})
+                        direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
+                        config_info.append(f"🎯 Direct: {direct_nodes}")
+                    except:
+                        pass
+                    
+                    remote_interface.close()
+                    
+                    response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
                 
-                remote_interface.close()
-                
-                response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
-                
-                self.sender.log_conversation(sender_id, sender_info, "/g2", response)
-                self.sender.send_chunks(response, sender_id, sender_info)
+                    self.sender.log_conversation(sender_id, sender_info, "/g2", response)
+                    self.sender.send_chunks(response, sender_id, sender_info)
+
+                except Exception as e:
+                    self.sender.send_single(f"⚠️ Erreur: {str(e)[:50]}", sender_id, sender_info)
+
                 
             except Exception as e:
                 error_msg = f"⚠️ Erreur config: {str(e)[:50]}"
