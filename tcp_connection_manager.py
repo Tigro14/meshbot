@@ -1,71 +1,80 @@
-# tcp_connection_manager.py - Version améliorée
-import queue
 import time
+import threading
+import meshtastic.tcp_interface
+from contextlib import contextmanager
+from utils import debug_print, error_print
 
-class TCPConnectionPool:
-    """Pool de connexions réutilisables pour éviter les reconnexions"""
-    
-    def __init__(self, hostname, port=4403, max_connections=3):
-        self.hostname = hostname
-        self.port = port
-        self.max_connections = max_connections
-        self.pool = queue.Queue(maxsize=max_connections)
-        self.active_count = 0
+class TCPConnectionManager:
+    def __init__(self):
+        self.active_connections = []
         self.lock = threading.Lock()
+    
+    @contextmanager
+    def get_connection(self, hostname, port=4403, timeout=30):
+        """Context manager pour connexion TCP avec timeout et nettoyage garanti"""
+        connection = None
+        timer = None
         
-    def get_connection(self, timeout=30):
-        """Obtenir une connexion du pool"""
         try:
-            # Essayer de récupérer une connexion existante
-            conn, created_at = self.pool.get_nowait()
+            debug_print(f"Ouverture connexion TCP vers {hostname}:{port}")
             
-            # Vérifier qu'elle n'est pas trop vieille (max 5 min)
-            if time.time() - created_at > 300:
+            # Créer la connexion
+            connection = meshtastic.tcp_interface.TCPInterface(
+                hostname=hostname,
+                portNumber=port
+            )
+            
+            # Ajouter à la liste des connexions actives
+            with self.lock:
+                self.active_connections.append(connection)
+            
+            # Timer de timeout pour forcer la fermeture
+            def force_close():
+                if connection in self.active_connections:
+                    error_print(f"⚠️ Timeout connexion {hostname} - fermeture forcée")
+                    try:
+                        connection.close()
+                    except:
+                        pass
+            
+            timer = threading.Timer(timeout, force_close)
+            timer.start()
+            
+            # Attendre l'initialisation
+            time.sleep(2)
+            
+            yield connection
+            
+        except Exception as e:
+            error_print(f"Erreur connexion TCP {hostname}: {e}")
+            raise
+        finally:
+            # Annuler le timer
+            if timer:
+                timer.cancel()
+            
+            # Fermer la connexion
+            if connection:
+                try:
+                    debug_print(f"Fermeture connexion {hostname}")
+                    connection.close()
+                except Exception as e:
+                    error_print(f"Erreur fermeture: {e}")
+                
+                # Retirer de la liste
+                with self.lock:
+                    if connection in self.active_connections:
+                        self.active_connections.remove(connection)
+    
+    def cleanup_all(self):
+        """Fermer toutes les connexions actives"""
+        with self.lock:
+            for conn in self.active_connections[:]:
                 try:
                     conn.close()
                 except:
                     pass
-                raise queue.Empty()
-                
-            return conn
-            
-        except queue.Empty:
-            # Créer une nouvelle connexion
-            with self.lock:
-                if self.active_count >= self.max_connections:
-                    raise Exception("Pool de connexions saturé")
-                self.active_count += 1
-            
-            conn = meshtastic.tcp_interface.TCPInterface(
-                hostname=self.hostname,
-                portNumber=self.port
-            )
-            time.sleep(2)
-            return conn
-    
-    def return_connection(self, conn):
-        """Remettre une connexion dans le pool"""
-        try:
-            self.pool.put_nowait((conn, time.time()))
-        except queue.Full:
-            # Pool plein, fermer la connexion
-            try:
-                conn.close()
-            except:
-                pass
-        finally:
-            with self.lock:
-                self.active_count -= 1
-    
-    def close_all(self):
-        """Fermer toutes les connexions"""
-        while not self.pool.empty():
-            try:
-                conn, _ = self.pool.get_nowait()
-                conn.close()
-            except:
-                pass
-        self.active_count = 0
+            self.active_connections.clear()
 
-# Pool global pour tigrog2
-tigrog2_pool = TCPConnectionPool(REMOTE_NODE_HOST)
+# Instance globale
+tcp_manager = TCPConnectionManager()
