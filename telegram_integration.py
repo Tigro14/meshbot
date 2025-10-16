@@ -10,6 +10,8 @@ import threading
 import traceback
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
+from tcp_connection_manager import tcp_manager
 
 # Import Telegram (optionnel)
 try:
@@ -465,13 +467,8 @@ class TelegramIntegration:
         info_print(f"📱 Telegram /echo: {user.username} -> '{echo_text}'")
 
         def send_echo():
-            import meshtastic.tcp_interface
+            #import meshtastic.tcp_interface
             try:
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, portNumber=4403
-                )
-                time.sleep(3)
-
                 # Utiliser le mapping Telegram → Meshtastic
                 mesh_identity = self._get_mesh_identity(user.id)
 
@@ -484,9 +481,15 @@ class TelegramIntegration:
                     info_print(f"⚠️ Echo sans mapping: {prefix}")
 
                 message = f"{prefix}: {echo_text}"
-                remote_interface.sendText(message)
-                time.sleep(4)
-                remote_interface.close()
+                try:
+                    with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+                        message = f"{prefix}: {echo_text}"
+                        remote_interface.sendText(message)
+                        time.sleep(2)  # Attendre l'envoi
+                        return f"✅ Echo diffusé: {message}"
+                except Exception as e:
+                    return f"❌ Erreur echo: {str(e)[:50]}"
+
                 return f"✅ Echo diffusé: {message}"
             except Exception as e:
                 return f"❌ Erreur echo: {str(e)[:50]}"

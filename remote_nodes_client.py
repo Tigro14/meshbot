@@ -14,6 +14,7 @@ from utils import (
     truncate_text,
     validate_page_number
 )
+from tcp_connection_manager import tcp_manager
 
 class RemoteNodesClient:
     def __init__(self):
@@ -40,21 +41,26 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_metrics = 0
         
+        from tcp_connection_manager import tcp_manager
+
         remote_interface = None  # ✅ Initialiser
+
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
             
-            # ✅ OPTIMISATION : Timeout court pour éviter blocage
+            try:
+                with tcp_manager.get_connection(remote_host, remote_port) as remote_interface:
+                    # Votre code existant ici
+                    remote_nodes = remote_interface.nodes
+                    # ... traitement des nœuds ...
+                    return node_list
+            except Exception as e:
+                error_print(f"Erreur récupération nœuds: {e}")
+                return []
             remote_interface = meshtastic.tcp_interface.TCPInterface(
                 hostname=remote_host, 
                 portNumber=remote_port
             )
-            
-            # ✅ CRITIQUE : Réduire le temps d'attente (1s au lieu de 2s)
-            time.sleep(1)        
-            
-            # Récupérer les nœuds
-            remote_nodes = remote_interface.nodes
             
             # Formater les résultats - FILTRER SEULEMENT LES NŒUDS DIRECTS
             node_list = []
