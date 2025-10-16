@@ -23,6 +23,7 @@ from message_handler import MessageHandler
 from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
+from tcp_connection_manager import tcp_manager
 
 class DebugMeshBot:
     def __init__(self):
@@ -338,6 +339,8 @@ class DebugMeshBot:
         # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
+
+        tcp_manager.cleanup_all()
 
         if self.interface:
             self.interface.close()
