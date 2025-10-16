@@ -159,38 +159,21 @@ class NetworkCommands:
         """Envoyer un message en broadcast via tigrog2"""
         def send_broadcast():
             remote_interface = None
+            debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
             try:
-                debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
-                )
-                
-                # ✅ CRITIQUE : Réduire à 1s
-                time.sleep(1)
-                
-                debug_print(f"Envoi broadcast: '{message[:50]}...'")
-                remote_interface.sendText(message)
-                
-                # ✅ Réduire à 2s au lieu de 4s
-                time.sleep(2)
-                
-                debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
-                self.sender.log_conversation(sender_id, sender_info, command, message)
-                
+                with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+                    debug_print(f"Envoi broadcast: '{message[:50]}...'")
+                    remote_interface.sendText(message)
+                    time.sleep(3)  # Attendre propagation
+
+                    debug_print(f"✅ Broadcast {command} diffusé")
+                    self.sender.log_conversation(sender_id, sender_info, command, message)
+
             except Exception as e:
-                error_print(f"Erreur broadcast {command} via tigrog2: {e}")
-            finally:
-                # ✅ CRITIQUE : TOUJOURS fermer
-                if remote_interface:
-                    try:
-                        debug_print(f"🔒 Fermeture FORCÉE connexion tigrog2")
-                        remote_interface.close()
-                        del remote_interface
-                        import gc
-                        gc.collect()
-                    except Exception as close_error:
-                        debug_print(f"Erreur fermeture: {close_error}")
+                error_print(f"Erreur broadcast: {e}")
+
+            debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
+            self.sender.log_conversation(sender_id, sender_info, command, message)
         
         threading.Thread(target=send_broadcast, daemon=True).start()
 
