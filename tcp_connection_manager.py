@@ -1,4 +1,4 @@
-iimport time
+import time
 import threading
 import meshtastic.tcp_interface
 from contextlib import contextmanager
