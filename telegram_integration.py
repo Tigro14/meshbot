@@ -481,11 +481,14 @@ class TelegramIntegration:
 
                 message = f"{prefix}: {echo_text}"
                 try:
-                    with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
-                        message = f"{prefix}: {echo_text}"
-                        remote_interface.sendText(message)
-                        time.sleep(2)  # Attendre l'envoi
-                        return f"✅ Echo diffusé: {message}"
+                    from safe_tcp_connection import send_text_to_remote
+                    message = f"{prefix}: {echo_text}"
+                    send_text_to_remote(REMOTE_NODE_HOST, message)
+                    #with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+                    #    message = f"{prefix}: {echo_text}"
+                    #    remote_interface.sendText(message)
+                    #    time.sleep(2)  # Attendre l'envoi
+                    return f"✅ Echo diffusé: {message}"
                 except Exception as e:
                     return f"❌ Erreur echo: {str(e)[:50]}"
 

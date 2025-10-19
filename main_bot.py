@@ -341,6 +341,8 @@ class DebugMeshBot:
             self.telegram_integration.stop()
 
         tcp_manager.cleanup_all()
+        from safe_tcp_connection import SafeTCPConnection
+        SafeTCPConnection.cleanup_all()
 
         if self.interface:
             self.interface.close()

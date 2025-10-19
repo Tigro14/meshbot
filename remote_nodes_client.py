@@ -219,14 +219,11 @@ class RemoteNodesClient:
         remote_interface = None
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
-            
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=remote_host, 
-                portNumber=remote_port
-            )
-            
-            time.sleep(2)
-            remote_nodes = remote_interface.nodes
+            from safe_tcp_connection import SafeTCPConnection
+
+            with SafeTCPConnection.connect(remote_host, remote_port) as remote_interface:
+                time.sleep(2)
+                remote_nodes = remote_interface.nodes 
             
             # ✅ PAS DE FILTRE hopsAway - on prend tout !
             node_list = []

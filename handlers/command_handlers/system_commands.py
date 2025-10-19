@@ -260,13 +260,15 @@ class SystemCommands:
             node_name = self.node_manager.get_node_name(from_id, self.interface)
             info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
             
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=REMOTE_NODE_HOST,
-                portNumber=4403
-            )
-            time.sleep(3)
+            #remote_interface = meshtastic.tcp_interface.TCPInterface(
+            #    hostname=REMOTE_NODE_HOST,
+            #    portNumber=4403
+            #)
+            #time.sleep(3)
             
-            remote_interface.sendText("/reboot")
+            #remote_interface.sendText("/reboot")
+            from safe_tcp_connection import send_text_to_remote
+            send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
             info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
             
             time.sleep(2)
