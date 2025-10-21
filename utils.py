@@ -36,8 +36,28 @@ def conversation_print(message):
     print(f"[CONVERSATION] {message}", flush=True)
 
 def error_print(message):
-    """Log d'erreur"""
-    print(f"[ERROR] {message}", file=sys.stderr, flush=True)
+    """Affiche un message d'erreur avec horodatage et traceback"""
+    timestamp = time.strftime("%H:%M:%S")
+
+    # ✅ PROTECTION contre None
+    if message is None:
+        message = "Message d'erreur None détecté"
+        import traceback
+        print(f"[ERROR] {timestamp} - {message}", flush=True)
+        print(f"[ERROR] Traceback de l'appel:", flush=True)
+        traceback.print_stack()
+        return
+
+    # ✅ AMÉLIORATION : Ajouter le traceback automatiquement
+    import sys
+    import traceback
+
+    print(f"[ERROR] {timestamp} - {message}", flush=True)
+
+    # Si on est dans un contexte d'exception, afficher le traceback
+    if sys.exc_info()[0] is not None:
+        print("[ERROR] Traceback complet:", flush=True)
+        traceback.print_exc()
 
 def format_timestamp():
     """Format timestamp pour l'affichage"""
