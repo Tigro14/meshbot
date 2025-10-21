@@ -65,7 +65,7 @@ class TelegramIntegration:
         self.running = False
         if self.loop and self.application:
             try:
-                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop)
+                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop).result(timeout=5)
             except Exception as e:
                 pass
         info_print("🛑 Bot Telegram arrêté")
@@ -889,7 +889,7 @@ class TelegramIntegration:
             future = asyncio.run_coroutine_threadsafe(
                 self._send_alert_async(message),
                 self.loop
-            )
+            ).result(timeout=5) 
             
             # Attendre le résultat (avec timeout)
             try:
@@ -1405,13 +1405,16 @@ class TelegramIntegration:
                 error_print(f"❌ ERREUR _find_node_by_short_name: {find_error}")
                 error_print(traceback.format_exc())
                 
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
-                    ),
-                    self.loop
-                ).result(timeout=5)
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
+                        ),
+                        self.loop
+                    ).result(timeout=5)
+                except:
+                    pass
                 return
             
             target_full_name = self.node_manager.get_node_name(target_node_id)
@@ -1460,7 +1463,7 @@ class TelegramIntegration:
                     text=f"❌ Erreur technique: {str(e)[:100]}"
                 ),
                 self.loop
-            )
+            ).result(timeout=5)  # ✅ FIX
         
     async def _trace_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -1661,14 +1664,17 @@ class TelegramIntegration:
 
             # Envoyer à Telegram
             info_print(f"📤 Envoi du traceroute à Telegram...")
-            asyncio.run_coroutine_threadsafe(
-                self.application.bot.send_message(
-                    chat_id=chat_id,
-                    text=telegram_message,
-                    parse_mode='Markdown'
-                ),
-                self.loop
-            ).result(timeout=10)
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=telegram_message,
+                        parse_mode='Markdown'
+                    ),
+                    self.loop
+                ).result(timeout=10)
+            except Exception as send_error:
+                error_print(f"Erreur envoi Telegram: {send_error}")
 
             info_print(f"✅ Traceroute envoyé à Telegram")
 
