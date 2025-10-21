@@ -58,7 +58,7 @@ class ESPHomeClient:
                             sensor_name = endpoint.split('/')[-1]
                             found_data[sensor_name] = data['value']
                     resp.close()
-                except:
+                except Exception as e:
                     continue
             
             # ✅ AJOUT : Enregistrer dans l'historique

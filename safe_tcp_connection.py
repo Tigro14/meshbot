@@ -90,7 +90,7 @@ class SafeTCPConnection:
             for interface in cls._active_connections[:]:
                 try:
                     interface.close()
-                except:
+                except Exception as e:
                     pass
             cls._active_connections.clear()
         info_print("✅ Toutes les connexions TCP fermées")

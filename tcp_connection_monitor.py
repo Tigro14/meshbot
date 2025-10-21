@@ -134,7 +134,7 @@ class TCPConnectionMonitor:
                             'remote': f"{conn.raddr[0]}:{conn.raddr[1]}" if conn.raddr else "N/A",
                             'status': conn.status
                         })
-            except:
+            except Exception as e:
                 pass
                 
         except Exception as e:
@@ -159,7 +159,7 @@ def cleanup_tcp_connections():
         try:
             from safe_tcp_connection import SafeTCPConnection
             SafeTCPConnection.cleanup_all()
-        except:
+        except Exception as e:
             pass
             
         # 2. Identifier et fermer les threads meshtastic orphelins
@@ -176,7 +176,7 @@ def cleanup_tcp_connections():
                     interface = thread._target.__self__
                     if hasattr(interface, 'close'):
                         interface.close()
-            except:
+            except Exception as e:
                 pass
                 
         # 3. Forcer un garbage collection

@@ -272,7 +272,7 @@ class SystemMonitor:
                     if 'temp=' in temp_output:
                         temp_str = temp_output.split('=')[1].replace("'C", "")
                         return float(temp_str)
-            except:
+        except Exception as e:
                 pass
             
             # Méthode 2: /sys/class/thermal/thermal_zone0/temp
@@ -280,7 +280,7 @@ class SystemMonitor:
                 with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
                     temp_millis = int(f.read().strip())
                     return temp_millis / 1000.0
-            except:
+        except Exception as e:
                 pass
             
             return None
@@ -331,7 +331,7 @@ class SystemMonitor:
             try:
                 threads = len(self.process.threads())
                 memory_mb = self.process.memory_info().rss / 1024 / 1024
-            except:
+        except Exception as e:
                 threads = "N/A"
                 memory_mb = 0
             

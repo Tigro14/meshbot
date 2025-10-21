@@ -34,7 +34,7 @@ class TCPConnectionManager:
                     error_print(f"⚠️ Timeout connexion {hostname} - fermeture forcée")
                     try:
                         connection.close()
-                    except:
+                    except Exception as e:
                         pass
             
             timer = threading.Timer(timeout, force_close)
@@ -72,7 +72,7 @@ class TCPConnectionManager:
             for conn in self.active_connections[:]:
                 try:
                     conn.close()
-                except:
+                except Exception as e:
                     pass
             self.active_connections.clear()
 
