@@ -63,7 +63,7 @@ class LlamaClient:
             if max_chars and len(content) > max_chars:
                 content = content[:max_chars-3] + "..."
                 
-            debug_print(f"Nettoyé: '{content[:50]}...'")
+            debug_print(f"Nettoyé: '{content[:2000]}...'")
             return content
             
         except Exception as e:

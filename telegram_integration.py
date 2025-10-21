@@ -1117,7 +1117,7 @@ class TelegramIntegration:
                                  f"Le nœud est peut-être hors ligne ou hors de portée."
                         ),
                         self.loop
-                    )
+                    ).result(timeout=5)  # ✅ FIX
                 except Exception as e:
                     error_print(f"Erreur notification timeout: {e or 'Unknown error'}")
 
@@ -1450,7 +1450,7 @@ class TelegramIntegration:
                              f"⏳ Attente réponse (max 60s)..."
                     ),
                     self.loop
-                )
+                ).result(timeout=5)  # ✅ FIX
 
         except Exception as e:
             error_print(f"Erreur trace active: {e or 'Unknown error'}")
