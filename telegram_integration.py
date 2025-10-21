@@ -66,7 +66,7 @@ class TelegramIntegration:
         if self.loop and self.application:
             try:
                 asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop)
-            except:
+            except Exception as e:
                 pass
         info_print("🛑 Bot Telegram arrêté")
 
@@ -109,7 +109,7 @@ class TelegramIntegration:
             # Nettoyer l'event loop
             try:
                 self.loop.close()
-            except:
+            except Exception as e:
                 pass
 
     async def _start_telegram_bot(self):
@@ -383,7 +383,7 @@ class TelegramIntegration:
                     
                     bot_uptime_str = " ".join(uptime_parts)
                     system_info.append(f"🤖 Bot: {bot_uptime_str}")
-            except:
+            except Exception as e:
                 pass
 
             try:
@@ -399,7 +399,7 @@ class TelegramIntegration:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
                         temp_celsius = int(f.read().strip()) / 1000.0
                         system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
-            except:
+            except Exception as e:
                 system_info.append("🌡️ CPU: Error")
             
             try:
@@ -408,14 +408,14 @@ class TelegramIntegration:
                 if uptime_result.returncode == 0:
                     uptime_clean = uptime_result.stdout.strip().replace('up ', '')
                     system_info.append(f"⏱️ Up: {uptime_clean}")
-            except:
+            except Exception as e:
                 pass
             
             try:
                 with open('/proc/loadavg', 'r') as f:
                     loadavg = f.read().strip().split()
                     system_info.append(f"📊 Load: {loadavg[0]} {loadavg[1]} {loadavg[2]}")
-            except:
+            except Exception as e:
                 pass
             
             try:
@@ -432,7 +432,7 @@ class TelegramIntegration:
                     mem_used = mem_total - mem_available
                     mem_percent = (mem_used / mem_total) * 100
                     system_info.append(f"💾 RAM: {mem_used//1024}MB/{mem_total//1024}MB ({mem_percent:.0f}%)")
-            except:
+            except Exception as e:
                 pass
             
             return "🖥️ Système RPI5:\n" + "\n".join(system_info) if system_info else "❌ Erreur système"
@@ -1385,7 +1385,7 @@ class TelegramIntegration:
                         ),
                         self.loop
                     ).result(timeout=5)
-                except:
+                except Exception as e:
                     error_print("❌ Impossible de notifier l'utilisateur")
 
     def _execute_active_trace(self, target_short_name, chat_id, username):
@@ -1565,7 +1565,7 @@ class TelegramIntegration:
                     ),
                     self.loop
                 ).result(timeout=5)
-            except:
+            except Exception as e:
                 error_print("❌ Impossible de notifier l'utilisateur")
 
     def handle_traceroute_response(self, packet, decoded):
