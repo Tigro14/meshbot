@@ -20,35 +20,6 @@ class SystemCommands:
         self.sender = sender
         self.bot_start_time = bot_start_time  # ✅ NOUVEAU: timestamp démarrage bot
     
-    def _format_uptime(self, seconds):
-        """
-        Formater un uptime en secondes vers un format lisible
-        
-        Args:
-            seconds: nombre de secondes
-            
-        Returns:
-            str: format "X days, Y hours, Z minutes" ou plus court selon durée
-        """
-        if seconds < 60:
-            return f"{int(seconds)}s"
-        
-        minutes = int(seconds // 60)
-        hours = int(minutes // 60)
-        days = int(hours // 24)
-        
-        minutes = minutes % 60
-        hours = hours % 24
-        
-        parts = []
-        if days > 0:
-            parts.append(f"{days}d")
-        if hours > 0:
-            parts.append(f"{hours}h")
-        if minutes > 0:
-            parts.append(f"{minutes}m")
-        
-        return " ".join(parts) if parts else "0m"
     
     def handle_sys(self, sender_id, sender_info):
         """Gérer la commande /sys - VERSION AVEC UPTIME BOT"""
@@ -81,13 +52,6 @@ class SystemCommands:
                     bot_uptime_str = " ".join(uptime_parts)
                     system_info.append(f"🤖 Bot: {bot_uptime_str}")
 
-                # === UPTIME BOT PYTHON ===
-                if self.bot_start_time:
-                    bot_uptime_seconds = time.time() - self.bot_start_time
-                    bot_uptime_str = self._format_uptime(bot_uptime_seconds)
-                    system_info.append(f"🤖 Bot: {bot_uptime_str}")
-                    debug_print(f"Uptime bot: {bot_uptime_seconds:.0f}s = {bot_uptime_str}")
-                
                 # Température CPU
                 try:
                     temp_cmd = ['vcgencmd', 'measure_temp']
