@@ -316,10 +316,17 @@ class SystemMonitor:
                     f"Surveillance en cours..."
                 )
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert température: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte température: {e}")
+            import traceback
+            error_print(traceback.format_exc())
 
     def _send_cpu_alert(self, cpu_percent, critical=False):
         """Envoyer une alerte CPU via Telegram"""
@@ -365,10 +372,17 @@ class SystemMonitor:
                     f"Tip: Vérifier les logs pour identifier la cause"
                 )
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert CPU: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte CPU: {e}")
+            import traceback
+            error_print(traceback.format_exc())
 
     def _send_tigrog2_alert(self, alert_type):
         """Envoyer une alerte tigrog2 via Telegram"""
@@ -405,7 +419,14 @@ class SystemMonitor:
             else:
                 return
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert tigrog2: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte tigrog2: {e}")
+            import traceback
+            error_print(traceback.format_exc())
