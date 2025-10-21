@@ -55,7 +55,7 @@ class SafeTCPConnection:
             
         except Exception as e:
             error_print(f"❌ Erreur connexion TCP {hostname}:{port} - {e}")
-            raise
+            return None
             
         finally:
             # CRITIQUE : Fermeture garantie

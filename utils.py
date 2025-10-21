@@ -37,23 +37,26 @@ def conversation_print(message):
 
 def error_print(message):
     """Affiche un message d'erreur avec horodatage et traceback"""
-    timestamp = time.strftime("%H:%M:%S")
-
-    # ✅ PROTECTION contre None
-    if message is None:
-        message = "Message d'erreur None détecté"
-        import traceback
-        print(f"[ERROR] {timestamp} - {message}", flush=True)
-        print(f"[ERROR] Traceback de l'appel:", flush=True)
-        traceback.print_stack()
-        return
-
-    # ✅ AMÉLIORATION : Ajouter le traceback automatiquement
     import sys
     import traceback
-
+    
+    timestamp = time.strftime("%H:%M:%S")
+    
+    # ✅ CAPTURE COMPLÈTE si message est None
+    if message is None or str(message) == "None":
+        print(f"[ERROR] {timestamp} - NoneType: None", flush=True)
+        print(f"[ERROR] ⚠️  STACK TRACE (qui a appelé error_print avec None):", flush=True)
+        
+        # Afficher toute la pile d'appels
+        stack = traceback.extract_stack()[:-1]  # Exclure cette fonction
+        for frame in stack:
+            print(f"[ERROR]   Fichier: {frame.filename}:{frame.lineno}", flush=True)
+            print(f"[ERROR]     dans {frame.name}", flush=True)
+            print(f"[ERROR]     >> {frame.line}", flush=True)
+        return
+    
     print(f"[ERROR] {timestamp} - {message}", flush=True)
-
+    
     # Si on est dans un contexte d'exception, afficher le traceback
     if sys.exc_info()[0] is not None:
         print("[ERROR] Traceback complet:", flush=True)

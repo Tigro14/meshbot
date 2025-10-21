@@ -52,7 +52,7 @@ class ESPHomeClient:
                     if resp.status_code == 200:
                         try:
                             data = resp.json()
-                        except Exception:
+                        except Exception as e:
                             data = {}
                         if isinstance(data, dict) and 'value' in data:
                             sensor_name = endpoint.split('/')[-1]
