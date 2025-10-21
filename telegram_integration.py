@@ -103,7 +103,7 @@ class TelegramIntegration:
             self.loop.run_until_complete(self._start_telegram_bot())
             
         except Exception as e:
-            error_print(f"Erreur bot Telegram: {e}")
+            error_print(f"Erreur bot Telegram: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
         finally:
             # Nettoyer l'event loop
@@ -182,7 +182,7 @@ class TelegramIntegration:
             await self.application.shutdown()
             
         except Exception as e:
-            error_print(f"Erreur démarrage Telegram: {e}")
+            error_print(f"Erreur démarrage Telegram: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
 
     async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,7 +270,7 @@ class TelegramIntegration:
             await update.message.reply_text(help_text)
             info_print("✅ /help envoyé avec succès (sans Markdown)")
         except Exception as e:
-            error_print(f"Erreur envoi /help: {e}")
+            error_print(f"Erreur envoi /help: {str(e) if e else \'Unknown error\'}")
             await update.message.reply_text("❌ Erreur envoi aide")
 
 
@@ -536,7 +536,7 @@ class TelegramIntegration:
             except ImportError:
                 return "❌ Module psutil non installé\nInstaller: pip3 install psutil"
             except Exception as e:
-                error_print(f"Erreur monitoring CPU: {e}")
+                error_print(f"Erreur monitoring CPU: {str(e) if e else \'Unknown error\'}")
                 return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_cpu_monitoring)
@@ -567,7 +567,7 @@ class TelegramIntegration:
                 debug_print(f"📊 Rapport généré: {len(report)} caractères")
                 return report
             except Exception as e:
-                error_print(f"Erreur get_traffic: {e}")
+                error_print(f"Erreur get_traffic: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -650,7 +650,7 @@ class TelegramIntegration:
             try:
                 return self.message_handler.remote_nodes_client.get_all_nodes_alphabetical(days)
             except Exception as e:
-                error_print(f"Erreur get_full_nodes: {e}")
+                error_print(f"Erreur get_full_nodes: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"Erreur: {str(e)[:100]}"
         
@@ -741,7 +741,7 @@ class TelegramIntegration:
                 info_print(f"📬 Réponse reçue: {response}")
                 return response
             except Exception as e:
-                error_print(f"❌ Exception dans reboot_g2: {e}")
+                error_print(f"❌ Exception dans reboot_g2: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -805,7 +805,7 @@ class TelegramIntegration:
                 info_print(f"📬 Réponse reçue: {response}")
                 return response
             except Exception as e:
-                error_print(f"❌ Exception dans reboot_pi: {e}")
+                error_print(f"❌ Exception dans reboot_pi: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -896,10 +896,10 @@ class TelegramIntegration:
                 future.result(timeout=10)
                 info_print("✅ Alerte envoyée avec succès")
             except Exception as e:
-                error_print(f"Erreur attente résultat: {e}")
+                error_print(f"Erreur attente résultat: {str(e) if e else \'Unknown error\'}")
                 
         except Exception as e:
-            error_print(f"Erreur envoi alerte Telegram: {e}")
+            error_print(f"Erreur envoi alerte Telegram: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
     
     async def _send_alert_async(self, message):
@@ -924,7 +924,7 @@ class TelegramIntegration:
                     )
                     info_print(f"✅ Alerte envoyée à {user_id}")
                 except Exception as e:
-                    error_print(f"Erreur envoi alerte à {user_id}: {e}")
+                    error_print(f"Erreur envoi alerte à {user_id}: {str(e) if e else \'Unknown error\'}")
                 
                 # Petit délai entre les envois pour éviter rate limiting
                 await asyncio.sleep(0.5)
@@ -932,7 +932,7 @@ class TelegramIntegration:
             debug_print("_send_alert_async terminé")
                 
         except Exception as e:
-            error_print(f"Erreur _send_alert_async: {e}")
+            error_print(f"Erreur _send_alert_async: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
     
     def _find_node_by_short_name(self, identifier):
@@ -1119,7 +1119,7 @@ class TelegramIntegration:
                         self.loop
                     )
                 except Exception as e:
-                    error_print(f"Erreur notification timeout: {e}")
+                    error_print(f"Erreur notification timeout: {str(e) if e else \'Unknown error\'}")
 
                 del self.pending_traces[node_id]
 
@@ -1127,7 +1127,7 @@ class TelegramIntegration:
                 debug_print(f"🧹 {len(expired)} traces expirées nettoyées")
 
         except Exception as e:
-            error_print(f"Erreur cleanup_expired_traces: {e}")
+            error_print(f"Erreur cleanup_expired_traces: {str(e) if e else \'Unknown error\'}")
 
 
     
@@ -1237,7 +1237,7 @@ class TelegramIntegration:
             return True
             
         except Exception as e:
-            error_print(f"❌ EXCEPTION dans handle_trace_response: {e}")
+            error_print(f"❌ EXCEPTION dans handle_trace_response: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
             return False
 
@@ -1373,7 +1373,7 @@ class TelegramIntegration:
             try:
                 self._execute_active_trace(target_short_name, chat_id, username)
             except Exception as e:
-                error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
+                error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 
                 # Notifier l'utilisateur
@@ -1453,7 +1453,7 @@ class TelegramIntegration:
                 )
 
         except Exception as e:
-            error_print(f"Erreur trace active: {e}")
+            error_print(f"Erreur trace active: {str(e) if e else \'Unknown error\'}")
             asyncio.run_coroutine_threadsafe(
                 self.application.bot.send_message(
                     chat_id=chat_id,
@@ -1553,7 +1553,7 @@ class TelegramIntegration:
         try:
             self._execute_active_trace(target_short_name, chat_id, username)
         except Exception as e:
-            error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
+            error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
             
             # Notifier l'utilisateur
@@ -1677,7 +1677,7 @@ class TelegramIntegration:
             info_print(f"🧹 Trace supprimée")
 
         except Exception as e:
-            error_print(f"❌ Erreur handle_traceroute_response: {e}")
+            error_print(f"❌ Erreur handle_traceroute_response: {str(e) if e else \'Unknown error\'}")
             error_print(traceback.format_exc())
 
     # Ajouter ces méthodes dans la classe TelegramIntegration
@@ -1733,7 +1733,7 @@ class TelegramIntegration:
                 return report
                 
             except Exception as e:
-                error_print(f"Erreur get_detailed_stats: {e}")
+                error_print(f"Erreur get_detailed_stats: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -1837,7 +1837,7 @@ class TelegramIntegration:
                 return "\n".join(lines)
                 
             except Exception as e:
-                error_print(f"Erreur stats globales: {e}")
+                error_print(f"Erreur stats globales: {str(e) if e else \'Unknown error\'}")
                 return f"❌ Erreur: {str(e)[:100]}"
         
         response = await asyncio.to_thread(get_global_stats)
@@ -1895,7 +1895,7 @@ class TelegramIntegration:
                 return report
                 
             except Exception as e:
-                error_print(f"Erreur get_detailed_stats: {e}")
+                error_print(f"Erreur get_detailed_stats: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -1976,7 +1976,7 @@ class TelegramIntegration:
                 return "\n".join(lines)
                 
             except Exception as e:
-                error_print(f"Erreur packet stats: {e}")
+                error_print(f"Erreur packet stats: {str(e) if e else \'Unknown error\'}")
                 return f"❌ Erreur: {str(e)[:100]}"
         
         response = await asyncio.to_thread(get_packet_stats)
@@ -2051,7 +2051,7 @@ class TelegramIntegration:
                 return histogram
                 
             except Exception as e:
-                error_print(f"Erreur histogramme Telegram: {e}")
+                error_print(f"Erreur histogramme Telegram: {str(e) if e else \'Unknown error\'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         

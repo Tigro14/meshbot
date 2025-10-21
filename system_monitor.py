@@ -254,7 +254,7 @@ class SystemMonitor:
             self.tigrog2_uptime_last = current_uptime
             
         except Exception as e:
-            error_print(f"Erreur vérification tigrog2: {e}")
+            error_print(f"Erreur vérification tigrog2: {str(e) if e else 'Unknown error'}")
     
     def _get_cpu_temperature(self):
         """Récupérer la température CPU"""
