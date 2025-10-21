@@ -49,7 +49,6 @@ class DebugMeshBot:
         self.update_thread = None
    
         self.telegram_integration = None
-    
 
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
