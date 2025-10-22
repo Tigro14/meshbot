@@ -12,7 +12,7 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender):
+    def __init__(self, esphome_client, traffic_monitor, sender,packet_history=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
