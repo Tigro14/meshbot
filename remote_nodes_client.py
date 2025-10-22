@@ -27,7 +27,33 @@ class RemoteNodesClient:
             'last_cleanup': time.time()
         }
         pass
+
+        # ✅ Démarrer un thread de nettoyage
+        self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True)
+        self._cleanup_thread.start()
+   
+    def _cache_cleanup_loop(self):
+        """Nettoyer le cache toutes les 5 minutes"""
+        while True:
+            time.sleep(300)  # 5 minutes
+            self._cleanup_cache()
     
+    def _cleanup_cache(self):
+        """Supprimer les entrées expirées du cache"""
+        now = time.time()
+        expired_keys = [
+            key for key, data in self._cache.items()
+            if now - data['timestamp'] > self._cache_ttl
+        ]
+        
+        for key in expired_keys:
+            del self._cache[key]
+        
+        if expired_keys:
+            debug_print(f"🧹 Cache nettoyé : {len(expired_keys)} entrées expirées")
+        
+        self._cache_stats['last_cleanup'] = now
+
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         from safe_tcp_connection import SafeTCPConnection
         
