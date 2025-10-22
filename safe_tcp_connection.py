@@ -1,152 +1,117 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Wrapper sécurisé pour les connexions TCP Meshtastic
-Garantit la fermeture propre et évite les fuites de threads
+Context manager pour gérer proprement les connexions TCP Meshtastic
+Évite les fuites de CPU causées par _readBytes en boucle
 """
 
 import time
-import threading
 import meshtastic.tcp_interface
-from contextlib import contextmanager
-from utils import debug_print, error_print, info_print
+from utils import debug_print, error_print
+
 
 class SafeTCPConnection:
     """
-    Wrapper thread-safe pour TCPInterface avec fermeture garantie
-    """
-    _lock = threading.Lock()
-    _active_connections = []
+    Context manager pour les connexions TCP Meshtastic
     
-    @classmethod
-    @contextmanager
-    def connect(cls, hostname, port=4403, timeout=30):
+    Usage:
+        with SafeTCPConnection(host, port, wait_time=2) as interface:
+            interface.sendText("message")
+            nodes = interface.nodes
+    """
+    
+    def __init__(self, hostname, port=4403, wait_time=2, timeout=10):
         """
-        Context manager pour connexion TCP sécurisée
-        
-        Usage:
-            with SafeTCPConnection.connect(REMOTE_NODE_HOST) as interface:
-                interface.sendText("Hello")
+        Args:
+            hostname: IP du nœud distant
+            port: Port TCP (défaut: 4403)
+            wait_time: Temps d'attente après connexion (défaut: 2s)
+            timeout: Timeout global de la connexion (défaut: 10s)
         """
-        interface = None
-        start_time = time.time()
+        self.hostname = hostname
+        self.port = port
+        self.wait_time = wait_time
+        self.timeout = timeout
+        self.interface = None
+        self._start_time = None
         
+    def __enter__(self):
+        """Ouvrir la connexion"""
         try:
-            debug_print(f"🔌 Ouverture connexion TCP sécurisée vers {hostname}:{port}")
+            self._start_time = time.time()
+            debug_print(f"🔌 Connexion TCP à {self.hostname}:{self.port}")
             
-            # Créer la connexion
-            interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=hostname,
-                portNumber=port
+            self.interface = meshtastic.tcp_interface.TCPInterface(
+                hostname=self.hostname,
+                portNumber=self.port
             )
             
-            # Ajouter à la liste des connexions actives
-            with cls._lock:
-                cls._active_connections.append(interface)
+            # Attendre que les données se chargent
+            if self.wait_time > 0:
+                debug_print(f"⏱️  Attente {self.wait_time}s pour chargement des données...")
+                time.sleep(self.wait_time)
             
-            # Attendre que la connexion soit établie
-            time.sleep(2)
+            elapsed = time.time() - self._start_time
+            debug_print(f"✅ Connexion établie en {elapsed:.2f}s")
             
-            # Vérifier timeout
-            if time.time() - start_time > timeout:
-                raise TimeoutError(f"Connexion TCP timeout après {timeout}s")
-            
-            yield interface
+            return self.interface
             
         except Exception as e:
-            error_print(f"❌ Erreur connexion TCP {hostname}:{port} - {e}")
-            return None
-            
-        finally:
-            # CRITIQUE : Fermeture garantie
-            if interface:
-                try:
-                    debug_print(f"🔌 Fermeture connexion TCP {hostname}:{port}")
-                    
-                    # Forcer l'arrêt du thread de lecture
-                    if hasattr(interface, '_reader_thread'):
-                        interface._reader_thread.stop()
-                    
-                    # Fermer la connexion
-                    interface.close()
-                    
-                    # Retirer de la liste
-                    with cls._lock:
-                        if interface in cls._active_connections:
-                            cls._active_connections.remove(interface)
-                    
-                    # Petit délai pour laisser le thread se terminer
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    error_print(f"⚠️ Erreur fermeture TCP: {e}")
+            error_print(f"❌ Erreur connexion TCP {self.hostname}: {e}")
+            self.interface = None
+            raise
     
-    @classmethod
-    def cleanup_all(cls):
-        """
-        Fermer toutes les connexions actives (appelé à l'arrêt du bot)
-        """
-        with cls._lock:
-            for interface in cls._active_connections[:]:
-                try:
-                    interface.close()
-                except Exception as e:
-                    pass
-            cls._active_connections.clear()
-        info_print("✅ Toutes les connexions TCP fermées")
-    
-    @classmethod
-    def get_active_count(cls):
-        """Nombre de connexions actives"""
-        with cls._lock:
-            return len(cls._active_connections)
-
-
-def send_text_to_remote(hostname, message, port=4403):
-    """
-    Helper pour envoyer un texte simple via TCP
-    
-    Args:
-        hostname: IP du nœud distant
-        message: Texte à envoyer
-        port: Port TCP (défaut 4403)
-    
-    Returns:
-        bool: True si succès
-    """
-    try:
-        with SafeTCPConnection.connect(hostname, port) as interface:
-            interface.sendText(message)
-            time.sleep(2)  # Laisser le temps d'envoyer
-            return True
-    except Exception as e:
-        error_print(f"Erreur envoi TCP: {e}")
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Fermer proprement la connexion"""
+        if self.interface:
+            try:
+                elapsed = time.time() - self._start_time if self._start_time else 0
+                debug_print(f"🔌 Fermeture connexion TCP {self.hostname} (durée: {elapsed:.2f}s)")
+                self.interface.close()
+                debug_print(f"✅ Connexion fermée proprement")
+            except Exception as e:
+                error_print(f"⚠️  Erreur fermeture connexion: {e}")
+            finally:
+                self.interface = None
+        
+        # Ne pas supprimer l'exception si elle existe
         return False
 
 
-def get_remote_config(hostname, port=4403):
-    """
-    Helper pour récupérer la config d'un nœud distant
-    
-    Args:
-        hostname: IP du nœud distant
-        port: Port TCP (défaut 4403)
-    
-    Returns:
-        dict: Configuration ou None si erreur
-    """
-    try:
-        with SafeTCPConnection.connect(hostname, port) as interface:
-            time.sleep(2)
+    def quick_tcp_command(hostname, command, port=4403, wait_time=3):
+        """
+        Helper pour envoyer une commande rapide via TCP
+        
+        Args:
+            hostname: IP du nœud
+            command: Commande texte à envoyer
+            port: Port TCP
+            wait_time: Temps d'attente après envoi
             
-            if hasattr(interface, 'localNode'):
-                return {
-                    'shortName': getattr(interface.localNode, 'shortName', 'Unknown'),
-                    'nodeNum': getattr(interface.localNode, 'nodeNum', 0),
-                    'nodes_count': len(interface.nodes) if hasattr(interface, 'nodes') else 0
-                }
-            return None
-            
-    except Exception as e:
-        error_print(f"Erreur récupération config: {e}")
-        return None
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            with SafeTCPConnection(hostname, port, wait_time=2) as interface:
+                interface.sendText(command)
+                debug_print(f"✅ Commande '{command}' envoyée à {hostname}")
+                
+                # Attendre que le message parte
+                time.sleep(wait_time)
+                
+                return True, f"✅ Commande envoyée"
+                
+        except Exception as e:
+            error_print(f"❌ Erreur envoi commande: {e}")
+            return False, f"❌ Erreur: {str(e)[:50]}"
+
+
+    # Exemple d'utilisation
+    if __name__ == "__main__":
+        # Test basique
+        try:
+            with SafeTCPConnection("192.168.1.100") as interface:
+                print(f"Nœuds connectés: {len(interface.nodes)}")
+                interface.sendText("Test message")
+        except Exception as e:
+            print(f"Erreur: {e}")

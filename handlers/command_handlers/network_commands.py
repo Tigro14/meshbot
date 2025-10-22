@@ -159,9 +159,11 @@ class NetworkCommands:
         """Envoyer un message en broadcast via tigrog2"""
         def send_broadcast():
             remote_interface = None
+            from safe_tcp_connection import SafeTCPConnection
             debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
             try:
-                with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+#                with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+                with SafeTCPConnection(REMOTE_NODE_HOST, 4403, wait_time=2) as remote_interface:
                     debug_print(f"Envoi broadcast: '{message[:50]}...'")
                     remote_interface.sendText(message)
                     time.sleep(3)  # Attendre propagation

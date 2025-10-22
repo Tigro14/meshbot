@@ -21,7 +21,7 @@ class RemoteNodesClient:
         pass
     
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
-        """Récupérer la liste des nœuds directs (0 hop) d'un nœud distant"""
+        from safe_tcp_connection import SafeTCPConnection
         
         current_time = time.time()
         cutoff_time = current_time - (days_filter * 24 * 3600)
@@ -34,87 +34,93 @@ class RemoteNodesClient:
         try:
             debug_print(f"Connexion au nœud distant {remote_host}...")
             
-            # ✅ Utilisation de SafeTCPConnection avec context manager
-            with SafeTCPConnection.connect(remote_host, remote_port) as remote_interface:
-                time.sleep(2)  # Laisser les données se charger
+            # Utiliser SafeTCPConnection avec wait_time=2
+            with SafeTCPConnection(remote_host, remote_port, wait_time=2) as remote_interface:
+                
+                # Récupérer les nœuds
                 remote_nodes = remote_interface.nodes
                 
+                # Formater les résultats - FILTRER SEULEMENT LES NŒUDS DIRECTS
                 node_list = []
                 for node_id, node_info in remote_nodes.items():
                     try:
                         if isinstance(node_info, dict):
+                            # VÉRIFIER SI LE NŒUD A ÉTÉ REÇU DIRECTEMENT
                             hops_away = node_info.get('hopsAway', None)
                             
                             if hops_away is not None:
                                 if hops_away > 0:
                                     skipped_by_hops += 1
                                     continue
-                            else:
-                                position_metrics = node_info.get('position', {})
-                                if isinstance(position_metrics, dict):
-                                    ground_speed = position_metrics.get('groundSpeed', 0)
-                                    if ground_speed == 0:
-                                        skipped_by_metrics += 1
-                                        continue
+                                else:
+                                    debug_print(f"Nœud direct accepté: {node_id}")
                             
-                            # Traiter l'ID du nœud
+                            # Vérifier la date
+                            last_heard = node_info.get('lastHeard', 0)
+                            if last_heard < cutoff_time:
+                                skipped_by_date += 1
+                                continue
+                            
+                            # Convertir node_id
                             if isinstance(node_id, str):
                                 if node_id.startswith('!'):
-                                    id_int = int(node_id[1:], 16)
-                                else:
+                                    clean_id = node_id[1:]
+                                    id_int = int(clean_id, 16)
+                                elif node_id.isdigit():
                                     id_int = int(node_id)
+                                else:
+                                    id_int = int(node_id, 16)
                             else:
                                 id_int = int(node_id)
                             
-                            # Extraire le nom
-                            user_info = node_info.get('user', {})
-                            if user_info:
-                                shortName = user_info.get('shortName', '???')
-                                longName = user_info.get('longName', 'Unknown')
-                                name = f"{shortName} {longName}"
-                            else:
-                                name = f"!{id_int:08x}"
+                            # Récupérer le nom
+                            name = "Unknown"
+                            if 'user' in node_info and isinstance(node_info['user'], dict):
+                                user = node_info['user']
+                                short_name = user.get('shortName', '')
+                                long_name = user.get('longName', '')
+                                
+                                if short_name and long_name:
+                                    if short_name.lower() != long_name.lower():
+                                        name = f"{short_name} {long_name}"
+                                    else:
+                                        name = long_name
+                                elif long_name:
+                                    name = long_name
+                                elif short_name:
+                                    name = short_name
+                                else:
+                                    name = f"Node-{id_int:04x}"
                             
-                            last_heard = node_info.get('lastHeard', 0)
-                            
-                            # Collecter métriques si activé
-                            rssi = 0
-                            snr = 0.0
-                            if COLLECT_SIGNAL_METRICS:
-                                rssi = node_info.get('rssi', 0)
-                                snr = node_info.get('snr', 0.0)
-                            
-                            # Filtre temporel
-                            if last_heard == 0 or last_heard < cutoff_time:
-                                skipped_by_date += 1
-                                continue
+                            hops_away = node_info.get('hopsAway', 0)
                             
                             node_data = {
                                 'id': id_int,
                                 'name': name,
-                                'last_heard': last_heard
+                                'last_heard': last_heard,
+                                'hops_away': hops_away
                             }
-
+                            
                             if COLLECT_SIGNAL_METRICS:
-                                node_data['rssi'] = rssi
-                                node_data['snr'] = snr
+                                node_data['rssi'] = node_info.get('rssi', 0)
+                                node_data['snr'] = node_info.get('snr', 0.0)
                             
                             node_list.append(node_data)
                             
-                    except Exception as e:
-                        debug_print(f"Erreur traitement nœud {node_id}: {e}")
+                    except Exception as node_error:
+                        debug_print(f"Erreur parsing nœud {node_id}: {node_error}")
                         continue
-                
-                # ✅ Fermeture automatique grâce au context manager
-                
-            debug_print(f"✅ Résultats pour {remote_host} (filtre: {days_filter}j):")
+            
+            # Connexion fermée automatiquement ici (sortie du with)
+            
+            debug_print(f"📊 Statistique nœuds (<{days_filter}j):")
             debug_print(f"   - Nœuds acceptés: {len(node_list)}")
             debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
             debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
             debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}")
-            
+
             return node_list
-            
+        
         except Exception as e:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
             return []
