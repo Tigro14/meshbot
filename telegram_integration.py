@@ -475,17 +475,31 @@ class TelegramIntegration:
 
             message = f"{prefix}: {echo_text}"
             
+            # ✅ Import et logs
             from safe_tcp_connection import send_text_to_remote
-            success, result_msg = send_text_to_remote(REMOTE_NODE_HOST, message)
+            info_print(f"📤 Envoi message: '{message}'")
+            info_print(f"🎯 Destination: {REMOTE_NODE_HOST}")
+            
+            # ✅ Capturer le retour et attendre plus longtemps
+            success, result_msg = send_text_to_remote(
+                REMOTE_NODE_HOST, 
+                message,
+                wait_time=10  # Attendre 10s pour stabilisation + envoi
+            )
+            
+            info_print(f"📊 Résultat envoi: success={success}, msg={result_msg}")
             
             if success:
                 return f"✅ Echo diffusé: {message}"
             else:
-                return result_msg  # Retourne le message d'erreur
+                return f"❌ Échec: {result_msg}"
                 
         except Exception as e:
+            error_print(f"❌ Exception dans send_echo: {e}")
+            import traceback
+            error_print(traceback.format_exc())
             return f"❌ Erreur echo: {str(e)[:50]}"
-    
+
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""
         user = update.effective_user
