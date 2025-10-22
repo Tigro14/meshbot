@@ -10,6 +10,7 @@ import threading
 import traceback
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
 
 # Import Telegram (optionnel)
 try:
@@ -64,8 +65,8 @@ class TelegramIntegration:
         self.running = False
         if self.loop and self.application:
             try:
-                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop)
-            except:
+                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop).result(timeout=5)
+            except Exception as e:
                 pass
         info_print("🛑 Bot Telegram arrêté")
 
@@ -102,13 +103,13 @@ class TelegramIntegration:
             self.loop.run_until_complete(self._start_telegram_bot())
             
         except Exception as e:
-            error_print(f"Erreur bot Telegram: {e}")
+            error_print(f"Erreur bot Telegram: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
         finally:
             # Nettoyer l'event loop
             try:
                 self.loop.close()
-            except:
+            except Exception as e:
                 pass
 
     async def _start_telegram_bot(self):
@@ -177,7 +178,7 @@ class TelegramIntegration:
             await self.application.shutdown()
             
         except Exception as e:
-            error_print(f"Erreur démarrage Telegram: {e}")
+            error_print(f"Erreur démarrage Telegram: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
 
     async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -265,7 +266,7 @@ class TelegramIntegration:
             await update.message.reply_text(help_text)
             info_print("✅ /help envoyé avec succès (sans Markdown)")
         except Exception as e:
-            error_print(f"Erreur envoi /help: {e}")
+            error_print(f"Erreur envoir /help : {e or 'Unknown error'}")
             await update.message.reply_text("❌ Erreur envoi aide")
 
 
@@ -378,7 +379,7 @@ class TelegramIntegration:
                     
                     bot_uptime_str = " ".join(uptime_parts)
                     system_info.append(f"🤖 Bot: {bot_uptime_str}")
-            except:
+            except Exception as e:
                 pass
 
             try:
@@ -394,7 +395,7 @@ class TelegramIntegration:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
                         temp_celsius = int(f.read().strip()) / 1000.0
                         system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
-            except:
+            except Exception as e:
                 system_info.append("🌡️ CPU: Error")
             
             try:
@@ -403,14 +404,14 @@ class TelegramIntegration:
                 if uptime_result.returncode == 0:
                     uptime_clean = uptime_result.stdout.strip().replace('up ', '')
                     system_info.append(f"⏱️ Up: {uptime_clean}")
-            except:
+            except Exception as e:
                 pass
             
             try:
                 with open('/proc/loadavg', 'r') as f:
                     loadavg = f.read().strip().split()
                     system_info.append(f"📊 Load: {loadavg[0]} {loadavg[1]} {loadavg[2]}")
-            except:
+            except Exception as e:
                 pass
             
             try:
@@ -427,7 +428,7 @@ class TelegramIntegration:
                     mem_used = mem_total - mem_available
                     mem_percent = (mem_used / mem_total) * 100
                     system_info.append(f"💾 RAM: {mem_used//1024}MB/{mem_total//1024}MB ({mem_percent:.0f}%)")
-            except:
+            except Exception as e:
                 pass
             
             return "🖥️ Système RPI5:\n" + "\n".join(system_info) if system_info else "❌ Erreur système"
@@ -461,13 +462,8 @@ class TelegramIntegration:
         info_print(f"📱 Telegram /echo: {user.username} -> '{echo_text}'")
 
         def send_echo():
-            import meshtastic.tcp_interface
+            #import meshtastic.tcp_interface
             try:
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, portNumber=4403
-                )
-                time.sleep(3)
-
                 # Utiliser le mapping Telegram → Meshtastic
                 mesh_identity = self._get_mesh_identity(user.id)
 
@@ -480,9 +476,18 @@ class TelegramIntegration:
                     info_print(f"⚠️ Echo sans mapping: {prefix}")
 
                 message = f"{prefix}: {echo_text}"
-                remote_interface.sendText(message)
-                time.sleep(4)
-                remote_interface.close()
+                try:
+                    from safe_tcp_connection import send_text_to_remote
+                    message = f"{prefix}: {echo_text}"
+                    send_text_to_remote(REMOTE_NODE_HOST, message)
+                    #with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
+                    #    message = f"{prefix}: {echo_text}"
+                    #    remote_interface.sendText(message)
+                    #    time.sleep(2)  # Attendre l'envoi
+                    return f"✅ Echo diffusé: {message}"
+                except Exception as e:
+                    return f"❌ Erreur echo: {str(e)[:50]}"
+
                 return f"✅ Echo diffusé: {message}"
             except Exception as e:
                 return f"❌ Erreur echo: {str(e)[:50]}"
@@ -527,7 +532,7 @@ class TelegramIntegration:
             except ImportError:
                 return "❌ Module psutil non installé\nInstaller: pip3 install psutil"
             except Exception as e:
-                error_print(f"Erreur monitoring CPU: {e}")
+                error_print(f"Erreur monitoring CPU: {e or 'Unknown error'}")
                 return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_cpu_monitoring)
@@ -558,7 +563,7 @@ class TelegramIntegration:
                 debug_print(f"📊 Rapport généré: {len(report)} caractères")
                 return report
             except Exception as e:
-                error_print(f"Erreur get_traffic: {e}")
+                error_print(f"Erreur get_trafic : {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -641,7 +646,7 @@ class TelegramIntegration:
             try:
                 return self.message_handler.remote_nodes_client.get_all_nodes_alphabetical(days)
             except Exception as e:
-                error_print(f"Erreur get_full_nodes: {e}")
+                error_print(f"Erreur get_full_nodes: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"Erreur: {str(e)[:100]}"
         
@@ -732,7 +737,7 @@ class TelegramIntegration:
                 info_print(f"📬 Réponse reçue: {response}")
                 return response
             except Exception as e:
-                error_print(f"❌ Exception dans reboot_g2: {e}")
+                error_print(f"Erreur dans reboot_g2: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -796,7 +801,7 @@ class TelegramIntegration:
                 info_print(f"📬 Réponse reçue: {response}")
                 return response
             except Exception as e:
-                error_print(f"❌ Exception dans reboot_pi: {e}")
+                error_print(f"Erreur dans reboot_pi: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -900,17 +905,17 @@ class TelegramIntegration:
             future = asyncio.run_coroutine_threadsafe(
                 self._send_alert_async(message),
                 self.loop
-            )
+            ).result(timeout=5) 
             
             # Attendre le résultat (avec timeout)
             try:
                 future.result(timeout=10)
                 info_print("✅ Alerte envoyée avec succès")
             except Exception as e:
-                error_print(f"Erreur attente résultat: {e}")
+                error_print(f"Erreur attente résultat: {e or 'Unknown error'}")
                 
         except Exception as e:
-            error_print(f"Erreur envoi alerte Telegram: {e}")
+            error_print(f"Erreur envoi alerte: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
     
     async def _send_alert_async(self, message):
@@ -935,7 +940,7 @@ class TelegramIntegration:
                     )
                     info_print(f"✅ Alerte envoyée à {user_id}")
                 except Exception as e:
-                    error_print(f"Erreur envoi alerte à {user_id}: {e}")
+                    error_print(f"Erreur envoie alerte à {user_id}: {e or 'Unknown error'}")
                 
                 # Petit délai entre les envois pour éviter rate limiting
                 await asyncio.sleep(0.5)
@@ -943,7 +948,7 @@ class TelegramIntegration:
             debug_print("_send_alert_async terminé")
                 
         except Exception as e:
-            error_print(f"Erreur _send_alert_async: {e}")
+            error_print(f"Erreur _send_alert_async: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
     
     def _find_node_by_short_name(self, identifier):
@@ -1128,9 +1133,9 @@ class TelegramIntegration:
                                  f"Le nœud est peut-être hors ligne ou hors de portée."
                         ),
                         self.loop
-                    )
+                    ).result(timeout=5)  # ✅ FIX
                 except Exception as e:
-                    error_print(f"Erreur notification timeout: {e}")
+                    error_print(f"Erreur notification timeout: {e or 'Unknown error'}")
 
                 del self.pending_traces[node_id]
 
@@ -1138,7 +1143,7 @@ class TelegramIntegration:
                 debug_print(f"🧹 {len(expired)} traces expirées nettoyées")
 
         except Exception as e:
-            error_print(f"Erreur cleanup_expired_traces: {e}")
+            error_print(f"Erreur cleanup_expired_traces: {e or 'Unknown error'}")
 
 
     
@@ -1248,7 +1253,7 @@ class TelegramIntegration:
             return True
             
         except Exception as e:
-            error_print(f"❌ EXCEPTION dans handle_trace_response: {e}")
+            error_print(f"Erreur dans handle_trace_response: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
             return False
 
@@ -1384,7 +1389,7 @@ class TelegramIntegration:
             try:
                 self._execute_active_trace(target_short_name, chat_id, username)
             except Exception as e:
-                error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
+                error_print(f"Erreur non catchée dans wreappe: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 
                 # Notifier l'utilisateur
@@ -1396,20 +1401,17 @@ class TelegramIntegration:
                         ),
                         self.loop
                     ).result(timeout=5)
-                except:
+                except Exception as e:
                     error_print("❌ Impossible de notifier l'utilisateur")
 
     def _execute_active_trace(self, target_short_name, chat_id, username):
-        """
-        Exécuter le traceroute actif NATIF Meshtastic
-        Utilise le protocole TRACEROUTE_APP
-        """
+        """Traceroute avec timeout approprié"""
         try:
             info_print("=" * 60)
             info_print("🚀 Traceroute NATIF Meshtastic démarré")
             info_print(f"   Target: {target_short_name}")
             info_print("=" * 60)
-            
+
             # 1. Trouver le node_id
             info_print("🔍 Étape 1: Recherche du node_id...")
             
@@ -1419,15 +1421,22 @@ class TelegramIntegration:
                 error_print(f"❌ ERREUR _find_node_by_short_name: {find_error}")
                 error_print(traceback.format_exc())
                 
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
-                    ),
-                    self.loop
-                ).result(timeout=5)
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.application.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"❌ Erreur recherche nœud: {str(find_error)[:100]}"
+                        ),
+                        self.loop
+                    ).result(timeout=5)
+                except:
+                    pass
                 return
             
+            target_full_name = self.node_manager.get_node_name(target_node_id)
+            info_print(f"✅ Nœud trouvé: {target_full_name}")
+            info_print(f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
+
             if not target_node_id:
                 error_print(f"❌ Nœud '{target_short_name}' introuvable")
                 asyncio.run_coroutine_threadsafe(
@@ -1438,91 +1447,40 @@ class TelegramIntegration:
                     ),
                     self.loop
                 ).result(timeout=5)
-                return
-            
-            target_full_name = self.node_manager.get_node_name(target_node_id)
-            info_print(f"✅ Nœud trouvé: {target_full_name}")
-            info_print(f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
-            
-            # 2. Enregistrer la requête
-            info_print("📝 Étape 2: Enregistrement de la trace...")
-            self.pending_traces[target_node_id] = {
+
+            info_print(f"✅ Trace enregistrée")
+            # Enregistrer la trace
+            self.pending_traces[node_id] = {
                 'telegram_chat_id': chat_id,
                 'timestamp': time.time(),
-                'short_name': target_short_name,
-                'full_name': target_full_name,
-                'route': []  # Pour stocker la route
+                'full_name': f"{target_short_name} (!{node_id:08x})"
             }
-            info_print(f"✅ Trace enregistrée")
-            
-            # 3. Envoyer la requête TRACEROUTE native
-            info_print("📤 Étape 3: Envoi requête TRACEROUTE native...")
-            info_print(f"   Destination: 0x{target_node_id:08x}")
-            
-            try:
-                # Créer une requête de traceroute Meshtastic
-                # Le protocole Meshtastic envoie automatiquement la requête
-                info_print("   Tentative envoi traceroute natif...")
-                
-                # Méthode 1: Via sendData avec TRACEROUTE_APP
-                self.message_handler.interface.sendData(
-                    b'',  # Payload vide pour traceroute
-                    destinationId=target_node_id,
-                    portNum=portnums_pb2.PortNum.TRACEROUTE_APP,
-                    wantAck=True,
-                    wantResponse=True
-                )
-                
-                info_print(f"✅ Requête traceroute native envoyée")
-                
-            except Exception as e1:
-                error_print(f"❌ Échec envoi traceroute: {e1}")
-                error_print(traceback.format_exc())
-                
+
+            # Lancer le traceroute avec timeout plus long
+            with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=45) as remote_interface:
+                trace_msg = f"/trace !{node_id:08x}"
+                remote_interface.sendText(trace_msg)
+
+                # Message de confirmation
                 asyncio.run_coroutine_threadsafe(
                     self.application.bot.send_message(
                         chat_id=chat_id,
-                        text=f"❌ Impossible d'envoyer le traceroute\n"
-                             f"Erreur: {str(e1)[:50]}"
+                        text=f"🎯 Traceroute lancé vers {target_short_name}\n"
+                             f"⏳ Attente réponse (max 60s)..."
                     ),
                     self.loop
-                ).result(timeout=5)
-                del self.pending_traces[target_node_id]
-                return
-            
-            # 4. Confirmer à l'utilisateur
-            info_print("📱 Étape 4: Confirmation Telegram...")
+                ).result(timeout=5)  # ✅ FIX
+
+        except Exception as e:
+            error_print(f"Erreur trace active: {e or 'Unknown error'}")
             asyncio.run_coroutine_threadsafe(
                 self.application.bot.send_message(
                     chat_id=chat_id,
-                    text=f"⏳ Traceroute lancé vers {target_full_name}\n"
-                         f"ID: 0x{target_node_id:08x}\n"
-                         f"Attente de la réponse (max {self.trace_timeout}s)...\n\n"
-                         f"ℹ️ La route complète arrivera automatiquement ici"
+                    text=f"❌ Erreur technique: {str(e)[:100]}"
                 ),
                 self.loop
-            ).result(timeout=5)
-            
-            info_print("=" * 60)
-            info_print(f"✅ Traceroute natif envoyé avec succès")
-            info_print(f"   En attente de réponse TRACEROUTE_APP de 0x{target_node_id:08x}")
-            info_print("=" * 60)
-            
-        except Exception as e:
-            error_print(f"❌ EXCEPTION _execute_active_trace: {e}")
-            error_print(traceback.format_exc())
-            
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.application.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"❌ Erreur: {str(e)[:100]}"
-                    ),
-                    self.loop
-                ).result(timeout=5)
-            except:
-                error_print("❌ Impossible de notifier l'erreur à l'utilisateur")
-    
+            ).result(timeout=5)  # ✅ FIX
+        
     async def _trace_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Commande /trace [short_id] - Traceroute mesh actif
@@ -1614,7 +1572,7 @@ class TelegramIntegration:
         try:
             self._execute_active_trace(target_short_name, chat_id, username)
         except Exception as e:
-            error_print(f"❌ EXCEPTION NON CATCHÉE dans wrapper: {e}")
+            error_print(f"Erreur non catchée dans wrapper trace: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
             
             # Notifier l'utilisateur
@@ -1626,7 +1584,7 @@ class TelegramIntegration:
                     ),
                     self.loop
                 ).result(timeout=5)
-            except:
+            except Exception as e:
                 error_print("❌ Impossible de notifier l'utilisateur")
 
     def handle_traceroute_response(self, packet, decoded):
@@ -1722,14 +1680,17 @@ class TelegramIntegration:
 
             # Envoyer à Telegram
             info_print(f"📤 Envoi du traceroute à Telegram...")
-            asyncio.run_coroutine_threadsafe(
-                self.application.bot.send_message(
-                    chat_id=chat_id,
-                    text=telegram_message,
-                    parse_mode='Markdown'
-                ),
-                self.loop
-            ).result(timeout=10)
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=telegram_message,
+                        parse_mode='Markdown'
+                    ),
+                    self.loop
+                ).result(timeout=10)
+            except Exception as send_error:
+                error_print(f"Erreur envoi Telegram: {send_error}")
 
             info_print(f"✅ Traceroute envoyé à Telegram")
 
@@ -1738,7 +1699,7 @@ class TelegramIntegration:
             info_print(f"🧹 Trace supprimée")
 
         except Exception as e:
-            error_print(f"❌ Erreur handle_traceroute_response: {e}")
+            error_print(f"Erreur handle_traceroute_response;: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
 
     # Ajouter ces méthodes dans la classe TelegramIntegration
@@ -1794,7 +1755,7 @@ class TelegramIntegration:
                 return report
                 
             except Exception as e:
-                error_print(f"Erreur get_detailed_stats: {e}")
+                error_print(f"Erreur get_detailed_stats: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -1898,7 +1859,7 @@ class TelegramIntegration:
                 return "\n".join(lines)
                 
             except Exception as e:
-                error_print(f"Erreur stats globales: {e}")
+                error_print(f"Erreur stats globales: {e or 'Unknown error'}")
                 return f"❌ Erreur: {str(e)[:100]}"
         
         response = await asyncio.to_thread(get_global_stats)
@@ -1956,7 +1917,7 @@ class TelegramIntegration:
                 return report
                 
             except Exception as e:
-                error_print(f"Erreur get_detailed_stats: {e}")
+                error_print(f"Erreur get_detailed_stats: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
         
@@ -2037,7 +1998,7 @@ class TelegramIntegration:
                 return "\n".join(lines)
                 
             except Exception as e:
-                error_print(f"Erreur packet stats: {e}")
+                error_print(f"Erreur packet stats: {e or 'Unknown error'}")
                 return f"❌ Erreur: {str(e)[:100]}"
         
         response = await asyncio.to_thread(get_packet_stats)
@@ -2045,107 +2006,65 @@ class TelegramIntegration:
 
     async def _histo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Commande /histo [type] [heures] - Histogramme distribution horaire
-        
-        Types disponibles:
-        - all : tous les paquets (défaut)
-        - messages : messages texte uniquement
-        - pos : positions uniquement
-        - info : nodeinfo uniquement
-        - telemetry : télémétrie uniquement
-        
+        Commande /histo [type] [heures] - Histogrammes de paquets
+
         Usage:
-        /histo
-        /histo messages
-        /histo pos 12
-        /histo all 48
+            /histo           - Vue d'ensemble
+            /histo pos       - Détails POSITION
+            /histo tele      - Détails TELEMETRY
+            /histo node      - Détails NODEINFO
+            /histo text      - Détails TEXT
+            /histo pos 12    - POSITION sur 12h
         """
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         # Parser les arguments
         args = context.args
-        packet_filter = 'all'  # Défaut
-        hours = 24  # Défaut
-        
+        packet_type = 'ALL'  # Par défaut: vue d'ensemble
+        hours = 24
+
+        # Argument 1: type de paquet (optionnel)
         if args and len(args) > 0:
-            # Premier argument = type
-            requested_filter = args[0].lower()
-            valid_filters = ['all', 'messages', 'pos', 'info', 'telemetry', 'traceroute', 'routing']
-            if requested_filter in valid_filters:
-                packet_filter = requested_filter
-            else:
-                # Si ce n'est pas un filtre valide, peut-être un nombre d'heures
-                try:
-                    hours = int(requested_filter)
-                    hours = max(1, min(168, hours))  # Max 7 jours pour Telegram
-                except ValueError:
-                    pass
-        
-        if args and len(args) > 1:
-            # Deuxième argument = heures
-            try:
-                requested_hours = int(args[1])
-                hours = max(1, min(168, requested_hours))  # Max 7 jours
-            except ValueError:
-                pass
-        
-        info_print(f"📱 Telegram /histo {packet_filter} {hours}h: {user.username}")
-        
-        # Message d'attente pour les périodes longues
-        if hours > 48:
-            await update.message.reply_text(f"📊 Analyse de {hours}h en cours...")
-        
-        def get_histogram():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-                
-                # Générer l'histogramme
-                histogram = self.message_handler.traffic_monitor.get_hourly_histogram(
-                    packet_filter, 
-                    hours
+            packet_type = args[0].strip().upper()
+            # Valider le type
+            if packet_type not in ['ALL', 'POS', 'TELE', 'NODE', 'TEXT']:
+                await update.message.reply_text(
+                    f"❌ Type inconnu: {args[0]}\n"
+                    f"Types disponibles: pos, tele, node, text"
                 )
-                
-                return histogram
-                
+                return
+
+        # Argument 2: heures (optionnel)
+        if args and len(args) > 1:
+            try:
+                hours = int(args[1])
+                hours = max(1, min(48, hours))  # Entre 1 et 48h
+            except ValueError:
+                hours = 24
+
+        info_print(f"📱 Telegram /histo {packet_type} {hours}h: {user.username}")
+
+        def get_histogram():
+            """Fonction synchrone pour obtenir l'histogramme"""
+            try:
+                # Utiliser node_manager pour générer l'histogramme
+                return self.node_manager.get_packet_histogram_single(packet_type, hours)
             except Exception as e:
-                error_print(f"Erreur histogramme Telegram: {e}")
+                error_print(f"Erreur get_histogram: {e}")
+                import traceback
                 error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
-        
-        # Générer le rapport
-        response = await asyncio.to_thread(get_histogram)
-        
-        # Si le message est trop long, le diviser
-        if len(response) > 4000:
-            # Diviser en chunks de 4000 caractères
-            chunks = []
-            lines = response.split('\n')
-            current_chunk = []
-            current_length = 0
-            
-            for line in lines:
-                line_length = len(line) + 1  # +1 pour le \n
-                if current_length + line_length > 4000:
-                    chunks.append('\n'.join(current_chunk))
-                    current_chunk = [line]
-                    current_length = line_length
-                else:
-                    current_chunk.append(line)
-                    current_length += line_length
-            
-            if current_chunk:
-                chunks.append('\n'.join(current_chunk))
-            
-            # Envoyer les chunks
-            for i, chunk in enumerate(chunks):
-                if i > 0:
-                    await asyncio.sleep(0.5)  # Éviter rate limiting
-                await update.message.reply_text(chunk)
-        else:
-            await update.message.reply_text(response)
+                return f"❌ Erreur: {str(e)[:50]}"
 
+        # Exécuter dans un thread séparé
+        try:
+            histogram = await asyncio.to_thread(get_histogram)
+            await update.message.reply_text(histogram)
 
+        except Exception as e:
+            error_print(f"Erreur /histo: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")

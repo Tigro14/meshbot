@@ -11,6 +11,7 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
+from tcp_connection_manager import tcp_manager
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):
@@ -19,35 +20,6 @@ class SystemCommands:
         self.sender = sender
         self.bot_start_time = bot_start_time  # ✅ NOUVEAU: timestamp démarrage bot
     
-    def _format_uptime(self, seconds):
-        """
-        Formater un uptime en secondes vers un format lisible
-        
-        Args:
-            seconds: nombre de secondes
-            
-        Returns:
-            str: format "X days, Y hours, Z minutes" ou plus court selon durée
-        """
-        if seconds < 60:
-            return f"{int(seconds)}s"
-        
-        minutes = int(seconds // 60)
-        hours = int(minutes // 60)
-        days = int(hours // 24)
-        
-        minutes = minutes % 60
-        hours = hours % 24
-        
-        parts = []
-        if days > 0:
-            parts.append(f"{days}d")
-        if hours > 0:
-            parts.append(f"{hours}h")
-        if minutes > 0:
-            parts.append(f"{minutes}m")
-        
-        return " ".join(parts) if parts else "0m"
     
     def handle_sys(self, sender_id, sender_info):
         """Gérer la commande /sys - VERSION AVEC UPTIME BOT"""
@@ -80,13 +52,6 @@ class SystemCommands:
                     bot_uptime_str = " ".join(uptime_parts)
                     system_info.append(f"🤖 Bot: {bot_uptime_str}")
 
-                # === UPTIME BOT PYTHON ===
-                if self.bot_start_time:
-                    bot_uptime_seconds = time.time() - self.bot_start_time
-                    bot_uptime_str = self._format_uptime(bot_uptime_seconds)
-                    system_info.append(f"🤖 Bot: {bot_uptime_str}")
-                    debug_print(f"Uptime bot: {bot_uptime_seconds:.0f}s = {bot_uptime_str}")
-                
                 # Température CPU
                 try:
                     temp_cmd = ['vcgencmd', 'measure_temp']
@@ -259,13 +224,15 @@ class SystemCommands:
             node_name = self.node_manager.get_node_name(from_id, self.interface)
             info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
             
-            remote_interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=REMOTE_NODE_HOST,
-                portNumber=4403
-            )
-            time.sleep(3)
+            #remote_interface = meshtastic.tcp_interface.TCPInterface(
+            #    hostname=REMOTE_NODE_HOST,
+            #    portNumber=4403
+            #)
+            #time.sleep(3)
             
-            remote_interface.sendText("/reboot")
+            #remote_interface.sendText("/reboot")
+            from safe_tcp_connection import send_text_to_remote
+            send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
             info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
             
             time.sleep(2)
@@ -284,43 +251,42 @@ class SystemCommands:
         def get_g2_config():
             try:
                 debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
-                    hostname=REMOTE_NODE_HOST, 
-                    portNumber=4403
-                )
-                
-                time.sleep(2)
-                
-                config_info = []
-                
-                if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
-                    local_node = remote_interface.localNode
-                    
-                    if hasattr(local_node, 'shortName'):
-                        config_info.append(f"📡 {local_node.shortName}")
-                    
-                    if hasattr(local_node, 'nodeNum'):
-                        config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
-                    
-                    if hasattr(local_node, 'firmwareVersion'):
-                        config_info.append(f"📦 FW: {local_node.firmwareVersion}")
-                
-                nodes_count = len(getattr(remote_interface, 'nodes', {}))
-                config_info.append(f"🗂️ Nœuds: {nodes_count}")
-                
                 try:
-                    nodes = getattr(remote_interface, 'nodes', {})
-                    direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
-                    config_info.append(f"🎯 Direct: {direct_nodes}")
-                except:
-                    pass
+                    with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=10) as remote_interface:
+                        config_info = []
+
+                    if hasattr(remote_interface, 'localNode') and remote_interface.localNode:
+                        local_node = remote_interface.localNode
+                        
+                        if hasattr(local_node, 'shortName'):
+                            config_info.append(f"📡 {local_node.shortName}")
+                        
+                        if hasattr(local_node, 'nodeNum'):
+                            config_info.append(f"🔢 ID: !{local_node.nodeNum:08x}")
+                        
+                        if hasattr(local_node, 'firmwareVersion'):
+                            config_info.append(f"📦 FW: {local_node.firmwareVersion}")
+                    
+                    nodes_count = len(getattr(remote_interface, 'nodes', {}))
+                    config_info.append(f"🗂️ Nœuds: {nodes_count}")
+                    
+                    try:
+                        nodes = getattr(remote_interface, 'nodes', {})
+                        direct_nodes = sum(1 for n in nodes.values() if isinstance(n, dict) and n.get('hopsAway') == 0)
+                        config_info.append(f"🎯 Direct: {direct_nodes}")
+                    except:
+                        pass
+                    
+                    remote_interface.close()
+                    
+                    response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
                 
-                remote_interface.close()
-                
-                response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
-                
-                self.sender.log_conversation(sender_id, sender_info, "/g2", response)
-                self.sender.send_chunks(response, sender_id, sender_info)
+                    self.sender.log_conversation(sender_id, sender_info, "/g2", response)
+                    self.sender.send_chunks(response, sender_id, sender_info)
+
+                except Exception as e:
+                    self.sender.send_single(f"⚠️ Erreur: {str(e)[:50]}", sender_id, sender_info)
+
                 
             except Exception as e:
                 error_msg = f"⚠️ Erreur config: {str(e)[:50]}"

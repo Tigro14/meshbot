@@ -275,7 +275,7 @@ class SystemMonitor:
             self.tigrog2_uptime_last = current_uptime
             
         except Exception as e:
-            error_print(f"Erreur vérification tigrog2: {e}")
+            error_print(f"Erreur vérification tigrog2: {str(e) if e else 'Unknown error'}")
     
     def _get_cpu_temperature(self):
         """Récupérer la température CPU"""
@@ -293,7 +293,7 @@ class SystemMonitor:
                     if 'temp=' in temp_output:
                         temp_str = temp_output.split('=')[1].replace("'C", "")
                         return float(temp_str)
-            except:
+            except Exception as e:
                 pass
             
             # Méthode 2: /sys/class/thermal/thermal_zone0/temp
@@ -301,7 +301,7 @@ class SystemMonitor:
                 with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
                     temp_millis = int(f.read().strip())
                     return temp_millis / 1000.0
-            except:
+            except Exception as e:
                 pass
             
             return None
@@ -337,10 +337,17 @@ class SystemMonitor:
                     f"Surveillance en cours..."
                 )
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert température: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte température: {e}")
+            import traceback
+            error_print(traceback.format_exc())
 
     def _send_cpu_alert(self, cpu_percent, critical=False):
         """Envoyer une alerte CPU via Telegram"""
@@ -352,7 +359,7 @@ class SystemMonitor:
             try:
                 threads = len(self.process.threads())
                 memory_mb = self.process.memory_info().rss / 1024 / 1024
-            except:
+            except Exception as e:
                 threads = "N/A"
                 memory_mb = 0
             
@@ -386,10 +393,17 @@ class SystemMonitor:
                     f"Tip: Vérifier TIGROG2_CHECK_INTERVAL dans config.py"
                 )
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert CPU: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte CPU: {e}")
+            import traceback
+            error_print(traceback.format_exc())
 
     def _send_tigrog2_alert(self, alert_type):
         """Envoyer une alerte tigrog2 via Telegram"""
@@ -426,7 +440,14 @@ class SystemMonitor:
             else:
                 return
             
-            self.telegram_integration.send_alert(message)
+            try:
+                self.telegram_integration.send_alert(message)
+            except Exception as send_error:
+                error_print(f"Erreur send_alert tigrog2: {send_error}")
+                import traceback
+                error_print(traceback.format_exc())
             
         except Exception as e:
             error_print(f"Erreur envoi alerte tigrog2: {e}")
+            import traceback
+            error_print(traceback.format_exc())

@@ -16,6 +16,14 @@ class NodeManager:
         self.node_names = {}
         self._last_node_save = 0
         self.rx_history = {}  # node_id -> {'name': str, 'snr': float, 'last_seen': timestamp, 'count': int}
+        from collections import deque
+        self.packet_type_counts = {
+            'POSITION_APP': deque(maxlen=24),
+            'TELEMETRY_APP': deque(maxlen=24),
+            'NODEINFO_APP': deque(maxlen=24),
+            'TEXT_MESSAGE_APP': deque(maxlen=24)
+        }
+        self.last_packet_hour = None
     
     def load_node_names(self):
         """Charger la base de noms depuis le fichier"""
@@ -297,3 +305,208 @@ class NodeManager:
                 
         except Exception as e:
             debug_print(f"Erreur nettoyage RX: {e}")
+
+    def get_packet_histogram_single(self, packet_type='ALL', hours=24):
+        """
+        Générer un histogramme pour un type de paquet spécifique
+
+        Args:
+            packet_type: 'POS', 'TELE', 'NODE', 'TEXT' ou 'ALL' pour vue d'ensemble
+            hours: Nombre d'heures à analyser (défaut 24)
+
+        Returns:
+            str: Histogramme formaté pour un seul type ou vue d'ensemble
+        """
+        try:
+            if not hasattr(self, 'packet_type_counts'):
+                return "❌ Historique non disponible"
+
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+
+            # Symboles pour le graphique ASCII
+            symbols = "▁▂▃▄▅▆▇█"
+
+            # Types de paquets avec leurs labels
+            packet_types = {
+                'POS': 'POSITION_APP',
+                'TELE': 'TELEMETRY_APP',
+                'NODE': 'NODEINFO_APP',
+                'TEXT': 'TEXT_MESSAGE_APP'
+            }
+
+            # Si ALL, retourner vue d'ensemble compacte
+            if packet_type.upper() == 'ALL':
+                return self._format_histogram_overview(packet_types, cutoff_time, hours)
+
+            # Vérifier que le type demandé existe
+            packet_type_upper = packet_type.upper()
+            if packet_type_upper not in packet_types:
+                return f"❌ Type inconnu: {packet_type}\nTypes: pos, tele, node, text"
+
+            # Obtenir les données pour ce type
+            portnum = packet_types[packet_type_upper]
+
+            if portnum not in self.packet_type_counts:
+                return f"📦 {packet_type_upper}: Aucune donnée"
+
+            # Filtrer les données dans la fenêtre temporelle
+            data_points = [
+                count for timestamp, count in self.packet_type_counts[portnum]
+                if timestamp >= cutoff_time
+            ]
+
+            if not data_points:
+                return f"📦 {packet_type_upper}: Aucune donnée ({hours}h)"
+
+            # Générer la sparkline
+            sparkline = self._generate_sparkline(data_points, symbols, 24)
+
+            # Statistiques
+            total = sum(data_points)
+            min_val = min(data_points)
+            max_val = max(data_points)
+            current = data_points[-1] if data_points else 0
+
+            # Tendance (comparer les 3 derniers points)
+            if len(data_points) >= 3:
+                recent = data_points[-3:]
+                if recent[-1] > recent[-2]:
+                    trend = "↗️"
+                elif recent[-1] < recent[-2]:
+                    trend = "↘️"
+                else:
+                    trend = "→"
+            else:
+                trend = "→"
+
+            # Formater la réponse
+            lines = [
+                f"📦 {packet_type_upper} ({hours}h):",
+                sparkline,
+                f"Min:{min_val} | Max:{max_val} | Now:{current} {trend} | Tot:{total}"
+            ]
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur histogram single: {e}")
+            return f"❌ Erreur: {str(e)[:30]}"
+
+    def _format_histogram_overview(self, packet_types, cutoff_time, hours):
+        """
+        Formater une vue d'ensemble compacte de tous les types
+        """
+        try:
+            lines = [f"📦 Paquets ({hours}h):"]
+            total_all = 0
+
+            for short_name, portnum in packet_types.items():
+                if portnum not in self.packet_type_counts:
+                    continue
+
+                # Filtrer les données
+                data_points = [
+                    count for timestamp, count in self.packet_type_counts[portnum]
+                    if timestamp >= cutoff_time
+                ]
+
+                if data_points:
+                    total = sum(data_points)
+                    total_all += total
+                    lines.append(f"{short_name}: {total}")
+
+            lines.append(f"📊 Total: {total_all} paquets")
+            lines.append("")
+            lines.append("Détails: /histo <type>")
+            lines.append("Types: pos, tele, node, text")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            return f"❌ Erreur: {str(e)[:30]}"
+
+    def _generate_sparkline(self, values, symbols, target_length=24):
+        """
+        Générer une sparkline ASCII
+
+        Args:
+            values: Liste des valeurs
+            symbols: String des symboles (8 niveaux)
+            target_length: Longueur cible du graphique
+
+        Returns:
+            str: Sparkline ASCII
+        """
+        if not values:
+            return '─' * target_length
+
+        # Sous-échantillonner si nécessaire
+        if len(values) > target_length:
+            step = len(values) / target_length
+            sampled_values = [
+                values[int(i * step)]
+                for i in range(target_length)
+            ]
+        elif len(values) < target_length:
+            # Répéter la dernière valeur
+            sampled_values = values + [values[-1]] * (target_length - len(values))
+        else:
+            sampled_values = values
+
+        # Normaliser les valeurs
+        min_val = min(sampled_values)
+        max_val = max(sampled_values)
+
+        if max_val == min_val:
+            # Valeur constante
+            return symbols[4] * target_length
+
+        sparkline = ""
+        for value in sampled_values:
+            # Normaliser entre 0 et 1
+            normalized = (value - min_val) / (max_val - min_val)
+            # Mapper sur les symboles (0-7)
+            symbol_index = int(normalized * (len(symbols) - 1))
+            symbol_index = max(0, min(len(symbols) - 1, symbol_index))
+            sparkline += symbols[symbol_index]
+
+        return sparkline
+
+    def track_packet_type(self, packet):
+        """
+        Enregistrer le type de paquet pour les statistiques /histo
+        Compte les paquets par heure
+        """
+        try:
+            if 'decoded' not in packet:
+                return
+
+            portnum = packet['decoded'].get('portnum', '')
+
+            # Seulement les types qu'on veut traquer
+            if portnum not in self.packet_type_counts:
+                return
+
+            current_time = time.time()
+            current_hour = int(current_time // 3600)
+
+            # Initialiser le compteur horaire si nécessaire
+            if self.last_packet_hour != current_hour:
+                self.last_packet_hour = current_hour
+
+                # Ajouter un nouveau point pour la nouvelle heure
+                for ptype in self.packet_type_counts:
+                    self.packet_type_counts[ptype].append((current_time, 0))
+
+            # Incrémenter le compteur pour ce type
+            if self.packet_type_counts[portnum]:
+                last_time, last_count = self.packet_type_counts[portnum][-1]
+                self.packet_type_counts[portnum][-1] = (last_time, last_count + 1)
+            else:
+                self.packet_type_counts[portnum].append((current_time, 1))
+
+            debug_print(f"📊 Packet tracké: {portnum}")
+
+        except Exception as e:
+            debug_print(f"Erreur track_packet_type: {e}")

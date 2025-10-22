@@ -12,10 +12,11 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender):
+    def __init__(self, esphome_client, traffic_monitor, sender,packet_history=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
+        self.packet_history = packet_history
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /tigropower"""
@@ -487,83 +488,58 @@ class UtilityCommands:
             error_msg = f"❌ Erreur packets: {str(e)[:50]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
 
-    
-    # ============================================================
-    # AJOUT: Méthode handle_histo dans UtilityCommands
-    # ============================================================
-
     def handle_histo(self, message, sender_id, sender_info):
         """
         Gérer la commande /histo [type] [heures]
-        Affiche un histogramme de distribution horaire des paquets mesh
         
-        Types disponibles:
-        - all : tous les paquets (défaut)
-        - messages : messages texte uniquement
-        - pos : positions uniquement
-        - info : nodeinfo uniquement
-        - telemetry : télémétrie uniquement
-        
-        Usage:
-        /histo
-        /histo messages
-        /histo pos 12
-        /histo all 24
+        Types disponibles: pos, tele, node, text
+        Sans argument: vue d'ensemble
         """
         info_print(f"Histo: {sender_info}")
         
         # Parser les arguments
         parts = message.split()
-        packet_filter = 'all'  # Défaut
-        hours = 24  # Défaut
+        packet_type = 'ALL'  # Par défaut: vue d'ensemble
+        hours = 24
         
+        # Argument 1: type de paquet (optionnel)
         if len(parts) > 1:
-            # Premier argument = type
-            requested_filter = parts[1].lower()
-            valid_filters = ['all', 'messages', 'pos', 'info', 'telemetry', 'traceroute', 'routing']
-            if requested_filter in valid_filters:
-                packet_filter = requested_filter
-            else:
-                # Si ce n'est pas un filtre valide, peut-être un nombre d'heures
-                try:
-                    hours = int(requested_filter)
-                    hours = max(1, min(72, hours))  # Entre 1 et 72 heures
-                except ValueError:
-                    pass
+            packet_type = parts[1].strip().upper()
+            # Valider le type
+            if packet_type not in ['ALL', 'POS', 'TELE', 'NODE', 'TEXT']:
+                error_msg = f"❌ Type inconnu: {parts[1]}\nTypes: pos, tele, node, text"
+                self.sender.send_single(error_msg, sender_id, sender_info)
+                return
         
+        # Argument 2: heures (optionnel)
         if len(parts) > 2:
-            # Deuxième argument = heures
             try:
-                requested_hours = int(parts[2])
-                hours = max(1, min(72, requested_hours))
+                hours = int(parts[2])
+                hours = max(1, min(48, hours))  # Entre 1 et 48h
             except ValueError:
-                pass
-        
-        if not self.traffic_monitor:
-            self.sender.send_single("❌ Traffic monitor non disponible", sender_id, sender_info)
-            return
+                hours = 24
         
         try:
-            # Générer l'histogramme
-            histogram = self.traffic_monitor.get_hourly_histogram(packet_filter, hours)
+            # Obtenir l'histogramme
+            if packet_type == 'ALL':
+                histogram = self.node_manager.get_packet_histogram_single('ALL', hours)
+                command_log = "/histo"
+            else:
+                histogram = self.node_manager.get_packet_histogram_single(packet_type, hours)
+                command_log = f"/histo {packet_type.lower()}"
+                if hours != 24:
+                    command_log += f" {hours}"
             
-            self.sender.log_conversation(
-                sender_id, 
-                sender_info, 
-                f"/histo {packet_filter} {hours}" if packet_filter != 'all' or hours != 24 else "/histo",
-                histogram
-            )
+            # Logger et envoyer
+            self.sender.log_conversation(sender_id, sender_info, command_log, histogram)
+            self.sender.send_single(histogram, sender_id, sender_info)
             
-            self.sender.send_chunks(histogram, sender_id, sender_info)
-            
-            info_print(f"✅ Histogramme '{packet_filter}' {hours}h envoyé à {sender_info}")
+            info_print(f"✅ Histogram {packet_type} ({hours}h) envoyé à {sender_info}")
             
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
+            import traceback
             error_print(traceback.format_exc())
             
-            error_msg = f"❌ Erreur histo: {str(e)[:30]}"
-            try:
-                self.sender.send_single(error_msg, sender_id, sender_info)
-            except:
-                pass
+            error_msg = f"❌ Erreur: {str(e)[:30]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)

@@ -191,7 +191,7 @@ class DebugInterface:
             memory_mb = process.memory_info().rss / 1024 / 1024
             active_contexts, total_messages = self.bot.context_manager.get_memory_stats()
             info_print(f"Mémoire: {memory_mb:.1f}MB, Nœuds: {len(self.bot.node_manager.node_names)}, Contextes: {active_contexts} ({total_messages} msgs)")
-        except:
+        except Exception as e:
             active_contexts, total_messages = self.bot.context_manager.get_memory_stats()
             info_print(f"Nœuds: {len(self.bot.node_manager.node_names)}, Contextes: {active_contexts} ({total_messages} messages)")
 

@@ -585,7 +585,7 @@ class TrafficMonitor:
             
             lines = [f"🏆TOP 3h ({total} pqts):"]
             for i, (name, count) in enumerate(top_3, 1):
-                name_short = truncate_text(name, 8)
+                name_short = truncate_text(name, 20)
                 lines.append(f"{i}.{name_short}:{count}")
             
             # Type dominant

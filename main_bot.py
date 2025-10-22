@@ -23,6 +23,8 @@ from message_handler import MessageHandler
 from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
+from tcp_connection_manager import tcp_manager
+from packet_history import PacketHistory
 
 class DebugMeshBot:
     def __init__(self):
@@ -37,6 +39,7 @@ class DebugMeshBot:
         self.esphome_client = ESPHomeClient()
         self.remote_nodes_client = RemoteNodesClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
+        self.packet_history = PacketHistory()
         
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -48,8 +51,6 @@ class DebugMeshBot:
         self.update_thread = None
    
         self.telegram_integration = None
-    
-        self.tigrog2_bridge = None
 
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
@@ -60,7 +61,13 @@ class DebugMeshBot:
 
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.node_manager.update_node_from_packet(packet)
+            self.node_manager.update_rx_history(packet)
+            self.node_manager.track_packet_type(packet) 
             
+            if 'decoded' in packet:
+                portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
+                self.packet_history.add_packet(portnum)
+
             # Mise à jour de l'historique RX pour tous les packets
             self.node_manager.update_rx_history(packet)
             
@@ -239,6 +246,8 @@ class DebugMeshBot:
                 self.context_manager.cleanup_old_contexts()
                 self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
+                self.packet_history.cleanup_old_data() 
+                self.packet_history.save_history()
                 
                 debug_print("✅ Mise à jour périodique terminée")
                 
@@ -289,7 +298,8 @@ class DebugMeshBot:
                 self.context_manager,
                 self.interface,
                 self.traffic_monitor,
-                self.start_time  
+                self.start_time,
+                packet_history=self.packet_history
             )
             
             # Intégration Telegram
@@ -378,10 +388,6 @@ class DebugMeshBot:
         # Arrêter l'intégration Telegram
         if self.telegram_integration:
             self.telegram_integration.stop()
-
-        # ✅ AJOUT : Arrêter le bridge
-        if self.tigrog2_bridge:
-            self.tigrog2_bridge.stop()
 
         if self.interface:
             self.interface.close()
