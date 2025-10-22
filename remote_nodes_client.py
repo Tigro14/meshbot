@@ -69,15 +69,7 @@ class RemoteNodesClient:
             self._cache_stats['misses'] += 1
             return None
         
-        # Créer la clé de cache
-        cache_key = f"{remote_host}:{remote_port}:{days_filter}"
-
-        # Vérifier le cache
-        cached_data = self._cache_get(cache_key)
-        if cached_data is not None:
-            info_print(f"✅ Cache hit pour {remote_host}")
-            return cached_data
-
+        cached_data = self._cache[key]
         current_time = time.time()
         
         # Vérifier si le cache est expiré
@@ -155,7 +147,9 @@ class RemoteNodesClient:
 
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         from safe_tcp_connection import SafeTCPConnection
-        
+
+        cache_key = f"{remote_host}:{remote_port}:{days_filter}" 
+
         current_time = time.time()
         cutoff_time = current_time - (days_filter * 24 * 3600)
         debug_print(f"Filtre temporel: derniers {days_filter} jours")
