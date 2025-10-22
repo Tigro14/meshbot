@@ -125,7 +125,7 @@ class MessageRouter:
         elif message.startswith('/top'):
             self.utility_handler.handle_top(message, sender_id, sender_info)
         elif message.startswith('/histo'):  
-            self.system_handler.handle_histo(message, sender_id, sender_info)  # ← AJOUTER CETTE LIGNE
+            self.utility_handler.handle_histo(message, sender_id, sender_info)
         elif message.startswith('/trace'):  
             self.network_handler.handle_trace(message, sender_id, sender_info, packet)
         elif message.startswith('/packets'):

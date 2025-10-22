@@ -218,6 +218,8 @@ class DebugMeshBot:
                 self.context_manager.cleanup_old_contexts()
                 self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
+                self.packet_history.cleanup_old_data() 
+                self.packet_history.save_history()
                 
                 debug_print("✅ Mise à jour périodique terminée")
                 
