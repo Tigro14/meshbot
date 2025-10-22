@@ -11,7 +11,6 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
-from tcp_connection_manager import tcp_manager
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):

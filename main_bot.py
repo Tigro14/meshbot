@@ -23,7 +23,6 @@ from message_handler import MessageHandler
 from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
-from tcp_connection_manager import tcp_manager
 from packet_history import PacketHistory
 
 class DebugMeshBot:
