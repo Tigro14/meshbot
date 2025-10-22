@@ -16,6 +16,14 @@ class NodeManager:
         self.node_names = {}
         self._last_node_save = 0
         self.rx_history = {}  # node_id -> {'name': str, 'snr': float, 'last_seen': timestamp, 'count': int}
+        from collections import deque
+        self.packet_type_counts = {
+            'POSITION_APP': deque(maxlen=24),
+            'TELEMETRY_APP': deque(maxlen=24),
+            'NODEINFO_APP': deque(maxlen=24),
+            'TEXT_MESSAGE_APP': deque(maxlen=24)
+        }
+        self.last_packet_hour = None
     
     def load_node_names(self):
         """Charger la base de noms depuis le fichier"""
@@ -464,3 +472,41 @@ class NodeManager:
             sparkline += symbols[symbol_index]
 
         return sparkline
+
+    def track_packet_type(self, packet):
+        """
+        Enregistrer le type de paquet pour les statistiques /histo
+        Compte les paquets par heure
+        """
+        try:
+            if 'decoded' not in packet:
+                return
+
+            portnum = packet['decoded'].get('portnum', '')
+
+            # Seulement les types qu'on veut traquer
+            if portnum not in self.packet_type_counts:
+                return
+
+            current_time = time.time()
+            current_hour = int(current_time // 3600)
+
+            # Initialiser le compteur horaire si nécessaire
+            if self.last_packet_hour != current_hour:
+                self.last_packet_hour = current_hour
+
+                # Ajouter un nouveau point pour la nouvelle heure
+                for ptype in self.packet_type_counts:
+                    self.packet_type_counts[ptype].append((current_time, 0))
+
+            # Incrémenter le compteur pour ce type
+            if self.packet_type_counts[portnum]:
+                last_time, last_count = self.packet_type_counts[portnum][-1]
+                self.packet_type_counts[portnum][-1] = (last_time, last_count + 1)
+            else:
+                self.packet_type_counts[portnum].append((current_time, 1))
+
+            debug_print(f"📊 Packet tracké: {portnum}")
+
+        except Exception as e:
+            debug_print(f"Erreur track_packet_type: {e}")

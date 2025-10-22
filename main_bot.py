@@ -57,6 +57,8 @@ class DebugMeshBot:
         try:
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.node_manager.update_node_from_packet(packet)
+            self.node_manager.update_rx_history(packet)
+            self.node_manager.track_packet_type(packet) 
             
             if 'decoded' in packet:
                 portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
