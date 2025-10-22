@@ -105,7 +105,7 @@ class SafeTCPConnection:
             error_print(f"❌ Erreur envoi commande: {e}")
             return False, f"❌ Erreur: {str(e)[:50]}"
 
-
+    @staticmethod
     def send_text_to_remote(hostname, text, port=4403, wait_time=2):
         """
         Envoyer un texte via TCP à un nœud distant
