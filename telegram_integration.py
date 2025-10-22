@@ -447,7 +447,7 @@ class TelegramIntegration:
         await update.message.reply_text(legend)
 
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /echo"""
+        """Commande /echo <message> - Diffuser sur le mesh"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
@@ -460,46 +460,76 @@ class TelegramIntegration:
         echo_text = ' '.join(context.args)
         info_print(f"📱 Telegram /echo: {user.username} -> '{echo_text}'")
 
-    def send_echo():
-        try:
-            # Utiliser le mapping Telegram → Meshtastic
-            mesh_identity = self._get_mesh_identity(user.id)
+        # Message de confirmation immédiat
+        status_msg = await update.message.reply_text("📤 Envoi en cours...")
 
-            if mesh_identity:
-                prefix = mesh_identity['short_name']
-                info_print(f"🔄 Echo avec identité mappée: {prefix}")
-            else:
-                username = user.username or user.first_name
-                prefix = username[:4]
-                info_print(f"⚠️ Echo sans mapping: {prefix}")
+        def send_echo():
+            try:
+                # Utiliser le mapping Telegram → Meshtastic
+                mesh_identity = self._get_mesh_identity(user.id)
 
-            message = f"{prefix}: {echo_text}"
-            
-            # ✅ Import avec logs
-            from safe_tcp_connection import send_text_to_remote
-            import traceback
-            
-            info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
-            
-            # ✅ CAPTURER le retour (tuple)
-            success, result_msg = send_text_to_remote(
-                REMOTE_NODE_HOST, 
-                message,
-                wait_time=10  # Attendre 10s
-            )
-            
-            info_print(f"📊 Résultat: success={success}, msg={result_msg}")
-            
-            if success:
-                return f"✅ Echo diffusé: {message}"
-            else:
-                return f"❌ Échec: {result_msg}"
+                if mesh_identity:
+                    prefix = mesh_identity['short_name']
+                    info_print(f"🔄 Echo avec identité mappée: {prefix}")
+                else:
+                    username = user.username or user.first_name
+                    prefix = username[:4]
+                    info_print(f"⚠️ Echo sans mapping: {prefix}")
+
+                message = f"{prefix}: {echo_text}"
                 
-        except Exception as e:
-            error_print(f"❌ Exception send_echo: {e}")
-            import traceback
-            error_print(traceback.format_exc())
-            return f"❌ Erreur echo: {str(e)[:50]}"
+                # ✅ Import avec logs
+                from safe_tcp_connection import send_text_to_remote
+                import traceback
+                
+                info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
+                
+                # ✅ CAPTURER le retour (tuple)
+                success, result_msg = send_text_to_remote(
+                    REMOTE_NODE_HOST, 
+                    message,
+                    wait_time=10  # Attendre 10s
+                )
+                
+                info_print(f"📊 Résultat: success={success}, msg={result_msg}")
+                
+                if success:
+                    return f"✅ Echo diffusé: {message}"
+                else:
+                    return f"❌ Échec: {result_msg}"
+                    
+            except Exception as e:
+                error_print(f"❌ Exception send_echo: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur echo: {str(e)[:50]}"
+
+        # ✅ CORRECTION : Exécuter la fonction dans un thread
+        def execute_and_reply():
+            try:
+                result = send_echo()
+                
+                # Envoyer le résultat via l'event loop de Telegram
+                asyncio.run_coroutine_threadsafe(
+                    status_msg.edit_text(result),
+                    self.loop
+                ).result(timeout=5)
+                
+            except Exception as e:
+                error_print(f"❌ Erreur execute_and_reply: {e}")
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        status_msg.edit_text(f"❌ Erreur: {str(e)[:50]}"),
+                        self.loop
+                    ).result(timeout=5)
+                except:
+                    pass
+        
+        # Lancer dans un thread
+        import threading
+        thread = threading.Thread(target=execute_and_reply, daemon=True)
+        thread.start()
+        info_print(f"✅ Thread echo lancé: {thread.name}")
 
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""
