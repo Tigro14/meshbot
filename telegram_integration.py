@@ -478,14 +478,14 @@ class TelegramIntegration:
 
                 message = f"{prefix}: {echo_text}"
                 
-                # ✅ Import avec logs
-                from safe_tcp_connection import SafeTCPConnection  # ✅ Importer la classe
+                # ✅ IMPORT SIMPLIFIÉ - Fonction au niveau module
+                from safe_tcp_connection import send_text_to_remote
                 import traceback
                 
                 info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
                 
-                # ✅ CAPTURER le retour (tuple)
-                success, result_msg = SafeTCPConnection.send_text_to_remote(
+                # ✅ APPEL SIMPLIFIÉ - Plus besoin de SafeTCPConnection.method()
+                success, result_msg = send_text_to_remote(
                     REMOTE_NODE_HOST, 
                     message,
                     wait_time=10  # Attendre 10s
@@ -504,7 +504,7 @@ class TelegramIntegration:
                 error_print(traceback.format_exc())
                 return f"❌ Erreur echo: {str(e)[:50]}"
 
-        # ✅ CORRECTION : Exécuter la fonction dans un thread
+        # Exécuter la fonction dans un thread
         def execute_and_reply():
             try:
                 result = send_echo()
@@ -512,9 +512,9 @@ class TelegramIntegration:
                 # Envoyer le résultat via l'event loop de Telegram
                 asyncio.run_coroutine_threadsafe(
                     status_msg.edit_text(result),
-                    self.loop
-                ).result(timeout=5)
-                
+                self.loop
+            ).result(timeout=5)
+            
             except Exception as e:
                 error_print(f"❌ Erreur execute_and_reply: {e}")
                 try:
@@ -525,11 +525,11 @@ class TelegramIntegration:
                 except:
                     pass
         
-        # Lancer dans un thread
-        import threading
-        thread = threading.Thread(target=execute_and_reply, daemon=True)
-        thread.start()
-        info_print(f"✅ Thread echo lancé: {thread.name}")
+            # Lancer dans un thread
+            import threading
+            thread = threading.Thread(target=execute_and_reply, daemon=True)
+            thread.start()
+            info_print(f"✅ Thread echo lancé: {thread.name}")
 
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""
