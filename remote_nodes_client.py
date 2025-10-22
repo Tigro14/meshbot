@@ -5,6 +5,7 @@ VERSION AVEC SafeTCPConnection
 """
 
 import time
+import threading
 from safe_tcp_connection import SafeTCPConnection
 from config import *
 from utils import (
@@ -54,6 +55,104 @@ class RemoteNodesClient:
         
         self._cache_stats['last_cleanup'] = now
 
+    def _cache_get(self, key):
+        """
+        Récupérer une valeur du cache si elle existe et est valide
+        
+        Args:
+            key: Clé du cache (généralement "host:port:days")
+        
+        Returns:
+            list ou None: Les données cachées ou None si expiré/inexistant
+        """
+        if key not in self._cache:
+            self._cache_stats['misses'] += 1
+            return None
+        
+        # Créer la clé de cache
+        cache_key = f"{remote_host}:{remote_port}:{days_filter}"
+
+        # Vérifier le cache
+        cached_data = self._cache_get(cache_key)
+        if cached_data is not None:
+            info_print(f"✅ Cache hit pour {remote_host}")
+            return cached_data
+
+        current_time = time.time()
+        
+        # Vérifier si le cache est expiré
+        if current_time - cached_data['timestamp'] > self._cache_ttl:
+            debug_print(f"💾 Cache expiré pour {key}")
+            del self._cache[key]
+            self._cache_stats['misses'] += 1
+            return None
+        
+        # Cache valide
+        self._cache_stats['hits'] += 1
+        age = current_time - cached_data['timestamp']
+        debug_print(f"✅ Cache hit pour {key} (âge: {age:.1f}s)")
+        
+        return cached_data['data']
+
+
+    def _cache_set(self, key, data):
+        """
+        Stocker des données dans le cache
+        
+        Args:
+            key: Clé du cache
+            data: Données à stocker
+        """
+        self._cache[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
+        
+        debug_print(f"💾 Cache mis à jour pour {key} ({len(data)} éléments)")
+        
+        # Nettoyage automatique si trop d'entrées
+        if len(self._cache) > 50:
+            self._cleanup_cache()
+
+
+    def _cleanup_cache(self):
+        """
+        Nettoyer les entrées expirées du cache
+        """
+        current_time = time.time()
+        expired_keys = []
+        
+        for key, cached_data in self._cache.items():
+            if current_time - cached_data['timestamp'] > self._cache_ttl:
+                expired_keys.append(key)
+        
+        for key in expired_keys:
+            del self._cache[key]
+        
+        if expired_keys:
+            debug_print(f"🧹 Cache nettoyé : {len(expired_keys)} entrées expirées")
+        
+        self._cache_stats['last_cleanup'] = current_time
+
+
+    def get_cache_stats(self):
+        """
+        Obtenir les statistiques du cache
+        
+        Returns:
+            dict: Statistiques (hits, misses, size, hit_rate)
+        """
+        total_requests = self._cache_stats['hits'] + self._cache_stats['misses']
+        hit_rate = (self._cache_stats['hits'] / total_requests * 100) if total_requests > 0 else 0
+        
+        return {
+            'hits': self._cache_stats['hits'],
+            'misses': self._cache_stats['misses'],
+            'size': len(self._cache),
+            'hit_rate': f"{hit_rate:.1f}%",
+            'last_cleanup': self._cache_stats['last_cleanup']
+        }
+
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         from safe_tcp_connection import SafeTCPConnection
         
@@ -66,7 +165,7 @@ class RemoteNodesClient:
         skipped_by_metrics = 0
         
         try:
-            info_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
+            error_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
             
             # Utiliser SafeTCPConnection avec wait_time=2
             with SafeTCPConnection(remote_host, remote_port, wait_time=2) as remote_interface:
