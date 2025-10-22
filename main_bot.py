@@ -113,18 +113,6 @@ class DebugMeshBot:
                         error_print(traceback.format_exc())
                 
                 return  # Pas de traitement supplémentaire
-            if TIGROG2_TRAFFIC_BRIDGE_ENABLED:
-                try:
-                    from tigrog2_traffic_bridge import TigroG2TrafficBridge
-                    self.tigrog2_bridge = TigroG2TrafficBridge(
-                        self.traffic_monitor,
-                        self.node_manager
-                    )
-                    self.tigrog2_bridge.start()
-                    info_print("✅ Bridge trafic tigrog2 activé")
-                except Exception as e:
-                    error_print(f"⚠️ Bridge tigrog2 non disponible: {e}")
-                    error_print(traceback.format_exc())
 
             # Traitement des messages texte
             if portnum == 'TEXT_MESSAGE_APP':
@@ -332,17 +320,6 @@ class DebugMeshBot:
             pub.subscribe(self.on_message, "meshtastic.receive")
             self.running = True
            
-            try:
-                from tigrog2_traffic_bridge import TigroG2TrafficBridge
-                self.tigrog2_bridge = TigroG2TrafficBridge(
-                    self.traffic_monitor,
-                    self.node_manager
-                )
-                self.tigrog2_bridge.start()
-                info_print("✅ Bridge trafic tigrog2 activé")
-            except Exception as e:
-                error_print(f"⚠️ Bridge tigrog2 non disponible: {e}")
-
             # Démarrer le thread de mise à jour périodique
             self.update_thread = threading.Thread(target=self.periodic_update_thread, daemon=True)
             self.update_thread.start()
