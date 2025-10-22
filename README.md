@@ -167,29 +167,29 @@ Le fichier `/var/log/bot-reboot.log` contient :
 
 ## Commandes disponibles
 
-### Commandes publiques MESH
+### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
 - `/nodes` - Nœuds directs vus par tigrog2 avec niveau SNR
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
-- `/trace` - Le traceroute retour vers vous (lookinglass)
+- `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
 - `/sys` - Informations système (CPU, RAM, uptime)
 - `/top` - Top talkers en 24h sur le canal
+- `/histo` - Histogramme des paquets reçus par type sur 24h
+- `/stats` - Statistiques d'utilisation du canal mesh sur 24h
+- `/packets` - Statistiques des paquets reçus sur le mesh
+- `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
 - `/echo <message>` - Diffuser un message via tigrog2
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
 
-### Commandes cachées (administration)
-- `/rebootpi` - Redémarrage du Pi5 (nécessite configuration)
-- `/rebootg2` - Redémarrage du node ROUTER via le MeshBOT en admin à distance + télémétrie
+### Commandes administration
+- `/rebootpi <passwd>` - Redémarrage du Pi5 (nécessite configuration)
+- `/rebootg2 <passwd>` - Redémarrage du node ROUTER via le MeshBOT en admin à distance + télémétrie
 
-### Les commandes depuis Telegram sont différentes
+### Les commandes specifiques Telegram 
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
 - `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
-- `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
-- `/top` - Top talkers en 24h sur le canal
-- `/stats` - Statistiques d'utilisation du canal mesh sur 24h
-- `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
 - voir /help pour pour d'info
 
 ## Configuration
