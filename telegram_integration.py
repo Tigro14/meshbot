@@ -120,12 +120,12 @@ class TelegramIntegration:
             
             # Handlers de commandes
             self.application.add_handler(CommandHandler("start", self._start_command))
-            self.application.add_handler(CommandHandler("tigrohelp", self._help_command))
-            self.application.add_handler(CommandHandler("tigropower", self._power_command))
+            self.application.add_handler(CommandHandler("help", self._help_command))
+            self.application.add_handler(CommandHandler("power", self._power_command))
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
-            self.application.add_handler(CommandHandler("tigrosys", self._sys_command))
-            self.application.add_handler(CommandHandler("tigrobot", self._tigrobot_command)) 
+            self.application.add_handler(CommandHandler("sys", self._sys_command))
+            self.application.add_handler(CommandHandler("bot", self._tigrobot_command)) 
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))

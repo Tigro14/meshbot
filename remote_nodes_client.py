@@ -266,7 +266,8 @@ class RemoteNodesClient:
             debug_print(f"Connexion au nœud distant {remote_host}...")
             
             # ✅ Utilisation de SafeTCPConnection avec context manager
-            with SafeTCPConnection.connect(remote_host, remote_port) as remote_interface:
+#           with SafeTCPConnection.connect(remote_host, remote_port) as remote_interface:
+            with SafeTCPConnection(remote_host, remote_port) as remote_interface:
                 time.sleep(2)  # Laisser les données se charger
                 remote_nodes = remote_interface.nodes
                 
