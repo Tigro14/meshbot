@@ -460,39 +460,31 @@ class TelegramIntegration:
         echo_text = ' '.join(context.args)
         info_print(f"📱 Telegram /echo: {user.username} -> '{echo_text}'")
 
-        def send_echo():
-            #import meshtastic.tcp_interface
-            try:
-                # Utiliser le mapping Telegram → Meshtastic
-                mesh_identity = self._get_mesh_identity(user.id)
+    def send_echo():
+        try:
+            # Utiliser le mapping Telegram → Meshtastic
+            mesh_identity = self._get_mesh_identity(user.id)
 
-                if mesh_identity:
-                    prefix = mesh_identity['short_name']
-                    info_print(f"🔄 Echo avec identité mappée: {prefix}")
-                else:
-                    username = user.username or user.first_name
-                    prefix = username[:4]
-                    info_print(f"⚠️ Echo sans mapping: {prefix}")
+            if mesh_identity:
+                prefix = mesh_identity['short_name']
+                info_print(f"🔄 Echo avec identité mappée: {prefix}")
+            else:
+                username = user.username or user.first_name
+                prefix = username[:4]
+                info_print(f"⚠️ Echo sans mapping: {prefix}")
 
-                message = f"{prefix}: {echo_text}"
-                try:
-                    from safe_tcp_connection import send_text_to_remote
-                    message = f"{prefix}: {echo_text}"
-                    SafeTCPConnection.send_text_to_remote(REMOTE_NODE_HOST, message)
-                    #with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
-                    #    message = f"{prefix}: {echo_text}"
-                    #    remote_interface.sendText(message)
-                    #    time.sleep(2)  # Attendre l'envoi
-                    return f"✅ Echo diffusé: {message}"
-                except Exception as e:
-                    return f"❌ Erreur echo: {str(e)[:50]}"
-
+            message = f"{prefix}: {echo_text}"
+            
+            from safe_tcp_connection import send_text_to_remote
+            success, result_msg = send_text_to_remote(REMOTE_NODE_HOST, message)
+            
+            if success:
                 return f"✅ Echo diffusé: {message}"
-            except Exception as e:
-                return f"❌ Erreur echo: {str(e)[:50]}"
-
-        response = await asyncio.to_thread(send_echo)
-        await update.message.reply_text(response)
+            else:
+                return result_msg  # Retourne le message d'erreur
+                
+        except Exception as e:
+            return f"❌ Erreur echo: {str(e)[:50]}"
     
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""

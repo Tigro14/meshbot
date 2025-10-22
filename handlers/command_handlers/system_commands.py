@@ -231,7 +231,9 @@ class SystemCommands:
             
             #remote_interface.sendText("/reboot")
             from safe_tcp_connection import send_text_to_remote
-            send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
+            success, msg = send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
+            if not success:
+                return msg
             info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
             
             time.sleep(2)
