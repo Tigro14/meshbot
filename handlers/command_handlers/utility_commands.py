@@ -16,6 +16,7 @@ class UtilityCommands:
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
+        self.packet_history = packet_history
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -491,79 +492,42 @@ class UtilityCommands:
     # ============================================================
     # AJOUT: Méthode handle_histo dans UtilityCommands
     # ============================================================
-
     def handle_histo(self, message, sender_id, sender_info):
         """
-        Gérer la commande /histo [type] [heures]
-        Affiche un histogramme de distribution horaire des paquets mesh
-        
-        Types disponibles:
-        - all : tous les paquets (défaut)
-        - messages : messages texte uniquement
-        - pos : positions uniquement
-        - info : nodeinfo uniquement
-        - telemetry : télémétrie uniquement
-        
-        Usage:
-        /histo
-        /histo messages
-        /histo pos 12
-        /histo all 24
+        Gérer la commande /histo [heures]
+        Affiche l'historique des paquets par type avec sparklines
         """
         info_print(f"Histo: {sender_info}")
         
         # Parser les arguments
         parts = message.split()
-        packet_filter = 'all'  # Défaut
-        hours = 24  # Défaut
+        hours = 24  # Défaut: 24 heures
         
         if len(parts) > 1:
-            # Premier argument = type
-            requested_filter = parts[1].lower()
-            valid_filters = ['all', 'messages', 'pos', 'info', 'telemetry', 'traceroute', 'routing']
-            if requested_filter in valid_filters:
-                packet_filter = requested_filter
-            else:
-                # Si ce n'est pas un filtre valide, peut-être un nombre d'heures
-                try:
-                    hours = int(requested_filter)
-                    hours = max(1, min(72, hours))  # Entre 1 et 72 heures
-                except ValueError:
-                    pass
-        
-        if len(parts) > 2:
-            # Deuxième argument = heures
             try:
-                requested_hours = int(parts[2])
-                hours = max(1, min(72, requested_hours))
+                requested = int(parts[1])
+                hours = max(1, min(48, requested))  # Entre 1 et 48h
             except ValueError:
-                pass
+                hours = 24
         
-        if not self.traffic_monitor:
-            self.sender.send_single("❌ Traffic monitor non disponible", sender_id, sender_info)
+        if not self.packet_history:
+            self.sender.send_single("❌ Historique paquets non disponible", sender_id, sender_info)
             return
         
         try:
-            # Générer l'histogramme
-            histogram = self.traffic_monitor.get_hourly_histogram(packet_filter, hours)
+            # Version compacte avec sparklines pour Meshtastic
+            report = self.packet_history.format_compact(hours)
             
-            self.sender.log_conversation(
-                sender_id, 
-                sender_info, 
-                f"/histo {packet_filter} {hours}" if packet_filter != 'all' or hours != 24 else "/histo",
-                histogram
-            )
+            self.sender.log_conversation(sender_id, sender_info,
+                                        f"/histo {hours}" if hours != 24 else "/histo",
+                                        report)
+            self.sender.send_chunks(report, sender_id, sender_info)
             
-            self.sender.send_chunks(histogram, sender_id, sender_info)
-            
-            info_print(f"✅ Histogramme '{packet_filter}' {hours}h envoyé à {sender_info}")
+            info_print(f"✅ Historique {hours}h envoyé à {sender_info}")
             
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
+            import traceback
             error_print(traceback.format_exc())
-            
-            error_msg = f"❌ Erreur histo: {str(e)[:30]}"
-            try:
-                self.sender.send_single(error_msg, sender_id, sender_info)
-            except:
-                pass
+            error_msg = f"❌ Erreur histo: {str(e)[:50]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)

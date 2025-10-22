@@ -18,7 +18,7 @@ from .command_handlers import (
 class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client, 
                  node_manager, context_manager, interface, traffic_monitor=None,     
-                 bot_start_time=None):
+                 bot_start_time=None,packet_history=None):
         
         # Dépendances
         self.node_manager = node_manager
@@ -31,7 +31,8 @@ class MessageRouter:
         self.ai_handler = AICommands(llama_client, self.sender)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time) 
-        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender)
+        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history)
+        self.packet_history = packet_history
     
     def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""

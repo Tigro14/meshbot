@@ -26,7 +26,9 @@ class MessageHandler:
             context_manager,
             interface,
             traffic_monitor,
-            bot_start_time
+            bot_start_time,
+            packet_history 
+
         )
         
         # Exposer les propriétés nécessaires pour compatibilité

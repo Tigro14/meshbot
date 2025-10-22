@@ -1989,108 +1989,31 @@ class TelegramIntegration:
         await update.message.reply_text(response)        
 
     async def _histo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        Commande /histo [type] [heures] - Histogramme distribution horaire
-        
-        Types disponibles:
-        - all : tous les paquets (défaut)
-        - messages : messages texte uniquement
-        - pos : positions uniquement
-        - info : nodeinfo uniquement
-        - telemetry : télémétrie uniquement
-        
-        Usage:
-        /histo
-        /histo messages
-        /histo pos 12
-        /histo all 48
-        """
+        """Commande /histo pour historique paquets"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
         
-        # Parser les arguments
-        args = context.args
-        packet_filter = 'all'  # Défaut
-        hours = 24  # Défaut
-        
-        if args and len(args) > 0:
-            # Premier argument = type
-            requested_filter = args[0].lower()
-            valid_filters = ['all', 'messages', 'pos', 'info', 'telemetry', 'traceroute', 'routing']
-            if requested_filter in valid_filters:
-                packet_filter = requested_filter
-            else:
-                # Si ce n'est pas un filtre valide, peut-être un nombre d'heures
-                try:
-                    hours = int(requested_filter)
-                    hours = max(1, min(168, hours))  # Max 7 jours pour Telegram
-                except ValueError:
-                    pass
-        
-        if args and len(args) > 1:
-            # Deuxième argument = heures
+        hours = 24
+        if context.args and len(context.args) > 0:
             try:
-                requested_hours = int(args[1])
-                hours = max(1, min(168, requested_hours))  # Max 7 jours
+                hours = int(context.args[0])
+                hours = max(1, min(48, hours))
             except ValueError:
-                pass
+                hours = 24
         
-        info_print(f"📱 Telegram /histo {packet_filter} {hours}h: {user.username}")
+        info_print(f"📱 Telegram /histo {hours}h: {user.username}")
         
-        # Message d'attente pour les périodes longues
-        if hours > 48:
-            await update.message.reply_text(f"📊 Analyse de {hours}h en cours...")
-        
-        def get_histogram():
+        def get_histo():
             try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-                
-                # Générer l'histogramme
-                histogram = self.message_handler.traffic_monitor.get_hourly_histogram(
-                    packet_filter, 
-                    hours
-                )
-                
-                return histogram
-                
+                if not self.message_handler.packet_history:
+                    return "❌ Historique paquets non disponible"
+                return self.message_handler.packet_history.format_compact(hours)
             except Exception as e:
-                error_print(f"Erreur histogramme Telegram: {e or 'Unknown error'}")
-                error_print(traceback.format_exc())
+                error_print(f"Erreur get_histo: {e}")
                 return f"❌ Erreur: {str(e)[:100]}"
         
-        # Générer le rapport
-        response = await asyncio.to_thread(get_histogram)
-        
-        # Si le message est trop long, le diviser
-        if len(response) > 4000:
-            # Diviser en chunks de 4000 caractères
-            chunks = []
-            lines = response.split('\n')
-            current_chunk = []
-            current_length = 0
-            
-            for line in lines:
-                line_length = len(line) + 1  # +1 pour le \n
-                if current_length + line_length > 4000:
-                    chunks.append('\n'.join(current_chunk))
-                    current_chunk = [line]
-                    current_length = line_length
-                else:
-                    current_chunk.append(line)
-                    current_length += line_length
-            
-            if current_chunk:
-                chunks.append('\n'.join(current_chunk))
-            
-            # Envoyer les chunks
-            for i, chunk in enumerate(chunks):
-                if i > 0:
-                    await asyncio.sleep(0.5)  # Éviter rate limiting
-                await update.message.reply_text(chunk)
-        else:
-            await update.message.reply_text(response)
-
+        response = await asyncio.to_thread(get_histo)
+        await update.message.reply_text(response)
 

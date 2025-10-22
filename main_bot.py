@@ -24,6 +24,7 @@ from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from tcp_connection_manager import tcp_manager
+from packet_history import PacketHistory
 
 class DebugMeshBot:
     def __init__(self):
@@ -38,6 +39,7 @@ class DebugMeshBot:
         self.esphome_client = ESPHomeClient()
         self.remote_nodes_client = RemoteNodesClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
+        self.packet_history = PacketHistory()
         
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -56,6 +58,10 @@ class DebugMeshBot:
             # Mise à jour de la base de nœuds depuis les packets NodeInfo
             self.node_manager.update_node_from_packet(packet)
             
+            if 'decoded' in packet:
+                portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
+                self.packet_history.add_packet(portnum)
+
             # Mise à jour de l'historique RX pour tous les packets
             self.node_manager.update_rx_history(packet)
             
@@ -260,7 +266,8 @@ class DebugMeshBot:
                 self.context_manager,
                 self.interface,
                 self.traffic_monitor,
-                self.start_time  
+                self.start_time,
+                packet_history=self.packet_history
             )
             
             # Intégration Telegram
