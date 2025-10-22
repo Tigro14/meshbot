@@ -109,23 +109,33 @@ class SafeTCPConnection:
     def send_text_to_remote(hostname, text, port=4403, wait_time=10):
         """
         Envoyer un texte via TCP à un nœud distant
+
+        Args:
+            hostname: IP du nœud
+            text: Texte à envoyer
+            port: Port TCP (défaut: 4403)
+            wait_time: Temps d'attente après envoi (défaut: 10s)
+
+        Returns:
+            tuple: (success: bool, message: str)
         """
         try:
-            debug_print(f"🔌 Connexion à {hostname}:{port} pour envoi texte...")
-
+            debug_print(f"🔌 Connexion à {hostname}:{port}...")
+            
             with SafeTCPConnection(hostname, port, wait_time=wait_time, timeout=15) as interface:
                 debug_print(f"✅ Connexion établie")
-                debug_print(f"📤 Envoi du texte: '{text}'")
-
+                debug_print(f"📤 Envoi texte: '{text}'")
+                
                 interface.sendText(text)
-
                 debug_print(f"✅ sendText() appelé")
+                
+                # ✅ CRUCIAL: Attendre que le message parte
                 debug_print(f"⏳ Attente 5s pour transmission...")
-                time.sleep(5)  # ✅ CRUCIAL : attendre que le message parte
-
-                debug_print(f"✅ Texte envoyé à {hostname}: {text}")
+                time.sleep(5)
+                
+                debug_print(f"✅ Texte envoyé à {hostname}")
                 return True, "✅ Message envoyé"
-
+                
         except Exception as e:
             error_print(f"❌ Erreur envoi texte à {hostname}: {e}")
             import traceback

@@ -475,19 +475,20 @@ class TelegramIntegration:
 
             message = f"{prefix}: {echo_text}"
             
-            # ✅ Import et logs
+            # ✅ Import avec logs
             from safe_tcp_connection import send_text_to_remote
-            info_print(f"📤 Envoi message: '{message}'")
-            info_print(f"🎯 Destination: {REMOTE_NODE_HOST}")
+            import traceback
             
-            # ✅ Capturer le retour et attendre plus longtemps
+            info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
+            
+            # ✅ CAPTURER le retour (tuple)
             success, result_msg = send_text_to_remote(
                 REMOTE_NODE_HOST, 
                 message,
-                wait_time=10  # Attendre 10s pour stabilisation + envoi
+                wait_time=10  # Attendre 10s
             )
             
-            info_print(f"📊 Résultat envoi: success={success}, msg={result_msg}")
+            info_print(f"📊 Résultat: success={success}, msg={result_msg}")
             
             if success:
                 return f"✅ Echo diffusé: {message}"
@@ -495,7 +496,7 @@ class TelegramIntegration:
                 return f"❌ Échec: {result_msg}"
                 
         except Exception as e:
-            error_print(f"❌ Exception dans send_echo: {e}")
+            error_print(f"❌ Exception send_echo: {e}")
             import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur echo: {str(e)[:50]}"
