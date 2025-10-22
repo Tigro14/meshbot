@@ -1989,31 +1989,66 @@ class TelegramIntegration:
         await update.message.reply_text(response)        
 
     async def _histo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /histo pour historique paquets"""
+        """
+        Commande /histo [type] [heures] - Histogrammes de paquets
+
+        Usage:
+            /histo           - Vue d'ensemble
+            /histo pos       - Détails POSITION
+            /histo tele      - Détails TELEMETRY
+            /histo node      - Détails NODEINFO
+            /histo text      - Détails TEXT
+            /histo pos 12    - POSITION sur 12h
+        """
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
+        # Parser les arguments
+        args = context.args
+        packet_type = 'ALL'  # Par défaut: vue d'ensemble
         hours = 24
-        if context.args and len(context.args) > 0:
+
+        # Argument 1: type de paquet (optionnel)
+        if args and len(args) > 0:
+            packet_type = args[0].strip().upper()
+            # Valider le type
+            if packet_type not in ['ALL', 'POS', 'TELE', 'NODE', 'TEXT']:
+                await update.message.reply_text(
+                    f"❌ Type inconnu: {args[0]}\n"
+                    f"Types disponibles: pos, tele, node, text"
+                )
+                return
+
+        # Argument 2: heures (optionnel)
+        if args and len(args) > 1:
             try:
-                hours = int(context.args[0])
-                hours = max(1, min(48, hours))
+                hours = int(args[1])
+                hours = max(1, min(48, hours))  # Entre 1 et 48h
             except ValueError:
                 hours = 24
-        
-        info_print(f"📱 Telegram /histo {hours}h: {user.username}")
-        
-        def get_histo():
-            try:
-                if not self.message_handler.packet_history:
-                    return "❌ Historique paquets non disponible"
-                return self.message_handler.packet_history.format_compact(hours)
-            except Exception as e:
-                error_print(f"Erreur get_histo: {e}")
-                return f"❌ Erreur: {str(e)[:100]}"
-        
-        response = await asyncio.to_thread(get_histo)
-        await update.message.reply_text(response)
 
+        info_print(f"📱 Telegram /histo {packet_type} {hours}h: {user.username}")
+
+        def get_histogram():
+            """Fonction synchrone pour obtenir l'histogramme"""
+            try:
+                # Utiliser node_manager pour générer l'histogramme
+                return self.node_manager.get_packet_histogram_single(packet_type, hours)
+            except Exception as e:
+                error_print(f"Erreur get_histogram: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:50]}"
+
+        # Exécuter dans un thread séparé
+        try:
+            histogram = await asyncio.to_thread(get_histogram)
+            await update.message.reply_text(histogram)
+
+        except Exception as e:
+            error_print(f"Erreur /histo: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")

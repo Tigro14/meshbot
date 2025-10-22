@@ -488,46 +488,58 @@ class UtilityCommands:
             error_msg = f"❌ Erreur packets: {str(e)[:50]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
 
-    
-    # ============================================================
-    # AJOUT: Méthode handle_histo dans UtilityCommands
-    # ============================================================
     def handle_histo(self, message, sender_id, sender_info):
         """
-        Gérer la commande /histo [heures]
-        Affiche l'historique des paquets par type avec sparklines
+        Gérer la commande /histo [type] [heures]
+        
+        Types disponibles: pos, tele, node, text
+        Sans argument: vue d'ensemble
         """
         info_print(f"Histo: {sender_info}")
         
         # Parser les arguments
         parts = message.split()
-        hours = 24  # Défaut: 24 heures
+        packet_type = 'ALL'  # Par défaut: vue d'ensemble
+        hours = 24
         
+        # Argument 1: type de paquet (optionnel)
         if len(parts) > 1:
+            packet_type = parts[1].strip().upper()
+            # Valider le type
+            if packet_type not in ['ALL', 'POS', 'TELE', 'NODE', 'TEXT']:
+                error_msg = f"❌ Type inconnu: {parts[1]}\nTypes: pos, tele, node, text"
+                self.sender.send_single(error_msg, sender_id, sender_info)
+                return
+        
+        # Argument 2: heures (optionnel)
+        if len(parts) > 2:
             try:
-                requested = int(parts[1])
-                hours = max(1, min(48, requested))  # Entre 1 et 48h
+                hours = int(parts[2])
+                hours = max(1, min(48, hours))  # Entre 1 et 48h
             except ValueError:
                 hours = 24
         
-        if not self.packet_history:
-            self.sender.send_single("❌ Historique paquets non disponible", sender_id, sender_info)
-            return
-        
         try:
-            # Version compacte avec sparklines pour Meshtastic
-            report = self.packet_history.format_compact(hours)
+            # Obtenir l'histogramme
+            if packet_type == 'ALL':
+                histogram = self.node_manager.get_packet_histogram_single('ALL', hours)
+                command_log = "/histo"
+            else:
+                histogram = self.node_manager.get_packet_histogram_single(packet_type, hours)
+                command_log = f"/histo {packet_type.lower()}"
+                if hours != 24:
+                    command_log += f" {hours}"
             
-            self.sender.log_conversation(sender_id, sender_info,
-                                        f"/histo {hours}" if hours != 24 else "/histo",
-                                        report)
-            self.sender.send_chunks(report, sender_id, sender_info)
+            # Logger et envoyer
+            self.sender.log_conversation(sender_id, sender_info, command_log, histogram)
+            self.sender.send_single(histogram, sender_id, sender_info)
             
-            info_print(f"✅ Historique {hours}h envoyé à {sender_info}")
+            info_print(f"✅ Histogram {packet_type} ({hours}h) envoyé à {sender_info}")
             
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
             import traceback
             error_print(traceback.format_exc())
-            error_msg = f"❌ Erreur histo: {str(e)[:50]}"
+            
+            error_msg = f"❌ Erreur: {str(e)[:30]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
