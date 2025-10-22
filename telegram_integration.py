@@ -479,13 +479,13 @@ class TelegramIntegration:
                 message = f"{prefix}: {echo_text}"
                 
                 # ✅ Import avec logs
-                from safe_tcp_connection import send_text_to_remote
+                from safe_tcp_connection import SafeTCPConnection  # ✅ Importer la classe
                 import traceback
                 
                 info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
                 
                 # ✅ CAPTURER le retour (tuple)
-                success, result_msg = send_text_to_remote(
+                success, result_msg = SafeTCPConnection.send_text_to_remote(
                     REMOTE_NODE_HOST, 
                     message,
                     wait_time=10  # Attendre 10s
