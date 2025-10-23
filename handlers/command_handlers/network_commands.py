@@ -156,27 +156,26 @@ class NetworkCommands:
         return "\n".join(response_parts)
     
     def _send_broadcast_via_tigrog2(self, message, sender_id, sender_info, command):
-        """Envoyer un message en broadcast via tigrog2"""
-        def send_broadcast():
-            remote_interface = None
-            from safe_tcp_connection import SafeTCPConnection
-            debug_print(f"Connexion TCP à tigrog2 pour broadcast {command}...")
-            try:
-#                with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=15) as remote_interface:
-                with SafeTCPConnection(REMOTE_NODE_HOST, 4403, wait_time=2) as remote_interface:
-                    debug_print(f"Envoi broadcast: '{message[:50]}...'")
-                    remote_interface.sendText(message)
-                    time.sleep(3)  # Attendre propagation
-
-                    debug_print(f"✅ Broadcast {command} diffusé")
-                    self.sender.log_conversation(sender_id, sender_info, command, message)
-
-            except Exception as e:
-                error_print(f"Erreur broadcast: {e}")
-
-            debug_print(f"✅ Broadcast {command} diffusé via tigrog2")
-            self.sender.log_conversation(sender_id, sender_info, command, message)
+        """
+        Envoyer un message en broadcast via tigrog2
         
+        Note: Exécuté dans un thread séparé pour ne pas bloquer
+        """
+        def send_broadcast():
+            from safe_tcp_connection import broadcast_message
+            
+            debug_print(f"📡 Broadcast {command} via {REMOTE_NODE_NAME}...")
+            success, msg = broadcast_message(REMOTE_NODE_HOST, message)
+            
+            if success:
+                info_print(f"✅ Broadcast {command} diffusé")
+                self.sender.log_conversation(sender_id, sender_info, command, message)
+            else:
+                error_print(f"❌ Échec broadcast {command}: {msg}")
+                # Optionnel: notifier l'expéditeur de l'échec
+                # self.sender.send_error_notification(sender_id, f"Échec broadcast: {msg}")
+        
+        # Lancer en arrière-plan
         threading.Thread(target=send_broadcast, daemon=True).start()
 
     def handle_trace(self, message, sender_id, sender_info, packet):
