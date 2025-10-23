@@ -353,12 +353,12 @@ class UtilityCommands:
         📖 AIDE COMPLÈTE - BOT MESHTASTIC
 
         🤖 CHAT IA
-        • /tigrobot <question> → Conversation avec l'IA
+        • /bot <question> → Conversation avec l'IA
         • Contexte conversationnel maintenu 30min
         • Réponses plus détaillées possibles sur Telegram vs mesh
 
         ⚡ SYSTÈME & MONITORING
-        • /tigropower - Télémétrie complète
+        • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h

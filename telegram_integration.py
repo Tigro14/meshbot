@@ -125,7 +125,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
             self.application.add_handler(CommandHandler("sys", self._sys_command))
-            self.application.add_handler(CommandHandler("bot", self._tigrobot_command)) 
+            self.application.add_handler(CommandHandler("bot", self._bot_command)) 
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
@@ -216,7 +216,7 @@ class TelegramIntegration:
             f"🤖 Bot Meshtastic Bridge\n\n"
             f"Salut {user.first_name} !\n\n"
             f"Commandes:\n"
-            f"• /tigrobot - Chat IA\n"
+            f"• /bot - Chat IA\n"
             f"• /tigropower - Batterie/solaire\n"
             f"• /rx [page]\n"
             f"• /tigrosys \n"
@@ -845,9 +845,9 @@ class TelegramIntegration:
         info_print(f"📤 Envoi réponse à Telegram: {response}")
         await update.message.reply_text(response)
 
-    async def _tigrobot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _bot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Commande /tigrobot <question> - Chat avec l'IA
+        Commande /bot <question> - Chat avec l'IA
         """
         user = update.effective_user
         if not self._check_authorization(user.id):
@@ -857,15 +857,15 @@ class TelegramIntegration:
         # Vérifier qu'il y a bien une question
         if not context.args or len(context.args) == 0:
             await update.message.reply_text(
-                "Usage: /tigrobot <question>\n"
-                "Exemple: /tigrobot Quelle est la météo ?"
+                "Usage: /bot <question>\n"
+                "Exemple: /bot Quelle est la météo ?"
             )
             return
         
         # Reconstruire la question complète
         question = ' '.join(context.args)
         
-        info_print(f"📱 Telegram /tigrobot: {user.username} -> '{question[:50]}'")
+        info_print(f"📱 Telegram /bot: {user.username} -> '{question[:50]}'")
         
         sender_id = user.id & 0xFFFFFFFF
         
@@ -880,7 +880,7 @@ class TelegramIntegration:
             response = await asyncio.to_thread(query_ai)
             await update.message.reply_text(response)
         except Exception as e:
-            error_print(f"Erreur /tigrobot: {e}")
+            error_print(f"Erreur /bot: {e}")
             await update.message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
