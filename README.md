@@ -35,7 +35,7 @@ graph TD
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
 - Pour compiler/installer llama.cpp sur le Raspberry Pi 5, 
-  voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama/READMELLAMA.md
+  voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama.cpp-integration/READMELLAMA.md
 
 ## Installation
 
