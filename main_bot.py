@@ -170,12 +170,6 @@ class DebugMeshBot:
                     self.message_handler.process_text_message(packet, decoded, message)
 
                 info_print("=" * 60)
-
-                if message and is_broadcast and not is_from_me:
-                    self.traffic_monitor.add_public_message(packet, message)
-                
-                if message and self.message_handler:
-                    self.message_handler.process_text_message(packet, decoded, message)
             #else:
                 # Autres types de packets (télémétrie, etc.) - juste pour debug
                 #if DEBUG_MODE and portnum in ['TELEMETRY_APP', 'NODEINFO_APP', 'POSITION_APP']:
