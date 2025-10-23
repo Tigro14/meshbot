@@ -12,12 +12,12 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender,packet_history=None):
+    def __init__(self, esphome_client, traffic_monitor, sender,packet_history=None,node_manager=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
-        self.node_manager = node_manager
         self.packet_history = packet_history
+        self.node_manager = node_manager
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /tigropower"""
