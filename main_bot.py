@@ -24,13 +24,15 @@ from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from packet_history import PacketHistory
+from safe_serial_connection import SafeSerialConnection
 
 class DebugMeshBot:
     def __init__(self):
         self.interface = None
+        self.serial_manager = None 
         self.running = False
         
-        self.start_time = time.time()  # ← AJOUT : timestamp de démarrage du bot
+        self.start_time = time.time()
         # Initialisation des gestionnaires
         self.node_manager = NodeManager()
         self.context_manager = ContextManager(self.node_manager)
@@ -54,6 +56,15 @@ class DebugMeshBot:
     def on_message(self, packet, interface):
         """Gestionnaire des messages - version optimisée avec modules"""
         try:
+            # ✅ NOUVEAU: Vérifier l'état de la connexion
+            if not self.serial_manager or not self.serial_manager.is_connected():
+                warning_print("⚠️  Connexion série instable, message ignoré")
+                return
+
+            # Mettre à jour l'interface si reconnectée
+            if self.serial_manager.is_connected():
+                self.interface = self.serial_manager.get_interface()
+
             # ✅ CRITIQUE : Filtrer seulement les messages de NOTRE interface locale
             if interface != self.interface:
                 return  # Ignorer les messages du bridge tigrog2
@@ -262,13 +273,24 @@ class DebugMeshBot:
         if not self.llama_client.test_connection():
             error_print("llama.cpp requis")
             return False
-        
+       
         try:
-            info_print(f"Connexion {SERIAL_PORT}...")
-            self.interface = meshtastic.serial_interface.SerialInterface(SERIAL_PORT)
-            time.sleep(3)
-            
-            info_print("Interface Meshtastic OK")
+            # ✅ NOUVEAU: Utiliser SafeSerialConnection avec auto-reconnexion
+            info_print(f"🔌 Initialisation connexion série: {SERIAL_PORT}")
+            self.serial_manager = SafeSerialConnection(
+                port=SERIAL_PORT,
+                max_retries=5,
+                retry_delay=5,
+                max_retry_delay=60,
+                auto_reconnect=True  # Active la reconnexion automatique
+            )
+
+            if not self.serial_manager.connect():
+                error_print("❌ Impossible d'établir la connexion série")
+                return False
+
+            self.interface = self.serial_manager.get_interface()
+            info_print("✅ Interface Meshtastic OK avec auto-reconnexion activée")
             
             # Initialiser le gestionnaire de messages maintenant que l'interface existe
             self.message_handler = MessageHandler(
@@ -359,7 +381,12 @@ class DebugMeshBot:
         if self.telegram_integration:
             self.telegram_integration.stop()
 
-        if self.interface:
-            self.interface.close()
+        # ✅ NOUVEAU: Utiliser le gestionnaire pour fermer proprement
+        if self.serial_manager:
+            self.serial_manager.close()
+            self.serial_manager = None
+
+        self.interface = None
+
         gc.collect()
         info_print("Bot arrêté")
