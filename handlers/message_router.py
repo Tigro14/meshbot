@@ -31,7 +31,7 @@ class MessageRouter:
         self.ai_handler = AICommands(llama_client, self.sender)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time) 
-        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history)
+        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
         self.packet_history = packet_history
     
     def process_text_message(self, packet, decoded, message):
