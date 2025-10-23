@@ -88,6 +88,8 @@ class MessageRouter:
             self.network_handler.handle_rx(message, sender_id, sender_info)
         elif message.startswith('/my'):
             self.network_handler.handle_my(sender_id, sender_info, is_broadcast=False)
+        elif message.startswith('/nodes'):  
+            self.network_handler.handle_nodes(sender_id, sender_info)  
         
         # ===================================================================
         # Commandes système avec authentification

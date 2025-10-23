@@ -37,7 +37,20 @@ class NetworkCommands:
         except Exception as e:
             error_msg = f"Erreur rx page {page}: {str(e)[:50]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
-    
+
+    def handle_nodes(self, sender_id, sender_info):
+        """Gérer la commande /nodes - Liste des nœuds directs"""
+        info_print(f"Nodes: {sender_info}")
+        
+        try:
+            # Utiliser la même logique que /rx mais simplifiée
+            report = self.remote_nodes_client.get_tigrog2_paginated(1)
+            self.sender.log_conversation(sender_id, sender_info, "/nodes", report)
+            self.sender.send_single(report, sender_id, sender_info)
+        except Exception as e:
+            error_msg = f"Erreur nodes: {str(e)[:50]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)
+
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
         """Gérer la commande /my - infos signal vues par tigrog2"""
         info_print(f"My: {sender_info}")
