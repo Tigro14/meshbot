@@ -16,6 +16,7 @@ class UtilityCommands:
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
+        self.node_manager = node_manager
         self.packet_history = packet_history
     
     def handle_power(self, sender_id, sender_info):
@@ -124,6 +125,7 @@ class UtilityCommands:
             "🤖 Bot Meshtastic-Llama\n\n"
             "Commandes:\n"
             "• /bot <question> - Chat IA\n"
+            "• /histo\n"
             "• /my\n"
             "• /legend\n"
             "• /nodes\n"
