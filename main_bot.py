@@ -58,7 +58,7 @@ class DebugMeshBot:
         try:
             # ✅ NOUVEAU: Vérifier l'état de la connexion
             if not self.serial_manager or not self.serial_manager.is_connected():
-                warning_print("⚠️  Connexion série instable, message ignoré")
+                info_print("⚠️  Connexion série instable, message ignoré")
                 return
 
             # Mettre à jour l'interface si reconnectée
