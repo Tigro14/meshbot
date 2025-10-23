@@ -118,8 +118,6 @@ class MessageRouter:
             self.utility_handler.handle_power(sender_id, sender_info)
         elif message.startswith('/graphs'):
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
-        elif message.startswith('/echo '):
-            self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
         elif message.startswith('/trafic'):
             self.utility_handler.handle_trafic(message, sender_id, sender_info)
         elif message.startswith('/top'):
