@@ -149,7 +149,7 @@ echo "Test manuel" > /tmp/reboot_requested
 Proceder de même avec :
 
 - https://github.com/Tigro14/meshbot/blob/main/meshbot.service pour le bot Mesh+Telegram
-- https://github.com/Tigro14/meshbot/blob/main/llama/llamacpp.service pour llama.cpp
+- https://github.com/Tigro14/meshbot/blob/main/llama.cpp-integration/llamacpp.service pour llama.cpp
 
 ### Sécurité
 
