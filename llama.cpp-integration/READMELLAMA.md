@@ -28,6 +28,10 @@ Notez qu'ici, je désactive BlueTooth sur le RPi5 parceque je ne l'utilise pas.
 
 Verifiez que vous obtenez plus de 500MB/s en lecture sur le NVMe
 
+```
+apt install fio
+fio --filename=/dev/nvme0n1 --direct=1 --rw=read --bs=1M --ioengine=libaio --iodepth=32 --runtime=20 --numjobs=1 --name=test --readonly
+```
 dernieres reco pour llama.cpp:
 
 ```
