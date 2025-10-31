@@ -26,6 +26,25 @@ dtoverlay=disable-bt
 Ce hack est nécessaire pour activer PCIe 3.0 dans le RPi5, il est par défaut en PCIe 2.0 préconisé par fiabilité par le constructeur, mais sérieusement bridé en performances.
 Notez qu'ici, je désactive BlueTooth sur le RPi5 parceque je ne l'utilise pas.
 
+Verifiez que vous obtenez plus de 500MB/s en lecture sur le NVMe
+
+dernieres reco pour llama.cpp:
+
+```
+Meilleure ultra light (<Pi5-16Go ou téléphone):
+....../llama.cpp/build/bin/llama-server \
+ -m ....../mradermacher/OLMoE-1B-7B-0125-Instruct-i1-GGUF/OLMoE-1B-7B-0125-Instruct.i1-Q6_K.gguf \
+ -ctk q8_0 -ctv q8_0 -fa on \
+ --jinja --ctx-size 8192 --mlock --port 8081
+
+Absolue meilleure possible sur Pi5-16Go
+....../llama.cpp/build/bin/llama-server \
+ -m ....../mradermacher/Qwen3-30B-A3B-Instruct-2507-i1-GGUF/Qwen3-30B-A3B-Instruct-2507.i1-Q4_K_M.gguf \
+ --temp 0.7 --top-p 0.8 --top-k 20 --min-p 0 \
+ -ctk q8_0 -ctv q8_0 -fa on \
+ --jinja --ctx-size 4096 --port 8081
+```
+
 ## Compilation spécialisé RPi5 de llama.cpp (sur les conseils de serveurperso.com)
 
 ```
