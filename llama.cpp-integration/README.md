@@ -32,7 +32,12 @@ Verifiez que vous obtenez plus de 500MB/s en lecture sur le NVMe
 apt install fio
 fio --filename=/dev/nvme0n1 --direct=1 --rw=read --bs=1M --ioengine=libaio --iodepth=32 --runtime=20 --numjobs=1 --name=test --readonly
 ```
-dernieres reco pour llama.cpp:
+
+Vous devriez obtenir un maximumen théorique entre 800 et 900MB/s compte tenu de l'utilisation d'une line PCIe3.0 à 1GB/s
+
+
+
+dernieres recos (Nov 2025) pour llama.cpp sur Raspi5:
 
 ```
 Meilleure ultra light (<Pi5-16Go ou téléphone):
