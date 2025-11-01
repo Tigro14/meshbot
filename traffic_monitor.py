@@ -361,7 +361,8 @@ class TrafficMonitor:
                 if msg['timestamp'] >= cutoff_time:
                     from_id = msg['from_id']
                     period_stats[from_id]['messages'] += 1
-                    period_stats[from_id]['chars'] += msg['message_length']
+                    #period_stats[from_id]['chars'] += msg['message_length']
+                    period_stats[from_id]['chars'] = period_stats[from_id].get('chars', 0) + msg['message_length']
                     period_stats[from_id]['last_seen'] = msg['timestamp']
                     period_stats[from_id]['name'] = msg['sender_name']
                     
