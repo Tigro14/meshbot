@@ -1,33 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2.1
-✅ CORRECTIF DEADLOCK: Thread monitoring démarré après libération du lock
+Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2.3.1
+✅ Logs optimisés: Moins verbeux en production
 
-Version améliorée qui:
-- Surveille activement l'état du port série
-- S'abonne aux événements Meshtastic
-- Détecte les exceptions lors de l'envoi
-- Vérifie périodiquement la santé de la connexion
-- ✅ FIX: Pas de deadlock au démarrage
+Améliorations v2.3.1:
+- Logs techniques en debug_print (visibles uniquement en mode DEBUG)
+- Seuls les événements importants restent en info_print
 """
 
 import time
 import threading
+import errno
 import meshtastic.serial_interface
 from utils import debug_print, error_print, info_print
 
 
 class SafeSerialConnection:
     """
-    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2.1
+    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2.3.1
     
-    Améliorations par rapport à v2:
-    - ✅ CORRECTIF DEADLOCK: Le thread de monitoring démarre après libération du lock
-    - Détection active des déconnexions (teste le port série)
-    - Surveillance plus fréquente
-    - Meilleure gestion des erreurs d'envoi
-    - Abonnement aux événements Meshtastic
+    v2.3.1: Logs optimisés pour production
+    - info_print: Événements importants uniquement
+    - debug_print: Détails techniques
     """
     
     def __init__(self, port, max_retries=5, retry_delay=5, max_retry_delay=60, auto_reconnect=True):
@@ -46,80 +41,157 @@ class SafeSerialConnection:
         self._retry_count = 0
         self._disconnect_detected = False
         
+        self._is_reconnecting = False
+        self._subscribed_to_events = False
+        self._last_connect_time = 0
+        self._grace_period = 5.0
+        
     def _on_meshtastic_connection_lost(self, interface, reason=None):
         """Callback appelé par Meshtastic quand la connexion est perdue"""
-        info_print(f"🔌 Meshtastic signale une déconnexion: {reason}")
+        if self._is_reconnecting:
+            debug_print(f"Événement de déconnexion ignoré (reconnexion en cours)")
+            return
+        
+        time_since_connect = time.time() - self._last_connect_time
+        if time_since_connect < self._grace_period:
+            debug_print(f"Événement de déconnexion ignoré (période de grâce: {time_since_connect:.1f}s/{self._grace_period}s)")
+            return
+        
+        debug_print(f"🔌 Meshtastic signale une déconnexion: {reason}")
         with self._lock:
             if self._connected:
-                error_print("⚠️  Déconnexion détectée par Meshtastic")
+                error_print("⚠️  Déconnexion série détectée")
                 self._connected = False
                 self._disconnect_detected = True
                 self._connection_lost_time = time.time()
                 self._retry_count = 0
+    
+    def _unsubscribe_events(self):
+        """Désabonner proprement des événements"""
+        if self._subscribed_to_events:
+            try:
+                from pubsub import pub
+                pub.unsubscribe(self._on_meshtastic_connection_lost, "meshtastic.connection.lost")
+                self._subscribed_to_events = False
+                debug_print("✅ Désabonné des événements Meshtastic")
+            except Exception as e:
+                debug_print(f"⚠️  Erreur désabonnement: {e}")
+    
+    def _subscribe_events(self):
+        """S'abonner aux événements de déconnexion"""
+        if not self._subscribed_to_events:
+            try:
+                from pubsub import pub
+                pub.subscribe(self._on_meshtastic_connection_lost, "meshtastic.connection.lost")
+                self._subscribed_to_events = True
+                debug_print("✅ Abonné aux événements Meshtastic")
+            except Exception as e:
+                debug_print(f"⚠️  Impossible de s'abonner: {e}")
+    
+    def _create_interface_with_eintr_retry(self, max_eintr_retries=3):
+        """Créer l'interface série avec gestion spéciale de EINTR"""
+        for eintr_attempt in range(1, max_eintr_retries + 1):
+            try:
+                debug_print(f"Création interface série (tentative EINTR {eintr_attempt}/{max_eintr_retries})")
+                interface = meshtastic.serial_interface.SerialInterface(self.port)
+                debug_print("Interface série créée avec succès")
+                return interface
+                
+            except Exception as e:
+                is_eintr = False
+                
+                if hasattr(e, 'errno') and e.errno == errno.EINTR:
+                    is_eintr = True
+                elif hasattr(e, 'args') and len(e.args) > 0:
+                    if isinstance(e.args[0], int) and e.args[0] == 4:
+                        is_eintr = True
+                    elif isinstance(e.args, tuple) and e.args[0] == 4:
+                        is_eintr = True
+                
+                if is_eintr:
+                    if eintr_attempt < max_eintr_retries:
+                        debug_print(f"⚠️  EINTR détecté (tentative {eintr_attempt}/{max_eintr_retries}), retry...")
+                        time.sleep(0.5)
+                        continue
+                    else:
+                        error_print(f"❌ EINTR persistant après {max_eintr_retries} tentatives")
+                        raise
+                else:
+                    raise
+        
+        raise Exception(f"Impossible de créer l'interface après {max_eintr_retries} tentatives EINTR")
         
     def connect(self):
-        """Établir la connexion série initiale - ✅ VERSION CORRIGÉE"""
+        """Établir la connexion série initiale"""
         connection_success = False
         
-        with self._lock:
-            if self._connected and self.interface:
-                debug_print("Déjà connecté")
-                return True
-            
-            for attempt in range(1, self.max_retries + 1):
-                try:
-                    info_print(f"🔌 Tentative connexion série {attempt}/{self.max_retries}: {self.port}")
-                    
-                    # Fermer toute connexion existante
-                    if self.interface:
-                        try:
-                            self.interface.close()
-                        except:
-                            pass
-                        self.interface = None
-                    
-                    # Nouvelle connexion
-                    self.interface = meshtastic.serial_interface.SerialInterface(self.port)
-                    time.sleep(3)  # Attendre stabilisation
-                    
-                    # S'abonner aux événements de déconnexion
-                    try:
-                        from pubsub import pub
-                        pub.subscribe(self._on_meshtastic_connection_lost, "meshtastic.connection.lost")
-                        debug_print("✅ Abonné aux événements Meshtastic")
-                    except Exception as e:
-                        debug_print(f"⚠️  Impossible de s'abonner: {e}")
-                    
-                    # Vérifier que l'interface est fonctionnelle
-                    if self._test_connection():
-                        self._connected = True
-                        self._disconnect_detected = False
-                        self._retry_count = 0
-                        info_print(f"✅ Connexion série établie: {self.port}")
-                        connection_success = True
-                        break  # ✅ Sortir de la boucle de tentatives
-                    else:
-                        info_print(f"Interface créée mais non fonctionnelle (tentative {attempt})")
-                        
-                except Exception as e:
-                    error_print(f"❌ Échec connexion série (tentative {attempt}/{self.max_retries}): {e}")
-                    self.interface = None
-                    self._connected = False
-                    
-                    if attempt < self.max_retries:
-                        delay = min(self.retry_delay * attempt, self.max_retry_delay)
-                        info_print(f"⏱️  Nouvelle tentative dans {delay}s...")
-                        time.sleep(delay)
-            
-            if not connection_success:
-                error_print(f"❌ Impossible de se connecter après {self.max_retries} tentatives")
-                return False
+        self._is_reconnecting = True
         
-        # ✅ CRITIQUE: Démarrer la surveillance APRÈS avoir relâché le lock
-        # Cela évite le deadlock car le thread de monitoring peut maintenant
-        # appeler is_connected() sans conflit de lock
-        if connection_success and self.auto_reconnect and not self._reconnect_thread:
-            self._start_monitor()
+        try:
+            if not hasattr(self, '_first_connect_done'):
+                debug_print("⏳ Stabilisation du device série (2s)...")
+                time.sleep(2)
+                self._first_connect_done = True
+            
+            with self._lock:
+                if self._connected and self.interface:
+                    debug_print("Déjà connecté")
+                    return True
+                
+                for attempt in range(1, self.max_retries + 1):
+                    try:
+                        debug_print(f"🔌 Tentative connexion série {attempt}/{self.max_retries}: {self.port}")
+                        
+                        self._unsubscribe_events()
+                        
+                        if self.interface:
+                            try:
+                                self.interface.close()
+                            except:
+                                pass
+                            self.interface = None
+                        
+                        self.interface = self._create_interface_with_eintr_retry(max_eintr_retries=3)
+                        
+                        debug_print("⏳ Stabilisation de la connexion (3s)...")
+                        time.sleep(3)
+                        
+                        if self._test_connection():
+                            self._connected = True
+                            self._disconnect_detected = False
+                            self._retry_count = 0
+                            self._last_connect_time = time.time()
+                            info_print(f"✅ Connexion série établie: {self.port}")
+                            connection_success = True
+                            break
+                        else:
+                            debug_print(f"Interface créée mais non fonctionnelle (tentative {attempt})")
+                            
+                    except Exception as e:
+                        error_print(f"❌ Échec connexion série (tentative {attempt}/{self.max_retries}): {e}")
+                        self.interface = None
+                        self._connected = False
+                        
+                        if attempt < self.max_retries:
+                            delay = min(self.retry_delay * attempt, self.max_retry_delay)
+                            debug_print(f"⏱️  Nouvelle tentative dans {delay}s...")
+                            time.sleep(delay)
+                
+                if not connection_success:
+                    error_print(f"❌ Impossible de se connecter après {self.max_retries} tentatives")
+                    return False
+        
+        finally:
+            self._is_reconnecting = False
+        
+        if connection_success:
+            debug_print(f"⏳ Période de grâce ({self._grace_period}s) avant activation de la surveillance...")
+            time.sleep(self._grace_period)
+            
+            self._subscribe_events()
+            
+            if self.auto_reconnect and not self._reconnect_thread:
+                self._start_monitor()
         
         return connection_success
     
@@ -129,23 +201,19 @@ class SafeSerialConnection:
             return False
         
         try:
-            # Test 1: Attributs de base
             if not hasattr(self.interface, 'myInfo'):
                 return False
             
-            # Test 2: Port série sous-jacent
             if hasattr(self.interface, '_stream'):
                 stream = self.interface._stream
                 if hasattr(stream, 'is_open') and not stream.is_open:
                     return False
                 
-                # Vérifier que le port existe
                 if hasattr(stream, 'port'):
                     import os
                     if not os.path.exists(stream.port):
                         return False
             
-            # Test 3: Méthode isConnected si disponible
             if hasattr(self.interface, 'isConnected'):
                 if callable(self.interface.isConnected):
                     return self.interface.isConnected()
@@ -162,7 +230,7 @@ class SafeSerialConnection:
         """Obtenir l'interface série (reconnecte si nécessaire)"""
         with self._lock:
             if not self._connected or not self.interface or self._disconnect_detected:
-                info_print("Interface non connectée, tentative de reconnexion...")
+                debug_print("Interface non connectée, tentative de reconnexion...")
                 self.connect()
             
             return self.interface if self._connected else None
@@ -170,15 +238,15 @@ class SafeSerialConnection:
     def is_connected(self):
         """Vérifier si la connexion est active"""
         with self._lock:
-            # Vérification rapide de l'état
+            if self._is_reconnecting:
+                return False
+            
             if not self._connected or not self.interface:
                 return False
             
-            # Si déconnexion détectée, retourner False
             if self._disconnect_detected:
                 return False
             
-            # Test périodique (max 1x par seconde)
             current_time = time.time()
             if not hasattr(self, '_last_test_time'):
                 self._last_test_time = 0
@@ -208,64 +276,58 @@ class SafeSerialConnection:
     
     def _monitor_connection(self):
         """Thread de surveillance - vérifie activement la connexion"""
-        check_interval = 2  # Vérifier toutes les 2 secondes
+        check_interval = 5
         
         while not self._stop_reconnect:
             time.sleep(check_interval)
             
             try:
-                # Vérifier l'état de la connexion
+                if self._is_reconnecting:
+                    continue
+                
                 connected = self.is_connected()
                 
-                # Si déconnecté et auto-reconnect activé
                 if not connected and self.auto_reconnect:
                     with self._lock:
                         if not self._connected or self._disconnect_detected:
                             self._retry_count += 1
                             
                             if self._retry_count == 1:
-                                error_print("⚠️  Connexion série perdue détectée par le moniteur")
+                                error_print("⚠️  Connexion série perdue")
                                 if not self._connection_lost_time:
                                     self._connection_lost_time = time.time()
                     
                     info_print(f"🔄 Tentative de reconnexion #{self._retry_count}...")
                     
-                    # Relâcher le lock pendant la reconnexion
                     if self.connect():
                         if self._connection_lost_time:
                             downtime = time.time() - self._connection_lost_time
                             info_print(f"✅ Reconnexion réussie après {downtime:.1f}s d'interruption")
                             self._connection_lost_time = None
+                            self._retry_count = 0
                     else:
-                        # Backoff exponentiel
                         delay = min(self.retry_delay * (2 ** min(self._retry_count, 5)), self.max_retry_delay)
-                        info_print(f"⏱️  Prochaine tentative dans {delay}s...")
-                        time.sleep(delay - check_interval)
+                        debug_print(f"⏱️  Prochaine tentative dans {delay}s...")
+                        time.sleep(max(0, delay - check_interval))
                 
             except Exception as e:
                 error_print(f"Erreur dans le thread de surveillance: {e}")
     
     def close(self):
         """Fermer proprement la connexion série"""
-        info_print("🔌 Fermeture connexion série...")
+        debug_print("🔌 Fermeture connexion série...")
         
-        # Arrêter la surveillance
         self._stop_reconnect = True
         if self._reconnect_thread:
             self._reconnect_thread.join(timeout=2)
         
-        # Se désabonner des événements
-        try:
-            from pubsub import pub
-            pub.unsubscribe(self._on_meshtastic_connection_lost, "meshtastic.connection.lost")
-        except:
-            pass
+        self._unsubscribe_events()
         
         with self._lock:
             if self.interface:
                 try:
                     self.interface.close()
-                    info_print("✅ Connexion série fermée")
+                    debug_print("✅ Connexion série fermée")
                 except Exception as e:
                     error_print(f"Erreur fermeture connexion: {e}")
                 finally:
@@ -285,7 +347,7 @@ def test_serial_connection(port, timeout=10):
     """Tester rapidement une connexion série"""
     start = time.time()
     try:
-        info_print(f"🧪 Test connexion série: {port}")
+        debug_print(f"🧪 Test connexion série: {port}")
         interface = meshtastic.serial_interface.SerialInterface(port)
         time.sleep(3)
         
@@ -314,7 +376,7 @@ if __name__ == "__main__":
     
     port = sys.argv[1]
     
-    print(f"\n🧪 Test SafeSerialConnection v2.1 sur {port}...\n")
+    print(f"\n🧪 Test SafeSerialConnection v2.3.1 sur {port}...\n")
     
     manager = SafeSerialConnection(port, auto_reconnect=True)
     
