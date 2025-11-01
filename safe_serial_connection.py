@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2
-Amélioration: Meilleure détection des déconnexions en surveillant l'état réel
+Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2.1
+✅ CORRECTIF DEADLOCK: Thread monitoring démarré après libération du lock
 
 Version améliorée qui:
 - Surveille activement l'état du port série
 - S'abonne aux événements Meshtastic
 - Détecte les exceptions lors de l'envoi
 - Vérifie périodiquement la santé de la connexion
+- ✅ FIX: Pas de deadlock au démarrage
 """
 
 import time
@@ -19,9 +20,10 @@ from utils import debug_print, error_print, info_print
 
 class SafeSerialConnection:
     """
-    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2
+    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2.1
     
-    Améliorations par rapport à v1:
+    Améliorations par rapport à v2:
+    - ✅ CORRECTIF DEADLOCK: Le thread de monitoring démarre après libération du lock
     - Détection active des déconnexions (teste le port série)
     - Surveillance plus fréquente
     - Meilleure gestion des erreurs d'envoi
@@ -56,7 +58,9 @@ class SafeSerialConnection:
                 self._retry_count = 0
         
     def connect(self):
-        """Établir la connexion série initiale"""
+        """Établir la connexion série initiale - ✅ VERSION CORRIGÉE"""
+        connection_success = False
+        
         with self._lock:
             if self._connected and self.interface:
                 debug_print("Déjà connecté")
@@ -92,12 +96,8 @@ class SafeSerialConnection:
                         self._disconnect_detected = False
                         self._retry_count = 0
                         info_print(f"✅ Connexion série établie: {self.port}")
-                        
-                        # Démarrer la surveillance
-                        if self.auto_reconnect and not self._reconnect_thread:
-                            self._start_monitor()
-                        
-                        return True
+                        connection_success = True
+                        break  # ✅ Sortir de la boucle de tentatives
                     else:
                         info_print(f"Interface créée mais non fonctionnelle (tentative {attempt})")
                         
@@ -111,8 +111,17 @@ class SafeSerialConnection:
                         info_print(f"⏱️  Nouvelle tentative dans {delay}s...")
                         time.sleep(delay)
             
-            error_print(f"❌ Impossible de se connecter après {self.max_retries} tentatives")
-            return False
+            if not connection_success:
+                error_print(f"❌ Impossible de se connecter après {self.max_retries} tentatives")
+                return False
+        
+        # ✅ CRITIQUE: Démarrer la surveillance APRÈS avoir relâché le lock
+        # Cela évite le deadlock car le thread de monitoring peut maintenant
+        # appeler is_connected() sans conflit de lock
+        if connection_success and self.auto_reconnect and not self._reconnect_thread:
+            self._start_monitor()
+        
+        return connection_success
     
     def _test_connection(self):
         """Tester si la connexion est vraiment fonctionnelle"""
@@ -269,7 +278,7 @@ class SafeSerialConnection:
 
 
 # ========================================
-# FONCTIONS HELPER (identiques à v1)
+# FONCTIONS HELPER
 # ========================================
 
 def test_serial_connection(port, timeout=10):
@@ -299,13 +308,13 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) < 2:
-        print("Usage: python3 safe_serial_connection_v2.py <port>")
-        print("Exemple: python3 safe_serial_connection_v2.py /dev/ttyACM0")
+        print("Usage: python3 safe_serial_connection.py <port>")
+        print("Exemple: python3 safe_serial_connection.py /dev/ttyACM0")
         sys.exit(1)
     
     port = sys.argv[1]
     
-    print(f"\n🧪 Test SafeSerialConnection v2 sur {port}...\n")
+    print(f"\n🧪 Test SafeSerialConnection v2.1 sur {port}...\n")
     
     manager = SafeSerialConnection(port, auto_reconnect=True)
     
