@@ -217,9 +217,9 @@ class TelegramIntegration:
             f"Salut {user.first_name} !\n\n"
             f"Commandes:\n"
             f"• /bot - Chat IA\n"
-            f"• /tigropower - Batterie/solaire\n"
+            f"• /power - Batterie/solaire\n"
             f"• /rx [page]\n"
-            f"• /tigrosys \n"
+            f"• /sys \n"
             f"• /echo <msg>\n"
             f"• /nodes \n"
             f"• /fullnodes [jours]  Liste complète alphabétique (défaut: 30j)\n"
@@ -235,7 +235,7 @@ class TelegramIntegration:
             f"• /stats - Stats globales\n"     
             f"• /legend \n"
             f"• /cpu \n"
-            f"• /tigrohelp - Aide\n\n"
+            f"• /help - Aide\n\n"
             f"Votre ID: {user.id}"
         )
         await update.message.reply_text(welcome_msg)

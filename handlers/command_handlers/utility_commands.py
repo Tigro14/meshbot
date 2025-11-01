@@ -20,7 +20,7 @@ class UtilityCommands:
         self.node_manager = node_manager
     
     def handle_power(self, sender_id, sender_info):
-        """Gérer la commande /tigropower"""
+        """Gérer la commande /power"""
         info_print(f"Power: {sender_info}")
         
         esphome_data = self.esphome_client.parse_esphome_data()
@@ -36,7 +36,7 @@ class UtilityCommands:
         self.sender.send_chunks(legend_text, sender_id, sender_info)
     
     def handle_help(self, sender_id, sender_info):
-        """Gérer la commande /tigrohelp"""
+        """Gérer la commande /help"""
         info_print(f"Help: {sender_info}")
         
         try:
@@ -46,7 +46,7 @@ class UtilityCommands:
             self.sender.send_single(help_text, sender_id, sender_info)
             info_print(f"Help envoyé à {sender_info}")
         except Exception as e:
-            error_print(f"Erreur commande /tigrohelp: {e}")
+            error_print(f"Erreur commande /help: {e}")
             self.sender.send_single("Erreur génération aide", sender_id, sender_info)
     
     def handle_graphs_command(self, sender_id, from_id, text_parts):
@@ -362,7 +362,7 @@ class UtilityCommands:
           Batterie, solaire, température, pression, humidité
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
-        • /tigrosys - Informations système Pi5
+        • /sys - Informations système Pi5
           CPU, RAM, load average, uptime
 
         📡 RÉSEAU MESHTASTIC
@@ -392,7 +392,7 @@ class UtilityCommands:
 
         ℹ️ UTILITAIRES
         • /legend - Légende indicateurs signal
-        • /tigrohelp - Cette aide complète
+        • /help - Cette aide complète
 
         🔧 ADMINISTRATION (si autorisé)
         • /rebootg2 [mdp] - Redémarrage tigrog2
