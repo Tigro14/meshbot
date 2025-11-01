@@ -77,29 +77,26 @@ class MessageSender:
     
     def send_single(self, message, sender_id, sender_info):
         """Envoyer un message simple"""
-        max_retries = 3
-        for attempt in range(max_retries):
+        debug_print(f"[SEND_SINGLE] Tentative envoi vers {sender_info} (ID: {sender_id})")
+        debug_print(f"[SEND_SINGLE] Interface: {self.interface}")
+        
+        try:
+            self.interface.sendText(message, destinationId=sender_id)
+            info_print(f"✅ Message envoyé → {sender_info}")
+        except Exception as e1:
+            error_print(f"❌ Échec envoi → {sender_info}: {e1}")
+            import traceback
+            error_print(traceback.format_exc())
+            
+            # Essayer avec le format hex string
             try:
-                self.interface.sendText(message, destinationId=sender_id)
-                debug_print(f"Message → {sender_info}")
-                return True
-            except MeshInterface.MeshInterfaceError as e:
-                error_print(f"Échec envoi → {sender_info}: {e}")
-                # Essayer avec le format hex string
-                try:
-                    hex_id = f"!{sender_id:08x}"
-                    self.interface.sendText(message, destinationId=hex_id)
-                    debug_print(f"Message → {sender_info} (hex format)")
-                except Exception as e2:
-                    error_print(f"Échec envoi définitif → {sender_info}: {e2}")
-                    if "Timed out waiting for connection" in str(e):
-                        print(f"Tentative {attempt+1}/{max_retries} - Reconnexion...")
-                        error_print(f"Échec envoi définitif → {sender_info}: {e2}")
-                        self._reconnect()
-                        time.sleep(2)
-                    else:
-                        raise
-        return False
+                hex_id = f"!{sender_id:08x}"
+                debug_print(f"[RETRY] Tentative format hex: {hex_id}")
+                self.interface.sendText(message, destinationId=hex_id)
+                info_print(f"✅ Message envoyé (hex) → {sender_info}")
+            except Exception as e2:
+                error_print(f"❌ Échec définitif → {sender_info}: {e2}")
+            error_print(traceback.format_exc())
 
     def _reconnect(self):
         try:
