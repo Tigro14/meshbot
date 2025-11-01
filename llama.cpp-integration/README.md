@@ -70,6 +70,10 @@ J'ai fait un script pratique qui effectue tout cela: https://github.com/Tigro14/
 Puis on récupère le dernier modèle adapté à 15GB de RAM testé/validé sur RPi5:
 ```
 wget https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf
+
+ou
+
+wget https://huggingface.co/mradermacher/OLMoE-1B-7B-0125-Instruct-i1-GGUF/resolve/main/OLMoE-1B-7B-0125-Instruct.i1-Q6_K.gguf
 ```
 
 
