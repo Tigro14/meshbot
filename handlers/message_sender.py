@@ -76,20 +76,6 @@ class MessageSender:
             debug_print(f"Nettoyage throttling: {len(users_to_remove)} utilisateurs supprimés")
     
     def send_single(self, message, sender_id, sender_info):
-        try:
-            self.interface.sendText(message, destinationId=sender_id)
-            debug_print(f"Message → {sender_info}")
-        except Exception as e1:
-            error_print(f"Échec envoi → {sender_info}: {e1}")
-            # Essayer avec le format hex string
-            try:
-                hex_id = f"!{sender_id:08x}"
-                self.interface.sendText(message, destinationId=hex_id)
-                debug_print(f"Message → {sender_info} (hex format)")
-            except Exception as e2:
-                error_print(f"Échec envoi définitif → {sender_info}: {e2}")
-    
-    def send_single(self, message, sender_id):
         """Envoyer un message simple"""
         max_retries = 3
         for attempt in range(max_retries):
@@ -98,15 +84,17 @@ class MessageSender:
                 debug_print(f"Message → {sender_info}")
                 return True
             except MeshInterface.MeshInterfaceError as e:
+                error_print(f"Échec envoi → {sender_info}: {e}")
                 # Essayer avec le format hex string
                 try:
                     hex_id = f"!{sender_id:08x}"
                     self.interface.sendText(message, destinationId=hex_id)
                     debug_print(f"Message → {sender_info} (hex format)")
-                except Exception as e:
+                except Exception as e2:
                     error_print(f"Échec envoi définitif → {sender_info}: {e2}")
                     if "Timed out waiting for connection" in str(e):
                         print(f"Tentative {attempt+1}/{max_retries} - Reconnexion...")
+                        error_print(f"Échec envoi définitif → {sender_info}: {e2}")
                         self._reconnect()
                         time.sleep(2)
                     else:
