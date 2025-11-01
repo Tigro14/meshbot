@@ -84,6 +84,7 @@ class DebugMeshBot:
             # === NOUVEAU: Enregistrer TOUS les paquets pour l'histogramme ===
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
+                self.traffic_monitor.add_packet(packet)  # ← Pour alimenter all_packets et le /top
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
