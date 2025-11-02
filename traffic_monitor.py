@@ -157,7 +157,23 @@ class TrafficMonitor:
                 # Si c'est un message texte, extraire le contenu
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
-            
+        
+            # NOUVEAU: Capturer les positions GPS
+            if packet_entry['packet_type'] == 'POSITION_APP':
+                if original_packet and 'decoded' in original_packet:
+                    decoded = original_packet['decoded']
+                    if 'position' in decoded:
+                        position = decoded['position']
+                        lat = position.get('latitude')
+                        lon = position.get('longitude')
+                        alt = position.get('altitude')
+                        
+                        if lat is not None and lon is not None:
+                            # Mettre à jour la position dans le node_manager
+                            from_id = packet_entry['from_id']
+                            self.node_manager.update_node_position(from_id, lat, lon, alt)
+                            debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
             

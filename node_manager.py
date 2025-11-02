@@ -14,10 +14,11 @@ from utils import *
 from math import radians, cos, sin, asin, sqrt
 
 class NodeManager:
-    def __init__(self):
+    def __init__(self, interface=None):
         self.node_names = {}
         self._last_node_save = 0
         self.rx_history = {}
+        self.interface = interface
         from collections import deque
         self.packet_type_counts = {
             'POSITION_APP': deque(maxlen=24),
@@ -27,8 +28,17 @@ class NodeManager:
         }
         self.last_packet_hour = None
         
-        # Position du bot (à définir dans config.py)
-        self.bot_position = getattr(self, 'bot_position', None)
+        # Position du bot (à récupérer depuis config.py)
+        try:
+            from config import BOT_POSITION
+            self.bot_position = BOT_POSITION
+        except ImportError:
+            self.bot_position = None
+            debug_print("⚠️ BOT_POSITION non défini dans config.py")
+    
+    def set_interface(self, interface):
+        """Définir l'interface Meshtastic"""
+        self.interface = interface
     
     def haversine_distance(self, lat1, lon1, lat2, lon2):
         """
@@ -353,6 +363,118 @@ class NodeManager:
         except Exception as e:
             error_print(f"Erreur format RX: {e}")
             return f"Erreur génération rapport RX: {truncate_text(str(e), 30)}"
+    
+    def update_node_from_packet(self, packet):
+        """Mettre à jour la base de nœuds depuis un packet reçu (NODEINFO_APP)"""
+        try:
+            if 'decoded' in packet and packet['decoded'].get('portnum') == 'NODEINFO_APP':
+                node_id = packet.get('from')
+                decoded = packet['decoded']
+                
+                if 'user' in decoded and node_id:
+                    user_info = decoded['user']
+                    long_name = user_info.get('longName', '').strip()
+                    short_name = user_info.get('shortName', '').strip()
+                    
+                    name = long_name or short_name
+                    if name and len(name) > 0:
+                        # Initialiser l'entrée si elle n'existe pas
+                        if node_id not in self.node_names:
+                            self.node_names[node_id] = {
+                                'name': name,
+                                'lat': None,
+                                'lon': None,
+                                'alt': None,
+                                'last_update': None
+                            }
+                            debug_print(f"📱 Nouveau: {name} ({node_id:08x})")
+                        else:
+                            old_name = self.node_names[node_id]['name']
+                            if old_name != name:
+                                self.node_names[node_id]['name'] = name
+                                debug_print(f"📱 Renommé: {old_name} → {name} ({node_id:08x})")
+                        
+                        # Sauvegarde différée
+                        threading.Timer(10.0, lambda: self.save_node_names()).start()
+        except Exception as e:
+            debug_print(f"Erreur traitement NodeInfo: {e}")
+    
+    def update_rx_history(self, packet):
+        """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop) - SNR UNIQUEMENT"""
+        try:
+            from_id = packet.get('from')
+            if not from_id:
+                return
+            
+            # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
+            hop_limit = packet.get('hopLimit', 0)
+            hop_start = packet.get('hopStart', 5)
+            
+            # Calculer le nombre de hops effectués
+            hops_taken = hop_start - hop_limit
+            
+            # Extraire UNIQUEMENT le SNR (ignorer RSSI si configuré)
+            snr = packet.get('snr', 0.0)
+            
+            # Obtenir le nom
+            name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+            
+            # Mettre à jour l'historique RX
+            if from_id not in self.rx_history:
+                self.rx_history[from_id] = {
+                    'name': name,
+                    'snr': snr,
+                    'last_seen': time.time(),
+                    'count': 1
+                }
+            else:
+                # Moyenne mobile du SNR
+                old_snr = self.rx_history[from_id]['snr']
+                count = self.rx_history[from_id]['count']
+                new_snr = (old_snr * count + snr) / (count + 1)
+                
+                self.rx_history[from_id]['snr'] = new_snr
+                self.rx_history[from_id]['last_seen'] = time.time()
+                self.rx_history[from_id]['count'] += 1
+                self.rx_history[from_id]['name'] = name
+            
+            # Limiter la taille de l'historique
+            if len(self.rx_history) > MAX_RX_HISTORY:
+                # Supprimer les plus anciens
+                sorted_by_time = sorted(self.rx_history.items(), key=lambda x: x[1]['last_seen'])
+                for old_node_id, _ in sorted_by_time[:len(self.rx_history) - MAX_RX_HISTORY]:
+                    del self.rx_history[old_node_id]
+                    
+        except Exception as e:
+            debug_print(f"Erreur MAJ RX history: {e}")
+    
+    def track_packet_type(self, packet):
+        """Suivre les types de paquets par heure pour l'histogramme"""
+        try:
+            if 'decoded' not in packet:
+                return
+            
+            packet_type = packet['decoded'].get('portnum', 'UNKNOWN_APP')
+            
+            # Ne suivre que certains types
+            if packet_type not in self.packet_type_counts:
+                return
+            
+            # Obtenir l'heure actuelle
+            current_hour = time.strftime('%Y-%m-%d %H:00')
+            
+            # Si c'est une nouvelle heure, ajouter un nouveau slot
+            if self.last_packet_hour != current_hour:
+                self.last_packet_hour = current_hour
+                for ptype in self.packet_type_counts:
+                    self.packet_type_counts[ptype].append(0)
+            
+            # Incrémenter le compteur pour cette heure
+            if len(self.packet_type_counts[packet_type]) > 0:
+                self.packet_type_counts[packet_type][-1] += 1
+                
+        except Exception as e:
+            debug_print(f"Erreur track_packet_type: {e}")
     
     def list_known_nodes(self):
         """Lister tous les nœuds connus avec leurs positions"""
