@@ -42,6 +42,7 @@ class MeshBot:
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.packet_history = PacketHistory()
         self.remote_nodes_client = RemoteNodesClient()
+        self.remote_nodes_client.set_node_manager(self.node_manager)
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
