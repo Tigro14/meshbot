@@ -350,7 +350,7 @@ class RemoteNodesClient:
                 remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
             
             # Pagination
-            nodes_per_page = 5
+            nodes_per_page = 9
             total_nodes = len(remote_nodes)
             total_pages = (total_nodes + nodes_per_page - 1) // nodes_per_page
             
@@ -437,7 +437,7 @@ class RemoteNodesClient:
                 name = name.split(' ', 1)[0]  # Prendre uniquement le shortName
 
             # Tronquer à 8 caractères max
-            name = truncate_text(name, 8, suffix="")
+            name = truncate_text(name, 14, suffix="")
 
             last_heard = node.get('last_heard', 0)
             elapsed_str = format_elapsed_time(last_heard) if last_heard > 0 else "?"
