@@ -301,7 +301,7 @@ class MeshBot:
                 self.remote_nodes_client,
                 self.node_manager,
                 self.context_manager,
-                self.interface,
+                self.serial_manager, 
                 self.traffic_monitor,
                 self.start_time,
                 packet_history=self.packet_history
