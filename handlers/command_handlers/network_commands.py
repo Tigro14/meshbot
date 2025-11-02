@@ -16,6 +16,7 @@ class NetworkCommands:
     def __init__(self, remote_nodes_client, sender):
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
+        self.node_manager = node_manager
     
     def handle_nodes(self, message, sender_id, sender_info):  
         """Gérer la commande /nodes - Liste des nœuds directs avec pagination"""
@@ -135,6 +136,26 @@ class NetworkCommands:
         else:
             response_parts.append(f"📈 {quality_desc}")
         
+        distance_shown = False
+        if self.node_manager:
+            # L'ID du nœud est dans node_data (vient de tigrog2)
+            node_id = node_data.get('id')
+            if node_id:
+                try:
+                    gps_distance = self.node_manager.get_node_distance(node_id)
+                    if gps_distance:
+                        distance_str = self.node_manager.format_distance(gps_distance)
+                        response_parts.append(f"📍 {distance_str} de {REMOTE_NODE_NAME} (GPS)")
+                        distance_shown = True
+                except Exception as e:
+                    debug_print(f"Erreur calcul distance GPS: {e}")
+
+        # Si pas de distance GPS, utiliser l'estimation RSSI
+        if not distance_shown and display_rssi != 0 and display_rssi > -150:
+            distance_est = estimate_distance_from_rssi(display_rssi)
+            response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME} (estimé)")
+
+
         # Distance estimée
         if display_rssi != 0 and display_rssi > -150:
             distance_est = estimate_distance_from_rssi(display_rssi)
