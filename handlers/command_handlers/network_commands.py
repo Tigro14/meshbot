@@ -13,7 +13,7 @@ from utils import *
 from .signal_utils import *
 
 class NetworkCommands:
-    def __init__(self, remote_nodes_client, sender):
+    def __init__(self, remote_nodes_client, sender, node_manager):
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
         self.node_manager = node_manager
