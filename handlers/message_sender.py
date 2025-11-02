@@ -13,6 +13,10 @@ class MessageSender:
         self.interface = interface
         self.node_manager = node_manager
         
+        # Stocker le serial_manager au lieu de l'interface directe
+        # Cela permet d'avoir toujours l'interface à jour après une reconnexion
+        self.interface_provider = interface  # Peut être interface ou serial_manager
+
         # Throttling des commandes utilisateurs
         self.user_commands = {}  # user_id -> [timestamps des commandes]
         self._last_echo_id = None  # Cache doublons echo
