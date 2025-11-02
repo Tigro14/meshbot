@@ -33,20 +33,28 @@ class MessageRouter:
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time) 
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
         self.packet_history = packet_history
-    
-    def process_text_message(self, packet, decoded, message):
+   
+   def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""
         sender_id = packet.get('from', 0)
         to_id = packet.get('to', 0)
         my_id = None
 
-        if hasattr(self.interface, 'localNode') and self.interface.localNode:
-            my_id = getattr(self.interface.localNode, 'nodeNum', 0)
+        #  Récupérer la vraie interface si on a un serial_manager
+        actual_interface = self.interface
+        if hasattr(self.interface, 'get_interface'):
+            actual_interface = self.interface.get_interface()
+            if not actual_interface:
+                error_print("❌ Interface non disponible pour traiter le message")
+                return
+
+        if hasattr(actual_interface, 'localNode') and actual_interface.localNode:
+            my_id = getattr(actual_interface.localNode, 'nodeNum', 0)
 
         is_for_me = (to_id == my_id) if my_id else False
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]
-        sender_info = self.node_manager.get_node_name(sender_id, self.interface)
+        sender_info = self.node_manager.get_node_name(sender_id, actual_interface)  
 
         # Gérer /echo et /my sur messages publics
         if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:

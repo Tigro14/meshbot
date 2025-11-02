@@ -14,12 +14,17 @@ from utils import *
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):
-        self.interface = interface
+        self.interface_provider = interface  # ✅ Peut être interface ou serial_manager
         self.node_manager = node_manager
         self.sender = sender
         self.bot_start_time = bot_start_time  # ✅ NOUVEAU: timestamp démarrage bot
     
-    
+    def _get_interface(self):
+        """Récupérer l'interface active"""
+        if hasattr(self.interface_provider, 'get_interface'):
+            return self.interface_provider.get_interface()
+        return self.interface_provider
+
     def handle_sys(self, sender_id, sender_info):
         """Gérer la commande /sys - VERSION AVEC UPTIME BOT"""
         info_print(f"Sys: {sender_info}")
