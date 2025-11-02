@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2.3.1
+Gestionnaire de connexion série Meshtastic avec reconnexion automatique - VERSION 2.4.1
 ✅ Logs optimisés: Moins verbeux en production
+✅ NOUVEAU v2.4.1: Correction du problème de self-locking
+
+Améliorations v2.4.1:
+- Détection et correction du self-locking (le bot se verrouille lui-même)
+- Fermeture forcée de l'interface existante si on se bloque soi-même
+- Délai de stabilisation après fermeture forcée
+
+Améliorations v2.4.0:
+- Vérification si le port est verrouillé par un autre processus
+- Attente automatique de la libération du port
+- Identification du processus bloquant pour diagnostic
+- Correction de l'erreur "Resource temporarily unavailable"
 
 Améliorations v2.3.1:
 - Logs techniques en debug_print (visibles uniquement en mode DEBUG)
 - Seuls les événements importants restent en info_print
 """
 
+import os
 import time
+import fcntl
 import threading
 import errno
 import meshtastic.serial_interface
@@ -18,7 +32,17 @@ from utils import debug_print, error_print, info_print
 
 class SafeSerialConnection:
     """
-    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2.3.1
+    Gestionnaire de connexion série Meshtastic avec reconnexion automatique v2.4.1
+    
+    v2.4.1: Correction du self-locking
+    - Détection du verrouillage par le bot lui-même
+    - Fermeture forcée de l'interface existante
+    - Délai de stabilisation augmenté
+    
+    v2.4.0: Gestion du verrouillage du port
+    - Vérification avant connexion
+    - Attente automatique de libération
+    - Diagnostic des processus bloquants
     
     v2.3.1: Logs optimisés pour production
     - info_print: Événements importants uniquement
@@ -47,6 +71,8 @@ class SafeSerialConnection:
         self._grace_period = 5.0
         
     def _on_meshtastic_connection_lost(self, interface, reason=None):
+        if interface != self.interface:
+            return  # Ignore si ce n'est pas NOTRE interface série
         """Callback appelé par Meshtastic quand la connexion est perdue"""
         if self._is_reconnecting:
             debug_print(f"Événement de déconnexion ignoré (reconnexion en cours)")
@@ -88,6 +114,190 @@ class SafeSerialConnection:
             except Exception as e:
                 debug_print(f"⚠️  Impossible de s'abonner: {e}")
     
+    # ========================================
+    # NOUVELLES MÉTHODES v2.4.0
+    # ========================================
+    
+    def _is_port_locked(self):
+        """
+        Vérifier si le port série est verrouillé par un autre processus
+        
+        Returns:
+            bool: True si le port est verrouillé, False sinon
+        """
+        # Vérifier d'abord si le port existe
+        if not os.path.exists(self.port):
+            debug_print(f"Port {self.port} n'existe pas")
+            return False
+        
+        try:
+            # Essayer d'ouvrir le port en mode non-bloquant
+            fd = os.open(self.port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+            
+            try:
+                # Essayer d'obtenir un verrou exclusif non-bloquant
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                
+                # Si on arrive ici, le port n'était pas verrouillé
+                fcntl.flock(fd, fcntl.LOCK_UN)  # Libérer le verrou
+                os.close(fd)
+                return False
+                
+            except BlockingIOError:
+                # Le port est verrouillé par un autre processus
+                os.close(fd)
+                return True
+                
+            except Exception as e:
+                debug_print(f"Erreur lors du test de verrouillage: {e}")
+                os.close(fd)
+                return False
+                
+        except PermissionError:
+            debug_print(f"Pas de permissions pour accéder à {self.port}")
+            return False
+            
+        except Exception as e:
+            debug_print(f"Erreur lors de l'ouverture du port: {e}")
+            return False
+    
+    def _wait_for_port_available(self, max_wait=30, check_interval=1):
+        """
+        Attendre que le port série soit disponible (non verrouillé)
+        
+        Args:
+            max_wait: Temps maximum d'attente en secondes (défaut: 30s)
+            check_interval: Intervalle entre les vérifications en secondes (défaut: 1s)
+        
+        Returns:
+            bool: True si le port est devenu disponible, False si timeout
+        """
+        start_time = time.time()
+        first_check = True
+        
+        while time.time() - start_time < max_wait:
+            if not self._is_port_locked():
+                if not first_check:
+                    elapsed = time.time() - start_time
+                    info_print(f"✅ Port {self.port} disponible après {elapsed:.1f}s")
+                return True
+            
+            if first_check:
+                info_print(f"⏳ Port {self.port} verrouillé par un autre processus, attente de libération...")
+                first_check = False
+            else:
+                elapsed = time.time() - start_time
+                debug_print(f"⏳ Attente libération du port... ({elapsed:.0f}s/{max_wait}s)")
+            
+            time.sleep(check_interval)
+        
+        error_print(f"❌ Timeout: port {self.port} toujours verrouillé après {max_wait}s")
+        return False
+    
+    def _identify_locking_process(self):
+        """
+        Identifier le processus qui verrouille le port (pour diagnostic)
+        
+        Returns:
+            str: Information sur le processus verrouillant ou None
+        """
+        try:
+            import subprocess
+            
+            # Utiliser lsof pour identifier le processus
+            result = subprocess.run(
+                ['lsof', self.port],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.strip().split('\n')
+                if len(lines) > 1:
+                    # La première ligne est le header, la deuxième contient les infos
+                    process_info = ' '.join(lines[1].split()[:2])  # COMMAND PID
+                    return process_info
+                    
+        except subprocess.TimeoutExpired:
+            debug_print("Timeout lors de l'identification du processus")
+        except FileNotFoundError:
+            debug_print("lsof non disponible pour identifier le processus")
+        except Exception as e:
+            debug_print(f"Erreur lors de l'identification du processus: {e}")
+        
+        return None
+    
+    def _is_self_locked(self):
+        """
+        Vérifier si le port est verrouillé par nous-mêmes
+        
+        Returns:
+            bool: True si c'est notre propre processus qui verrouille le port
+        """
+        locking_process = self._identify_locking_process()
+        if not locking_process:
+            return False
+        
+        # Extraire le PID du processus bloquant
+        try:
+            parts = locking_process.split()
+            if len(parts) >= 2:
+                locking_pid = int(parts[1])
+                our_pid = os.getpid()
+                
+                if locking_pid == our_pid:
+                    debug_print(f"⚠️  SELF-LOCKING détecté: PID {our_pid}")
+                    return True
+        except (ValueError, IndexError) as e:
+            debug_print(f"Erreur lors de la comparaison des PIDs: {e}")
+        
+        return False
+    
+    def _force_close_interface(self):
+        """
+        Fermer l'interface de force et libérer le port
+        Utilisé en cas de self-locking
+        """
+        info_print("🔧 Fermeture forcée de l'interface existante...")
+        
+        # Désabonner des événements
+        self._unsubscribe_events()
+        
+        # Marquer comme non connecté
+        self._connected = False
+        self._disconnect_detected = False
+        
+        # Fermer l'interface si elle existe
+        if self.interface:
+            try:
+                # Essayer de fermer proprement
+                self.interface.close()
+                debug_print("✅ Interface fermée proprement")
+            except Exception as e:
+                error_print(f"⚠️  Erreur lors de la fermeture propre: {e}")
+                
+                # Forcer la fermeture en mettant l'interface à None
+                self.interface = None
+                debug_print("Interface forcée à None")
+        
+        # Attendre que le système libère le verrou
+        info_print("⏳ Attente de libération du verrou système (3s)...")
+        time.sleep(3)
+        
+        # Vérifier si le port est maintenant libre
+        if self._is_port_locked():
+            error_print("⚠️  Port toujours verrouillé après fermeture forcée")
+            # Attendre encore un peu
+            time.sleep(2)
+        else:
+            info_print("✅ Port libéré avec succès")
+
+    
+    # ========================================
+    # MÉTHODES EXISTANTES (MODIFIÉES)
+    # ========================================
+    
     def _create_interface_with_eintr_retry(self, max_eintr_retries=3):
         """Créer l'interface série avec gestion spéciale de EINTR"""
         for eintr_attempt in range(1, max_eintr_retries + 1):
@@ -122,7 +332,10 @@ class SafeSerialConnection:
         raise Exception(f"Impossible de créer l'interface après {max_eintr_retries} tentatives EINTR")
         
     def connect(self):
-        """Établir la connexion série initiale"""
+        """
+        Établir la connexion série initiale
+        VERSION 2.4.0 avec vérification du verrouillage du port
+        """
         connection_success = False
         
         self._is_reconnecting = True
@@ -138,18 +351,65 @@ class SafeSerialConnection:
                     debug_print("Déjà connecté")
                     return True
                 
+                # ✅ NOUVEAU v2.4.1: Vérifier et gérer le self-locking
+                if self._is_port_locked():
+                    locking_process = self._identify_locking_process()
+                    if locking_process:
+                        info_print(f"🔒 Port verrouillé par: {locking_process}")
+                    
+                    # Vérifier si c'est nous-mêmes qui bloquons le port
+                    if self._is_self_locked():
+                        error_print("⚠️  SELF-LOCKING détecté: le bot se verrouille lui-même!")
+                        # Forcer la fermeture de l'interface existante
+                        self._force_close_interface()
+                        
+                        # Vérifier si on a réussi à libérer
+                        if self._is_port_locked():
+                            error_print("❌ Impossible de libérer le port même après fermeture forcée")
+                            return False
+                        
+                        info_print("✅ Self-locking résolu, poursuite de la connexion...")
+                    else:
+                        # Attendre jusqu'à 30 secondes que le port se libère
+                        if not self._wait_for_port_available(max_wait=30):
+                            error_print("❌ Impossible de se connecter: port toujours verrouillé")
+                            return False
+                
                 for attempt in range(1, self.max_retries + 1):
                     try:
+                        # ✅ NOUVEAU v2.4.0: Re-vérifier avant chaque tentative
+                        if self._is_port_locked():
+                            debug_print(f"Port verrouillé avant tentative {attempt}, attente...")
+                            
+                            # ✅ NOUVEAU v2.4.1: Vérifier le self-locking avant chaque tentative
+                            if self._is_self_locked():
+                                error_print(f"⚠️  Self-locking détecté à la tentative {attempt}")
+                                self._force_close_interface()
+                            else:
+                                if not self._wait_for_port_available(max_wait=10):
+                                    continue
+                        
                         debug_print(f"🔌 Tentative connexion série {attempt}/{self.max_retries}: {self.port}")
                         
                         self._unsubscribe_events()
                         
+                        # ✅ AMÉLIORÉ v2.4.1: Fermeture renforcée de l'interface existante
                         if self.interface:
                             try:
+                                debug_print("Fermeture de l'interface existante...")
                                 self.interface.close()
-                            except:
-                                pass
-                            self.interface = None
+                                debug_print("✅ Interface fermée")
+                            except Exception as e:
+                                debug_print(f"⚠️  Erreur fermeture: {e}")
+                            finally:
+                                self.interface = None
+                            
+                            # ✅ NOUVEAU v2.4.1: Délai de stabilisation après fermeture
+                            debug_print("⏳ Stabilisation après fermeture (1s)...")
+                            time.sleep(1)
+                        
+                        # ✅ NOUVEAU v2.4.0: Petit délai pour s'assurer que le port est vraiment libre
+                        time.sleep(0.5)
                         
                         self.interface = self._create_interface_with_eintr_retry(max_eintr_retries=3)
                         
@@ -210,7 +470,6 @@ class SafeSerialConnection:
                     return False
                 
                 if hasattr(stream, 'port'):
-                    import os
                     if not os.path.exists(stream.port):
                         return False
             
@@ -376,7 +635,7 @@ if __name__ == "__main__":
     
     port = sys.argv[1]
     
-    print(f"\n🧪 Test SafeSerialConnection v2.3.1 sur {port}...\n")
+    print(f"\n🧪 Test SafeSerialConnection v2.4.1 sur {port}...\n")
     
     manager = SafeSerialConnection(port, auto_reconnect=True)
     
