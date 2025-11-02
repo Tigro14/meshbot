@@ -340,10 +340,13 @@ class RemoteNodesClient:
             if not remote_nodes:
                 return f"Aucun nœud direct trouvé sur {REMOTE_NODE_NAME}"
             
-            # Tri
+            # ✅ TRI PAR SNR (du meilleur au pire)
             if COLLECT_SIGNAL_METRICS:
-                remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
+                # Tri par SNR décroissant (meilleur signal en premier)
+                remote_nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
+                # ou par RSSI : remote_nodes.sort(key=lambda x: (x.get('rssi', -999), x['last_heard']), reverse=True)
             else:
+                # Sans métriques, trier par temps (plus récent en premier)
                 remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
             
             # Pagination
