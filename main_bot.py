@@ -38,7 +38,6 @@ class MeshBot:
         self.context_manager = ContextManager(self.node_manager)
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
-        self.remote_nodes_client = RemoteNodesClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.packet_history = PacketHistory()
         self.remote_nodes_client = RemoteNodesClient()
