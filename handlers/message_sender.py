@@ -82,11 +82,24 @@ class MessageSender:
     def send_single(self, message, sender_id, sender_info):
         """Envoyer un message simple"""
         debug_print(f"[SEND_SINGLE] Tentative envoi vers {sender_info} (ID: {sender_id})")
-        debug_print(f"[SEND_SINGLE] Interface: {self.interface}")
         
         try:
-            self.interface.sendText(message, destinationId=sender_id)
+            # Récupérer l'interface active
+            # Si c'est un serial_manager, get_interface() retourne l'interface connectée
+            # Si c'est déjà une interface directe, on l'utilise telle quelle
+            if hasattr(self.interface_provider, 'get_interface'):
+                interface = self.interface_provider.get_interface()
+                if not interface:
+                    error_print("❌ Interface non disponible (reconnexion en cours?)")
+                    return
+            else:
+                interface = self.interface_provider
+            
+            debug_print(f"[SEND_SINGLE] Interface: {interface}")
+            
+            interface.sendText(message, destinationId=sender_id)
             info_print(f"✅ Message envoyé → {sender_info}")
+            
         except Exception as e1:
             error_print(f"❌ Échec envoi → {sender_info}: {e1}")
             import traceback
@@ -96,11 +109,11 @@ class MessageSender:
             try:
                 hex_id = f"!{sender_id:08x}"
                 debug_print(f"[RETRY] Tentative format hex: {hex_id}")
-                self.interface.sendText(message, destinationId=hex_id)
+                interface.sendText(message, destinationId=hex_id)
                 info_print(f"✅ Message envoyé (hex) → {sender_info}")
             except Exception as e2:
                 error_print(f"❌ Échec définitif → {sender_info}: {e2}")
-            error_print(traceback.format_exc())
+                error_print(traceback.format_exc())
 
     def _reconnect(self):
         try:
