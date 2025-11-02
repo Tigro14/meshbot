@@ -19,7 +19,6 @@ from utils import (
 
 class RemoteNodesClient:
     def __init__(self):
-        self.node_manager = node_manager  
         # ✅ AJOUT: Système de cache pour éviter connexions répétées
         self._cache = {}           # Stockage des résultats
         self._cache_ttl = 60       # Cache valide 60 secondes

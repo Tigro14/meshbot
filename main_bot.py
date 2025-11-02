@@ -35,14 +35,14 @@ class MeshBot:
         self.start_time = time.time()
         # Initialisation des gestionnaires
         self.node_manager = NodeManager(self.interface)
-        self.remote_nodes_client.set_node_manager(self.node_manager)
         self.context_manager = ContextManager(self.node_manager)
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.remote_nodes_client = RemoteNodesClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.packet_history = PacketHistory()
-        
+        self.remote_nodes_client = RemoteNodesClient()
+
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
         
