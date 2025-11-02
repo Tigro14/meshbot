@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bot Mesh Debug - Version refactorisée avec architecture modulaire
+Main bot
 """
 
 import time
@@ -26,7 +26,7 @@ from system_monitor import SystemMonitor
 from packet_history import PacketHistory
 from safe_serial_connection import SafeSerialConnection
 
-class DebugMeshBot:
+class MeshBot:
     def __init__(self):
         self.interface = None
         self.serial_manager = None 
@@ -34,7 +34,8 @@ class DebugMeshBot:
         
         self.start_time = time.time()
         # Initialisation des gestionnaires
-        self.node_manager = NodeManager()
+        self.node_manager = NodeManager(self.interface)
+        self.remote_nodes_client.set_node_manager(self.node_manager)
         self.context_manager = ContextManager(self.node_manager)
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()

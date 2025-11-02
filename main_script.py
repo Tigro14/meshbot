@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bot Mesh Debug - Version refactorisée
+Bot Mesh - Version refactorisée
 Point d'entrée principal
 """
 
@@ -9,7 +9,7 @@ import sys
 import gc
 from config import DEBUG_MODE
 from utils import info_print
-from main_bot import DebugMeshBot
+from main_bot import MeshBot
 
 def setup_quiet_mode():
     """Configure le mode silencieux"""
@@ -42,7 +42,7 @@ def main():
     # Nettoyage initial
     gc.collect()
     
-    bot = DebugMeshBot()
+    bot = MeshBot()
     try:
         success = bot.start()
         if not success:

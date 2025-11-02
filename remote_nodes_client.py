@@ -19,6 +19,7 @@ from utils import (
 
 class RemoteNodesClient:
     def __init__(self):
+        self.node_manager = node_manager  
         # ✅ AJOUT: Système de cache pour éviter connexions répétées
         self._cache = {}           # Stockage des résultats
         self._cache_ttl = 60       # Cache valide 60 secondes
@@ -32,7 +33,11 @@ class RemoteNodesClient:
         # ✅ Démarrer un thread de nettoyage
         self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True)
         self._cleanup_thread.start()
-   
+
+    def set_node_manager(self, node_manager):
+        """Définir le node_manager après l'initialisation"""
+        self.node_manager = node_manager
+
     def _cache_cleanup_loop(self):
         """Nettoyer le cache toutes les 5 minutes"""
         while True:
@@ -436,13 +441,25 @@ class RemoteNodesClient:
             if ' ' in name:
                 name = name.split(' ', 1)[0]  # Prendre uniquement le shortName
 
-            # Tronquer à 8 caractères max
+            # Tronquer à 14 caractères max
             name = truncate_text(name, 14, suffix="")
 
             last_heard = node.get('last_heard', 0)
             elapsed_str = format_elapsed_time(last_heard) if last_heard > 0 else "?"
 
-            # Format ultra-compact pour mesh
+            # ✅ CALCUL DE DISTANCE GPS
+            distance_str = ""
+            if self.node_manager:
+                node_id = node.get('id')
+                if node_id:
+                    try:
+                        distance = self.node_manager.get_node_distance(node_id)
+                        if distance:
+                            distance_str = f" {self.node_manager.format_distance(distance)}"
+                    except Exception as e:
+                        debug_print(f"Erreur distance nœud {node_id:08x}: {e}")
+
+            # Format ultra-compact pour mesh avec distance
             if COLLECT_SIGNAL_METRICS:
                 rssi = node.get('rssi', 0)
                 snr = node.get('snr', 0.0)
@@ -451,14 +468,14 @@ class RemoteNodesClient:
                     # Icône basée sur SNR ou RSSI
                     if snr != 0:
                         icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
-                        return f"{icon}{name} {snr:.0f}dB {elapsed_str}"
+                        return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
                     elif rssi != 0:
                         icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
-                        return f"{icon}{name} {rssi}dBm {elapsed_str}"
+                        return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
 
             # Format sans métriques - encore plus compact
-            return f"• {name} {elapsed_str}"
+            return f"• {name} {elapsed_str}{distance_str}"
 
         except Exception as e:
             error_print(f"Erreur _format_node_line: {e}")
-            return "• Err"  # Format d'erreur ultra-court
+            return "• Err"
