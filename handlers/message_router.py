@@ -34,7 +34,7 @@ class MessageRouter:
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
         self.packet_history = packet_history
    
-   def process_text_message(self, packet, decoded, message):
+    def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""
         sender_id = packet.get('from', 0)
         to_id = packet.get('to', 0)
