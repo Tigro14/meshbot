@@ -28,7 +28,8 @@ graph TD
 
 - **Chat IA** : Intégration Llama via `/bot <question>`
 - **Monitoring système** : `/sys` pour température CPU, RAM, uptime
-- **Analyse réseau** : `/rx` pour les nœuds distants, `/my` pour signaux personnels
+- **Analyse réseau** : `/nodes` pour les nœuds directx entendus, `/my` pour signaux personnels
+- **Stats réseau** : `/histo` pour la répartition en histogramme des paquets entendus, `/stats` ou `/packets` ou `/top` pour d'autres stats
 - **Données ESPHome** : `/power` pour télémétrie solaire/batterie
 - **Administration** : Commandes cachées pour gestion à distance
 

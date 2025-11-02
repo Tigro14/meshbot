@@ -84,12 +84,10 @@ class MessageRouter:
             self.ai_handler.handle_bot(message, sender_id, sender_info)
         
         # Commandes réseau
-        elif message.startswith('/rx'):
-            self.network_handler.handle_rx(message, sender_id, sender_info)
         elif message.startswith('/my'):
             self.network_handler.handle_my(sender_id, sender_info, is_broadcast=False)
         elif message.startswith('/nodes'):  
-            self.network_handler.handle_nodes(sender_id, sender_info)  
+            self.network_handler.handle_nodes(message, sender_id, sender_info)
         
         # ===================================================================
         # Commandes système avec authentification

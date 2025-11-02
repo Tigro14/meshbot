@@ -17,36 +17,31 @@ class NetworkCommands:
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
     
-    def handle_rx(self, message, sender_id, sender_info):
-        """Gérer la commande /rx"""
-        # Extraire le numéro de page
+    def handle_nodes(self, message, sender_id, sender_info):  
+        """Gérer la commande /nodes - Liste des nœuds directs avec pagination"""
+        
+        # Extraire le numéro de page si fourni
         page = 1
         parts = message.split()
         
         if len(parts) > 1:
-            page = validate_page_number(parts[1], 999)
+            try:
+                page = int(parts[1])
+                page = max(1, page)  # Minimum page 1
+            except ValueError:
+                page = 1
         
-        info_print(f"RX Page {page}: {sender_info}")
+        info_print(f"Nodes page {page}: {sender_info}")
         
         try:
+            # Utiliser la pagination
             report = self.remote_nodes_client.get_tigrog2_paginated(page)
-            self.sender.log_conversation(sender_id, sender_info, 
-                                        f"/rx {page}" if page > 1 else "/rx", 
-                                        report)
+            
+            # Log avec ou sans page
+            command_log = f"/nodes {page}" if page > 1 else "/nodes"
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
             self.sender.send_single(report, sender_id, sender_info)
-        except Exception as e:
-            error_msg = f"Erreur rx page {page}: {str(e)[:50]}"
-            self.sender.send_single(error_msg, sender_id, sender_info)
-
-    def handle_nodes(self, sender_id, sender_info):
-        """Gérer la commande /nodes - Liste des nœuds directs"""
-        info_print(f"Nodes: {sender_info}")
-        
-        try:
-            # Utiliser la même logique que /rx mais simplifiée
-            report = self.remote_nodes_client.get_tigrog2_paginated(1)
-            self.sender.log_conversation(sender_id, sender_info, "/nodes", report)
-            self.sender.send_single(report, sender_id, sender_info)
+            
         except Exception as e:
             error_msg = f"Erreur nodes: {str(e)[:50]}"
             self.sender.send_single(error_msg, sender_id, sender_info)

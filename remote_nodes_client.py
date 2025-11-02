@@ -347,7 +347,7 @@ class RemoteNodesClient:
                 remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
             
             # Pagination
-            nodes_per_page = 8
+            nodes_per_page = 5
             total_nodes = len(remote_nodes)
             total_pages = (total_nodes + nodes_per_page - 1) // nodes_per_page
             
@@ -425,5 +425,37 @@ class RemoteNodesClient:
             return f"Erreur: {str(e)[:100]}"
 
     def _format_node_line(self, node):
-        """Formater une ligne de nœud pour l'affichage"""
-        name = node.get('name', 'Unknown')
+        """Formater une ligne de nœud pour l'affichage - FORMAT ULTRA-COMPACT pour mesh"""
+        try:
+            name = node.get('name', 'Unknown')
+
+            # Extraire seulement le shortName (partie avant l'espace)
+            if ' ' in name:
+                name = name.split(' ', 1)[0]  # Prendre uniquement le shortName
+
+            # Tronquer à 8 caractères max
+            name = truncate_text(name, 8, suffix="")
+
+            last_heard = node.get('last_heard', 0)
+            elapsed_str = format_elapsed_time(last_heard) if last_heard > 0 else "?"
+
+            # Format ultra-compact pour mesh
+            if COLLECT_SIGNAL_METRICS:
+                rssi = node.get('rssi', 0)
+                snr = node.get('snr', 0.0)
+
+                if rssi != 0 or snr != 0:
+                    # Icône basée sur SNR ou RSSI
+                    if snr != 0:
+                        icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
+                        return f"{icon}{name} {snr:.0f}dB {elapsed_str}"
+                    elif rssi != 0:
+                        icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
+                        return f"{icon}{name} {rssi}dBm {elapsed_str}"
+
+            # Format sans métriques - encore plus compact
+            return f"• {name} {elapsed_str}"
+
+        except Exception as e:
+            error_print(f"Erreur _format_node_line: {e}")
+            return "• Err"  # Format d'erreur ultra-court
