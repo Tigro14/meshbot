@@ -69,7 +69,6 @@ class MeshBot:
             
             # Mise à jour de la base de nœuds depuis TOUS les packets
             self.node_manager.update_node_from_packet(packet)
-            self.node_manager.update_rx_history(packet)
             self.node_manager.track_packet_type(packet)
             
             if 'decoded' in packet:
@@ -212,7 +211,6 @@ class MeshBot:
                 
                 # Nettoyage périodique
                 self.context_manager.cleanup_old_contexts()
-                self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
                 self.packet_history.cleanup_old_data() 
                 self.packet_history.save_history()
@@ -228,7 +226,6 @@ class MeshBot:
             self.llama_client.cleanup_cache()
         
         self.context_manager.cleanup_old_contexts()
-        self.node_manager.cleanup_old_rx_history()
         
         # Nettoyage des données de throttling
         if self.message_handler:
@@ -377,9 +374,11 @@ class MeshBot:
             self.telegram_integration.stop()
 
         # ✅ NOUVEAU: Utiliser le gestionnaire pour fermer proprement
-        if self.serial_manager:
-            self.serial_manager.close()
-            self.serial_manager = None
+        #if self.serial_manager:
+        #    self.serial_manager.close()
+        #    self.serial_manager = None
+        if hasattr(self, 'safe_serial') and self.safe_serial:
+            self.safe_serial.close()
 
         self.interface = None
 
