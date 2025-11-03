@@ -355,7 +355,7 @@ class RemoteNodesClient:
                 remote_nodes.sort(key=lambda x: x['last_heard'], reverse=True)
             
             # Pagination
-            nodes_per_page = 9
+            nodes_per_page = 7
             total_nodes = len(remote_nodes)
             total_pages = (total_nodes + nodes_per_page - 1) // nodes_per_page
             
