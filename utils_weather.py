@@ -6,11 +6,13 @@ Module météo partagé entre Meshtastic et Telegram
 Ce module centralise la logique de récupération de la météo avec cache
 pour éviter la duplication de code entre utility_commands.py et telegram_integration.py
 
+Version améliorée avec prévisions à 3 jours au format JSON.
+
 Utilisation:
     from utils.weather import get_weather_data
     
     weather = get_weather_data()
-    print(weather)  # "Paris: ☁️  +12°C"
+    print(weather)
 
 Cache:
     - Fichier: /tmp/weather_cache.json
@@ -27,8 +29,163 @@ from utils import info_print, error_print
 # Configuration
 CACHE_FILE = "/tmp/weather_cache.json"
 CACHE_DURATION = 300  # 5 minutes en secondes
-WTTR_URL = "https://wttr.in/Paris?format=4"
+WTTR_URL = "https://wttr.in/?format=j1"  # Format JSON pour détails
 CURL_TIMEOUT = 10  # secondes
+
+# Mapping codes météo wttr.in → émojis
+WEATHER_EMOJI = {
+    '113': '☀️',   # Sunny/Clear
+    '116': '⛅',   # Partly cloudy
+    '119': '☁️',   # Cloudy
+    '122': '☁️',   # Overcast
+    '143': '🌫️',  # Mist
+    '176': '🌦️',  # Patchy rain possible
+    '179': '🌨️',  # Patchy snow possible
+    '182': '🌧️',  # Patchy sleet possible
+    '185': '🌧️',  # Patchy freezing drizzle
+    '200': '⛈️',  # Thundery outbreaks
+    '227': '🌨️',  # Blowing snow
+    '230': '❄️',   # Blizzard
+    '248': '🌫️',  # Fog
+    '260': '🌫️',  # Freezing fog
+    '263': '🌧️',  # Patchy light drizzle
+    '266': '🌧️',  # Light drizzle
+    '281': '🌧️',  # Freezing drizzle
+    '284': '🌧️',  # Heavy freezing drizzle
+    '293': '🌦️',  # Patchy light rain
+    '296': '🌧️',  # Light rain
+    '299': '🌧️',  # Moderate rain at times
+    '302': '🌧️',  # Moderate rain
+    '305': '🌧️',  # Heavy rain at times
+    '308': '🌧️',  # Heavy rain
+    '311': '🌧️',  # Light freezing rain
+    '314': '🌧️',  # Moderate or heavy freezing rain
+    '317': '🌨️',  # Light sleet
+    '320': '🌨️',  # Moderate or heavy sleet
+    '323': '🌨️',  # Patchy light snow
+    '326': '🌨️',  # Light snow
+    '329': '🌨️',  # Patchy moderate snow
+    '332': '❄️',   # Moderate snow
+    '335': '❄️',   # Patchy heavy snow
+    '338': '❄️',   # Heavy snow
+    '350': '🌧️',  # Ice pellets
+    '353': '🌦️',  # Light rain shower
+    '356': '🌧️',  # Moderate or heavy rain shower
+    '359': '🌧️',  # Torrential rain shower
+    '362': '🌨️',  # Light sleet showers
+    '365': '🌨️',  # Moderate or heavy sleet showers
+    '368': '🌨️',  # Light snow showers
+    '371': '❄️',   # Moderate or heavy snow showers
+    '374': '🌧️',  # Light showers of ice pellets
+    '377': '🌧️',  # Moderate or heavy showers of ice pellets
+    '386': '⛈️',  # Patchy light rain with thunder
+    '389': '⛈️',  # Moderate or heavy rain with thunder
+    '392': '⛈️',  # Patchy light snow with thunder
+    '395': '⛈️',  # Moderate or heavy snow with thunder
+}
+
+
+def get_weather_icon(weather_code):
+    """
+    Convertir un code météo wttr.in en émoji
+    
+    Args:
+        weather_code (str): Code météo (ex: "113", "296")
+    
+    Returns:
+        str: Émoji correspondant ou ❓ si inconnu
+    """
+    return WEATHER_EMOJI.get(str(weather_code), '❓')
+
+
+def format_weather_line(label, emoji, temp, wind, precip, humidity):
+    """
+    Formater une ligne de météo avec tous les détails
+    
+    Args:
+        label (str): Label de la ligne (Now/Today/Tomorrow/Day+2)
+        emoji (str): Émoji météo
+        temp (str): Température (ex: "12")
+        wind (str): Vitesse vent en km/h (ex: "15")
+        precip (str): Précipitations en mm (ex: "0.5")
+        humidity (str): Humidité en % (ex: "65")
+    
+    Returns:
+        str: Ligne formatée (ex: "Now: ☀️ 12°C 15km/h 0mm 65%")
+    """
+    # Convertir précipitations en format propre (pas de .0 inutiles)
+    try:
+        precip_float = float(precip)
+        precip_str = f"{precip_float:.1f}mm" if precip_float % 1 != 0 else f"{int(precip_float)}mm"
+    except (ValueError, TypeError):
+        precip_str = f"{precip}mm"
+    
+    return f"{label}: {emoji} {temp}°C {wind}km/h {precip_str} {humidity}%"
+
+
+def parse_weather_json(json_data):
+    """
+    Parser le JSON de wttr.in et formater sur 4 lignes
+    
+    Format:
+        Now: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
+        Today: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
+        Tomorrow: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
+        Day+2: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
+    
+    Args:
+        json_data (dict): Données JSON de wttr.in
+    
+    Returns:
+        str: Météo formatée sur 4 lignes
+    """
+    try:
+        lines = []
+        
+        # ----------------------------------------------------------------
+        # Line 1: NOW (current_condition)
+        # ----------------------------------------------------------------
+        current = json_data.get('current_condition', [{}])[0]
+        weather_code = current.get('weatherCode', '113')
+        emoji = get_weather_icon(weather_code)
+        temp = current.get('temp_C', '?')
+        wind = current.get('windspeedKmph', '?')
+        precip = current.get('precipMM', '0')
+        humidity = current.get('humidity', '?')
+        
+        lines.append(format_weather_line('Now', emoji, temp, wind, precip, humidity))
+        
+        # ----------------------------------------------------------------
+        # Lines 2-4: TODAY, TOMORROW, DAY+2 (weather array)
+        # ----------------------------------------------------------------
+        weather = json_data.get('weather', [])
+        day_labels = ['Today', 'Tomorrow', 'Day+2']
+        
+        for i, label in enumerate(day_labels):
+            if i < len(weather):
+                day_data = weather[i]
+                hourly = day_data.get('hourly', [{}])[0]  # Premier slot horaire
+                
+                weather_code = hourly.get('weatherCode', '113')
+                emoji = get_weather_icon(weather_code)
+                
+                # Pour les prévisions, utiliser maxtempC et les données du premier slot horaire
+                temp = day_data.get('maxtempC', hourly.get('tempC', '?'))
+                wind = hourly.get('windspeedKmph', '?')
+                precip = hourly.get('precipMM', '0')
+                humidity = hourly.get('humidity', '?')
+                
+                lines.append(format_weather_line(label, emoji, temp, wind, precip, humidity))
+            else:
+                lines.append(f"{label}: ❌ Données indisponibles")
+        
+        return '\n'.join(lines)
+    
+    except Exception as e:
+        error_print(f"Erreur parsing JSON météo: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+        return "❌ Erreur format météo"
 
 
 def get_weather_data():
@@ -41,18 +198,15 @@ def get_weather_data():
     Sinon, un appel curl est fait vers wttr.in et le cache est mis à jour.
     
     Returns:
-        str: Données météo formatées (ex: "Paris: ☁️  +12°C")
-             ou message d'erreur si échec
+        str: Données météo formatées sur 4 lignes ou message d'erreur
     
     Exemples:
         >>> weather = get_weather_data()
         >>> print(weather)
-        "Paris: ☁️  +12°C"
-        
-        >>> # Appel immédiat suivant (< 5 min)
-        >>> weather = get_weather_data()  # Utilise le cache
-        >>> print(weather)
-        "Paris: ☁️  +12°C"
+        Now: ☀️ 12°C 15km/h 0mm 65%
+        Today: ⛅ 14°C 18km/h 0mm 60%
+        Tomorrow: 🌧️ 11°C 22km/h 2.5mm 75%
+        Day+2: ☁️ 13°C 16km/h 0mm 70%
     """
     try:
         # ----------------------------------------------------------------
@@ -95,12 +249,20 @@ def get_weather_data():
         # Phase 3: Traiter la réponse
         # ----------------------------------------------------------------
         if result.returncode == 0 and result.stdout:
-            weather_data = result.stdout.strip()
+            json_response = result.stdout.strip()
             
-            # Validation basique de la réponse
-            if not weather_data or len(weather_data) > 200:
-                error_print(f"⚠️ Réponse wttr.in invalide (longueur: {len(weather_data)})")
+            # Parser le JSON
+            try:
+                weather_json = json.loads(json_response)
+                weather_data = parse_weather_json(weather_json)
+            except json.JSONDecodeError as e:
+                error_print(f"⚠️ JSON invalide: {e}")
                 return "❌ Réponse météo invalide"
+            
+            # Validation basique de la réponse formatée
+            if not weather_data or 'Erreur' in weather_data:
+                error_print(f"⚠️ Données météo invalides")
+                return "❌ Données météo invalides"
             
             # Sauvegarder en cache
             cache_data = {
@@ -118,7 +280,7 @@ def get_weather_data():
                 error_print(f"⚠️ Impossible d'écrire le cache: {e}")
                 # Pas grave, on retourne quand même les données
             
-            info_print(f"✅ Météo récupérée: {weather_data}")
+            info_print(f"✅ Météo récupérée:\n{weather_data}")
             return weather_data
         
         else:
@@ -240,10 +402,12 @@ def get_weather_for_city(city="Paris"):
     Exemple:
         >>> weather = get_weather_for_city("Lyon")
         >>> print(weather)
-        "Lyon: ☀️  +15°C"
+        Now: ☀️ 15°C 10km/h 0mm 60%
+        Today: ⛅ 16°C 12km/h 0mm 58%
+        ...
     """
     try:
-        url = f"https://wttr.in/{city}?format=4"
+        url = f"https://wttr.in/{city}?format=j1"
         info_print(f"🌤️ Récupération météo pour {city}...")
         
         result = subprocess.run(
@@ -254,9 +418,16 @@ def get_weather_for_city(city="Paris"):
         )
         
         if result.returncode == 0 and result.stdout:
-            weather_data = result.stdout.strip()
-            info_print(f"✅ Météo {city}: {weather_data}")
-            return weather_data
+            json_response = result.stdout.strip()
+            
+            try:
+                weather_json = json.loads(json_response)
+                weather_data = parse_weather_json(weather_json)
+                info_print(f"✅ Météo {city}:\n{weather_data}")
+                return weather_data
+            except json.JSONDecodeError as e:
+                error_print(f"⚠️ JSON invalide pour {city}: {e}")
+                return f"❌ Erreur météo {city}"
         else:
             return f"❌ Erreur météo {city}"
     
@@ -280,7 +451,7 @@ if __name__ == "__main__":
     # Test 1: Récupération simple
     print("\nTest 1: Récupération météo")
     weather = get_weather_data()
-    print(f"Résultat: {weather}")
+    print(f"Résultat:\n{weather}")
     
     # Test 2: Info cache
     print("\nTest 2: Info cache")
@@ -290,17 +461,17 @@ if __name__ == "__main__":
         print(f"Cache valide: {cache_info['is_valid']}")
         if cache_info['exists']:
             print(f"Âge: {cache_info['age_seconds']}s")
-            print(f"Données: {cache_info['data']}")
+            print(f"Données:\n{cache_info['data']}")
     
     # Test 3: Utilisation cache
     print("\nTest 3: Deuxième appel (devrait utiliser cache)")
     weather2 = get_weather_data()
-    print(f"Résultat: {weather2}")
+    print(f"Résultat:\n{weather2}")
     
     # Test 4: Ville spécifique
     print("\nTest 4: Météo Lyon (sans cache)")
     lyon_weather = get_weather_for_city("Lyon")
-    print(f"Résultat: {lyon_weather}")
+    print(f"Résultat:\n{lyon_weather}")
     
     # Test 5: Nettoyage
     print("\nTest 5: Nettoyage cache")
