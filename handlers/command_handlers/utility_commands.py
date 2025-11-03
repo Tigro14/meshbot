@@ -11,7 +11,7 @@ import subprocess
 import os
 import json
 import meshtastic.tcp_interface
-from utils.weather import get_weather_data
+from utils_weather import get_weather_data
 from config import *
 from utils import *
 
@@ -336,7 +336,8 @@ class UtilityCommands:
     def handle_weather(self, sender_id, sender_info):
         info_print(f"Weather: {sender_info}")
         weather_data = get_weather_data()
-        self.sender.send_single(weather_data, sender_id, sender_info
+        self.sender.log_conversation(sender_id, sender_info, "/weather", weather_data)
+        self.sender.send_single(weather_data, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
