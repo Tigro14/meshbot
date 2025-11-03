@@ -7,6 +7,9 @@ Gestionnaire des commandes utilitaires
 
 import time
 import threading
+import subprocess
+import os
+import json
 import meshtastic.tcp_interface
 from config import *
 from utils import *
@@ -328,7 +331,71 @@ class UtilityCommands:
             "1er=RSSI 2e=SNR"
         ]
         return "\n".join(legend_lines)
-    
+
+    def handle_weather(self, sender_id, sender_info):
+        """
+        Gérer la commande /weather avec cache de 5 minutes
+        Fait un appel curl vers wttr.in/Paris
+        """
+        info_print(f"Weather: {sender_info}")
+        
+        # Vérifier le cache
+        cache_file = "/tmp/weather_cache.json"
+        cache_duration = 300  # 5 minutes en secondes
+        
+        try:
+            # Lire le cache s'il existe
+            if os.path.exists(cache_file):
+                with open(cache_file, 'r') as f:
+                    cache_data = json.load(f)
+                    cache_time = cache_data.get('timestamp', 0)
+                    current_time = time.time()
+                    
+                    # Utiliser le cache s'il est encore valide
+                    if current_time - cache_time < cache_duration:
+                        weather_data = cache_data.get('data', '')
+                        info_print(f"✅ Utilisation cache météo (age: {int(current_time - cache_time)}s)")
+                        self.sender.log_conversation(sender_id, sender_info, "/weather", weather_data)
+                        self.sender.send_single(weather_data, sender_id, sender_info)
+                        return
+            
+            # Si pas de cache ou cache expiré, faire l'appel curl
+            info_print("🌤️ Récupération météo depuis wttr.in...")
+            result = subprocess.run(
+                ['curl', '-s', 'https://wttr.in/Paris?format=4'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                weather_data = result.stdout.strip()
+                
+                # Sauvegarder dans le cache
+                cache_data = {
+                    'timestamp': time.time(),
+                    'data': weather_data
+                }
+                with open(cache_file, 'w') as f:
+                    json.dump(cache_data, f)
+                
+                info_print(f"✅ Météo récupérée: {weather_data}")
+                self.sender.log_conversation(sender_id, sender_info, "/weather", weather_data)
+                self.sender.send_single(weather_data, sender_id, sender_info)
+            else:
+                error_msg = "❌ Erreur récupération météo"
+                error_print(error_msg)
+                self.sender.send_single(error_msg, sender_id, sender_info)
+                
+        except subprocess.TimeoutExpired:
+            error_msg = "❌ Timeout météo"
+            error_print(error_msg)
+            self.sender.send_single(error_msg, sender_id, sender_info)
+        except Exception as e:
+            error_msg = f"❌ Erreur météo: {str(e)[:30]}"
+            error_print(f"Erreur /weather: {e}")
+            self.sender.send_single(error_msg, sender_id, sender_info)
+
     def _format_help(self):
         """Formater l'aide des commandes"""
         help_lines = [
@@ -341,6 +408,7 @@ class UtilityCommands:
             "• /trace",
             "• /packets",
             "• /legend ",
+            "• /weather",
             "• /help"
         ]
         return "\n".join(help_lines)
@@ -360,6 +428,7 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
+        • /weather - Météo Paris
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5

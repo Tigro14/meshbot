@@ -124,6 +124,8 @@ class MessageRouter:
         # Commandes utilitaires
         elif message.startswith('/power'):
             self.utility_handler.handle_power(sender_id, sender_info)
+        elif message.startswith('/weather'):  
+            self.utility_handler.handle_weather(sender_id, sender_info)
         elif message.startswith('/graphs'):
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
