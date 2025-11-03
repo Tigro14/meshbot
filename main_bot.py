@@ -377,9 +377,11 @@ class MeshBot:
             self.telegram_integration.stop()
 
         # ✅ NOUVEAU: Utiliser le gestionnaire pour fermer proprement
-        if self.serial_manager:
-            self.serial_manager.close()
-            self.serial_manager = None
+#        if self.serial_manager:
+#            self.serial_manager.close()
+#            self.serial_manager = None
+        if hasattr(self, 'safe_serial') and self.safe_serial:
+            self.safe_serial.close()
 
         self.interface = None
 
