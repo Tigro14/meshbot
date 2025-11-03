@@ -122,6 +122,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("start", self._start_command))
             self.application.add_handler(CommandHandler("help", self._help_command))
             self.application.add_handler(CommandHandler("power", self._power_command))
+            self.application.add_handler(CommandHandler("weather", self._weather_command))
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
             self.application.add_handler(CommandHandler("sys", self._sys_command))
@@ -218,6 +219,7 @@ class TelegramIntegration:
             f"Commandes:\n"
             f"• /bot - Chat IA\n"
             f"• /power - Batterie/solaire\n"
+            f"• /weather - Météo Paris\n"
             f"• /rx [page]\n"
             f"• /sys \n"
             f"• /echo <msg>\n"
@@ -2104,3 +2106,118 @@ class TelegramIntegration:
             import traceback
             error_print(traceback.format_exc())
             await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")
+
+    async def _weather_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /weather - Météo Paris avec cache de 5 minutes
+        
+        Utilise le même système de cache que la commande Meshtastic
+        pour éviter les appels répétés à wttr.in
+        
+        Cache: /tmp/weather_cache.json (partagé avec Meshtastic)
+        Durée: 300 secondes (5 minutes)
+        """
+        user = update.effective_user
+        
+        # Vérification autorisation
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+        
+        info_print(f"📱 Telegram /weather: {user.username}")
+        
+        # Fonction synchrone à exécuter dans un thread
+        def get_weather():
+            """
+            Récupérer la météo (identique à la logique Meshtastic)
+            
+            Returns:
+                str: Données météo formatées ou message d'erreur
+            """
+            import subprocess
+            import os
+            import json
+            import time
+            
+            # Configuration cache (identique à utility_commands.py)
+            cache_file = "/tmp/weather_cache.json"
+            cache_duration = 300  # 5 minutes en secondes
+            
+            try:
+                # ----------------------------------------------------------------
+                # Vérifier le cache
+                # ----------------------------------------------------------------
+                if os.path.exists(cache_file):
+                    with open(cache_file, 'r') as f:
+                        cache_data = json.load(f)
+                        cache_time = cache_data.get('timestamp', 0)
+                        current_time = time.time()
+                        
+                        # Cache valide ?
+                        if current_time - cache_time < cache_duration:
+                            age_seconds = int(current_time - cache_time)
+                            weather_data = cache_data.get('data', '')
+                            info_print(f"✅ Cache météo utilisé (age: {age_seconds}s)")
+                            return weather_data
+                
+                # ----------------------------------------------------------------
+                # Cache expiré ou inexistant → appel curl
+                # ----------------------------------------------------------------
+                info_print("🌤️ Récupération météo depuis wttr.in...")
+                result = subprocess.run(
+                    ['curl', '-s', 'https://wttr.in/Paris?format=4'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10  # Timeout 10 secondes
+                )
+                
+                # ----------------------------------------------------------------
+                # Traiter la réponse
+                # ----------------------------------------------------------------
+                if result.returncode == 0 and result.stdout:
+                    weather_data = result.stdout.strip()
+                    
+                    # Sauvegarder en cache
+                    cache_data = {
+                        'timestamp': time.time(),
+                        'data': weather_data
+                    }
+                    with open(cache_file, 'w') as f:
+                        json.dump(cache_data, f)
+                    
+                    info_print(f"✅ Météo récupérée et mise en cache: {weather_data}")
+                    return weather_data
+                else:
+                    error_msg = "❌ Erreur récupération météo"
+                    error_print(f"{error_msg} (returncode: {result.returncode})")
+                    return error_msg
+            
+            except subprocess.TimeoutExpired:
+                error_msg = "❌ Timeout météo (> 10s)"
+                error_print(error_msg)
+                return error_msg
+            
+            except Exception as e:
+                error_print(f"Erreur /weather: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:50]}"
+        
+        # ----------------------------------------------------------------
+        # Exécuter dans un thread et envoyer la réponse
+        # ----------------------------------------------------------------
+        try:
+            # asyncio.to_thread() permet d'exécuter du code synchrone
+            # sans bloquer l'event loop asynchrone de Telegram
+            response = await asyncio.to_thread(get_weather)
+            await update.message.reply_text(response)
+            
+            info_print(f"✅ Météo envoyée à {user.username}")
+        
+        except Exception as e:
+            error_print(f"Erreur async /weather: {e}")
+            error_print(traceback.format_exc())
+            await update.message.reply_text("❌ Erreur interne")
+
+
+                
