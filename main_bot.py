@@ -45,19 +45,16 @@ class MeshBot:
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
-        
         # Interface de debug
         self.debug_interface = None
-        
         # Thread de mise à jour
         self.update_thread = None
-   
         self.telegram_integration = None
 
     def on_message(self, packet, interface):
-        """Gestionnaire des messages - version corrigée"""
+        """Gestionnaire des messages - version corrigée pour collecte complète"""
         try:
-            # ✅ Vérifier l'état de la connexion série
+            # Vérifier l'état de la connexion série
             if not self.serial_manager or not self.serial_manager.is_connected():
                 info_print("⚠️  Connexion série instable, message ignoré")
                 return
@@ -72,34 +69,34 @@ class MeshBot:
             # Déterminer la source du paquet
             is_from_serial = (interface == self.interface)
             source = 'local' if is_from_serial else 'tigrog2'
-
-            # ✅ IMPORTANT: Collecter TOUS les paquets pour les statistiques
-            # peu importe leur provenance (serial ou TCP)
-
+            
             # Mise à jour de la base de nœuds depuis TOUS les packets
             self.node_manager.update_node_from_packet(packet)
             self.node_manager.update_rx_history(packet)
             self.node_manager.track_packet_type(packet)
-
+            
             if 'decoded' in packet:
                 portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
                 self.packet_history.add_packet(portnum)
 
-            # Enregistrer TOUS les paquets dans traffic_monitor
+            # Mise à jour de l'historique RX pour tous les packets
+            self.node_manager.update_rx_history(packet)
+            
+            # Enregistrer TOUS les paquets pour l'histogramme
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
                 self.traffic_monitor.add_packet(packet)
-
+            
             # ========================================================
             # SECTION 2: TRAITEMENT DES COMMANDES (SERIAL UNIQUEMENT)
             # ========================================================
-            # ⚠️ FILTRE: Seuls les messages de l'interface locale déclenchent des commandes
+            # Seuls les messages de l'interface locale déclenchent des commandes
             if not is_from_serial:
                 debug_print(f"📊 Paquet de {source} collecté pour stats, mais non traité comme commande")
                 return
-
+            
             # À partir d'ici, seuls les messages de l'interface série sont traités
-
+            
             # Vérifier le type de message
             to_id = packet.get('to', 0)
             if not to_id:
@@ -107,58 +104,83 @@ class MeshBot:
             from_id = packet.get('from', 0)
             if not from_id:
                 return
-
             my_id = None
+            
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-
+            
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
             is_broadcast = (to_id == 0xFFFFFFFF)
-
+            
             # Filtrer les messages auto-générés
             if is_from_me:
                 return
-
+            
             decoded = packet.get('decoded', {})
             portnum = decoded.get('portnum', '')
-
-            # Traiter uniquement les messages TEXT_MESSAGE_APP
+            
             if portnum == 'TEXT_MESSAGE_APP':
                 payload = decoded.get('payload', b'')
+                
                 try:
                     message = payload.decode('utf-8').strip()
                 except:
                     return
-
+                
                 if not message:
                     return
-
-                # === GESTION DES TRACEROUTES TELEGRAM ===
+                
+                info_print("=" * 60)
+                info_print(f"📨 MESSAGE REÇU")
+                info_print(f"De: 0x{from_id:08x} ({self.node_manager.get_node_name(from_id)})")
+                info_print(f"Pour: {'broadcast' if is_broadcast else f'0x{to_id:08x}'}")
+                info_print(f"Contenu: {message[:50]}")
+                
+                # Gestion des traceroutes Telegram
                 if self.telegram_integration:
-                    try:
-                        trace_handled = self.telegram_integration.handle_trace_response(
-                            from_id, message
-                        )
-                        if trace_handled:
-                            info_print("✅ Message traité comme réponse de traceroute")
-                            return
-                    except Exception as trace_error:
-                        error_print(f"Erreur traceroute: {trace_error}")
+                    if message:
+                        info_print(f"✅ Message présent: '{message[:30]}'")
+                        info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
 
-                # === ENREGISTREMENT DES MESSAGES PUBLICS ===
+                        try:
+                            trace_handled = self.telegram_integration.handle_trace_response(
+                                from_id,
+                                message
+                            )
+
+                            if trace_handled:
+                                info_print("✅ Message traité comme réponse de traceroute")
+                                info_print("   Arrêt du traitement (pas de forward au message_handler)")
+                                info_print("=" * 60)
+                                return
+                            else:
+                                info_print("ℹ️ Message N'EST PAS une réponse de traceroute")
+                                info_print("   Traitement normal continue...")
+
+                        except Exception as trace_error:
+                            error_print(f"❌ ERREUR dans handle_trace_response: {trace_error}")
+                            error_print(traceback.format_exc())
+                    else:
+                        if not message:
+                            info_print("⚠️ Message vide, pas de vérification traceroute")
+                        if not self.telegram_integration:
+                            info_print("⚠️ telegram_integration absent, pas de vérification traceroute")
+
+                # Traitement normal du message
+                info_print("➡️ Traitement normal du message...")
+
                 if message and is_broadcast and not is_from_me:
-                    # Noter la source pour les statistiques détaillées
                     self.traffic_monitor.add_public_message(packet, message, source='local')
 
-                # === TRAITEMENT DES COMMANDES ===
                 if message and self.message_handler:
                     self.message_handler.process_text_message(packet, decoded, message)
 
+                info_print("=" * 60)
+        
         except Exception as e:
             error_print(f"Erreur on_message: {e}")
             error_print(traceback.format_exc())
-
 
     def _extract_message_text(self, decoded):
         """Extraire le texte du message décodé"""
