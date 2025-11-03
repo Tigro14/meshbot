@@ -29,7 +29,6 @@ from safe_serial_connection import SafeSerialConnection
 class MeshBot:
     def __init__(self):
         self.interface = None
-        self.serial_manager = None 
         self.running = False
         
         self.start_time = time.time()
@@ -52,20 +51,18 @@ class MeshBot:
         self.telegram_integration = None
 
     def on_message(self, packet, interface):
-        """Gestionnaire des messages - version corrigée pour collecte complète"""
+        """
+        Gestionnaire des messages reçus
+        
+        Architecture en 3 phases:
+        1. Collecte de TOUS les paquets (serial + TCP)
+        2. Filtrage selon la source
+        3. Traitement des commandes (serial uniquement)
+        """
         try:
-            # Vérifier l'état de la connexion série
-            if not self.serial_manager or not self.serial_manager.is_connected():
-                info_print("⚠️  Connexion série instable, message ignoré")
-                return
-
-            # Mettre à jour l'interface si reconnectée
-            if self.serial_manager.is_connected():
-                self.interface = self.serial_manager.get_interface()
-
-            # ========================================================
-            # SECTION 1: COLLECTE DES STATS (TOUS LES PAQUETS)
-            # ========================================================
+            # ========================================
+            # PHASE 1: COLLECTE (TOUS LES PAQUETS)
+            # ========================================
             # Déterminer la source du paquet
             is_from_serial = (interface == self.interface)
             source = 'local' if is_from_serial else 'tigrog2'
@@ -78,34 +75,32 @@ class MeshBot:
             if 'decoded' in packet:
                 portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
                 self.packet_history.add_packet(portnum)
-
-            # Mise à jour de l'historique RX pour tous les packets
-            self.node_manager.update_rx_history(packet)
             
-            # Enregistrer TOUS les paquets pour l'histogramme
+            # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
                 self.traffic_monitor.add_packet(packet)
             
-            # ========================================================
-            # SECTION 2: TRAITEMENT DES COMMANDES (SERIAL UNIQUEMENT)
-            # ========================================================
-            # Seuls les messages de l'interface locale déclenchent des commandes
+            # ========================================
+            # PHASE 2: FILTRAGE
+            # ========================================
+            # Seuls les messages de l'interface série déclenchent des commandes
             if not is_from_serial:
-                debug_print(f"📊 Paquet de {source} collecté pour stats, mais non traité comme commande")
+                debug_print(f"📊 Paquet de {source} collecté pour stats")
                 return
             
-            # À partir d'ici, seuls les messages de l'interface série sont traités
+            # À partir d'ici, seuls les messages série sont traités
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
             if not to_id:
                 return
+                
             from_id = packet.get('from', 0)
             if not from_id:
                 return
+                
             my_id = None
-            
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
             
@@ -120,6 +115,9 @@ class MeshBot:
             decoded = packet.get('decoded', {})
             portnum = decoded.get('portnum', '')
             
+            # ========================================
+            # PHASE 3: TRAITEMENT DES COMMANDES
+            # ========================================
             if portnum == 'TEXT_MESSAGE_APP':
                 payload = decoded.get('payload', b'')
                 
@@ -151,28 +149,23 @@ class MeshBot:
 
                             if trace_handled:
                                 info_print("✅ Message traité comme réponse de traceroute")
-                                info_print("   Arrêt du traitement (pas de forward au message_handler)")
                                 info_print("=" * 60)
                                 return
                             else:
                                 info_print("ℹ️ Message N'EST PAS une réponse de traceroute")
-                                info_print("   Traitement normal continue...")
 
                         except Exception as trace_error:
-                            error_print(f"❌ ERREUR dans handle_trace_response: {trace_error}")
+                            error_print(f"❌ Erreur handle_trace_response: {trace_error}")
                             error_print(traceback.format_exc())
-                    else:
-                        if not message:
-                            info_print("⚠️ Message vide, pas de vérification traceroute")
-                        if not self.telegram_integration:
-                            info_print("⚠️ telegram_integration absent, pas de vérification traceroute")
 
                 # Traitement normal du message
                 info_print("➡️ Traitement normal du message...")
 
+                # Enregistrer les messages publics
                 if message and is_broadcast and not is_from_me:
                     self.traffic_monitor.add_public_message(packet, message, source='local')
 
+                # Traiter les commandes
                 if message and self.message_handler:
                     self.message_handler.process_text_message(packet, decoded, message)
 
@@ -244,7 +237,7 @@ class MeshBot:
         gc.collect()
     
     def start(self):
-        """Démarrage - version optimisée avec modules"""
+        """Démarrage du bot - version simplifiée"""
         info_print("🤖 Bot Meshtastic-Llama avec architecture modulaire")
         
         # Charger la base de nœuds
@@ -253,42 +246,51 @@ class MeshBot:
         # Nettoyage initial
         gc.collect()
         
+        # Test llama
         if not self.llama_client.test_connection():
             error_print("llama.cpp requis")
             return False
        
         try:
-            # ✅ NOUVEAU: Utiliser SafeSerialConnection avec auto-reconnexion
-            info_print(f"🔌 Initialisation connexion série: {SERIAL_PORT}")
-            self.serial_manager = SafeSerialConnection(
-                port=SERIAL_PORT,
-                max_retries=5,
-                retry_delay=5,
-                max_retry_delay=60,
-                auto_reconnect=True  # Active la reconnexion automatique
-            )
-
-            if not self.serial_manager.connect():
-                error_print("❌ Impossible d'établir la connexion série")
-                return False
-
-            self.interface = self.serial_manager.get_interface()
-            info_print("✅ Interface Meshtastic OK avec auto-reconnexion activée")
+            # ========================================
+            # CONNEXION SÉRIE DIRECTE
+            # ========================================
+            info_print(f"🔌 Connexion série: {SERIAL_PORT}")
+            self.interface = meshtastic.serial_interface.SerialInterface(SERIAL_PORT)
+            info_print("✅ Interface série créée")
             
-            # Initialiser le gestionnaire de messages maintenant que l'interface existe
+            # Stabilisation
+            time.sleep(3)
+            info_print("✅ Connexion stable")
+            
+            # ========================================
+            # ABONNEMENT AUX MESSAGES (CRITIQUE!)
+            # ========================================
+            # DOIT être fait immédiatement après la création de l'interface
+            pub.subscribe(self.on_message, "meshtastic.receive")
+            info_print("✅ Abonné aux messages Meshtastic")
+            self.running = True
+            
+            # ========================================
+            # INITIALISATION DES GESTIONNAIRES
+            # ========================================
+            info_print("📦 Initialisation MessageHandler...")
             self.message_handler = MessageHandler(
                 self.llama_client,
                 self.esphome_client, 
                 self.remote_nodes_client,
                 self.node_manager,
                 self.context_manager,
-                self.serial_manager, 
+                self.interface,  # Interface directe
                 self.traffic_monitor,
                 self.start_time,
                 packet_history=self.packet_history
             )
+            info_print("✅ MessageHandler créé")
             
-            # Intégration Telegram
+            # ========================================
+            # INTÉGRATION TELEGRAM
+            # ========================================
             try:
                 from telegram_integration import TelegramIntegration
                 self.telegram_integration = TelegramIntegration(
@@ -298,11 +300,12 @@ class MeshBot:
                 )
                 self.telegram_integration.start()
                 info_print("✅ Interface Telegram intégrée")
+                
                 # Test du système
-                time.sleep(5)  # Attendre que Telegram démarre
+                time.sleep(5)
                 self.telegram_integration.test_trace_system()
 
-                # ✅ Démarrer le monitoring système avec Telegram
+                # Démarrer le monitoring système
                 from system_monitor import SystemMonitor
                 self.system_monitor = SystemMonitor(self.telegram_integration)
                 self.system_monitor.start()
@@ -312,15 +315,21 @@ class MeshBot:
                 debug_print("📱 Module Telegram non disponible")
             except Exception as e:
                 error_print(f"Erreur intégration Telegram: {e}")
-    
-            # Mise à jour initiale de la base
-            self.node_manager.update_node_database(self.interface)
             
-            pub.subscribe(self.on_message, "meshtastic.receive")
-            self.running = True
-           
-            # Démarrer le thread de mise à jour périodique
-            self.update_thread = threading.Thread(target=self.periodic_update_thread, daemon=True)
+            # ========================================
+            # MISE À JOUR BASE DE NŒUDS
+            # ========================================
+            info_print("📊 Mise à jour base de nœuds...")
+            self.node_manager.update_node_database(self.interface)
+            info_print("✅ Base de nœuds mise à jour")
+            
+            # ========================================
+            # THREAD DE MISE À JOUR PÉRIODIQUE
+            # ========================================
+            self.update_thread = threading.Thread(
+                target=self.periodic_update_thread, 
+                daemon=True
+            )
             self.update_thread.start()
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
             
@@ -335,18 +344,21 @@ class MeshBot:
             else:
                 info_print("🚀 Bot en service - '/bot', '/power', '/rx', '/my', '/sys' et '/legend'")
             
-            # Boucle principale avec nettoyage périodique
+            # ========================================
+            # BOUCLE PRINCIPALE
+            # ========================================
             cleanup_counter = 0
             while self.running:
-                time.sleep(30)  # CPU fix: 10s → 30s
+                time.sleep(30)
                 cleanup_counter += 1
-                if cleanup_counter % 300 == 0:  # Toutes les 5 minutes
+                if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
                     self.cleanup_cache()
                 
         except Exception as e:
             error_print(f"Erreur: {e}")
+            error_print(traceback.format_exc())
             return False
-    
+
     def stop(self):
         """Arrêt du bot"""
         info_print("Arrêt...")
