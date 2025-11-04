@@ -129,7 +129,8 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("bot", self._bot_command)) 
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
-            self.application.add_handler(CommandHandler("annonce", self._annonce_command))  # ← NOUVEAU
+            info_print("OXOXOXOXOXOXOXOXOXOXOXOXOXO Enregistrement handler /annonce...")
+            self.application.add_handler(CommandHandler("annonce", self._annonce_command))
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("trace", self._trace_command))
@@ -536,7 +537,9 @@ class TelegramIntegration:
 
     async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /annonce <message> - Diffuser sur le mesh depuis le bot local"""
+        info_print("OXOXOXOXOXOXOXOX/annonce appelée - DEBUT")
         user = update.effective_user
+        info_print(f"User: {user.username} (ID: {user.id})") 
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
