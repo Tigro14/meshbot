@@ -133,7 +133,7 @@ class SystemCommands:
         Returns:
             tuple: (authorized: bool, error_message: str or None)
         """
-        node_name = self.node_manager.get_node_name(from_id, self.interface)
+        node_name = self.node_manager.get_node_name(from_id, self._get_interface())
         
         # 1. Vérifier activation globale
         if not REBOOT_COMMANDS_ENABLED:
@@ -183,7 +183,7 @@ class SystemCommands:
         
         # Exécuter le reboot
         try:
-            node_name = self.node_manager.get_node_name(from_id, self.interface)
+            node_name = self.node_manager.get_node_name(from_id, self._get_interface())
             info_print(f"🚨 REBOOT Pi5: {node_name} (0x{from_id:08x})")
             
             signal_file = "/tmp/reboot_requested"
@@ -225,7 +225,7 @@ class SystemCommands:
             import meshtastic.tcp_interface
             from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
             
-            node_name = self.node_manager.get_node_name(from_id, self.interface)
+            node_name = self.node_manager.get_node_name(from_id, self._get_interface())
             info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
             
             #remote_interface = meshtastic.tcp_interface.TCPInterface(

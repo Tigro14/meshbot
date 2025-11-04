@@ -10,12 +10,20 @@ from utils import *
 
 class MessageSender:
     def __init__(self, interface, node_manager):
-        self.interface = interface
         self.node_manager = node_manager
         
         # Stocker le serial_manager au lieu de l'interface directe
         # Cela permet d'avoir toujours l'interface à jour après une reconnexion
         self.interface_provider = interface  # Peut être interface ou serial_manager
+
+    def _get_interface(self):
+        """
+        Récupérer l'interface active
+        Compatible avec serial_manager ou interface directe
+        """
+        if hasattr(self.interface_provider, 'get_interface'):
+            return self.interface_provider.get_interface()
+        return self.interface_provider
 
         # Throttling des commandes utilisateurs
         self.user_commands = {}  # user_id -> [timestamps des commandes]
@@ -171,8 +179,9 @@ class MessageSender:
     def get_short_name(self, node_id):
         """Obtenir le nom court d'un nœud"""
         try:
-            if hasattr(self.interface, 'nodes') and node_id in self.interface.nodes:
-                node_info = self.interface.nodes[node_id]
+            interface = self._get_interface()
+            if hasattr(interface, 'nodes') and node_id in interface.nodes:
+                node_info = interface.nodes[node_id]
                 if isinstance(node_info, dict) and 'user' in node_info:
                     user_info = node_info['user']
                     if isinstance(user_info, dict):
