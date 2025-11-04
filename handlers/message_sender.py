@@ -15,6 +15,10 @@ class MessageSender:
         # Stocker le serial_manager au lieu de l'interface directe
         # Cela permet d'avoir toujours l'interface à jour après une reconnexion
         self.interface_provider = interface  # Peut être interface ou serial_manager
+        
+        # Throttling des commandes utilisateurs
+        self.user_commands = {}  # user_id -> [timestamps des commandes]
+        self._last_echo_id = None  # Cache doublons echo
 
     def _get_interface(self):
         """
@@ -25,15 +29,11 @@ class MessageSender:
             return self.interface_provider.get_interface()
         return self.interface_provider
 
-        # Throttling des commandes utilisateurs
-        self.user_commands = {}  # user_id -> [timestamps des commandes]
-        self._last_echo_id = None  # Cache doublons echo
-    
     def check_throttling(self, sender_id, sender_info):
         """Vérifier le throttling des commandes pour un utilisateur"""
         current_time = time.time()
-        
-        # Nettoyer d'abord les anciennes entrées
+            
+            # Nettoyer d'abord les anciennes entrées
         if sender_id in self.user_commands:
             self.user_commands[sender_id] = [
                 cmd_time for cmd_time in self.user_commands[sender_id]

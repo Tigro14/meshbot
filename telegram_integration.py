@@ -114,11 +114,13 @@ class TelegramIntegration:
     async def _start_telegram_bot(self):
         """Démarrer l'application Telegram"""
         try:
-            info_print(f"Initialisation bot Telegram...")
+            info_print("Initialisation bot Telegram...")
             
             self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
             
-            # Handlers de commandes
+            # Handlers de commandes - SECTION REECRITE PROPREMENT
+            info_print("Enregistrement des handlers...")
+            
             self.application.add_handler(CommandHandler("start", self._start_command))
             self.application.add_handler(CommandHandler("help", self._help_command))
             self.application.add_handler(CommandHandler("power", self._power_command))
@@ -126,11 +128,15 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("graphs", self._graphs_command))
             self.application.add_handler(CommandHandler("rx", self._rx_command))
             self.application.add_handler(CommandHandler("sys", self._sys_command))
-            self.application.add_handler(CommandHandler("bot", self._bot_command)) 
+            self.application.add_handler(CommandHandler("bot", self._bot_command))
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
-            info_print("OXOXOXOXOXOXOXOXOXOXOXOXOXO Enregistrement handler /annonce...")
+            
+            # DEBUG ANNONCE
+            info_print("Registration handler /annonce...")
             self.application.add_handler(CommandHandler("annonce", self._annonce_command))
+            info_print("Handler /annonce enregistre avec succes")
+            
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("trace", self._trace_command))
@@ -144,45 +150,46 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("packets", self._packets_command))
             self.application.add_handler(CommandHandler("stats", self._stats_command))
             
+            info_print(f"Total handlers enregistres: {len(self.application.handlers[0])}")
+            
             # Gestionnaire d'erreurs
             self.application.add_error_handler(self._error_handler)
             
             # Démarrer l'application
             await self.application.initialize()
             await self.application.start()
-            # ✅ POLLING OPTIMISÉ - Réduire la charge CPU
-            info_print("Bot Telegram en écoute (polling optimisé)...")
+            
+            info_print("Bot Telegram en ecoute (polling optimise)...")
             
             await self.application.updater.start_polling(
-                poll_interval=15.0,        # ✅ 10 secondes (économie CPU)
-                timeout=30,                # 30s polling
-                read_timeout=120,          # 2 minutes
-                write_timeout=120,         # 2 minutes
-                connect_timeout=120,       # 2 minutes (CRITIQUE)
-                pool_timeout=120,          # 2 minutes
+                poll_interval=15.0,
+                timeout=30,
+                read_timeout=120,
+                write_timeout=120,
+                connect_timeout=120,
+                pool_timeout=120,
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
             )
-
-            # ✅ Boucle d'attente OPTIMISÉE avec nettoyage des traces
+            
+            # Boucle d'attente avec nettoyage
             cleanup_counter = 0
             while self.running:
-                await asyncio.sleep(60)  # 60 secondes
-
+                await asyncio.sleep(60)
                 cleanup_counter += 1
-                if cleanup_counter % 6 == 0:  # CPU fix: Toutes les 3 mn
+                if cleanup_counter % 6 == 0:
                     self.cleanup_expired_traces()
-
+            
             # Arrêter proprement
-            info_print("Arrêt du polling Telegram...")
+            info_print("Arret du polling Telegram...")
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
             
         except Exception as e:
-            error_print(f"Erreur démarrage Telegram: {e or 'Unknown error'}")
+            error_print(f"Erreur demarrage Telegram: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
-
+            
     async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /graph - À définir selon vos besoins"""
         user = update.effective_user

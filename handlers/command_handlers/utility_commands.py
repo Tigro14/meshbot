@@ -342,18 +342,18 @@ class UtilityCommands:
     def _format_help(self):
         """Formater l'aide des commandes"""
         help_lines = [
-            "• /bot IA",
-            "• /power",
-            "• /sys ",
-            "• /echo <msg>",
-            "•annonce <msg>",
-            "• /nodes",
-            "• /top",
-            "• /trace",
-            "• /packets",
-            "• /legend ",
-            "• /weather",
-            "• /help"
+            "/bot IA",
+            "/power",
+            "/sys",
+            "/echo",
+            "/annonce",
+            "/nodes",
+            "/top",
+            "/trace",
+            "/packets",
+            "/legend",
+            "/weather",
+            "/help"
         ]
         return "\n".join(help_lines)
 
