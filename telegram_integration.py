@@ -568,16 +568,25 @@ class TelegramIntegration:
                 
                 info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
                 
-                # Récupérer l'interface locale du bot
-                interface = self.message_handler.sender._get_interface()
-                
+                interface = self.message_handler.interface
+
                 if not interface:
                     error_print("❌ Interface locale non disponible")
                     return False, "❌ Interface non disponible"
-                
+
+                # Si c'est un SafeSerialConnection, récupérer l'interface réelle
+                if hasattr(interface, 'get_interface'):
+                    actual_interface = interface.get_interface()
+                    if not actual_interface:
+                        error_print("❌ Interface non connectée")
+                        return False, "❌ Bot en cours de reconnexion"
+                    interface = actual_interface
+
+                info_print(f"✅ Interface trouvée: {type(interface).__name__}")
+
                 # Envoyer directement en broadcast depuis le bot local
                 interface.sendText(message, destinationId='^all')
-                
+                                
                 info_print(f"✅ Annonce diffusée depuis bot local")
                 return True, "✅ Annonce envoyée depuis le bot local"
                 
