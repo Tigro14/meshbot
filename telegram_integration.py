@@ -2117,7 +2117,7 @@ class TelegramIntegration:
         info_print(f"📱 Telegram /weather: {user.username}")
         
         # Utiliser directement le module utils.weather
-        from utils.weather import get_weather_data
+        from utils_weather import get_weather_data
         
         try:
             weather = await asyncio.to_thread(get_weather_data)
