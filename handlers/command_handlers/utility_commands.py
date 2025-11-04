@@ -592,47 +592,47 @@ class UtilityCommands:
             self.sender.send_single("Usage: /annonce <texte>", sender_id, sender_info)
             return
     
-    info_print(f"✅ Texte valide: '{annonce_text}'")
-    
-    # Envoyer directement via l'interface série locale
-    try:
-        author_short = self.sender.get_short_name(sender_id)
-        annonce_response = f"{author_short}: {annonce_text}"
+        info_print(f"✅ Texte valide: '{annonce_text}'")
         
-        info_print(f"📝 Message final: '{annonce_response}'")
-        info_print(f"   Auteur short: {author_short}")
-        info_print(f"   Longueur finale: {len(annonce_response)} caractères")
-        
-        # Récupérer l'interface locale
-        interface = self.sender._get_interface()
-        
-        if not interface:
-            error_print("❌ Interface locale non disponible")
-            self.sender.send_single("Erreur: Interface non disponible", sender_id, sender_info)
-            return
-        
-        info_print("📤 Envoi du message en broadcast...")
-        
-        # Envoyer en broadcast sur le mesh local
-        interface.sendText(annonce_response, destinationId='^all')
-        
-        info_print("✅ Annonce diffusée depuis le bot local")
-        info_print("=" * 60)
-        
-        # Logger la conversation
-        self.sender.log_conversation(sender_id, sender_info, message, annonce_response)
-        
-    except Exception as e:
-        error_print("")
-        error_print("=" * 60)
-        error_print("❌ ERREUR DANS ANNONCE")
-        error_print("=" * 60)
-        error_print(f"Exception: {e}")
-        error_print(traceback.format_exc())
-        error_print("=" * 60)
-        
+        # Envoyer directement via l'interface série locale
         try:
-            error_response = f"Erreur annonce: {str(e)[:30]}"
-            self.sender.send_single(error_response, sender_id, sender_info)
-        except:
-            pass            
+            author_short = self.sender.get_short_name(sender_id)
+            annonce_response = f"{author_short}: {annonce_text}"
+            
+            info_print(f"📝 Message final: '{annonce_response}'")
+            info_print(f"   Auteur short: {author_short}")
+            info_print(f"   Longueur finale: {len(annonce_response)} caractères")
+            
+            # Récupérer l'interface locale
+            interface = self.sender._get_interface()
+            
+            if not interface:
+                error_print("❌ Interface locale non disponible")
+                self.sender.send_single("Erreur: Interface non disponible", sender_id, sender_info)
+                return
+            
+            info_print("📤 Envoi du message en broadcast...")
+            
+            # Envoyer en broadcast sur le mesh local
+            interface.sendText(annonce_response, destinationId='^all')
+            
+            info_print("✅ Annonce diffusée depuis le bot local")
+            info_print("=" * 60)
+            
+            # Logger la conversation
+            self.sender.log_conversation(sender_id, sender_info, message, annonce_response)
+            
+        except Exception as e:
+            error_print("")
+            error_print("=" * 60)
+            error_print("❌ ERREUR DANS ANNONCE")
+            error_print("=" * 60)
+            error_print(f"Exception: {e}")
+            error_print(traceback.format_exc())
+            error_print("=" * 60)
+            
+            try:
+                error_response = f"Erreur annonce: {str(e)[:30]}"
+                self.sender.send_single(error_response, sender_id, sender_info)
+            except:
+                pass            
