@@ -29,6 +29,7 @@ except ImportError:
     MESHTASTIC_PROTOBUF_AVAILABLE = False
     print("⚠️ Modules protobuf Meshtastic non disponibles")
 
+
 class TelegramIntegration:
     def __init__(self, message_handler, node_manager, context_manager):
         if not TELEGRAM_AVAILABLE:
@@ -46,7 +47,9 @@ class TelegramIntegration:
 
         # Liste des utilisateurs pour les alertes
         self.alert_users = TELEGRAM_ALERT_USERS if TELEGRAM_ALERT_USERS else TELEGRAM_AUTHORIZED_USERS
-        self.pending_traces = {}  # node_id -> {'telegram_chat_id': int, 'timestamp': float, 'short_name': str}
+        # node_id -> {'telegram_chat_id': int, 'timestamp': float,
+        # 'short_name': str}
+        self.pending_traces = {}
         self.trace_timeout = 45  # 45 secondes pour recevoir la réponse
 
     def start(self):
@@ -55,7 +58,8 @@ class TelegramIntegration:
             return
 
         self.running = True
-        self.telegram_thread = threading.Thread(target=self._run_telegram_bot, daemon=True)
+        self.telegram_thread = threading.Thread(
+    target=self._run_telegram_bot, daemon=True)
         self.telegram_thread.start()
         info_print("🤖 Bot Telegram démarré en thread séparé")
 
@@ -64,7 +68,10 @@ class TelegramIntegration:
         self.running = False
         if self.loop and self.application:
             try:
-                asyncio.run_coroutine_threadsafe(self._shutdown(), self.loop).result(timeout=5)
+                asyncio.run_coroutine_threadsafe(
+    self._shutdown(),
+    self.loop).result(
+        timeout=5)
             except Exception as e:
                 pass
         info_print("🛑 Bot Telegram arrêté")
@@ -72,20 +79,22 @@ class TelegramIntegration:
     def _get_mesh_identity(self, telegram_user_id):
         """
         Obtenir l'identité Meshtastic correspondant à un utilisateur Telegram
-        
+
         Args:
             telegram_user_id: ID Telegram de l'utilisateur
-            
+
         Returns:
             dict: {'node_id': int, 'short_name': str, 'display_name': str}
                   ou None si pas de mapping
         """
         from config import TELEGRAM_TO_MESH_MAPPING
         from utils import debug_print
-        
+
         if telegram_user_id in TELEGRAM_TO_MESH_MAPPING:
             mapping = TELEGRAM_TO_MESH_MAPPING[telegram_user_id]
-            debug_print(f"✅ Mapping Telegram {telegram_user_id} → {mapping['display_name']}")
+            debug_print(
+    f"✅ Mapping Telegram {telegram_user_id} → {
+        mapping['display_name']}")
             return mapping
         else:
             debug_print(f"⚠️ Pas de mapping pour {telegram_user_id}")
@@ -97,10 +106,10 @@ class TelegramIntegration:
             # Créer un nouvel event loop pour ce thread
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
-            
+
             # Lancer le bot et bloquer jusqu'à l'arrêt
             self.loop.run_until_complete(self._start_telegram_bot())
-            
+
         except Exception as e:
             error_print(f"Erreur bot Telegram: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
@@ -115,52 +124,100 @@ class TelegramIntegration:
         """Démarrer l'application Telegram"""
         try:
             info_print("Initialisation bot Telegram...")
-            
+
             self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-            
+
             # Handlers de commandes - SECTION REECRITE PROPREMENT
             info_print("Enregistrement des handlers...")
-            
-            self.application.add_handler(CommandHandler("start", self._start_command))
-            self.application.add_handler(CommandHandler("help", self._help_command))
-            self.application.add_handler(CommandHandler("power", self._power_command))
-            self.application.add_handler(CommandHandler("weather", self._weather_command))
-            self.application.add_handler(CommandHandler("graphs", self._graphs_command))
-            self.application.add_handler(CommandHandler("rx", self._rx_command))
-            self.application.add_handler(CommandHandler("sys", self._sys_command))
-            self.application.add_handler(CommandHandler("bot", self._bot_command))
-            self.application.add_handler(CommandHandler("legend", self._legend_command))
-            self.application.add_handler(CommandHandler("echo", self._echo_command))
-            
+
+            self.application.add_handler(
+                CommandHandler("start", self._start_command))
+            self.application.add_handler(
+                CommandHandler("help", self._help_command))
+            self.application.add_handler(
+                CommandHandler("power", self._power_command))
+            self.application.add_handler(
+    CommandHandler(
+        "weather",
+         self._weather_command))
+            self.application.add_handler(
+    CommandHandler(
+        "graphs", self._graphs_command))
+            self.application.add_handler(
+                CommandHandler("rx", self._rx_command))
+            self.application.add_handler(
+                CommandHandler("sys", self._sys_command))
+            self.application.add_handler(
+                CommandHandler("bot", self._bot_command))
+            self.application.add_handler(
+    CommandHandler(
+        "legend", self._legend_command))
+            self.application.add_handler(
+                CommandHandler("echo", self._echo_command))
+
             # DEBUG ANNONCE
             info_print("Registration handler /annonce...")
-            self.application.add_handler(CommandHandler("annonce", self._annonce_command))
+            self.application.add_handler(
+    CommandHandler(
+        "testannonce",
+         self._annonce_command))
             info_print("Handler /annonce enregistre avec succes")
-            
-            self.application.add_handler(CommandHandler("nodes", self._nodes_command))
-            self.application.add_handler(CommandHandler("trafic", self._trafic_command))
-            self.application.add_handler(CommandHandler("trace", self._trace_command))
-            self.application.add_handler(CommandHandler("histo", self._histo_command))
-            self.application.add_handler(CommandHandler("cpu", self._cpu_command))
-            self.application.add_handler(CommandHandler("rebootg2", self._rebootg2_command))
-            self.application.add_handler(CommandHandler("rebootpi", self._rebootpi_command))
-            self.application.add_handler(CommandHandler("fullnodes", self._fullnodes_command))
-            self.application.add_handler(CommandHandler("clearcontext", self._clearcontext_command))
-            self.application.add_handler(CommandHandler("top", self._top_command))
-            self.application.add_handler(CommandHandler("packets", self._packets_command))
-            self.application.add_handler(CommandHandler("stats", self._stats_command))
-            
-            info_print(f"Total handlers enregistres: {len(self.application.handlers[0])}")
-            
+
+            self.application.add_handler(
+                CommandHandler("nodes", self._nodes_command))
+            self.application.add_handler(
+    CommandHandler(
+        "trafic", self._trafic_command))
+            self.application.add_handler(
+                CommandHandler("trace", self._trace_command))
+            self.application.add_handler(
+                CommandHandler("histo", self._histo_command))
+            self.application.add_handler(
+                CommandHandler("cpu", self._cpu_command))
+            self.application.add_handler(
+    CommandHandler(
+        "rebootg2",
+         self._rebootg2_command))
+            self.application.add_handler(
+    CommandHandler(
+        "rebootpi",
+         self._rebootpi_command))
+            self.application.add_handler(
+    CommandHandler(
+        "fullnodes",
+         self._fullnodes_command))
+            self.application.add_handler(
+    CommandHandler(
+        "clearcontext",
+         self._clearcontext_command))
+            self.application.add_handler(
+                CommandHandler("top", self._top_command))
+            self.application.add_handler(
+    CommandHandler(
+        "packets",
+         self._packets_command))
+            self.application.add_handler(
+                CommandHandler("stats", self._stats_command))
+
+            # Après le dernier add_handler
+            info_print(
+                f"📊 Total handlers enregistrés: {len(self.application.handlers[0])}")
+
+            # Liste tous les handlers pour debug
+            for idx, handler in enumerate(self.application.handlers[0]):
+                if hasattr(handler, 'command'):
+                    info_print(
+                        f"  Handler #{idx}: /{handler.command[0] if handler.command else 'unknown'}")
+
             # Gestionnaire d'erreurs
             self.application.add_error_handler(self._error_handler)
-            
+
             # Démarrer l'application
             await self.application.initialize()
             await self.application.start()
-            
+
             info_print("Bot Telegram en ecoute (polling optimise)...")
-            
+
             await self.application.updater.start_polling(
                 poll_interval=15.0,
                 timeout=30,
@@ -171,7 +228,7 @@ class TelegramIntegration:
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
             )
-            
+
             # Boucle d'attente avec nettoyage
             cleanup_counter = 0
             while self.running:
@@ -179,26 +236,29 @@ class TelegramIntegration:
                 cleanup_counter += 1
                 if cleanup_counter % 6 == 0:
                     self.cleanup_expired_traces()
-            
+
             # Arrêter proprement
             info_print("Arret du polling Telegram...")
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
-            
+
         except Exception as e:
             error_print(f"Erreur demarrage Telegram: {e or 'Unknown error'}")
             error_print(traceback.format_exc())
-            
-    async def _graph_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def _graph_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /graph - À définir selon vos besoins"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         info_print(f"📱 Telegram /graph: {user.username}")
-        
+
         # TODO: Implémenter selon vos besoins
         await update.message.reply_text("🚧 Commande /graph en cours d'implémentation")
 
@@ -208,69 +268,77 @@ class TelegramIntegration:
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
-    
+
     def _check_authorization(self, user_id):
         """Vérifier si l'utilisateur est autorisé"""
         if not TELEGRAM_AUTHORIZED_USERS:
             return True
         return user_id in TELEGRAM_AUTHORIZED_USERS
-    
+
     # === COMMANDES TELEGRAM ===
-    
-    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def _start_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /start"""
         user = update.effective_user
         info_print(f"📱 Telegram /start: {user.username} ({user.id})")
-        
+
         welcome_msg = (
-            f"🤖 Bot Meshtastic Bridge\n\n"
+            f"🤖 Bot Meshtastic Bridge\n"
             f"Salut {user.first_name} !\n\n"
             f"Commandes:\n"
-            f"• /bot - Chat IA\n"
-            f"• /power - Batterie/solaire\n"
-            f"• /weather - Météo Paris\n"
-            f"• /rx [page]\n"
-            f"• /sys \n"
-            f"• /echo <msg>\n"
-            f"• /nodes \n"
-            f"• /fullnodes [jours]  Liste complète alphabétique (défaut: 30j)\n"
-            f"• /trafic [heures] - Messages publics (défaut: 8h)\n"
-            f"• /histo [type] [h] \n" 
-            f"•         Types disponibles:\n"
-            f"•         - all : tous les paquets (défaut)\n"
-            f"•         - messages : messages texte uniquement\n"
-            f"•         - pos : positions uniquement\n"
-            f"•         - info : nodeinfo uniquement\n"
-            f"•         - telemetry : télémétrie uniquement\n"
-            f"• /top [h] [n] - Top talkers\n"  
-            f"• /stats - Stats globales\n"     
-            f"• /legend \n"
+            f"• /bot - Chat IA"
+            f"• /power - Batterie/solre \n"
+            f"• /weather - Météo\n"
+            f"• /s\n"
+            f"• /ec\n"
+            f"• /nod\n"
+            f"• /fullnodes [jours]  Liste complète alphabétique (défa\n: 3"
+            f"• /trafic [heures] - Messages publics (défaut:\n""
+            f"• /histo [type] [h]"\"n
+            f"•         Types disponibles:"
+            f"•         - all : tous les paquets (défaut"
+            f"•         - messages : messages texte uniquement"
+            f"•         - pos : positions uniquement"
+            f"•         - info : nodeinfo uniquement"
+            f"•         - telemetry : télémétrie unint \n"
+            f"• /top [h] [n] - Top talke"
+            f"• /stats - Stats globales"
+            f"• /legend "
             f"• /cpu \n"
-            f"• /help - Aide\n\n"
+            f"• /help - Aide"
             f"Votre ID: {user.id}"
         )
         await update.message.reply_text(welcome_msg)
 
-    async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _help_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /help - Version détaillée pour Telegram"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         info_print(f"📱 Telegram /help: {user.username}")
-        
+
         # Utiliser la version détaillée pour Telegram
         help_text = self.message_handler.format_help_telegram(user.id)
-        
+
         # 🔍 DEBUG
-        info_print(f"DEBUG help_text length: {len(help_text) if help_text else 'None'}")
-        info_print(f"DEBUG help_text preview: {help_text[:100] if help_text else 'None'}")
-        
+        info_print(
+    f"DEBUG help_text length: {
+        len(help_text) if help_text else 'None'}")
+        info_print(
+            f"DEBUG help_text preview: {help_text[:100] if help_text else 'None'}")
+
         if not help_text or len(help_text.strip()) == 0:
             await update.message.reply_text("❌ Erreur: texte d'aide vide")
             return
-        
+
         # Envoyer SANS Markdown d'abord
         try:
             await update.message.reply_text(help_text)
@@ -279,16 +347,18 @@ class TelegramIntegration:
             error_print(f"Erreur envoir /help : {e or 'Unknown error'}")
             await update.message.reply_text("❌ Erreur envoi aide")
 
-
-    async def _power_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _power_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /power avec graphiques d'historique"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         info_print(f"📱 Telegram /power: {user.username}")
-        
+
         # Extraire le nombre d'heures (optionnel, défaut 24)
         hours = 24
         if context.args and len(context.args) > 0:
@@ -297,13 +367,13 @@ class TelegramIntegration:
                 hours = max(1, min(48, hours))  # Entre 1 et 48 heures
             except ValueError:
                 hours = 24
-        
+
         # Message 1 : Données actuelles
         response_current = await asyncio.to_thread(
             self.message_handler.esphome_client.parse_esphome_data
         )
         await update.message.reply_text(f"⚡ Power:\n{response_current}")
-        
+
         # Message 2 : Graphiques d'historique
         response_graphs = await asyncio.to_thread(
             self.message_handler.esphome_client.get_history_graphs,
@@ -311,13 +381,16 @@ class TelegramIntegration:
         )
         await update.message.reply_text(response_graphs)
 
-    async def _graphs_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _graphs_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /graphs pour afficher uniquement les graphiques d'historique"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         # Extraire le nombre d'heures (optionnel, défaut 24)
         hours = 24
         if context.args and len(context.args) > 0:
@@ -326,9 +399,9 @@ class TelegramIntegration:
                 hours = max(1, min(48, hours))  # Entre 1 et 48 heures
             except ValueError:
                 hours = 24
-        
+
         info_print(f"📱 Telegram /graphs {hours}h: {user.username}")
-        
+
         # Générer les graphiques
         response = await asyncio.to_thread(
             self.message_handler.esphome_client.get_history_graphs,
@@ -336,32 +409,37 @@ class TelegramIntegration:
         )
         await update.message.reply_text(response)
 
-
-    async def _rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _rx_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /rx [page]"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         page = int(context.args[0]) if context.args else 1
         info_print(f"📱 Telegram /rx {page}: {user.username}")
-        
+
         response = await asyncio.to_thread(
             self.message_handler.remote_nodes_client.get_tigrog2_paginated,
             page
         )
         await update.message.reply_text(response)
-    
-    async def _sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def _sys_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /sys"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         info_print(f"📱 Telegram /sys: {user.username}")
-        
+
         def get_sys_info():
             import subprocess
             system_info = []
@@ -372,13 +450,14 @@ class TelegramIntegration:
                 if hasattr(self.message_handler, 'router') and \
                    hasattr(self.message_handler.router, 'system_handler') and \
                    self.message_handler.router.system_handler.bot_start_time:
-                    
-                    bot_uptime_seconds = int(time.time() - self.message_handler.router.system_handler.bot_start_time)
-                    
+
+                    bot_uptime_seconds = int(
+    time.time() - self.message_handler.router.system_handler.bot_start_time)
+
                     days = bot_uptime_seconds // 86400
                     hours = (bot_uptime_seconds % 86400) // 3600
                     minutes = (bot_uptime_seconds % 3600) // 60
-                    
+
                     uptime_parts = []
                     if days > 0:
                         uptime_parts.append(f"{days}j")
@@ -386,7 +465,7 @@ class TelegramIntegration:
                         uptime_parts.append(f"{hours}h")
                     if minutes > 0 or len(uptime_parts) == 0:
                         uptime_parts.append(f"{minutes}m")
-                    
+
                     bot_uptime_str = " ".join(uptime_parts)
                     system_info.append(f"🤖 Bot: {bot_uptime_str}")
             except Exception as e:
@@ -394,12 +473,14 @@ class TelegramIntegration:
 
             try:
                 temp_cmd = ['vcgencmd', 'measure_temp']
-                temp_result = subprocess.run(temp_cmd, capture_output=True, text=True, timeout=5)
-                
+                temp_result = subprocess.run(
+    temp_cmd, capture_output=True, text=True, timeout=5)
+
                 if temp_result.returncode == 0:
                     temp_output = temp_result.stdout.strip()
                     if 'temp=' in temp_output:
-                        temp_value = temp_output.split('=')[1].replace("'C", "°C")
+                        temp_value = temp_output.split(
+                            '=')[1].replace("'C", "°C")
                         system_info.append(f"🌡️ CPU: {temp_value}")
                 else:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
@@ -407,23 +488,28 @@ class TelegramIntegration:
                         system_info.append(f"🌡️ CPU: {temp_celsius:.1f}°C")
             except Exception as e:
                 system_info.append("🌡️ CPU: Error")
-            
+
             try:
                 uptime_cmd = ['uptime', '-p']
-                uptime_result = subprocess.run(uptime_cmd, capture_output=True, text=True, timeout=5)
+                uptime_result = subprocess.run(
+    uptime_cmd, capture_output=True, text=True, timeout=5)
                 if uptime_result.returncode == 0:
                     uptime_clean = uptime_result.stdout.strip().replace('up ', '')
                     system_info.append(f"⏱️ Up: {uptime_clean}")
             except Exception as e:
                 pass
-            
+
             try:
                 with open('/proc/loadavg', 'r') as f:
                     loadavg = f.read().strip().split()
-                    system_info.append(f"📊 Load: {loadavg[0]} {loadavg[1]} {loadavg[2]}")
+                    system_info.append(
+    f"📊 Load: {
+        loadavg[0]} {
+            loadavg[1]} {
+                loadavg[2]}")
             except Exception as e:
                 pass
-            
+
             try:
                 with open('/proc/meminfo', 'r') as f:
                     meminfo = f.read()
@@ -433,31 +519,39 @@ class TelegramIntegration:
                         mem_total = int(line.split()[1])
                     elif line.startswith('MemAvailable:'):
                         mem_available = int(line.split()[1])
-                
+
                 if mem_total and mem_available:
                     mem_used = mem_total - mem_available
                     mem_percent = (mem_used / mem_total) * 100
-                    system_info.append(f"💾 RAM: {mem_used//1024}MB/{mem_total//1024}MB ({mem_percent:.0f}%)")
+                    system_info.append(
+                        f"💾 RAM: {mem_used // 1024}MB/{mem_total // 1024}MB ({mem_percent:.0f}%)")
             except Exception as e:
                 pass
-            
-            return "🖥️ Système RPI5:\n" + "\n".join(system_info) if system_info else "❌ Erreur système"
-        
+
+            return "🖥️ Système RPI5:\n" + \
+                "\n".join(system_info) if system_info else "❌ Erreur système"
+
         response = await asyncio.to_thread(get_sys_info)
         await update.message.reply_text(response)
 
-    async def _legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _legend_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /legend"""
         user = update.effective_user
         if not self._check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
-        
+
         info_print(f"📱 Telegram /legend: {user.username}")
         legend = self.message_handler.format_legend()
         await update.message.reply_text(legend)
 
-    async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _echo_command(
+    self,
+    update: Update,
+     context: ContextTypes.DEFAULT_TYPE):
         """Commande /echo <message> - Diffuser sur le mesh"""
         user = update.effective_user
         if not self._check_authorization(user.id):
@@ -488,27 +582,27 @@ class TelegramIntegration:
                     info_print(f"⚠️ Echo sans mapping: {prefix}")
 
                 message = f"{prefix}: {echo_text}"
-                
+
                 # ✅ IMPORT SIMPLIFIÉ - Fonction au niveau module
                 from safe_tcp_connection import send_text_to_remote
                 import traceback
-                
+
                 info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
-                
+
                 # ✅ APPEL SIMPLIFIÉ - Plus besoin de SafeTCPConnection.method()
                 success, result_msg = send_text_to_remote(
-                    REMOTE_NODE_HOST, 
+                    REMOTE_NODE_HOST,
                     message,
                     wait_time=10  # Attendre 10s
                 )
-                
+
                 info_print(f"📊 Résultat: success={success}, msg={result_msg}")
-                
+
                 if success:
                     return f"✅ Echo diffusé: {message}"
                 else:
                     return f"❌ Échec: {result_msg}"
-                    
+
             except Exception as e:
                 error_print(f"❌ Exception send_echo: {e}")
                 import traceback
@@ -519,13 +613,13 @@ class TelegramIntegration:
         def execute_and_reply():
             try:
                 result = send_echo()
-                
+
                 # Envoyer le résultat via l'event loop de Telegram
                 asyncio.run_coroutine_threadsafe(
                     status_msg.edit_text(result),
                 self.loop
             ).result(timeout=5)
-            
+
             except Exception as e:
                 error_print(f"❌ Erreur execute_and_reply: {e}")
                 try:
@@ -535,123 +629,124 @@ class TelegramIntegration:
                     ).result(timeout=5)
                 except:
                     pass
-        
+
             # Lancer dans un thread
             import threading
             thread = threading.Thread(target=execute_and_reply, daemon=True)
             thread.start()
             info_print(f"✅ Thread echo lancé: {thread.name}")
 
-    async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /annonce <message> - Diffuser sur le mesh depuis le bot local"""
-        info_print("OXOXOXOXOXOXOXOX/annonce appelée - DEBUT")
-        user = update.effective_user
-        info_print(f"User: {user.username} (ID: {user.id})") 
-        if not self._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
+    async def _annonce_command(self,update: Update,context: ContextTypes.DEFAULT_TYPE):
+		"""Commande /annonce <message> - Diffuser sur le mesh depuis le bot local"""
+		user = update.effective_user
+		
+		info_print(f"📱 Telegram /annonce appelée par {user.username}")
+		
+		if not self._check_authorization(user.id):
+			await update.message.reply_text("❌ Non autorisé")
+			return
 
-        if not context.args:
-            await update.message.reply_text("Usage: /annonce <message>")
-            return
+		if not context.args:
+			await update.message.reply_text("Usage: /annonce <message>")
+			return
 
-        annonce_text = ' '.join(context.args)
-        info_print(f"📱 Telegram /annonce: {user.username} -> '{annonce_text}'")
+		annonce_text = ' '.join(context.args)
+		info_print(f"📱 Telegram /annonce: {user.username} -> '{annonce_text}'")
 
-        # Message de confirmation immédiat
-        status_msg = await update.message.reply_text("📤 Envoi en cours...")
+		# Message de confirmation immédiat
+		status_msg = await update.message.reply_text("📤 Envoi en cours...")
 
-        def send_annonce():
-            try:
-                # Utiliser le mapping Telegram → Meshtastic
-                mesh_identity = self._get_mesh_identity(user.id)
+		def send_annonce():
+			try:
+				# Utiliser le mapping Telegram → Meshtastic
+				mesh_identity = self._get_mesh_identity(user.id)
 
-                if mesh_identity:
-                    prefix = mesh_identity['short_name']
-                    info_print(f"🔄 Annonce avec identité mappée: {prefix}")
-                else:
-                    username = user.username or user.first_name
-                    prefix = username[:4]
-                    info_print(f"⚠️ Annonce sans mapping: {prefix}")
+				if mesh_identity:
+					prefix = mesh_identity['short_name']
+					info_print(f"🔄 Annonce avec identité mappée: {prefix}")
+				else:
+					username = user.username or user.first_name
+					prefix = username[:4]
+					info_print(f"⚠️ Annonce sans mapping: {prefix}")
 
-                message = f"{prefix}: {annonce_text}"
-                
-                info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
-                
-                interface = self.message_handler.interface
+				message = f"{prefix}: {annonce_text}"
+				
+				info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
+				
+				interface = self.message_handler.interface
 
-                if not interface:
-                    error_print("❌ Interface locale non disponible")
-                    return False, "❌ Interface non disponible"
+				if not interface:
+					error_print("❌ Interface locale non disponible")
+					return False, "❌ Interface non disponible"
 
-                # Si c'est un SafeSerialConnection, récupérer l'interface réelle
-                if hasattr(interface, 'get_interface'):
-                    actual_interface = interface.get_interface()
-                    if not actual_interface:
-                        error_print("❌ Interface non connectée")
-                        return False, "❌ Bot en cours de reconnexion"
-                    interface = actual_interface
+				# Si c'est un SafeSerialConnection, récupérer l'interface réelle
+				if hasattr(interface, 'get_interface'):
+					actual_interface = interface.get_interface()
+					if not actual_interface:
+						error_print("❌ Interface non connectée")
+						return False, "❌ Bot en cours de reconnexion"
+					interface = actual_interface
 
-                info_print(f"✅ Interface trouvée: {type(interface).__name__}")
+				info_print(f"✅ Interface trouvée: {type(interface).__name__}")
 
-                # Envoyer directement en broadcast depuis le bot local
-                interface.sendText(message, destinationId='^all')
-                                
-                info_print(f"✅ Annonce diffusée depuis bot local")
-                return True, "✅ Annonce envoyée depuis le bot local"
-                
-            except Exception as e:
-                error_print(f"Erreur /annonce Telegram: {e}")
-                import traceback
-                error_print(traceback.format_exc())
-                return False, f"❌ Erreur: {str(e)[:50]}"
+				# Envoyer directement en broadcast depuis le bot local
+				interface.sendText(message, destinationId='^all')
+								
+				info_print(f"✅ Annonce diffusée depuis bot local")
+				return True, "✅ Annonce envoyée depuis le bot local"
+				
+			except Exception as e:
+				error_print(f"Erreur /annonce Telegram: {e}")
+				import traceback
+				error_print(traceback.format_exc())
+				return False, f"❌ Erreur: {str(e)[:50]}"
 
-        # Exécuter l'envoi
-        success, result_msg = await asyncio.to_thread(send_annonce)
-        
-        # Mettre à jour le message de status
-        await status_msg.edit_text(result_msg)
+	    	# Exécuter l'envoi
+    		success, result_msg = await asyncio.to_thread(send_annonce)
+		   
+			# Mettre à jour le message de status
+			await status_msg.edit_text(result_msg)
 
 
-    async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /cpu - Monitoring CPU en temps réel"""
-        user = update.effective_user
-        if not self._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
+		async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+			"""Commande /cpu - Monitoring CPU en temps réel"""
+			user = update.effective_user
+			if not self._check_authorization(user.id):
+				await update.message.reply_text("❌ Non autorisé")
+				return
 
-        info_print(f"📱 Telegram /cpu: {user.username}")
+			info_print(f"📱 Telegram /cpu: {user.username}")
 
-        # Message initial
-        await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")
+			# Message initial
+			await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")
 
-        def get_cpu_monitoring():
-            try:
-                import psutil
-                import os
-                process = psutil.Process(os.getpid())
+			def get_cpu_monitoring():
+				try:
+					import psutil
+					import os
+					process = psutil.Process(os.getpid())
 
-                measurements = []
-                for i in range(10):
-                    cpu = process.cpu_percent(interval=0)
-                    threads = len(process.threads())
-                    mem = process.memory_info().rss / 1024 / 1024
-                    measurements.append(f"[{i+1}/10] CPU: {cpu:.1f}% | Threads: {threads} | RAM: {mem:.0f}MB")
+					measurements = []
+					for i in range(10):
+						cpu = process.cpu_percent(interval=0)
+						threads = len(process.threads())
+						mem = process.memory_info().rss / 1024 / 1024
+						measurements.append(f"[{i+1}/10] CPU: {cpu:.1f}% | Threads: {threads} | RAM: {mem:.0f}MB")
 
-                # Moyenne finale
-                cpu_avg = process.cpu_percent(interval=0)
+					# Moyenne finale
+					cpu_avg = process.cpu_percent(interval=0)
 
-                report = "📊 Monitoring CPU (10s):\n\n"
-                report += "\n".join(measurements)
-                report += f"\n\n✅ Moyenne: {cpu_avg:.1f}%"
+					report = "📊 Monitoring CPU (10s):\n\n"
+					report += "\n".join(measurements)
+					report += f"\n\n✅ Moyenne: {cpu_avg:.1f}%"
 
-                return report
+					return report
 
-            except ImportError:
-                return "❌ Module psutil non installé\nInstaller: pip3 install psutil"
-            except Exception as e:
-                error_print(f"Erreur monitoring CPU: {e or 'Unknown error'}")
-                return f"❌ Erreur: {str(e)[:100]}"
+				except ImportError:
+					return "❌ Module psutil non installé\nInstaller: pip3 install psutil"
+				except Exception as e:
+					error_print(f"Erreur monitoring CPU: {e or 'Unknown error'}")
+					return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_cpu_monitoring)
         await update.message.reply_text(response)
