@@ -181,7 +181,8 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/stats` - Statistiques d'utilisation du canal mesh sur 24h
 - `/packets` - Statistiques des paquets reçus sur le mesh
 - `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
-- `/echo <message>` - Diffuser un message via tigrog2
+- `/echo <message>` - Diffuser un message via le node ROUTER
+- `/annonce <message>` - Diffuser un message via le bot
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
 

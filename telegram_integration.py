@@ -129,6 +129,7 @@ class TelegramIntegration:
             self.application.add_handler(CommandHandler("bot", self._bot_command)) 
             self.application.add_handler(CommandHandler("legend", self._legend_command))
             self.application.add_handler(CommandHandler("echo", self._echo_command))
+            self.application.add_handler(CommandHandler("annonce", self._annonce_command))  # ← NOUVEAU
             self.application.add_handler(CommandHandler("nodes", self._nodes_command))
             self.application.add_handler(CommandHandler("trafic", self._trafic_command))
             self.application.add_handler(CommandHandler("trace", self._trace_command))
@@ -532,6 +533,66 @@ class TelegramIntegration:
             thread = threading.Thread(target=execute_and_reply, daemon=True)
             thread.start()
             info_print(f"✅ Thread echo lancé: {thread.name}")
+
+    async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /annonce <message> - Diffuser sur le mesh depuis le bot local"""
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Usage: /annonce <message>")
+            return
+
+        annonce_text = ' '.join(context.args)
+        info_print(f"📱 Telegram /annonce: {user.username} -> '{annonce_text}'")
+
+        # Message de confirmation immédiat
+        status_msg = await update.message.reply_text("📤 Envoi en cours...")
+
+        def send_annonce():
+            try:
+                # Utiliser le mapping Telegram → Meshtastic
+                mesh_identity = self._get_mesh_identity(user.id)
+
+                if mesh_identity:
+                    prefix = mesh_identity['short_name']
+                    info_print(f"🔄 Annonce avec identité mappée: {prefix}")
+                else:
+                    username = user.username or user.first_name
+                    prefix = username[:4]
+                    info_print(f"⚠️ Annonce sans mapping: {prefix}")
+
+                message = f"{prefix}: {annonce_text}"
+                
+                info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
+                
+                # Récupérer l'interface locale du bot
+                interface = self.message_handler.sender._get_interface()
+                
+                if not interface:
+                    error_print("❌ Interface locale non disponible")
+                    return False, "❌ Interface non disponible"
+                
+                # Envoyer directement en broadcast depuis le bot local
+                interface.sendText(message, destinationId='^all')
+                
+                info_print(f"✅ Annonce diffusée depuis bot local")
+                return True, "✅ Annonce envoyée depuis le bot local"
+                
+            except Exception as e:
+                error_print(f"Erreur /annonce Telegram: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return False, f"❌ Erreur: {str(e)[:50]}"
+
+        # Exécuter l'envoi
+        success, result_msg = await asyncio.to_thread(send_annonce)
+        
+        # Mettre à jour le message de status
+        await status_msg.edit_text(result_msg)
+
 
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""

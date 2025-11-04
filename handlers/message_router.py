@@ -56,7 +56,7 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)  
 
-        # Gérer /echo et /my sur messages publics
+        # Gérer echo et /my sur messages publics
         if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
             if message.startswith('/echo '):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
@@ -130,6 +130,8 @@ class MessageRouter:
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
             self.utility_handler.handle_trafic(message, sender_id, sender_info)
+        elif message.startswith('/annonce '):  # ← NOUVELLE COMMANDE
+            self.utility_handler.handle_annonce(message, sender_id, sender_info, packet)
         elif message.startswith('/top'):
             self.utility_handler.handle_top(message, sender_id, sender_info)
         elif message.startswith('/histo'):  
