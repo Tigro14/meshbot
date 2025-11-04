@@ -342,7 +342,7 @@ class MeshBot:
                 self.debug_interface = DebugInterface(self)
                 threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
             else:
-                info_print("🚀 Bot en service - '/bot', '/power', '/rx', '/my', '/sys' et '/legend'")
+                info_print("🚀 Bot en service- type /help")
             
             # ========================================
             # BOUCLE PRINCIPALE
