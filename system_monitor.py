@@ -226,7 +226,7 @@ class SystemMonitor:
             
             try:
                 debug_print(f"Vérification tigrog2 ({REMOTE_NODE_HOST})...")
-                remote_interface = meshtastic.tcp_interface.TCPInterface(
+                remote_interface = OptimizedTCPInterface(
                     hostname=REMOTE_NODE_HOST,
                     portNumber=4403
                 )

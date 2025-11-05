@@ -26,6 +26,7 @@ Exemples d'utilisation:
 
 import time
 import meshtastic.tcp_interface
+from tcp_interface_patch import OptimizedTCPInterface  # ✅ PATCH CPU
 from utils import debug_print, error_print, info_print
 
 
@@ -73,7 +74,7 @@ class SafeTCPConnection:
             self._start_time = time.time()
             debug_print(f"🔌 Connexion TCP à {self.hostname}:{self.port}")
             
-            self.interface = meshtastic.tcp_interface.TCPInterface(
+            self.interface = OptimizedTCPInterface(
                 hostname=self.hostname,
                 portNumber=self.port
             )
