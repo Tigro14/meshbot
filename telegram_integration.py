@@ -159,7 +159,7 @@ class TelegramIntegration:
             info_print("Registration handler /annonce...")
             self.application.add_handler(
     CommandHandler(
-        "testannonce",
+        "annonce",
          self._annonce_command))
             info_print("Handler /annonce enregistre avec succes")
 
