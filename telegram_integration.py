@@ -162,6 +162,9 @@ class TelegramIntegration:
         "annonce",
          self._annonce_command))
             info_print("Handler /annonce enregistre avec succes")
+            info_print(f"🔍 Vérification méthode: {self._annonce_command}")
+            info_print(f"🔍 Type: {type(self._annonce_command)}")
+            info_print(f"🔍 Callable: {callable(self._annonce_command)}")
 
             self.application.add_handler(
                 CommandHandler("nodes", self._nodes_command))
@@ -203,11 +206,26 @@ class TelegramIntegration:
             info_print(
                 f"📊 Total handlers enregistrés: {len(self.application.handlers[0])}")
 
+
+            try:
+                for idx, handler in enumerate(self.application.handlers[0]):
+                    handler_type = type(handler).__name__
+                    info_print(f"  #{idx}: {handler_type}")
+                    if hasattr(handler, 'commands'):  # Notez le 'S' - peut être 'commands' au pluriel
+                        info_print(f"       Commands: {handler.commands}")
+                    if hasattr(handler, 'command'):
+                        info_print(f"       Command: {handler.command}")
+            except Exception as e:
+                error_print(f"❌ Erreur liste handlers: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+
+
             # Liste tous les handlers pour debug
-            for idx, handler in enumerate(self.application.handlers[0]):
+            """for idx, handler in enumerate(self.application.handlers[0]):
                 if hasattr(handler, 'command'):
                     info_print(
-                        f"  Handler #{idx}: /{handler.command[0] if handler.command else 'unknown'}")
+                        f"  Handler #{idx}: /{handler.command[0] if handler.command else 'unknown'}")"""
 
             # Gestionnaire d'erreurs
             self.application.add_error_handler(self._error_handler)
@@ -634,6 +652,10 @@ class TelegramIntegration:
 
     async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /annonce <message> - Diffuser sur le mesh local série"""
+        info_print("🔴🔴🔴 _ANNONCE_COMMAND EXÉCUTÉE 🔴🔴🔴")
+        info_print(f"Update: {update}")
+        info_print(f"Context: {context}")
+
         user = update.effective_user
         
         info_print(f"📱 Telegram /annonce appelée par {user.username}")
@@ -1077,12 +1099,25 @@ class TelegramIntegration:
             await update.message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        """Gestionnaire d'erreurs"""
-        error_print(f"❌ Erreur Telegram: {context.error}")
-        error_print(traceback.format_exc())
+        """Gestionnaire d'erreurs VERBEUX"""
+        error_print("=" * 60)
+        error_print("❌ ERREUR TELEGRAM DÉTECTÉE")
+        error_print("=" * 60)
+        error_print(f"Error: {context.error}")
+        error_print(f"Update: {update}")
         if update and hasattr(update, 'message') and update.message:
-            await update.message.reply_text("❌ Erreur interne")
-    
+            error_print(f"Message text: {update.message.text}")
+            error_print(f"From user: {update.message.from_user}")
+        error_print(traceback.format_exc())
+        error_print("=" * 60)
+
+        # Essayer de répondre à l'utilisateur
+        if update and hasattr(update, 'message') and update.message:
+            try:
+                await update.message.reply_text("❌ Erreur interne détectée - voir logs")
+            except:
+                pass
+
     async def _clearcontext_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /clearcontext - Nettoyer le contexte"""
         user = update.effective_user
