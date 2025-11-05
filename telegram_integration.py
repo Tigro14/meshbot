@@ -580,8 +580,10 @@ class TelegramIntegration:
 
         # Message de confirmation immédiat
         status_msg = await update.message.reply_text("📤 Envoi en cours...")
+        info_print(f"✅ Message status créé")
 
         def send_echo():
+            info_print("✅ 3. ENTRÉE dans send_echo()")
             try:
                 # Utiliser le mapping Telegram → Meshtastic
                 mesh_identity = self._get_mesh_identity(user.id)
@@ -623,8 +625,11 @@ class TelegramIntegration:
                 error_print(traceback.format_exc())
                 return f"❌ Erreur echo: {str(e)[:50]}"
 
+            info_print(f"✅ 4. send_echo définie")
+
         # Exécuter la fonction dans un thread
         def execute_and_reply():
+            info_print("✅ 5. ENTRÉE dans execute_and_reply()")
             try:
                 result = send_echo()
 
@@ -644,36 +649,42 @@ class TelegramIntegration:
                 except:
                     pass
 
-            # Lancer dans un thread
-            import threading
-            thread = threading.Thread(target=execute_and_reply, daemon=True)
-            thread.start()
-            info_print(f"✅ Thread echo lancé: {thread.name}")
+        # Lancer dans un thread
+        import threading
+        thread = threading.Thread(target=execute_and_reply, daemon=True)
+        thread.start()
+        info_print(f"✅ Thread echo lancé: {thread.name}")
 
     async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /annonce <message> - Diffuser sur le mesh local série"""
-        info_print("🔴🔴🔴 _ANNONCE_COMMAND EXÉCUTÉE 🔴🔴🔴")
-        info_print(f"Update: {update}")
-        info_print(f"Context: {context}")
-
+        info_print("🔴 DÉBUT _annonce_command")
         user = update.effective_user
-        
+
         info_print(f"📱 Telegram /annonce appelée par {user.username}")
-        
+
         if not self._check_authorization(user.id):
+            info_print("❌ Non autorisé")
             await update.message.reply_text("❌ Non autorisé")
             return
 
+        info_print(f"✅ Autorisé - context.args: {context.args}")
+
         if not context.args:
+            info_print("⚠️ Pas d'arguments")
             await update.message.reply_text("Usage: /annonce <message>")
             return
 
+        info_print("✅ Arguments présents, suite du traitement...")
         annonce_text = ' '.join(context.args)
-        info_print(f"📱 Telegram /annonce: {user.username} -> '{annonce_text}'")
+        info_print(f"✅ Texte: '{annonce_text}'")
 
-        # Message de confirmation immédiat
-        status_msg = await update.message.reply_text("📤 Envoi en cours...")
-        info_print(f"✅ Message status envoyé")
+        try:
+            info_print("📤 Tentative envoi message status...")
+            status_msg = await update.message.reply_text("📤 Envoi en cours...")
+            info_print("✅ Message status envoyé")
+        except Exception as e:
+            error_print(f"❌ Erreur envoi status: {e}")
+            raise
+
 
         def send_annonce():
             try:
