@@ -79,7 +79,11 @@ class MessageRouter:
     
     def _route_command(self, message, sender_id, sender_info, packet):
         """Router une commande vers le bon gestionnaire"""
-
+        # ========== AJOUT DEBUG ==========
+        info_print(f"🎯 _route_command appelé avec: '{message}'")
+        info_print(f"   startswith('/annonce ')? {message.startswith('/annonce ')}")
+        info_print(f"   startswith('/annonce')? {message.startswith('/annonce')}")
+        # ========== FIN DEBUG ==========
         from_id = packet.get('from', 0)
         text_parts = message.split()
         if not text_parts:
@@ -130,7 +134,7 @@ class MessageRouter:
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
             self.utility_handler.handle_trafic(message, sender_id, sender_info)
-        elif message.startswith('/annonce '):  # ← NOUVELLE COMMANDE
+        elif message.startswith('/annonce'):
             self.utility_handler.handle_annonce(message, sender_id, sender_info, packet)
         elif message.startswith('/top'):
             self.utility_handler.handle_top(message, sender_id, sender_info)

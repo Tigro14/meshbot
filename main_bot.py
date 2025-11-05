@@ -59,7 +59,42 @@ class MeshBot:
         2. Filtrage selon la source
         3. Traitement des commandes (serial uniquement)
         """
+        # ========== TEST ==========
+        if packet and 'decoded' in packet:
+            decoded = packet.get('decoded', {})
+            if decoded.get('portnum') == 'TEXT_MESSAGE_APP':
+                payload = decoded.get('payload', b'')
+                try:
+                    msg = payload.decode('utf-8').strip()
+                    if '/annonce' in msg:
+                        info_print("🔴🔴🔴 /ANNONCE DÉTECTÉ 🔴🔴🔴")
+                        info_print(f"Message: '{msg}'")
+                        info_print(f"From: 0x{packet.get('from', 0):08x}")
+                        info_print(f"To: 0x{packet.get('to', 0):08x}")
+                except:
+                    pass
+        # ========== FIN TEST ==========
+
         try:
+            # ========== TEST DÉTAILLÉ ==========
+            # Validation basique
+            if not packet or 'from' not in packet:
+                return
+
+            from_id = packet.get('from', 0)
+            to_id = packet.get('to', 0)
+
+            decoded = packet.get('decoded', {})
+            if decoded.get('portnum') == 'TEXT_MESSAGE_APP':
+                payload = decoded.get('payload', b'')
+                try:
+                    msg = payload.decode('utf-8').strip()
+                    info_print(f"📨 MESSAGE BRUT: '{msg}' | from=0x{from_id:08x} | to=0x{to_id:08x} | broadcast={to_id in [0xFFFFFFFF, 0]}")
+                except:
+                    pass
+            # ========== FIN TEST ==========
+
+
             # ========================================
             # PHASE 1: COLLECTE (TOUS LES PAQUETS)
             # ========================================
