@@ -188,8 +188,8 @@ class TrafficMonitor:
 
             # NOUVEAU: Capturer les positions GPS
             if packet_entry['packet_type'] == 'POSITION_APP':
-                if original_packet and 'decoded' in original_packet:
-                    decoded = original_packet['decoded']
+                if packet and 'decoded' in packet:
+                    decoded = packet['decoded']
                     if 'position' in decoded:
                         position = decoded['position']
                         lat = position.get('latitude')
@@ -250,7 +250,7 @@ class TrafficMonitor:
         
         return message
     
-    def _update_packet_statistics(self, node_id, sender_name, packet_entry, original_packet):
+    def _update_packet_statistics(self, node_id, sender_name, packet_entry, packet):
         """Mettre à jour les statistiques détaillées par type de paquet"""
         stats = self.node_packet_stats[node_id]
         packet_type = packet_entry['packet_type']
@@ -284,8 +284,8 @@ class TrafficMonitor:
         elif packet_type == 'TELEMETRY_APP':
             tel_stats = stats['telemetry_stats']
             tel_stats['count'] += 1
-            if 'decoded' in original_packet:
-                decoded = original_packet['decoded']
+            if 'decoded' in packet:
+                decoded = packet['decoded']
                 if 'telemetry' in decoded:
                     telemetry = decoded['telemetry']
                     if 'deviceMetrics' in telemetry:
@@ -299,8 +299,8 @@ class TrafficMonitor:
         elif packet_type == 'POSITION_APP':
             pos_stats = stats['position_stats']
             pos_stats['count'] += 1
-            if 'decoded' in original_packet:
-                decoded = original_packet['decoded']
+            if 'decoded' in packet:
+                decoded = packet['decoded']
                 if 'position' in decoded:
                     position = decoded['position']
                     pos_stats['last_lat'] = position.get('latitude')

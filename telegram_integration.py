@@ -633,7 +633,7 @@ class TelegramIntegration:
             info_print(f"✅ Thread echo lancé: {thread.name}")
 
     async def _annonce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """ Commande /annonce <message> diffuser sur le mesh local serie"""
+        """Commande /annonce <message> - Diffuser sur le mesh local série"""
         user = update.effective_user
         
         info_print(f"📱 Telegram /annonce appelée par {user.username}")
@@ -652,51 +652,77 @@ class TelegramIntegration:
         # Message de confirmation immédiat
         status_msg = await update.message.reply_text("📤 Envoi en cours...")
 
-    def send_annonce():
-        try:
-            # Utiliser le mapping Telegram → Meshtastic
-            mesh_identity = self._get_mesh_identity(user.id)
+        def send_annonce():
+            try:
+                # Utiliser le mapping Telegram → Meshtastic
+                mesh_identity = self._get_mesh_identity(user.id)
 
-            if mesh_identity:
-                prefix = mesh_identity['short_name']
-                info_print(f"🔄 Annonce avec identité mappée: {prefix}")
-            else:
-                username = user.username or user.first_name
-                prefix = username[:4]
-                info_print(f"⚠️ Annonce sans mapping: {prefix}")
+                if mesh_identity:
+                    prefix = mesh_identity['short_name']
+                    info_print(f"🔄 Annonce avec identité mappée: {prefix}")
+                else:
+                    username = user.username or user.first_name
+                    prefix = username[:4]
+                    info_print(f"⚠️ Annonce sans mapping: {prefix}")
 
-            message = f"{prefix}: {annonce_text}"
-            
-            info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
-            
-            interface = self.message_handler.interface
+                message = f"{prefix}: {annonce_text}"
+                
+                info_print(f"📤 Envoi annonce depuis bot local: '{message}'")
+                
+                interface = self.message_handler.interface
 
-            if not interface:
-                error_print("❌ Interface locale non disponible")
-                return False, "❌ Interface non disponible"
+                if not interface:
+                    error_print("❌ Interface locale non disponible")
+                    return "❌ Interface non disponible"
 
-            # Si c'est un SafeSerialConnection, récupérer l'interface réelle
-            if hasattr(interface, 'get_interface'):
-                actual_interface = interface.get_interface()
-                if not actual_interface:
-                    error_print("❌ Interface non connectée")
-                    return False, "❌ Bot en cours de reconnexion"
-                interface = actual_interface
+                # Si c'est un SafeSerialConnection, récupérer l'interface réelle
+                if hasattr(interface, 'get_interface'):
+                    actual_interface = interface.get_interface()
+                    if not actual_interface:
+                        error_print("❌ Interface non connectée")
+                        return "❌ Bot en cours de reconnexion"
+                    interface = actual_interface
 
-            info_print(f"✅ Interface trouvée: {type(interface).__name__}")
+                info_print(f"✅ Interface trouvée: {type(interface).__name__}")
 
-            # Envoyer directement en broadcast depuis le bot local
-            interface.sendText(message, destinationId='^all')
-                            
-            info_print(f"✅ Annonce diffusée depuis bot local")
-            return True, "✅ Annonce envoyée depuis le bot local"
-            
-        except Exception as e:
-            error_print(f"Erreur /annonce Telegram: {e}")
-            import traceback
-            error_print(traceback.format_exc())
-            return False, f"❌ Erreur: {str(e)[:50]}"
+                # Envoyer directement en broadcast depuis le bot local
+                interface.sendText(message, destinationId='^all')
+                                
+                info_print(f"✅ Annonce diffusée depuis bot local")
+                return "✅ Annonce envoyée depuis le bot local"
+                
+            except Exception as e:
+                error_print(f"Erreur /annonce Telegram: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:50]}"
 
+        # Exécuter la fonction dans un thread
+        def execute_and_reply():
+            try:
+                result = send_annonce()
+
+                # Envoyer le résultat via l'event loop de Telegram
+                asyncio.run_coroutine_threadsafe(
+                    status_msg.edit_text(result),
+                    self.loop
+                ).result(timeout=5)
+
+            except Exception as e:
+                error_print(f"❌ Erreur execute_and_reply: {e}")
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        status_msg.edit_text(f"❌ Erreur: {str(e)[:50]}"),
+                        self.loop
+                    ).result(timeout=5)
+                except:
+                    pass
+
+        # Lancer dans un thread
+        import threading
+        thread = threading.Thread(target=execute_and_reply, daemon=True)
+        thread.start()
+        info_print(f"✅ Thread annonce lancé: {thread.name}")
 
     async def _cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""
