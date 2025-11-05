@@ -673,6 +673,7 @@ class TelegramIntegration:
 
         # Message de confirmation immédiat
         status_msg = await update.message.reply_text("📤 Envoi en cours...")
+        info_print(f"✅ Message status envoyé")
 
         def send_annonce():
             try:
