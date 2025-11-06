@@ -1228,3 +1228,256 @@ class TrafficMonitor:
             quietest = min(all_hourly.items(), key=lambda x: x[1])
             self.global_stats['busiest_hour'] = f"{busiest[0]}h ({busiest[1]} msgs)"
             self.global_stats['quietest_hour'] = f"{quietest[0]}h ({quietest[1]} msgs)"    
+
+
+    # Ajouter à traffic_monitor.py
+
+    def analyze_network_health(self, hours=24):
+        """
+        Analyser la santé du réseau et détecter les problèmes de configuration
+        
+        Retourne un rapport détaillé avec :
+        - Top talkers (nœuds bavards)
+        - Nœuds avec intervalles de télémétrie trop courts
+        - Utilisation excessive du canal
+        - Nœuds relayant beaucoup (routeurs efficaces)
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            lines = []
+            lines.append(f"🔍 ANALYSE SANTÉ RÉSEAU ({hours}h)")
+            lines.append("=" * 50)
+            
+            # === 1. TOP TALKERS (nœuds bavards) ===
+            node_packet_counts = defaultdict(int)
+            node_telemetry_intervals = defaultdict(list)
+            node_types = defaultdict(lambda: defaultdict(int))
+            node_channel_util = defaultdict(list)
+            
+            for packet in self.all_packets:
+                if packet['timestamp'] >= cutoff_time:
+                    from_id = packet['from_id']
+                    node_packet_counts[from_id] += 1
+                    node_types[from_id][packet['packet_type']] += 1
+                    
+                    # Tracker les intervalles de télémétrie
+                    if packet['packet_type'] == 'TELEMETRY_APP':
+                        node_telemetry_intervals[from_id].append(packet['timestamp'])
+            
+            # Trier par nombre de paquets
+            top_talkers = sorted(node_packet_counts.items(), key=lambda x: x[1], reverse=True)
+            
+            lines.append(f"\n📊 TOP TALKERS (nœuds les plus actifs):")
+            lines.append("-" * 50)
+            
+            for i, (node_id, count) in enumerate(top_talkers[:10], 1):
+                name = self.node_manager.get_node_name(node_id)
+                pct = (count / len([p for p in self.all_packets if p['timestamp'] >= cutoff_time]) * 100)
+                
+                # Analyser les types de paquets
+                types = node_types[node_id]
+                telemetry_count = types.get('TELEMETRY_APP', 0)
+                position_count = types.get('POSITION_APP', 0)
+                
+                icon = "🔴" if count > 100 else "🟡" if count > 50 else "🟢"
+                
+                lines.append(f"{i}. {icon} {name[:20]}")
+                lines.append(f"   Total: {count} paquets ({pct:.1f}% du trafic)")
+                lines.append(f"   Télémétrie: {telemetry_count} | Position: {position_count}")
+                
+                # Détecter intervalle de télémétrie trop court
+                if telemetry_count >= 2:
+                    intervals = node_telemetry_intervals[node_id]
+                    if len(intervals) >= 2:
+                        avg_interval = sum(intervals[i] - intervals[i-1] for i in range(1, len(intervals))) / (len(intervals) - 1)
+                        if avg_interval < 300:  # Moins de 5 minutes
+                            lines.append(f"   ⚠️  INTERVALLE TÉLÉMÉTRIE COURT: {avg_interval:.0f}s (recommandé: 900s+)")
+            
+            # === 2. ANALYSE UTILISATION DU CANAL ===
+            lines.append(f"\n📡 UTILISATION DU CANAL:")
+            lines.append("-" * 50)
+            
+            # Calculer l'utilisation moyenne par nœud depuis les paquets de télémétrie
+            node_channel_stats = {}
+            for packet in self.all_packets:
+                if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
+                    from_id = packet['from_id']
+                    # Extraire channelUtilization depuis le paquet
+                    if from_id in self.node_packet_stats:
+                        stats = self.node_packet_stats[from_id]
+                        if 'telemetry_stats' in stats and stats['telemetry_stats']['last_channel_util']:
+                            ch_util = stats['telemetry_stats']['last_channel_util']
+                            if from_id not in node_channel_stats:
+                                node_channel_stats[from_id] = []
+                            node_channel_stats[from_id].append(ch_util)
+            
+            # Moyennes par nœud
+            for node_id, utils in node_channel_stats.items():
+                if utils:
+                    avg_util = sum(utils) / len(utils)
+                    if avg_util > 15:  # Seuil d'alerte à 15%
+                        name = self.node_manager.get_node_name(node_id)
+                        icon = "🔴" if avg_util > 25 else "🟡"
+                        lines.append(f"{icon} {name[:20]}: {avg_util:.1f}% (moy)")
+                        if avg_util > 20:
+                            lines.append(f"   ⚠️  UTILISATION ÉLEVÉE - Risque de congestion")
+            
+            # === 3. ANALYSE DES RELAIS (routeurs efficaces) ===
+            lines.append(f"\n🔀 ANALYSE DES RELAIS:")
+            lines.append("-" * 50)
+            
+            relay_counts = defaultdict(int)
+            for packet in self.all_packets:
+                if packet['timestamp'] >= cutoff_time and packet['hops'] > 0:
+                    # Les paquets relayés passent par des nœuds intermédiaires
+                    # On ne peut pas identifier précisément le relais, mais on peut compter
+                    relay_counts['relayed_packets'] += 1
+            
+            direct_count = sum(1 for p in self.all_packets if p['timestamp'] >= cutoff_time and p['hops'] == 0)
+            relayed_count = relay_counts['relayed_packets']
+            
+            if direct_count + relayed_count > 0:
+                relay_pct = (relayed_count / (direct_count + relayed_count) * 100)
+                lines.append(f"Paquets directs: {direct_count} ({100-relay_pct:.1f}%)")
+                lines.append(f"Paquets relayés: {relayed_count} ({relay_pct:.1f}%)")
+                
+                if relay_pct > 70:
+                    lines.append(f"⚠️  Beaucoup de relayage - Réseau très maillé ou faible portée")
+            
+            # === 4. DÉTECTION D'ANOMALIES ===
+            lines.append(f"\n⚠️  ANOMALIES DÉTECTÉES:")
+            lines.append("-" * 50)
+            
+            anomalies_found = False
+            
+            # Détecter nœuds avec trop de paquets
+            for node_id, count in top_talkers[:5]:
+                if count > 100:  # Plus de 100 paquets en 24h
+                    name = self.node_manager.get_node_name(node_id)
+                    per_hour = count / hours
+                    lines.append(f"🔴 {name}: {per_hour:.1f} paquets/h")
+                    
+                    # Recommandation spécifique
+                    telemetry_count = node_types[node_id].get('TELEMETRY_APP', 0)
+                    position_count = node_types[node_id].get('POSITION_APP', 0)
+                    
+                    if telemetry_count > 50:
+                        lines.append(f"   → Augmenter device_update_interval (actuellement < {hours*3600/telemetry_count:.0f}s)")
+                    if position_count > 50:
+                        lines.append(f"   → Augmenter position.broadcast_secs")
+                    
+                    anomalies_found = True
+            
+            if not anomalies_found:
+                lines.append("✅ Aucune anomalie majeure détectée")
+            
+            # === 5. STATISTIQUES GLOBALES ===
+            lines.append(f"\n📈 STATISTIQUES GLOBALES:")
+            lines.append("-" * 50)
+            
+            total_packets = len([p for p in self.all_packets if p['timestamp'] >= cutoff_time])
+            unique_nodes = len(set(p['from_id'] for p in self.all_packets if p['timestamp'] >= cutoff_time))
+            
+            lines.append(f"Paquets totaux: {total_packets}")
+            lines.append(f"Nœuds actifs: {unique_nodes}")
+            lines.append(f"Moy. par nœud: {total_packets/unique_nodes:.1f}" if unique_nodes > 0 else "N/A")
+            lines.append(f"Paquets/heure: {total_packets/hours:.1f}")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur analyse réseau: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur analyse: {str(e)[:100]}"
+
+    def get_node_behavior_report(self, node_id, hours=24):
+        """
+        Rapport détaillé du comportement d'un nœud spécifique
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            name = self.node_manager.get_node_name(node_id)
+            
+            lines = []
+            lines.append(f"🔍 RAPPORT NŒUD: {name}")
+            lines.append(f"ID: !{node_id:08x}")
+            lines.append("=" * 50)
+            
+            # Collecter les paquets de ce nœud
+            node_packets = [p for p in self.all_packets if p['from_id'] == node_id and p['timestamp'] >= cutoff_time]
+            
+            if not node_packets:
+                return f"Aucun paquet de {name} dans les {hours}h"
+            
+            # Statistiques de base
+            lines.append(f"\n📊 ACTIVITÉ ({hours}h):")
+            lines.append(f"Total paquets: {len(node_packets)}")
+            lines.append(f"Paquets/heure: {len(node_packets)/hours:.1f}")
+            
+            # Par type
+            type_counts = defaultdict(int)
+            for p in node_packets:
+                type_counts[p['packet_type']] += 1
+            
+            lines.append(f"\n📦 RÉPARTITION PAR TYPE:")
+            for ptype, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+                type_name = self.packet_type_names.get(ptype, ptype)
+                lines.append(f"  {type_name}: {count}")
+            
+            # Analyse télémétrie
+            telemetry_packets = [p for p in node_packets if p['packet_type'] == 'TELEMETRY_APP']
+            if len(telemetry_packets) >= 2:
+                timestamps = [p['timestamp'] for p in telemetry_packets]
+                intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+                avg_interval = sum(intervals) / len(intervals)
+                
+                lines.append(f"\n⏱️  TÉLÉMÉTRIE:")
+                lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
+                lines.append(f"Intervalle min: {min(intervals):.0f}s")
+                lines.append(f"Intervalle max: {max(intervals):.0f}s")
+                
+                if avg_interval < 300:
+                    lines.append(f"⚠️  TROP FRÉQUENT (recommandé: 900s+)")
+                    lines.append(f"💡 Commande: meshtastic --set telemetry.device_update_interval 900")
+            
+            # Analyse position
+            position_packets = [p for p in node_packets if p['packet_type'] == 'POSITION_APP']
+            if len(position_packets) >= 2:
+                timestamps = [p['timestamp'] for p in position_packets]
+                intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+                avg_interval = sum(intervals) / len(intervals)
+                
+                lines.append(f"\n📍 POSITION:")
+                lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
+                
+                if avg_interval < 300:
+                    lines.append(f"⚠️  TROP FRÉQUENT (recommandé: 900s+ sauf si mobile)")
+                    lines.append(f"💡 Commande: meshtastic --set position.broadcast_secs 900")
+            
+            # Qualité signal (depuis stats existantes)
+            if node_id in self.node_packet_stats:
+                stats = self.node_packet_stats[node_id]
+                if stats['telemetry_stats']['count'] > 0:
+                    tel = stats['telemetry_stats']
+                    lines.append(f"\n🔋 DERNIÈRE TÉLÉMÉTRIE:")
+                    if tel['last_battery']:
+                        lines.append(f"Batterie: {tel['last_battery']}%")
+                    if tel['last_voltage']:
+                        lines.append(f"Voltage: {tel['last_voltage']:.2f}V")
+                    if tel['last_channel_util']:
+                        lines.append(f"Canal: {tel['last_channel_util']:.1f}%")
+                        if tel['last_channel_util'] > 20:
+                            lines.append(f"⚠️  Utilisation canal élevée")
+                    if tel['last_air_util']:
+                        lines.append(f"Air util: {tel['last_air_util']:.3f}%")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur rapport nœud: {e}")
+            return f"❌ Erreur: {str(e)[:100]}"            

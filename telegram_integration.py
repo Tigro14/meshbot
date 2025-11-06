@@ -193,6 +193,9 @@ class TelegramIntegration:
     CommandHandler(
         "clearcontext",
          self._clearcontext_command))
+
+           self.application.add_handler(CommandHandler("health", self._health_command))
+           self.application.add_handler(CommandHandler("nodeinfo", self._nodeinfo_command))
             self.application.add_handler(
                 CommandHandler("top", self._top_command))
             self.application.add_handler(
@@ -314,6 +317,8 @@ class TelegramIntegration:
             f"• /echo <msg>\n"
             f"• /annonce <msg>\n"
             f"• /nodes\n"
+            f"• /health\n"
+            f"• /nodeinfo\n"
             f"• /fullnodes [jours]\n"
             f"• /trafic [heures]\n"
             f"• /histo [type] [h]\n"
@@ -2369,3 +2374,102 @@ class TelegramIntegration:
         if update.message and update.message.text:
             info_print(f"🔴 RAW MESSAGE: '{update.message.text}' from {update.message.from_user.id}")
 
+    async def _health_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /health [heures]
+        Analyse de santé du réseau mesh
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))
+            except ValueError:
+                hours = 24
+
+        info_print(f"📱 Telegram /health {hours}h: {user.username}")
+
+        def get_health_report():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+
+                return self.message_handler.traffic_monitor.analyze_network_health(hours)
+            except Exception as e:
+                error_print(f"Erreur health: {e}")
+                return f"❌ Erreur: {str(e)[:100]}"
+
+        response = await asyncio.to_thread(get_health_report)
+
+        # Diviser si trop long
+        if len(response) > 4000:
+            chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+                await asyncio.sleep(0.5)
+        else:
+            await update.message.reply_text(response)
+
+        async def _nodeinfo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """
+            Commande /nodeinfo <nom_partiel> [heures]
+            Rapport détaillé sur un nœud spécifique
+            """
+            user = update.effective_user
+            if not self._check_authorization(user.id):
+                await update.message.reply_text("❌ Non autorisé")
+                return
+
+            if not context.args:
+                await update.message.reply_text("Usage: /nodeinfo <nom> [heures]")
+                return
+
+            node_name_partial = context.args[0].lower()
+            hours = 24
+            if len(context.args) > 1:
+                try:
+                    hours = int(context.args[1])
+                    hours = max(1, min(168, hours))
+                except ValueError:
+                    hours = 24
+
+            info_print(f"📱 Telegram /nodeinfo {node_name_partial} {hours}h: {user.username}")
+
+            def get_node_report():
+                try:
+                    if not self.message_handler.traffic_monitor:
+                        return "❌ Traffic monitor non disponible"
+
+                    # Trouver le nœud
+                    tm = self.message_handler.traffic_monitor
+                    matching_nodes = []
+
+                    for node_id, name in self.node_manager.node_names.items():
+                        if isinstance(name, dict):
+                            name = name.get('name', '')
+                        if node_name_partial in name.lower():
+                            matching_nodes.append((node_id, name))
+
+                    if not matching_nodes:
+                        return f"❌ Aucun nœud trouvé contenant '{node_name_partial}'"
+
+                    if len(matching_nodes) > 1:
+                        result = f"Plusieurs nœuds trouvés:\n"
+                        for node_id, name in matching_nodes[:5]:
+                            result += f"- {name} (!{node_id:08x})\n"
+                        return result + "\nPrécisez le nom"
+
+                    node_id, name = matching_nodes[0]
+                    return tm.get_node_behavior_report(node_id, hours)
+
+                except Exception as e:
+                    error_print(f"Erreur nodeinfo: {e}")
+                    return f"❌ Erreur: {str(e)[:100]}"
+
+            response = await asyncio.to_thread(get_node_report)
+            await update.message.reply_text(response)
