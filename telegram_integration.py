@@ -194,8 +194,8 @@ class TelegramIntegration:
         "clearcontext",
          self._clearcontext_command))
 
-           self.application.add_handler(CommandHandler("health", self._health_command))
-           self.application.add_handler(CommandHandler("nodeinfo", self._nodeinfo_command))
+            self.application.add_handler(CommandHandler("health", self._health_command))
+            self.application.add_handler(CommandHandler("nodeinfo", self._nodeinfo_command))
             self.application.add_handler(
                 CommandHandler("top", self._top_command))
             self.application.add_handler(
