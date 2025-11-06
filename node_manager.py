@@ -785,7 +785,7 @@ class NodeManager:
             else:
                 self.packet_type_counts[portnum].append((current_time, 1))
 
-            debug_print(f"📊 Packet tracké: {portnum}")
+            #debug_print(f"📊 Packet tracké: {portnum}")
 
         except Exception as e:
             debug_print(f"Erreur track_packet_type: {e}")

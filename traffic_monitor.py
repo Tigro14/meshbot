@@ -201,7 +201,7 @@ class TrafficMonitor:
                         
                         if lat is not None and lon is not None:
                             self.node_manager.update_node_position(from_id, lat, lon, alt)
-                            debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+                            #debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
             
             # Si c'est un message texte public, l'ajouter aussi à la file des messages
             if packet_type == 'TEXT_MESSAGE_APP' and message_text and packet_entry['is_broadcast']:
