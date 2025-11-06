@@ -146,6 +146,10 @@ class TrafficMonitor:
             to_id = packet.get('to', 0)
             timestamp = time.time()
             
+            # Extraire RSSI/SNR au début pour qu'ils soient disponibles partout
+            rssi = packet.get('rssi', 0)
+            snr = packet.get('snr', 0.0)
+            
             # Identifier le type de paquet
             packet_type = 'UNKNOWN'
             message_text = None
@@ -162,7 +166,7 @@ class TrafficMonitor:
             sender_name = self.node_manager.get_node_name(from_id)
             
             # Calculer la taille approximative du paquet
-            packet_size = len(str(packet))  # Approximation simple
+            packet_size = len(str(packet))
             
             # Calculer les hops
             hop_limit = packet.get('hopLimit', 0)
@@ -177,8 +181,8 @@ class TrafficMonitor:
                 'sender_name': sender_name,
                 'packet_type': packet_type,
                 'message': message_text,
-                'rssi': packet.get('rssi', 0),
-                'snr': packet.get('snr', 0.0),
+                'rssi': rssi,
+                'snr': snr,
                 'hops': hops_taken,
                 'size': packet_size,
                 'is_broadcast': to_id in [0xFFFFFFFF, 0]
@@ -186,7 +190,7 @@ class TrafficMonitor:
             
             self.all_packets.append(packet_entry)
 
-            # NOUVEAU: Capturer les positions GPS
+            # Capturer les positions GPS
             if packet_entry['packet_type'] == 'POSITION_APP':
                 if packet and 'decoded' in packet:
                     decoded = packet['decoded']
@@ -197,11 +201,8 @@ class TrafficMonitor:
                         alt = position.get('altitude')
                         
                         if lat is not None and lon is not None:
-                            # Mettre à jour la position dans le node_manager
-                            from_id = packet_entry['from_id']
                             self.node_manager.update_node_position(from_id, lat, lon, alt)
                             debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
-            
             
             # Si c'est un message texte public, l'ajouter aussi à la file des messages
             if packet_type == 'TEXT_MESSAGE_APP' and message_text and packet_entry['is_broadcast']:
@@ -210,18 +211,23 @@ class TrafficMonitor:
                     'from_id': from_id,
                     'sender_name': sender_name,
                     'message': message_text,
-                    'rssi': packet.get('rssi', 0),
-                    'snr': packet.get('snr', 0.0),
+                    'rssi': rssi,
+                    'snr': snr,
                     'message_length': len(message_text)
                 })
             
+            # Mise à jour des statistiques
+            self._update_packet_statistics(from_id, sender_name, packet_entry, packet)
+            self._update_global_packet_statistics(packet_entry)
+            self._update_network_statistics(packet_entry)
+            
+            # === DEBUG LOG AMÉLIORÉ ===
             if packet_type == 'TELEMETRY_APP':
                 telemetry_info = []
                 
                 if 'decoded' in packet and 'telemetry' in packet['decoded']:
                     telemetry = packet['decoded']['telemetry']
                     
-                    # Métriques du device
                     if 'deviceMetrics' in telemetry:
                         metrics = telemetry['deviceMetrics']
                         battery = metrics.get('batteryLevel', 'N/A')
@@ -230,32 +236,68 @@ class TrafficMonitor:
                         air_util = metrics.get('airUtilTx', 'N/A')
                         
                         telemetry_info.append(f"🔋 {battery}%")
-                        telemetry_info.append(f"⚡ {voltage}V")
+                        if voltage != 'N/A':
+                            telemetry_info.append(f"⚡ {voltage:.2f}V")
                         telemetry_info.append(f"📡 Ch:{channel_util}% Air:{air_util}%")
-                    
-                    # Métriques environnementales (si présentes)
-                    if 'environmentMetrics' in telemetry:
-                        env = telemetry['environmentMetrics']
-                        temp = env.get('temperature', 'N/A')
-                        humidity = env.get('relativeHumidity', 'N/A')
-                        pressure = env.get('barometricPressure', 'N/A')
-                        
-                        telemetry_info.append(f"🌡️ {temp}°C")
-                        telemetry_info.append(f"💧 {humidity}%")
-                        telemetry_info.append(f"🌤️ {pressure}hPa")
-    
-            debug_print(f"📦 Paquet {packet_type} de {sender_name}: {' | '.join(telemetry_info)} (total: {len(self.all_packets)})")
-
-            # Mise à jour des statistiques
-            self._update_packet_statistics(from_id, sender_name, packet_entry, packet)
-            self._update_global_packet_statistics(packet_entry)
-            self._update_network_statistics(packet_entry)
-            
-            debug_print(f"📦 Paquet {packet_type} de {sender_name}: total {self.node_packet_stats[from_id]['total_packets']}")
+                
+                # Construction du message avec relais (utiliser SNR principalement)
+                relay_info = ""
+                if hops_taken > 0:
+                    # Tenter d'identifier le relais via SNR
+                    suspected_relay = self._guess_relay_node(snr)
+                    if suspected_relay:
+                        relay_info = f" [via {suspected_relay} ×{hops_taken}]"
+                    else:
+                        relay_info = f" [relayé ×{hops_taken}]"
+                    relay_info += f" (SNR:{snr:.1f}dB)"
+                else:
+                    relay_info = f" [direct] (SNR:{snr:.1f}dB)"
+                
+                if telemetry_info:
+                    debug_print(f"📦 TELEMETRY de {sender_name}{relay_info}: {' | '.join(telemetry_info)}")
+                else:
+                    debug_print(f"📦 TELEMETRY de {sender_name}{relay_info}: (pas de données)")
+            else:
+                # Pour les autres types de paquets
+                relay_info = ""
+                if hops_taken > 0:
+                    suspected_relay = self._guess_relay_node(snr)
+                    if suspected_relay:
+                        relay_info = f" [via {suspected_relay} ×{hops_taken}]"
+                    else:
+                        relay_info = f" [relayé ×{hops_taken}]"
+                else:
+                    relay_info = " [direct]"
+                
+                debug_print(f"📦 {packet_type} de {sender_name}{relay_info} (SNR:{snr:.1f}dB)")
             
         except Exception as e:
             debug_print(f"Erreur enregistrement paquet: {e}")
-    
+
+    def _guess_relay_node(self, snr):
+        """
+        Deviner quel nœud a relayé le paquet en comparant le SNR
+        avec l'historique des nœuds voisins connus
+        """
+        try:
+            if not snr or snr == 0:
+                return None
+            
+            # Chercher un nœud voisin avec un SNR similaire (±3 dB)
+            best_match = None
+            min_diff = float('inf')
+            
+            for node_id, rx_data in self.node_manager.rx_history.items():
+                if 'snr' in rx_data:
+                    snr_diff = abs(rx_data['snr'] - snr)
+                    if snr_diff < min_diff and snr_diff < 3.0:  # ±3dB de tolérance
+                        min_diff = snr_diff
+                        best_match = rx_data.get('name', '?')
+            
+            return best_match
+        except Exception as e:
+            return None
+
     def add_public_message(self, packet, message_text):
         """
         Méthode de compatibilité pour les messages texte
