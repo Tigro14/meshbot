@@ -228,14 +228,18 @@ class TrafficMonitor:
             debug_print(f"Erreur enregistrement paquet: {e}")
             debug_print(traceback.format_exc())
 
+
     def _log_packet_debug(self, packet_type, sender_name, from_id, hops_taken, snr, packet):
         """
         Log debug unifié pour tous les types de paquets
         """
         try:
+            # Formater l'ID en hex court (5 derniers caractères)
+            node_id_full = f"{from_id:08x}"
+            node_id_short = node_id_full[-5:]  # ex: ad3dc
+
             # Construction de l'info de routage
             if hops_taken > 0:
-                # Identifier le relais si possible
                 suspected_relay = self._guess_relay_node(snr, from_id)
                 if suspected_relay:
                     route_info = f" [via {suspected_relay} ×{hops_taken}]"
@@ -243,25 +247,38 @@ class TrafficMonitor:
                     route_info = f" [relayé ×{hops_taken}]"
             else:
                 route_info = " [direct]"
-            
+
             # Ajouter le SNR si disponible
             if snr != 0:
                 route_info += f" (SNR:{snr:.1f}dB)"
             else:
                 route_info += " (SNR:n/a)"
-            
+
             # Info spécifique pour télémétrie
             if packet_type == 'TELEMETRY_APP':
                 telemetry_info = self._extract_telemetry_info(packet)
+
+                # DEBUG SPÉCIAL pour tigrobot G2 PV (!16fad3dc)
+                if node_id_full == "16fad3dc":
+                    debug_print(f"🔍 DEBUG tigrobot G2 PV - Paquet télémétrie complet:")
+                    if 'decoded' in packet and 'telemetry' in packet['decoded']:
+                        telemetry = packet['decoded']['telemetry']
+
+                        # C'est un dict, on peut l'afficher directement
+                        import json
+                        debug_print(f"   {json.dumps(telemetry, indent=2, default=str)}")
+
                 if telemetry_info:
-                    debug_print(f"📦 TELEMETRY de {sender_name}{route_info}: {telemetry_info}")
+                    debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
                 else:
-                    debug_print(f"📦 TELEMETRY de {sender_name}{route_info}")
+                    debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
-                debug_print(f"📦 {packet_type} de {sender_name}{route_info}")
-                
+                debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+
         except Exception as e:
+            import traceback
             debug_print(f"Erreur log paquet: {e}")
+            debug_print(traceback.format_exc())
 
     def _extract_telemetry_info(self, packet):
         """
