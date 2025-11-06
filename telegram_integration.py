@@ -2561,8 +2561,7 @@ class TelegramIntegration:
         else:
             await update.message.reply_text(response)
 
-        async def _nodeinfo_command(
-                self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        async def _nodeinfo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
             """
             Commande /nodeinfo <nom_partiel> [heures]
             Rapport détaillé sur un nœud spécifique
