@@ -215,6 +215,37 @@ class TrafficMonitor:
                     'message_length': len(message_text)
                 })
             
+            if packet_type == 'TELEMETRY_APP':
+                telemetry_info = []
+                
+                if 'decoded' in packet and 'telemetry' in packet['decoded']:
+                    telemetry = packet['decoded']['telemetry']
+                    
+                    # Métriques du device
+                    if 'deviceMetrics' in telemetry:
+                        metrics = telemetry['deviceMetrics']
+                        battery = metrics.get('batteryLevel', 'N/A')
+                        voltage = metrics.get('voltage', 'N/A')
+                        channel_util = metrics.get('channelUtilization', 'N/A')
+                        air_util = metrics.get('airUtilTx', 'N/A')
+                        
+                        telemetry_info.append(f"🔋 {battery}%")
+                        telemetry_info.append(f"⚡ {voltage}V")
+                        telemetry_info.append(f"📡 Ch:{channel_util}% Air:{air_util}%")
+                    
+                    # Métriques environnementales (si présentes)
+                    if 'environmentMetrics' in telemetry:
+                        env = telemetry['environmentMetrics']
+                        temp = env.get('temperature', 'N/A')
+                        humidity = env.get('relativeHumidity', 'N/A')
+                        pressure = env.get('barometricPressure', 'N/A')
+                        
+                        telemetry_info.append(f"🌡️ {temp}°C")
+                        telemetry_info.append(f"💧 {humidity}%")
+                        telemetry_info.append(f"🌤️ {pressure}hPa")
+    
+            debug_print(f"📦 Paquet {packet_type} de {sender_name}: {' | '.join(telemetry_info)} (total: {len(self.all_packets)})")
+
             # Mise à jour des statistiques
             self._update_packet_statistics(from_id, sender_name, packet_entry, packet)
             self._update_global_packet_statistics(packet_entry)

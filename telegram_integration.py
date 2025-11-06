@@ -295,11 +295,11 @@ class TelegramIntegration:
 
     # === COMMANDES TELEGRAM ===
 
-    async def _start_command(
-    self,
-    update: Update,
-     context: ContextTypes.DEFAULT_TYPE):
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /start"""
+        from telegram.ext import MessageHandler, filters
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._raw_log_handler), group=-1)
+
         user = update.effective_user
         info_print(f"📱 Telegram /start: {user.username} ({user.id})")
 
@@ -2364,3 +2364,8 @@ class TelegramIntegration:
             await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")
 
                     
+    async def _raw_log_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Log BRUT de tous les messages"""
+        if update.message and update.message.text:
+            info_print(f"🔴 RAW MESSAGE: '{update.message.text}' from {update.message.from_user.id}")
+
