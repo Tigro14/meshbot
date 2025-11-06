@@ -398,7 +398,7 @@ class NodeManager:
                         threading.Timer(10.0, lambda: self.save_node_names()).start()
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
-    
+
     def update_rx_history(self, packet):
         """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop) - SNR UNIQUEMENT"""
         try:
@@ -409,16 +409,14 @@ class NodeManager:
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
             hop_limit = packet.get('hopLimit', 0)
             hop_start = packet.get('hopStart', 5)
-            
-            # Calculer le nombre de hops effectués
             hops_taken = hop_start - hop_limit
             
-            # Extraire UNIQUEMENT le SNR (ignorer RSSI si configuré)
-            snr = packet.get('snr', 0.0)
+            # Extraire SNR (essayer plusieurs clés)
+            snr = packet.get('snr', packet.get('rxSnr', 0.0))
             
             # Obtenir le nom
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
-            
+        
             # Mettre à jour l'historique RX
             if from_id not in self.rx_history:
                 self.rx_history[from_id] = {

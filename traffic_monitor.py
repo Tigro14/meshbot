@@ -146,9 +146,9 @@ class TrafficMonitor:
             to_id = packet.get('to', 0)
             timestamp = time.time()
             
-            # Extraire RSSI/SNR au début pour qu'ils soient disponibles partout
-            rssi = packet.get('rssi', 0)
-            snr = packet.get('snr', 0.0)
+            # === EXTRACTION RSSI/SNR ===
+            rssi = packet.get('rssi', packet.get('rxRssi', 0))
+            snr = packet.get('snr', packet.get('rxSnr', 0.0))
             
             # Identifier le type de paquet
             packet_type = 'UNKNOWN'
@@ -158,7 +158,6 @@ class TrafficMonitor:
                 decoded = packet['decoded']
                 packet_type = decoded.get('portnum', 'UNKNOWN')
                 
-                # Si c'est un message texte, extraire le contenu
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
         
@@ -221,63 +220,84 @@ class TrafficMonitor:
             self._update_global_packet_statistics(packet_entry)
             self._update_network_statistics(packet_entry)
             
-            # === DEBUG LOG AMÉLIORÉ ===
-            if packet_type == 'TELEMETRY_APP':
-                telemetry_info = []
-                
-                if 'decoded' in packet and 'telemetry' in packet['decoded']:
-                    telemetry = packet['decoded']['telemetry']
-                    
-                    if 'deviceMetrics' in telemetry:
-                        metrics = telemetry['deviceMetrics']
-                        battery = metrics.get('batteryLevel', 'N/A')
-                        voltage = metrics.get('voltage', 'N/A')
-                        channel_util = metrics.get('channelUtilization', 'N/A')
-                        air_util = metrics.get('airUtilTx', 'N/A')
-                        
-                        telemetry_info.append(f"🔋 {battery}%")
-                        if voltage != 'N/A':
-                            telemetry_info.append(f"⚡ {voltage:.2f}V")
-                        telemetry_info.append(f"📡 Ch:{channel_util}% Air:{air_util}%")
-                
-                # Construction du message avec relais (utiliser SNR principalement)
-                relay_info = ""
-                if hops_taken > 0:
-                    # Tenter d'identifier le relais via SNR
-                    suspected_relay = self._guess_relay_node(snr)
-                    if suspected_relay:
-                        relay_info = f" [via {suspected_relay} ×{hops_taken}]"
-                    else:
-                        relay_info = f" [relayé ×{hops_taken}]"
-                    relay_info += f" (SNR:{snr:.1f}dB)"
-                else:
-                    relay_info = f" [direct] (SNR:{snr:.1f}dB)"
-                
-                if telemetry_info:
-                    debug_print(f"📦 TELEMETRY de {sender_name}{relay_info}: {' | '.join(telemetry_info)}")
-                else:
-                    debug_print(f"📦 TELEMETRY de {sender_name}{relay_info}: (pas de données)")
-            else:
-                # Pour les autres types de paquets
-                relay_info = ""
-                if hops_taken > 0:
-                    suspected_relay = self._guess_relay_node(snr)
-                    if suspected_relay:
-                        relay_info = f" [via {suspected_relay} ×{hops_taken}]"
-                    else:
-                        relay_info = f" [relayé ×{hops_taken}]"
-                else:
-                    relay_info = " [direct]"
-                
-                debug_print(f"📦 {packet_type} de {sender_name}{relay_info} (SNR:{snr:.1f}dB)")
+            # === DEBUG LOG UNIFIÉ POUR TOUS LES PAQUETS ===
+            self._log_packet_debug(packet_type, sender_name, from_id, hops_taken, snr, packet)
             
         except Exception as e:
+            import traceback
             debug_print(f"Erreur enregistrement paquet: {e}")
+            debug_print(traceback.format_exc())
 
-    def _guess_relay_node(self, snr):
+    def _log_packet_debug(self, packet_type, sender_name, from_id, hops_taken, snr, packet):
+        """
+        Log debug unifié pour tous les types de paquets
+        """
+        try:
+            # Construction de l'info de routage
+            if hops_taken > 0:
+                # Identifier le relais si possible
+                suspected_relay = self._guess_relay_node(snr, from_id)
+                if suspected_relay:
+                    route_info = f" [via {suspected_relay} ×{hops_taken}]"
+                else:
+                    route_info = f" [relayé ×{hops_taken}]"
+            else:
+                route_info = " [direct]"
+            
+            # Ajouter le SNR si disponible
+            if snr != 0:
+                route_info += f" (SNR:{snr:.1f}dB)"
+            else:
+                route_info += " (SNR:n/a)"
+            
+            # Info spécifique pour télémétrie
+            if packet_type == 'TELEMETRY_APP':
+                telemetry_info = self._extract_telemetry_info(packet)
+                if telemetry_info:
+                    debug_print(f"📦 TELEMETRY de {sender_name}{route_info}: {telemetry_info}")
+                else:
+                    debug_print(f"📦 TELEMETRY de {sender_name}{route_info}")
+            else:
+                debug_print(f"📦 {packet_type} de {sender_name}{route_info}")
+                
+        except Exception as e:
+            debug_print(f"Erreur log paquet: {e}")
+
+    def _extract_telemetry_info(self, packet):
+        """
+        Extraire les informations de télémétrie formatées
+        """
+        try:
+            if 'decoded' not in packet or 'telemetry' not in packet['decoded']:
+                return None
+            
+            telemetry = packet['decoded']['telemetry']
+            info_parts = []
+            
+            if 'deviceMetrics' in telemetry:
+                metrics = telemetry['deviceMetrics']
+                battery = metrics.get('batteryLevel', 'N/A')
+                voltage = metrics.get('voltage', 'N/A')
+                channel_util = metrics.get('channelUtilization', 'N/A')
+                air_util = metrics.get('airUtilTx', 'N/A')
+                
+                info_parts.append(f"🔋 {battery}%")
+                if voltage != 'N/A':
+                    info_parts.append(f"⚡ {voltage:.2f}V")
+                info_parts.append(f"📡 Ch:{channel_util}% Air:{air_util}%")
+            
+            return ' | '.join(info_parts) if info_parts else None
+        except Exception:
+            return None
+
+    def _guess_relay_node(self, snr, emitter_id):
         """
         Deviner quel nœud a relayé le paquet en comparant le SNR
         avec l'historique des nœuds voisins connus
+        
+        Args:
+            snr: SNR du paquet reçu
+            emitter_id: ID du nœud émetteur (à exclure de la recherche)
         """
         try:
             if not snr or snr == 0:
@@ -288,6 +308,10 @@ class TrafficMonitor:
             min_diff = float('inf')
             
             for node_id, rx_data in self.node_manager.rx_history.items():
+                # NE PAS suggérer l'émetteur comme relais !
+                if node_id == emitter_id:
+                    continue
+                    
                 if 'snr' in rx_data:
                     snr_diff = abs(rx_data['snr'] - snr)
                     if snr_diff < min_diff and snr_diff < 3.0:  # ±3dB de tolérance
