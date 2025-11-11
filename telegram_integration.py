@@ -246,10 +246,10 @@ class TelegramIntegration:
             await self.application.updater.start_polling(
                 poll_interval=15.0,
                 timeout=30,
-                read_timeout=120,
-                write_timeout=120,
-                connect_timeout=120,
-                pool_timeout=120,
+                read_timeout=180,
+                write_timeout=180,
+                connect_timeout=180,
+                pool_timeout=180,
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
             )
