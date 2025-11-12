@@ -1395,89 +1395,104 @@ class TrafficMonitor:
 
     def get_node_behavior_report(self, node_id, hours=24):
         """
-        Rapport détaillé du comportement d'un nœud spécifique
+        Rapport détaillé sur un nœud - Affiche l'ID complet et détecte les doublons
         """
         try:
             current_time = time.time()
             cutoff_time = current_time - (hours * 3600)
-            
+
             name = self.node_manager.get_node_name(node_id)
-            
+
             lines = []
             lines.append(f"🔍 RAPPORT NŒUD: {name}")
             lines.append(f"ID: !{node_id:08x}")
+            lines.append(f"PVID: !{node_id:08x}")
             lines.append("=" * 50)
-            
-            # Collecter les paquets de ce nœud
+
+            # Collecter les paquets de CE nœud uniquement (par from_id)
             node_packets = [p for p in self.all_packets if p['from_id'] == node_id and p['timestamp'] >= cutoff_time]
-            
+
             if not node_packets:
-                return f"Aucun paquet de {name} dans les {hours}h"
-            
+                return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"
+
             # Statistiques de base
-            lines.append(f"\n📊 ACTIVITÉ ({hours}h):")
+            lines.append(f"\\n📊 ACTIVITÉ ({hours}h):")
             lines.append(f"Total paquets: {len(node_packets)}")
             lines.append(f"Paquets/heure: {len(node_packets)/hours:.1f}")
-            
+
             # Par type
             type_counts = defaultdict(int)
             for p in node_packets:
                 type_counts[p['packet_type']] += 1
-            
-            lines.append(f"\n📦 RÉPARTITION PAR TYPE:")
+
+            lines.append(f"\\n📦 RÉPARTITION PAR TYPE:")
             for ptype, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
                 type_name = self.packet_type_names.get(ptype, ptype)
                 lines.append(f"  {type_name}: {count}")
-            
+
             # Analyse télémétrie
             telemetry_packets = [p for p in node_packets if p['packet_type'] == 'TELEMETRY_APP']
             if len(telemetry_packets) >= 2:
                 timestamps = [p['timestamp'] for p in telemetry_packets]
                 intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
                 avg_interval = sum(intervals) / len(intervals)
-                
-                lines.append(f"\n⏱️  TÉLÉMÉTRIE:")
+
+                lines.append(f"\\n⏱  TÉLÉMÉTRIE:")
                 lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
                 lines.append(f"Intervalle min: {min(intervals):.0f}s")
                 lines.append(f"Intervalle max: {max(intervals):.0f}s")
-                
+
                 if avg_interval < 300:
-                    lines.append(f"⚠️  TROP FRÉQUENT (recommandé: 900s+)")
+                    lines.append(f"\\n⚠  TROP FRÉQUENT (recommandé: 900s+)")
                     lines.append(f"💡 Commande: meshtastic --set telemetry.device_update_interval 900")
-            
+
             # Analyse position
             position_packets = [p for p in node_packets if p['packet_type'] == 'POSITION_APP']
             if len(position_packets) >= 2:
                 timestamps = [p['timestamp'] for p in position_packets]
                 intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
                 avg_interval = sum(intervals) / len(intervals)
-                
-                lines.append(f"\n📍 POSITION:")
+
+                lines.append(f"\\n📍 POSITION:")
                 lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
-                
+
                 if avg_interval < 300:
-                    lines.append(f"⚠️  TROP FRÉQUENT (recommandé: 900s+ sauf si mobile)")
+                    lines.append(f"\\n⚠  TROP FRÉQUENT (recommandé: 900s+)")
                     lines.append(f"💡 Commande: meshtastic --set position.broadcast_secs 900")
-            
-            # Qualité signal (depuis stats existantes)
-            if node_id in self.node_packet_stats:
-                stats = self.node_packet_stats[node_id]
-                if stats['telemetry_stats']['count'] > 0:
-                    tel = stats['telemetry_stats']
-                    lines.append(f"\n🔋 DERNIÈRE TÉLÉMÉTRIE:")
-                    if tel['last_battery']:
-                        lines.append(f"Batterie: {tel['last_battery']}%")
-                    if tel['last_voltage']:
-                        lines.append(f"Voltage: {tel['last_voltage']:.2f}V")
-                    if tel['last_channel_util']:
-                        lines.append(f"Canal: {tel['last_channel_util']:.1f}%")
-                        if tel['last_channel_util'] > 20:
-                            lines.append(f"⚠️  Utilisation canal élevée")
-                    if tel['last_air_util']:
-                        lines.append(f"Air util: {tel['last_air_util']:.3f}%")
-            
-            return "\n".join(lines)
-            
+
+            # Statistiques de réception
+            direct_packets = [p for p in node_packets if p['hops'] == 0]
+            relayed_packets = [p for p in node_packets if p['hops'] > 0]
+
+            if len(node_packets) > 0:
+                lines.append(f"\\n📡 RÉCEPTION:")
+                lines.append(f"Paquets directs: {len(direct_packets)} ({len(direct_packets)/len(node_packets)*100:.1f}%)")
+                lines.append(f"Paquets relayés: {len(relayed_packets)} ({len(relayed_packets)/len(node_packets)*100:.1f}%)")
+
+                if len(relayed_packets) > 0:
+                    avg_hops = sum(p['hops'] for p in relayed_packets) / len(relayed_packets)
+                    max_hops = max(p['hops'] for p in relayed_packets)
+                    lines.append(f"Hops moyens: {avg_hops:.1f}")
+                    lines.append(f"Hops max: {max_hops}")
+
+            # Diagnostic
+            lines.append(f"\\n🔍 DIAGNOSTIC:")
+            lines.append(f"✅ Tous les paquets proviennent de !{node_id:08x}")
+            lines.append(f"✅ Stats correctes pour CE nœud uniquement")
+
+            # Alerte doublons
+            same_name_count = sum(1 for nid, ndata in self.node_manager.node_names.items()
+                                 if (isinstance(ndata, dict) and ndata.get('name') == name) or
+                                    (isinstance(ndata, str) and ndata == name))
+            if same_name_count > 1:
+                lines.append(f"\\n⚠  ATTENTION: {same_name_count} nœuds portent '{name}'")
+                lines.append(f"💡 Utilisez toujours l'ID complet")
+
+            return "\\n".join(lines)
+
         except Exception as e:
             error_print(f"Erreur rapport nœud: {e}")
-            return f"❌ Erreur: {str(e)[:100]}"            
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+

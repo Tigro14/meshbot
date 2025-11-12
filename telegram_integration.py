@@ -2561,62 +2561,155 @@ class TelegramIntegration:
         else:
             await update.message.reply_text(response)
 
-    async def _nodeinfo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Script alternatif pour patcher traffic_monitor.py
+Utilise une approche ligne par ligne
+"""
+
+import sys
+import shutil
+from pathlib import Path
+
+def apply_patch_line_by_line(filepath):
+    """Appliquer les modifications ligne par ligne"""
+    
+    with open(filepath, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    # Créer une sauvegarde
+    backup_path = filepath + '.backup'
+    shutil.copy2(filepath, backup_path)
+    print(f"✅ Sauvegarde créée: {backup_path}")
+    
+    # Trouver la fonction get_node_behavior_report
+    func_start = None
+    for i, line in enumerate(lines):
+        if 'get_node_behavior_report' in line and 'def ' in line:
+            func_start = i
+            print(f"✅ Fonction trouvée à la ligne {i+1}")
+            break
+    
+    if func_start is None:
+        print("❌ Fonction get_node_behavior_report introuvable")
+        return False
+    
+    # Trouver la fin de la fonction
+    indent = len(lines[func_start]) - len(lines[func_start].lstrip())
+    func_end = len(lines)
+    
+    for i in range(func_start + 1, len(lines)):
+        line = lines[i]
+        line_indent = len(line) - len(line.lstrip())
+        
+        if line_indent == indent and 'def ' in line:
+            func_end = i
+            print(f"✅ Fin de fonction détectée à la ligne {i+1}")
+            break
+    
+    print(f"📦 Fonction: lignes {func_start+1} à {func_end}")
+    
+    def get_node_behavior_report(self, node_id, hours=24):
         """
-        Commande /nodeinfo <nom_partiel> [heures]
-        Rapport détaillé sur un nœud spécifique
+        Rapport détaillé sur un nœud - Affiche l'ID complet et détecte les doublons
         """
-        user = update.effective_user
-        if not self._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            name = self.node_manager.get_node_name(node_id)
+            
+            lines = []
+            lines.append(f"🔍 RAPPORT NŒUD: {name}")
+            lines.append(f"ID: !{node_id:08x}")
+            lines.append(f"PVID: !{node_id:08x}")
+            lines.append("=" * 50)
+            
+            # Collecter les paquets de CE nœud uniquement (par from_id)
+            node_packets = [p for p in self.all_packets if p['from_id'] == node_id and p['timestamp'] >= cutoff_time]
+            
+            if not node_packets:
+                return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"
+            
+            # Statistiques de base
+            lines.append(f"\\n📊 ACTIVITÉ ({hours}h):")
+            lines.append(f"Total paquets: {len(node_packets)}")
+            lines.append(f"Paquets/heure: {len(node_packets)/hours:.1f}")
+            
+            # Par type
+            type_counts = defaultdict(int)
+            for p in node_packets:
+                type_counts[p['packet_type']] += 1
+            
+            lines.append(f"\\n📦 RÉPARTITION PAR TYPE:")
+            for ptype, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+                type_name = self.packet_type_names.get(ptype, ptype)
+                lines.append(f"  {type_name}: {count}")
+            
+            # Analyse télémétrie
+            telemetry_packets = [p for p in node_packets if p['packet_type'] == 'TELEMETRY_APP']
+            if len(telemetry_packets) >= 2:
+                timestamps = [p['timestamp'] for p in telemetry_packets]
+                intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+                avg_interval = sum(intervals) / len(intervals)
+                
+                lines.append(f"\\n⏱️  TÉLÉMÉTRIE:")
+                lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
+                lines.append(f"Intervalle min: {min(intervals):.0f}s")
+                lines.append(f"Intervalle max: {max(intervals):.0f}s")
+                
+                if avg_interval < 300:
+                    lines.append(f"\\n⚠️  TROP FRÉQUENT (recommandé: 900s+)")
+                    lines.append(f"💡 Commande: meshtastic --set telemetry.device_update_interval 900")
+            
+            # Analyse position
+            position_packets = [p for p in node_packets if p['packet_type'] == 'POSITION_APP']
+            if len(position_packets) >= 2:
+                timestamps = [p['timestamp'] for p in position_packets]
+                intervals = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+                avg_interval = sum(intervals) / len(intervals)
+                
+                lines.append(f"\\n📍 POSITION:")
+                lines.append(f"Intervalle moyen: {avg_interval:.0f}s ({avg_interval/60:.1f}min)")
+                
+                if avg_interval < 300:
+                    lines.append(f"\\n⚠️  TROP FRÉQUENT (recommandé: 900s+)")
+                    lines.append(f"💡 Commande: meshtastic --set position.broadcast_secs 900")
+            
+            # Statistiques de réception
+            direct_packets = [p for p in node_packets if p['hops'] == 0]
+            relayed_packets = [p for p in node_packets if p['hops'] > 0]
+            
+            if len(node_packets) > 0:
+                lines.append(f"\\n📡 RÉCEPTION:")
+                lines.append(f"Paquets directs: {len(direct_packets)} ({len(direct_packets)/len(node_packets)*100:.1f}%)")
+                lines.append(f"Paquets relayés: {len(relayed_packets)} ({len(relayed_packets)/len(node_packets)*100:.1f}%)")
+                
+                if len(relayed_packets) > 0:
+                    avg_hops = sum(p['hops'] for p in relayed_packets) / len(relayed_packets)
+                    max_hops = max(p['hops'] for p in relayed_packets)
+                    lines.append(f"Hops moyens: {avg_hops:.1f}")
+                    lines.append(f"Hops max: {max_hops}")
+            
+            # Diagnostic
+            lines.append(f"\\n🔍 DIAGNOSTIC:")
+            lines.append(f"✅ Tous les paquets proviennent de !{node_id:08x}")
+            lines.append(f"✅ Stats correctes pour CE nœud uniquement")
+            
+            # Alerte doublons
+            same_name_count = sum(1 for nid, ndata in self.node_manager.node_names.items() 
+                                 if (isinstance(ndata, dict) and ndata.get('name') == name) or 
+                                    (isinstance(ndata, str) and ndata == name))
+            if same_name_count > 1:
+                lines.append(f"\\n⚠️  ATTENTION: {same_name_count} nœuds portent '{name}'")
+                lines.append(f"💡 Utilisez toujours l'ID complet")
+            
+            return "\\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur rapport nœud: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
 
-        if not context.args:
-            await update.message.reply_text("Usage: /nodeinfo <nom> [heures]")
-            return
-
-        node_name_partial = context.args[0].lower()
-        hours = 24
-        if len(context.args) > 1:
-            try:
-                hours = int(context.args[1])
-                hours = max(1, min(168, hours))
-            except ValueError:
-                hours = 24
-
-        info_print(
-            f"📱 Telegram /nodeinfo {node_name_partial} {hours}h: {user.username}")
-
-        def get_node_report():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                # Trouver le nœud
-                tm = self.message_handler.traffic_monitor
-                matching_nodes = []
-
-                for node_id, name in self.node_manager.node_names.items():
-                    if isinstance(name, dict):
-                        name = name.get('name', '')
-                    if node_name_partial in name.lower():
-                        matching_nodes.append((node_id, name))
-
-                if not matching_nodes:
-                    return f"❌ Aucun nœud trouvé contenant '{node_name_partial}'"
-
-                if len(matching_nodes) > 1:
-                    result = f"Plusieurs nœuds trouvés:\n"
-                    for node_id, name in matching_nodes[:5]:
-                        result += f"- {name} (!{node_id:08x})\n"
-                    return result + "\nPrécisez le nom"
-
-                node_id, name = matching_nodes[0]
-                return tm.get_node_behavior_report(node_id, hours)
-
-            except Exception as e:
-                error_print(f"Erreur nodeinfo: {e}")
-                return f"❌ Erreur: {str(e)[:100]}"
-
-        response = await asyncio.to_thread(get_node_report)
-        await update.message.reply_text(response)
