@@ -114,7 +114,7 @@ class MeshBot:
             # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
-                self.traffic_monitor.add_packet(packet)
+                self.traffic_monitor.add_packet(packet, source=source)  
             
             # ========================================
             # PHASE 2: FILTRAGE

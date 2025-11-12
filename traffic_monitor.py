@@ -137,7 +137,7 @@ class TrafficMonitor:
             'packets_relayed': 0
         }
     
-    def add_packet(self, packet):
+    def add_packet(self, packet, source='unknown'):
         """
         Enregistrer TOUT type de paquet avec statistiques complètes
         """
@@ -177,6 +177,7 @@ class TrafficMonitor:
                 'timestamp': timestamp,
                 'from_id': from_id,
                 'to_id': to_id,
+                'source': source,
                 'sender_name': sender_name,
                 'packet_type': packet_type,
                 'message': message_text,
@@ -221,7 +222,10 @@ class TrafficMonitor:
             self._update_network_statistics(packet_entry)
             
             # === DEBUG LOG UNIFIÉ POUR TOUS LES PAQUETS ===
-            self._log_packet_debug(packet_type, sender_name, from_id, hops_taken, snr, packet)
+            source_tag = f"[{packet_entry.get('source', '?')}]"
+            debug_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            self._log_packet_debug(
+                packet_type, sender_name, from_id, hops_taken, snr, packet)
             
         except Exception as e:
             import traceback
@@ -1258,6 +1262,10 @@ class TrafficMonitor:
             
             for packet in self.all_packets:
                 if packet['timestamp'] >= cutoff_time:
+                    # ✅ FILTRER: Uniquement les paquets tigrog2 (bonne antenne)
+                    if packet.get('source') != 'tigrog2':
+                        continue
+
                     from_id = packet['from_id']
                     node_packet_counts[from_id] += 1
                     node_types[from_id][packet['packet_type']] += 1
@@ -1291,10 +1299,18 @@ class TrafficMonitor:
                 if telemetry_count >= 2:
                     intervals = node_telemetry_intervals[node_id]
                     if len(intervals) >= 2:
-                        avg_interval = sum(intervals[i] - intervals[i-1] for i in range(1, len(intervals))) / (len(intervals) - 1)
-                        if avg_interval < 300:  # Moins de 5 minutes
-                            lines.append(f"   ⚠️  INTERVALLE TÉLÉMÉTRIE COURT: {avg_interval:.0f}s (recommandé: 900s+)")
-            
+                        # ✅ Supprimer les doublons et trier
+                        unique_intervals = sorted(set(intervals))
+
+                        if len(unique_intervals) >= 2:
+                            # ✅ Calculer intervalle moyen sur la durée totale
+                            total_time = unique_intervals[-1] - unique_intervals[0]
+                            avg_interval = total_time / (len(unique_intervals) - 1)
+
+                            if avg_interval < 300:
+                                lines.append(f"   ⚠️  INTERVALLE TÉLÉMÉTRIE COURT: {avg_interval:.0f}s (recommandé: 900s+)")
+                                lines.append(f"   📊 Paquets: {len(intervals)} reçus ({len(unique_intervals)} uniques)")
+
             # === 2. ANALYSE UTILISATION DU CANAL ===
             lines.append(f"\n📡 UTILISATION DU CANAL:")
             lines.append("-" * 50)
@@ -1410,9 +1426,23 @@ class TrafficMonitor:
             lines.append("=" * 50)
 
             # Collecter les paquets de CE nœud uniquement (par from_id)
-            node_packets = [p for p in self.all_packets if p['from_id'] == node_id and p['timestamp'] >= cutoff_time]
-
+            # ✅ FILTRER: Utiliser uniquement les paquets tigrog2 (bonne antenne)
+            node_packets = [p for p in self.all_packets 
+                            if p['from_id'] == node_id 
+                            and p['timestamp'] >= cutoff_time
+                            and p.get('source') == 'tigrog2']
+            
             if not node_packets:
+                # Vérifier s'il y a des paquets serial ignorés
+                serial_packets = [p for p in self.all_packets 
+                                 if p['from_id'] == node_id 
+                                 and p['timestamp'] >= cutoff_time
+                                 and p.get('source') == 'local']
+                
+                if serial_packets:
+                    return f"⚠️ Aucun paquet tigrog2 pour {name} (!{node_id:08x})\n" \
+                           f"({len(serial_packets)} paquets serial ignorés - antenne faible)"
+                
                 return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"
 
             # Statistiques de base
