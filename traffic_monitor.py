@@ -263,14 +263,15 @@ class TrafficMonitor:
                 telemetry_info = self._extract_telemetry_info(packet)
 
                 # DEBUG SPÉCIAL pour tigrobot G2 PV (!16fad3dc)
-                if node_id_full == "16fad3dc":
-                    debug_print(f"🔍 DEBUG tigrobot G2 PV - Paquet télémétrie complet:")
+                """if node_id_full == "16fad3dc": """
+                if True:
                     if 'decoded' in packet and 'telemetry' in packet['decoded']:
+                        debug_print(f"🔍 DEBUG Paquet télémétrie complet reçu de {node_id_full} :")
                         telemetry = packet['decoded']['telemetry']
 
                         # C'est un dict, on peut l'afficher directement
                         import json
-                        debug_print(f"   {json.dumps(telemetry, indent=2, default=str)}")
+                        debug_print(f" {json.dumps(telemetry, indent=2, default=str)}")
 
                 if telemetry_info:
                     debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
