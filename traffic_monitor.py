@@ -1445,10 +1445,9 @@ class TrafficMonitor:
             # ✅ FILTRER: Utiliser uniquement les paquets tigrog2 (bonne antenne)
             node_packets = [p for p in self.all_packets 
                             if p['from_id'] == node_id 
-                            and p['timestamp'] >= cutoff_time
-                            and p.get('source') == 'tigrog2']
+                            and p['timestamp'] >= cutoff_time]
             
-            if not node_packets:
+            """if not node_packets:
                 # Vérifier s'il y a des paquets serial ignorés
                 serial_packets = [p for p in self.all_packets 
                                  if p['from_id'] == node_id 
@@ -1459,7 +1458,7 @@ class TrafficMonitor:
                     return f"⚠️ Aucun paquet tigrog2 pour {name} (!{node_id:08x})\n" \
                            f"({len(serial_packets)} paquets serial ignorés - antenne faible)"
                 
-                return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"
+                return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"""
 
             # Statistiques de base
             lines.append(f"\\n📊 ACTIVITÉ ({hours}h):")
