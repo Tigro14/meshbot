@@ -263,8 +263,7 @@ class TrafficMonitor:
                 telemetry_info = self._extract_telemetry_info(packet)
 
                 # DEBUG SPÉCIAL pour tigrobot G2 PV (!16fad3dc)
-                """if node_id_full == "16fad3dc": """
-                if True:
+                if node_id_full == "16fad3dc": 
                     if 'decoded' in packet and 'telemetry' in packet['decoded']:
                         debug_print(f"🔍 DEBUG Paquet télémétrie complet reçu de {node_id_full} :")
                         telemetry = packet['decoded']['telemetry']

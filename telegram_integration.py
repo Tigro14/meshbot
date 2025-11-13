@@ -2481,12 +2481,18 @@ class TelegramIntegration:
         # Exécuter dans un thread séparé
         try:
             histogram = await asyncio.to_thread(get_histogram)
+            message = update.edited_message or update.message
+            if not message:
+                return
             await update.message.reply_text(histogram)
 
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
             import traceback
             error_print(traceback.format_exc())
+            message = update.edited_message or update.message
+            if not message:
+                return
             await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")
 
     async def _weather_command(self, update: Update,
