@@ -50,6 +50,13 @@ class MeshBot:
         self.update_thread = None
         self.telegram_integration = None
 
+        # === DIAGNOSTIC CANAL - TEMPORAIRE ===
+        #self._channel_analyzer = PacketChannelAnalyzer()
+        #self._packets_analyzed = 0
+        #self._channel_debug_active = True
+        #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
+        # === FIN DIAGNOSTIC ===
+
     def on_message(self, packet, interface):
         """
         Gestionnaire des messages reçus
@@ -59,6 +66,26 @@ class MeshBot:
         2. Filtrage selon la source
         3. Traitement des commandes (serial uniquement)
         """
+        
+        # === DEBUG CANAL - TEMPORAIRE ===
+        if not hasattr(self, '_channel_analyzer'):
+            from packet_channel_analyzer import PacketChannelAnalyzer
+            self._channel_analyzer = PacketChannelAnalyzer()
+            self._packets_analyzed = 0
+        
+        info = self._channel_analyzer.analyze_packet(packet)
+        self._packets_analyzed += 1
+        
+        # Afficher le rapport après 100 paquets
+        if self._packets_analyzed == 100:
+            print(self._channel_analyzer.print_diagnostic_report())
+        
+        # Afficher chaque paquet avec canal détecté
+        if info['channel_detected']:
+            print(f"📡 PAQUET CANAL {info['channel_value']}: "
+                  f"type={info['packet_type']}, "
+                  f"décodé={info['has_decoded']}")
+        # === FIN DEBUG ===
         # ========== TEST ==========
         if packet and 'decoded' in packet:
             decoded = packet.get('decoded', {})
@@ -422,3 +449,5 @@ class MeshBot:
 
         gc.collect()
         info_print("Bot arrêté")
+
+

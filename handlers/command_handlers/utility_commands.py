@@ -636,3 +636,44 @@ class UtilityCommands:
                 self.sender.send_single(error_response, sender_id, sender_info)
             except:
                 pass            
+
+    def handle_channel_debug(self, sender_id, sender_info):
+        """Afficher le rapport de diagnostic des canaux"""
+        info_print(f"Channel debug: {sender_info}")
+        
+        try:
+            # Accéder à l'analyseur via le message_handler
+            if hasattr(self.sender, 'message_handler'):
+                bot = self.sender.message_handler
+                if hasattr(bot, '_channel_analyzer'):
+                    analyzer = bot._channel_analyzer
+                    
+                    # Rapport complet
+                    report = analyzer.print_diagnostic_report()
+                    
+                    # Envoyer en plusieurs parties si trop long
+                    max_len = 200  # Limite Meshtastic
+                    if len(report) > max_len:
+                        # Envoyer juste les stats rapides sur mesh
+                        quick = analyzer.get_quick_stats()
+                        self.sender.send_single(quick, sender_id, sender_info)
+                        
+                        # Log le rapport complet
+                        info_print("RAPPORT COMPLET:")
+                        info_print(report)
+                    else:
+                        self.sender.send_single(report, sender_id, sender_info)
+                    
+                    self.sender.log_conversation(sender_id, sender_info, 
+                                                "/channel_debug", report)
+                else:
+                    self.sender.send_single("Analyseur non initialisé", 
+                                           sender_id, sender_info)
+            else:
+                self.sender.send_single("Erreur accès analyseur", 
+                                       sender_id, sender_info)
+                
+        except Exception as e:
+            error_print(f"Erreur channel_debug: {e}")
+            self.sender.send_single(f"Erreur: {str(e)[:50]}", 
+                                   sender_id, sender_info)            
