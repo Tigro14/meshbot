@@ -140,23 +140,39 @@ class TrafficMonitor:
     def add_packet(self, packet, source='unknown'):
         """
         Enregistrer TOUT type de paquet avec statistiques complètes
+
+        IMPORTANT: Filtre les paquets TELEMETRY_APP de source 'local' car:
+        - Device Metrics sont envoyés toutes les 60s sur serial (pour les apps)
+        - Ces paquets serial ne passent PAS par la radio
+        - Seuls les paquets selon device_update_interval sont envoyés sur radio
+        - On ne veut compter que le trafic radio réel dans les stats mesh
         """
         try:
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
             timestamp = time.time()
-            
+
             # === EXTRACTION RSSI/SNR ===
             rssi = packet.get('rssi', packet.get('rxRssi', 0))
             snr = packet.get('snr', packet.get('rxSnr', 0.0))
-            
+
             # Identifier le type de paquet
             packet_type = 'UNKNOWN'
             message_text = None
-            
+
             if 'decoded' in packet:
                 decoded = packet['decoded']
                 packet_type = decoded.get('portnum', 'UNKNOWN')
+
+                # === FILTRE: Exclure les paquets TELEMETRY_APP de source 'local' ===
+                # Ces paquets sont envoyés toutes les 60s sur serial uniquement,
+                # ils ne représentent PAS le trafic radio et polluent les stats mesh
+                if packet_type == 'TELEMETRY_APP' and source == 'local':
+                    # Loguer mais ne pas enregistrer dans les stats
+                    if DEBUG_MODE:
+                        sender_name = self.node_manager.get_node_name(from_id)
+                        debug_print(f"⏭️  Télémétrie serial ignorée (non-radio): {sender_name}")
+                    return
                 
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
