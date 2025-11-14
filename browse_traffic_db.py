@@ -123,7 +123,14 @@ class TrafficDBBrowser:
     def load_nodes(self):
         """Charge les statistiques des nœuds depuis la DB"""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT * FROM node_stats ORDER BY total_packets DESC')
+        # Récupérer aussi le nom du nœud depuis la table packets
+        cursor.execute('''
+            SELECT
+                ns.*,
+                (SELECT sender_name FROM packets WHERE from_id = ns.node_id ORDER BY timestamp DESC LIMIT 1) as node_name
+            FROM node_stats ns
+            ORDER BY total_packets DESC
+        ''')
         self.items = [dict(row) for row in cursor.fetchall()]
 
     def load_data(self):
@@ -274,10 +281,11 @@ class TrafficDBBrowser:
     def draw_node_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de nœud"""
         node_id = self.format_node_id(item.get('node_id'))[:8]
+        node_name = (item.get('node_name') or 'Unknown')[:15]
         packets = item.get('total_packets', 0)
         size = item.get('total_bytes', 0) // 1024  # KB
 
-        line = f"!{node_id:8s}  Packets: {packets:6,}  Size: {size:6,} KB"
+        line = f"{node_name:15s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:6,} KB"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -298,7 +306,7 @@ class TrafficDBBrowser:
             elif self.current_view == 'messages':
                 header = "Timestamp    Sender          Message"
             elif self.current_view == 'nodes':
-                header = "Node ID   Packets       Size"
+                header = "Node Name       (Node ID)           Packets       Size"
             stdscr.addstr(2, 0, header[:width-1])
             stdscr.attroff(curses.A_BOLD)
         except curses.error:
@@ -554,7 +562,9 @@ class TrafficDBBrowser:
 
                 elif self.current_view == 'nodes':
                     for i, item in enumerate(self.items, 1):
-                        f.write(f"[{i}/{len(self.items)}] Node: {item.get('node_id')}\n")
+                        node_name = item.get('node_name') or 'Unknown'
+                        node_id = item.get('node_id')
+                        f.write(f"[{i}/{len(self.items)}] Node: {node_name} (!{node_id})\n")
                         f.write(f"  Total packets: {item.get('total_packets'):,}\n")
                         f.write(f"  Total bytes: {item.get('total_bytes'):,}\n")
                         if item.get('packet_types'):
@@ -668,7 +678,8 @@ class TrafficDBBrowser:
 
                 elif self.current_view == 'nodes':
                     for item in visible_items:
-                        node_id = self.format_node_id(item.get('node_id'))[:10]
+                        node_id = self.format_node_id(item.get('node_id'))[:8]
+                        node_name = (item.get('node_name') or 'Unknown')[:15]
                         packets = item.get('total_packets', 0)
                         size_bytes = item.get('total_bytes', 0)
 
@@ -680,7 +691,7 @@ class TrafficDBBrowser:
                         else:
                             size = f"{size_bytes/(1024*1024):.1f}MB"
 
-                        line = f"{node_id:10s} {packets:8d}   {size:>10s}"
+                        line = f"{node_name:15s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:>10s}"
                         f.write(line + '\n')
 
             return filename
