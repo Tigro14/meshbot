@@ -281,11 +281,11 @@ class TrafficDBBrowser:
     def draw_node_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de nœud"""
         node_id = self.format_node_id(item.get('node_id'))[:8]
-        node_name = (item.get('node_name') or 'Unknown')[:15]
+        node_name = (item.get('node_name') or 'Unknown')[:20]
         packets = item.get('total_packets', 0)
         size = item.get('total_bytes', 0) // 1024  # KB
 
-        line = f"{node_name:15s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:6,} KB"
+        line = f"{node_name:20s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:6,} KB"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -306,7 +306,7 @@ class TrafficDBBrowser:
             elif self.current_view == 'messages':
                 header = "Timestamp    Sender          Message"
             elif self.current_view == 'nodes':
-                header = "Node Name       (Node ID)           Packets       Size"
+                header = "Node Name            (Node ID)           Packets       Size"
             stdscr.addstr(2, 0, header[:width-1])
             stdscr.attroff(curses.A_BOLD)
         except curses.error:
@@ -679,7 +679,7 @@ class TrafficDBBrowser:
                 elif self.current_view == 'nodes':
                     for item in visible_items:
                         node_id = self.format_node_id(item.get('node_id'))[:8]
-                        node_name = (item.get('node_name') or 'Unknown')[:15]
+                        node_name = (item.get('node_name') or 'Unknown')[:20]
                         packets = item.get('total_packets', 0)
                         size_bytes = item.get('total_bytes', 0)
 
@@ -691,7 +691,7 @@ class TrafficDBBrowser:
                         else:
                             size = f"{size_bytes/(1024*1024):.1f}MB"
 
-                        line = f"{node_name:15s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:>10s}"
+                        line = f"{node_name:20s} (!{node_id:8s})  Packets: {packets:6,}  Size: {size:>10s}"
                         f.write(line + '\n')
 
             return filename
