@@ -53,11 +53,22 @@ class TrafficPersistence:
                     size INTEGER,
                     is_broadcast INTEGER,
                     telemetry TEXT,
-                    position TEXT,
-                    INDEX idx_timestamp (timestamp),
-                    INDEX idx_from_id (from_id),
-                    INDEX idx_packet_type (packet_type)
+                    position TEXT
                 )
+            ''')
+
+            # Index pour optimiser les requêtes sur les paquets
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_packets_timestamp
+                ON packets(timestamp)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_packets_from_id
+                ON packets(from_id)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_packets_type
+                ON packets(packet_type)
             ''')
 
             # Table pour les messages publics
@@ -71,9 +82,14 @@ class TrafficPersistence:
                     rssi INTEGER,
                     snr REAL,
                     message_length INTEGER,
-                    source TEXT,
-                    INDEX idx_msg_timestamp (timestamp)
+                    source TEXT
                 )
+            ''')
+
+            # Index pour optimiser les requêtes sur les messages
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_messages_timestamp
+                ON public_messages(timestamp)
             ''')
 
             # Table pour les statistiques par nœud
