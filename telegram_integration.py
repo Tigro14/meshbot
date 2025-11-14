@@ -10,6 +10,7 @@ import threading
 import traceback
 from config import *
 from utils import *
+from handlers.command_handlers import StatsCommands, MeshCommands
 
 # Import Telegram (optionnel)
 try:
@@ -44,6 +45,16 @@ class TelegramIntegration:
         self.telegram_thread = None
         self.application = None
         self.loop = None
+
+        # Initialiser les gestionnaires de commandes
+        self.stats_commands = StatsCommands(
+            message_handler.traffic_monitor,
+            node_manager
+        )
+        self.mesh_commands = MeshCommands(
+            message_handler.traffic_monitor,
+            node_manager
+        )
 
         # Liste des utilisateurs pour les alertes
         self.alert_users = TELEGRAM_ALERT_USERS if TELEGRAM_ALERT_USERS else TELEGRAM_AUTHORIZED_USERS
@@ -209,6 +220,8 @@ class TelegramIntegration:
                     self._packets_command))
             self.application.add_handler(
                 CommandHandler("stats", self._stats_command))
+            self.application.add_handler(
+                CommandHandler("channel_stats", self._channel_stats_command))
 
             # Après le dernier add_handler
             info_print(
@@ -833,20 +846,11 @@ class TelegramIntegration:
 
         info_print(f"📱 Telegram /trafic {hours}h: {user.username}")
 
-        def get_traffic():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-                report = self.message_handler.traffic_monitor.get_traffic_report(
-                    hours)
-                debug_print(f"📊 Rapport généré: {len(report)} caractères")
-                return report
-            except Exception as e:
-                error_print(f"Erreur get_trafic : {e or 'Unknown error'}")
-                error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
-
-        response = await asyncio.to_thread(get_traffic)
+        # Utiliser la logique métier partagée
+        response = await asyncio.to_thread(
+            self.stats_commands.get_traffic_report,
+            hours
+        )
         await update.message.reply_text(response)
 
     async def _nodes_command(self, update: Update,
@@ -2091,90 +2095,6 @@ class TelegramIntegration:
 
     # Ajouter ces méthodes dans la classe TelegramIntegration
 
-    async def _top_command(self, update: Update,
-                           context: ContextTypes.DEFAULT_TYPE):
-        """
-        Commande /top [heures] [nombre]
-        Affiche les top talkers avec statistiques détaillées
-        """
-        user = update.effective_user
-        if not self._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
-        # Parser les arguments
-        hours = 24  # Défaut pour Telegram
-        top_n = 10  # Top 10 par défaut
-
-        args = context.args
-        if args and len(args) > 0:
-            try:
-                hours = int(args[0])
-                hours = max(1, min(168, hours))  # Max 7 jours
-            except ValueError:
-                hours = 24
-
-        if args and len(args) > 1:
-            try:
-                top_n = int(args[1])
-                top_n = max(3, min(20, top_n))  # Entre 3 et 20
-            except ValueError:
-                top_n = 10
-
-        info_print(f"📱 Telegram /top {hours}h top{top_n}: {user.username}")
-
-        # Message d'attente
-        await update.message.reply_text(f"📊 Calcul des statistiques ({hours}h)...")
-
-        def get_detailed_stats():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                # Rapport détaillé des top talkers
-                report = self.message_handler.traffic_monitor.get_top_talkers_report(
-                    hours, top_n)
-
-                # Ajouter le pattern d'activité si demandé sur 24h ou moins
-                if hours <= 24:
-                    pattern = self.message_handler.traffic_monitor.get_activity_pattern(
-                        hours)
-                    if pattern:
-                        report += "\n\n" + pattern
-
-                return report
-
-            except Exception as e:
-                error_print(
-                    f"Erreur get_detailed_stats: {
-                        e or 'Unknown error'}")
-                error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
-
-        # Générer le rapport
-        response = await asyncio.to_thread(get_detailed_stats)
-
-        # Si le message est trop long, le diviser
-        if len(response) > 4000:
-            # Diviser intelligemment par sections
-            sections = response.split('\n\n')
-            current_msg = ""
-
-            for section in sections:
-                if len(current_msg) + len(section) + 2 < 4000:
-                    if current_msg:
-                        current_msg += "\n\n"
-                    current_msg += section
-                else:
-                    if current_msg:
-                        await update.message.reply_text(current_msg)
-                        await asyncio.sleep(0.5)
-                    current_msg = section
-
-            if current_msg:
-                await update.message.reply_text(current_msg)
-        else:
-            await update.message.reply_text(response)
 
     async def _stats_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
@@ -2277,8 +2197,8 @@ class TelegramIntegration:
             return
 
         # Parser les arguments
-        hours = 24  # Défaut pour Telegram
-        top_n = 10  # Top 10 par défaut
+        hours = 24
+        top_n = 10
 
         args = context.args
         if args and len(args) > 0:
@@ -2300,32 +2220,18 @@ class TelegramIntegration:
         # Message d'attente
         await update.message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
 
+        # Utiliser la logique métier partagée
         def get_detailed_stats():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
+            # Rapport détaillé avec types de paquets
+            report = self.stats_commands.get_top_talkers(hours, top_n, include_packet_types=True)
 
-                # Rapport détaillé avec types de paquets
-                report = self.message_handler.traffic_monitor.get_top_talkers_report(
-                    hours, top_n, include_packet_types=True
-                )
+            # Ajouter le résumé des types de paquets
+            packet_summary = self.stats_commands.get_packet_type_summary(hours)
+            if packet_summary:
+                report += "\n\n" + packet_summary
 
-                # Ajouter le résumé des types de paquets
-                packet_summary = self.message_handler.traffic_monitor.get_packet_type_summary(
-                    hours)
-                if packet_summary:
-                    report += "\n\n" + packet_summary
+            return report
 
-                return report
-
-            except Exception as e:
-                error_print(
-                    f"Erreur get_detailed_stats: {
-                        e or 'Unknown error'}")
-                error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
-
-        # Générer le rapport
         response = await asyncio.to_thread(get_detailed_stats)
 
         # Si le message est trop long, le diviser
@@ -2370,46 +2276,34 @@ class TelegramIntegration:
 
         info_print(f"📱 Telegram /packets {hours}h: {user.username}")
 
+        # Utiliser la logique métier partagée
         def get_packet_stats():
             try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                tm = self.message_handler.traffic_monitor
-
                 # Résumé détaillé des types
-                summary = tm.get_packet_type_summary(hours)
+                summary = self.stats_commands.get_packet_type_summary(hours)
 
                 # Ajouter les stats réseau
+                tm = self.message_handler.traffic_monitor
+                if not tm:
+                    return summary
+
                 lines = [summary, "\n🌐 **Statistiques réseau:**"]
-                lines.append(
-                    f"• Paquets directs: {
-                        tm.network_stats['packets_direct']}")
-                lines.append(
-                    f"• Paquets relayés: {
-                        tm.network_stats['packets_relayed']}")
+                lines.append(f"• Paquets directs: {tm.network_stats['packets_direct']}")
+                lines.append(f"• Paquets relayés: {tm.network_stats['packets_relayed']}")
 
                 if tm.network_stats['max_hops_seen'] > 0:
-                    lines.append(
-                        f"• Max hops vus: {
-                            tm.network_stats['max_hops_seen']}")
+                    lines.append(f"• Max hops vus: {tm.network_stats['max_hops_seen']}")
 
                 if tm.network_stats['avg_rssi'] != 0:
-                    lines.append(
-                        f"• RSSI moyen: {
-                            tm.network_stats['avg_rssi']:.1f}dBm")
+                    lines.append(f"• RSSI moyen: {tm.network_stats['avg_rssi']:.1f}dBm")
 
                 if tm.network_stats['avg_snr'] != 0:
-                    lines.append(
-                        f"• SNR moyen: {
-                            tm.network_stats['avg_snr']:.1f}dB")
+                    lines.append(f"• SNR moyen: {tm.network_stats['avg_snr']:.1f}dB")
 
                 # Total de données
                 total_kb = tm.global_packet_stats['total_bytes'] / 1024
                 lines.append(f"\n📊 **Volume total:**")
-                lines.append(
-                    f"• {
-                        tm.global_packet_stats['total_packets']} paquets")
+                lines.append(f"• {tm.global_packet_stats['total_packets']} paquets")
                 lines.append(f"• {total_kb:.1f}KB de données")
 
                 return "\n".join(lines)
@@ -2697,89 +2591,49 @@ class TelegramIntegration:
 
         info_print(f"📱 Telegram /nodeinfo {node_name_partial} {hours}h: {user.username}")
 
+        # Utiliser la logique métier partagée
         def get_node_report():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                tm = self.message_handler.traffic_monitor
-                matching_nodes = []
-
-                # Essayer d'abord de parser comme un ID hexadécimal
-                target_id = None
-                if node_name_partial.startswith('!'):
-                    try:
-                        target_id = int(node_name_partial[1:], 16)
-                        info_print(f"🔍 Recherche par ID hex: !{target_id:08x}")
-                    except ValueError:
-                        pass
-                elif node_name_partial.startswith('0x'):
-                    try:
-                        target_id = int(node_name_partial, 16)
-                        info_print(f"🔍 Recherche par ID hex: 0x{target_id:08x}")
-                    except ValueError:
-                        pass
-
-                # Si on a un ID valide, rechercher exactement ce nœud
-                if target_id is not None:
-                    target_id = target_id & 0xFFFFFFFF
-                    if target_id in self.node_manager.node_names:
-                        name = self.node_manager.node_names[target_id]
-                        if isinstance(name, dict):
-                            name = name.get('name', 'Unknown')
-                        matching_nodes.append((target_id, name))
-                    else:
-                        return f"❌ Nœud !{target_id:08x} introuvable"
-                else:
-                    # Recherche par nom
-                    for node_id, name in self.node_manager.node_names.items():
-                        if isinstance(name, dict):
-                            name = name.get('name', '')
-                        if node_name_partial in name.lower():
-                            matching_nodes.append((node_id, name))
-
-                if not matching_nodes:
-                    return f"❌ Aucun nœud trouvé pour '{node_name_partial}'"
-
-                if len(matching_nodes) > 1:
-                    unique_names = set(name for _, name in matching_nodes)
-
-                    if len(unique_names) == 1:
-                        # ALERTE: Tous les nœuds ont le même nom
-                        result = f"⚠ ALERTE: {len(matching_nodes)} nœuds distincts portent le même nom!\\n\\n"
-                        result += f"📛 Nom commun: {matching_nodes[0][1]}\\n\\n"
-                        result += "🔍 Utilisez l'ID hexadécimal complet:\\n\\n"
-
-                        for node_id, name in matching_nodes:
-                            node_packets = [p for p in tm.all_packets
-                                          if p['from_id'] == node_id
-                                          and p['timestamp'] >= time.time() - (hours * 3600)]
-                            packet_count = len(node_packets)
-
-                            result += f"• !{node_id:08x} ({packet_count} paquets en {hours}h)\\n"
-                            result += f"  Commande: /nodeinfo !{node_id:08x}\\n\\n"
-
-                        return result
-                    else:
-                        # Noms différents
-                        result = f"📋 {len(matching_nodes)} nœuds trouvés:\\n\\n"
-                        for node_id, name in matching_nodes[:5]:
-                            result += f"- {name} (!{node_id:08x})\\n"
-                        if len(matching_nodes) > 5:
-                            result += f"\\n... et {len(matching_nodes) - 5} autres\\n"
-                        result += "\\nPrécisez le nom ou utilisez l'ID complet"
-                        return result
-
-                node_id, name = matching_nodes[0]
-                return tm.get_node_behavior_report(node_id, hours)
-
-            except Exception as e:
-                error_print(f"Erreur nodeinfo: {e}")
-                import traceback
-                error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
+            success, report = self.mesh_commands.get_node_behavior_report(
+                node_name_partial, hours
+            )
+            return report
 
         response = await asyncio.to_thread(get_node_report)
+
+        # Diviser si trop long
+        if len(response) > 4000:
+            chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+                await asyncio.sleep(0.5)
+        else:
+            await update.message.reply_text(response)
+
+    async def _channel_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /channel_stats [heures]
+        Affiche les statistiques d'utilisation du canal par nœud
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))
+            except ValueError:
+                hours = 24
+
+        info_print(f"📱 Telegram /channel_stats {hours}h: {user.username}")
+
+        # Utiliser la logique métier partagée
+        response = await asyncio.to_thread(
+            self.stats_commands.get_channel_stats,
+            hours
+        )
 
         # Diviser si trop long
         if len(response) > 4000:
