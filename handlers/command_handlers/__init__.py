@@ -7,11 +7,13 @@ from .ai_commands import AICommands
 from .network_commands import NetworkCommands
 from .system_commands import SystemCommands
 from .utility_commands import UtilityCommands
+from .stats_commands import StatsCommands
 from .signal_utils import *
 
 __all__ = [
     'AICommands',
-    'NetworkCommands', 
+    'NetworkCommands',
     'SystemCommands',
-    'UtilityCommands'
+    'UtilityCommands',
+    'StatsCommands'
 ]
