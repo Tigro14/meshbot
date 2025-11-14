@@ -10,7 +10,7 @@ import threading
 import traceback
 from config import *
 from utils import *
-from handlers.command_handlers import StatsCommands
+from handlers.command_handlers import StatsCommands, MeshCommands
 
 # Import Telegram (optionnel)
 try:
@@ -46,8 +46,12 @@ class TelegramIntegration:
         self.application = None
         self.loop = None
 
-        # Initialiser le gestionnaire de statistiques
+        # Initialiser les gestionnaires de commandes
         self.stats_commands = StatsCommands(
+            message_handler.traffic_monitor,
+            node_manager
+        )
+        self.mesh_commands = MeshCommands(
             message_handler.traffic_monitor,
             node_manager
         )
@@ -2587,87 +2591,12 @@ class TelegramIntegration:
 
         info_print(f"📱 Telegram /nodeinfo {node_name_partial} {hours}h: {user.username}")
 
+        # Utiliser la logique métier partagée
         def get_node_report():
-            try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                tm = self.message_handler.traffic_monitor
-                matching_nodes = []
-
-                # Essayer d'abord de parser comme un ID hexadécimal
-                target_id = None
-                if node_name_partial.startswith('!'):
-                    try:
-                        target_id = int(node_name_partial[1:], 16)
-                        info_print(f"🔍 Recherche par ID hex: !{target_id:08x}")
-                    except ValueError:
-                        pass
-                elif node_name_partial.startswith('0x'):
-                    try:
-                        target_id = int(node_name_partial, 16)
-                        info_print(f"🔍 Recherche par ID hex: 0x{target_id:08x}")
-                    except ValueError:
-                        pass
-
-                # Si on a un ID valide, rechercher exactement ce nœud
-                if target_id is not None:
-                    target_id = target_id & 0xFFFFFFFF
-                    if target_id in self.node_manager.node_names:
-                        name = self.node_manager.node_names[target_id]
-                        if isinstance(name, dict):
-                            name = name.get('name', 'Unknown')
-                        matching_nodes.append((target_id, name))
-                    else:
-                        return f"❌ Nœud !{target_id:08x} introuvable"
-                else:
-                    # Recherche par nom
-                    for node_id, name in self.node_manager.node_names.items():
-                        if isinstance(name, dict):
-                            name = name.get('name', '')
-                        if node_name_partial in name.lower():
-                            matching_nodes.append((node_id, name))
-
-                if not matching_nodes:
-                    return f"❌ Aucun nœud trouvé pour '{node_name_partial}'"
-
-                if len(matching_nodes) > 1:
-                    unique_names = set(name for _, name in matching_nodes)
-
-                    if len(unique_names) == 1:
-                        # ALERTE: Tous les nœuds ont le même nom
-                        result = f"⚠ ALERTE: {len(matching_nodes)} nœuds distincts portent le même nom!\\n\\n"
-                        result += f"📛 Nom commun: {matching_nodes[0][1]}\\n\\n"
-                        result += "🔍 Utilisez l'ID hexadécimal complet:\\n\\n"
-
-                        for node_id, name in matching_nodes:
-                            node_packets = [p for p in tm.all_packets
-                                          if p['from_id'] == node_id
-                                          and p['timestamp'] >= time.time() - (hours * 3600)]
-                            packet_count = len(node_packets)
-
-                            result += f"• !{node_id:08x} ({packet_count} paquets en {hours}h)\\n"
-                            result += f"  Commande: /nodeinfo !{node_id:08x}\\n\\n"
-
-                        return result
-                    else:
-                        # Noms différents
-                        result = f"📋 {len(matching_nodes)} nœuds trouvés:\\n\\n"
-                        for node_id, name in matching_nodes[:5]:
-                            result += f"- {name} (!{node_id:08x})\\n"
-                        if len(matching_nodes) > 5:
-                            result += f"\\n... et {len(matching_nodes) - 5} autres\\n"
-                        result += "\\nPrécisez le nom ou utilisez l'ID complet"
-                        return result
-
-                node_id, name = matching_nodes[0]
-                return tm.get_node_behavior_report(node_id, hours)
-
-            except Exception as e:
-                error_print(f"Erreur nodeinfo: {e}")
-                import traceback
-                error_print(traceback.format_exc())
-                return f"❌ Erreur: {str(e)[:100]}"
+            success, report = self.mesh_commands.get_node_behavior_report(
+                node_name_partial, hours
+            )
+            return report
 
         response = await asyncio.to_thread(get_node_report)
 
