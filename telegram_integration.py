@@ -209,6 +209,8 @@ class TelegramIntegration:
                     self._packets_command))
             self.application.add_handler(
                 CommandHandler("stats", self._stats_command))
+            self.application.add_handler(
+                CommandHandler("channel_stats", self._channel_stats_command))
 
             # Après le dernier add_handler
             info_print(
@@ -2780,6 +2782,160 @@ class TelegramIntegration:
                 return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_node_report)
+
+        # Diviser si trop long
+        if len(response) > 4000:
+            chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+                await asyncio.sleep(0.5)
+        else:
+            await update.message.reply_text(response)
+
+    async def _channel_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /channel_stats [heures]
+        Affiche les statistiques d'utilisation du canal par nœud
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))
+            except ValueError:
+                hours = 24
+
+        info_print(f"📱 Telegram /channel_stats {hours}h: {user.username}")
+
+        def get_channel_stats():
+            try:
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+
+                tm = self.message_handler.traffic_monitor
+                current_time = time.time()
+                cutoff_time = current_time - (hours * 3600)
+
+                lines = []
+                lines.append(f"📡 STATISTIQUES D'UTILISATION DU CANAL ({hours}h)")
+                lines.append("=" * 50)
+
+                # Collecter les données de télémétrie par nœud
+                node_channel_data = {}
+
+                for packet in tm.all_packets:
+                    if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
+                        from_id = packet['from_id']
+
+                        if from_id in tm.node_packet_stats:
+                            stats = tm.node_packet_stats[from_id]
+                            if 'telemetry_stats' in stats:
+                                tel_stats = stats['telemetry_stats']
+                                ch_util = tel_stats.get('last_channel_util')
+                                air_util = tel_stats.get('last_air_util')
+
+                                if ch_util is not None:
+                                    if from_id not in node_channel_data:
+                                        node_channel_data[from_id] = {
+                                            'channel_utils': [],
+                                            'air_utils': [],
+                                            'name': tm.node_manager.get_node_name(from_id)
+                                        }
+
+                                    node_channel_data[from_id]['channel_utils'].append(ch_util)
+                                    if air_util is not None:
+                                        node_channel_data[from_id]['air_utils'].append(air_util)
+
+                if not node_channel_data:
+                    return f"📭 Aucune donnée de télémétrie dans les {hours}h"
+
+                # Calculer les moyennes et trier par utilisation du canal
+                node_averages = []
+                for node_id, data in node_channel_data.items():
+                    avg_channel = sum(data['channel_utils']) / len(data['channel_utils'])
+                    avg_air = sum(data['air_utils']) / len(data['air_utils']) if data['air_utils'] else 0
+                    node_averages.append({
+                        'id': node_id,
+                        'name': data['name'],
+                        'avg_channel': avg_channel,
+                        'avg_air': avg_air,
+                        'samples': len(data['channel_utils'])
+                    })
+
+                # Trier par utilisation du canal (décroissant)
+                node_averages.sort(key=lambda x: x['avg_channel'], reverse=True)
+
+                lines.append(f"\n📊 Nœuds actifs: {len(node_averages)}")
+                lines.append("")
+
+                # Afficher les statistiques par nœud
+                for i, node_data in enumerate(node_averages, 1):
+                    name = node_data['name'][:20]
+                    avg_ch = node_data['avg_channel']
+                    avg_air = node_data['avg_air']
+                    samples = node_data['samples']
+
+                    # Icône selon le niveau d'utilisation
+                    if avg_ch > 25:
+                        icon = "🔴"
+                        status = "CRITIQUE"
+                    elif avg_ch > 15:
+                        icon = "🟡"
+                        status = "ÉLEVÉ"
+                    elif avg_ch > 10:
+                        icon = "🟢"
+                        status = "NORMAL"
+                    else:
+                        icon = "⚪"
+                        status = "FAIBLE"
+
+                    lines.append(f"{i}. {icon} {name}")
+                    lines.append(f"   Canal: {avg_ch:.1f}% ({status})")
+                    if avg_air > 0:
+                        lines.append(f"   Air TX: {avg_air:.1f}%")
+                    lines.append(f"   Échantillons: {samples}")
+
+                    # Avertissement si utilisation élevée
+                    if avg_ch > 15:
+                        lines.append(f"   ⚠️  Réduire la fréquence des paquets")
+
+                    lines.append("")
+
+                # Statistiques globales
+                lines.append("=" * 50)
+                lines.append("📈 STATISTIQUES GLOBALES:")
+                lines.append("")
+
+                total_avg_channel = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
+                max_channel = max(n['avg_channel'] for n in node_averages)
+                min_channel = min(n['avg_channel'] for n in node_averages)
+
+                lines.append(f"Utilisation moyenne du canal: {total_avg_channel:.1f}%")
+                lines.append(f"Utilisation max: {max_channel:.1f}%")
+                lines.append(f"Utilisation min: {min_channel:.1f}%")
+
+                # Seuils recommandés
+                lines.append("")
+                lines.append("📋 SEUILS RECOMMANDÉS:")
+                lines.append("  🟢 < 10% : Normal")
+                lines.append("  🟡 10-15% : Acceptable")
+                lines.append("  🟠 15-25% : Élevé")
+                lines.append("  🔴 > 25% : Critique")
+
+                return "\n".join(lines)
+
+            except Exception as e:
+                error_print(f"Erreur channel_stats: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+
+        response = await asyncio.to_thread(get_channel_stats)
 
         # Diviser si trop long
         if len(response) > 4000:
