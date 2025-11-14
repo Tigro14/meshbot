@@ -243,3 +243,68 @@ class StatsCommands:
             error_print(f"Erreur get_traffic_report: {e}")
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:100]}"
+
+    def clear_traffic_history(self):
+        """
+        Efface tout l'historique du trafic (mémoire et SQLite).
+
+        Returns:
+            str: Message de confirmation ou d'erreur
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            success = self.traffic_monitor.clear_traffic_history()
+
+            if success:
+                return "✅ Historique du trafic effacé avec succès\n\n" \
+                       "📭 Toutes les données (mémoire et base de données) ont été supprimées.\n" \
+                       "Les statistiques vont recommencer à zéro."
+            else:
+                return "❌ Erreur lors de l'effacement de l'historique"
+
+        except Exception as e:
+            error_print(f"Erreur clear_traffic_history: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_persistence_stats(self):
+        """
+        Affiche les statistiques de la base de données de persistance.
+
+        Returns:
+            str: Rapport des statistiques de persistance
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_persistence_stats()
+
+        except Exception as e:
+            error_print(f"Erreur get_persistence_stats: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def cleanup_old_data(self, hours=48):
+        """
+        Nettoie les anciennes données de la base de données.
+
+        Args:
+            hours: Nombre d'heures de données à conserver
+
+        Returns:
+            str: Message de confirmation
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            self.traffic_monitor.cleanup_old_persisted_data(hours)
+            return f"✅ Nettoyage effectué\n\nDonnées de plus de {hours}h supprimées."
+
+        except Exception as e:
+            error_print(f"Erreur cleanup_old_data: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"

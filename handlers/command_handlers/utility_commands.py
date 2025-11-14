@@ -391,12 +391,20 @@ class UtilityCommands:
         • /stats - Statistiques globales du réseau
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
-        • /histo [type] [h] 
+        • /histo [type] [h]
           Types disponibles:
              - all : tous les paquets (défaut)
              - messages : messages texte uniquement
              - pos : positions uniquement
              - info : nodeinfo uniquement
+
+        💾 PERSISTANCE TRAFIC
+        • /dbstats - Stats de la base de données
+          Affiche le nombre de paquets, taille DB, etc.
+        • /cleanup [heures] - Nettoie anciennes données
+          Défaut: 48h, supprime données plus anciennes
+        • /cleartraffic - Efface tout l'historique
+          ⚠️  Supprime toutes les données (mémoire + DB)
 
         📢 DIFFUSION
         •echo <message> - Diffuser sur le réseau

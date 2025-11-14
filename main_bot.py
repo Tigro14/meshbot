@@ -261,9 +261,16 @@ class MeshBot:
                 self.context_manager.cleanup_old_contexts()
                 self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
-                self.packet_history.cleanup_old_data() 
+                self.packet_history.cleanup_old_data()
                 self.packet_history.save_history()
-                
+
+                # Sauvegarde des statistiques dans SQLite
+                debug_print("💾 Sauvegarde des statistiques...")
+                self.traffic_monitor.save_statistics()
+
+                # Nettoyage des anciennes données SQLite (> 48h)
+                self.traffic_monitor.cleanup_old_persisted_data(hours=48)
+
                 debug_print("✅ Mise à jour périodique terminée")
                 
             except Exception as e:

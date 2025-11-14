@@ -11,6 +11,10 @@ from collections import deque, defaultdict
 from datetime import datetime, timedelta
 from config import *
 from utils import *
+from traffic_persistence import TrafficPersistence
+import logging
+
+logger = logging.getLogger(__name__)
 
 class TrafficMonitor:
     def __init__(self, node_manager):
@@ -136,6 +140,13 @@ class TrafficMonitor:
             'packets_direct': 0,
             'packets_relayed': 0
         }
+
+        # === PERSISTANCE SQLITE ===
+        self.persistence = TrafficPersistence()
+        logger.info("Initialisation de la persistance SQLite")
+
+        # Charger les données existantes au démarrage
+        self._load_persisted_data()
     
     def add_packet(self, packet, source='unknown'):
         """
@@ -220,6 +231,12 @@ class TrafficMonitor:
 
             self.all_packets.append(packet_entry)
 
+            # Sauvegarder le paquet dans SQLite
+            try:
+                self.persistence.save_packet(packet_entry)
+            except Exception as e:
+                logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
+
             # Capturer les positions GPS
             if packet_entry['packet_type'] == 'POSITION_APP':
                 if packet and 'decoded' in packet:
@@ -236,15 +253,23 @@ class TrafficMonitor:
             
             # Si c'est un message texte public, l'ajouter aussi à la file des messages
             if packet_type == 'TEXT_MESSAGE_APP' and message_text and packet_entry['is_broadcast']:
-                self.public_messages.append({
+                message_data = {
                     'timestamp': timestamp,
                     'from_id': from_id,
                     'sender_name': sender_name,
                     'message': message_text,
                     'rssi': rssi,
                     'snr': snr,
-                    'message_length': len(message_text)
-                })
+                    'message_length': len(message_text),
+                    'source': source
+                }
+                self.public_messages.append(message_data)
+
+                # Sauvegarder le message public dans SQLite
+                try:
+                    self.persistence.save_public_message(message_data)
+                except Exception as e:
+                    logger.error(f"Erreur lors de la sauvegarde du message public : {e}")
             
             # Mise à jour des statistiques
             self._update_packet_statistics(from_id, sender_name, packet_entry, packet)
@@ -1554,4 +1579,158 @@ class TrafficMonitor:
             import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
+
+    # ========== MÉTHODES DE PERSISTANCE ==========
+
+    def _load_persisted_data(self):
+        """
+        Charge les données persistées depuis SQLite au démarrage.
+        Restaure les paquets, messages et statistiques.
+        """
+        try:
+            logger.info("Chargement des données persistées...")
+
+            # Charger les paquets (dernières 24h, max 5000)
+            packets = self.persistence.load_packets(hours=24, limit=5000)
+            for packet in reversed(packets):  # Inverser pour avoir l'ordre chronologique
+                self.all_packets.append(packet)
+            logger.info(f"✓ {len(packets)} paquets chargés")
+
+            # Charger les messages publics (dernières 24h, max 2000)
+            messages = self.persistence.load_public_messages(hours=24, limit=2000)
+            for message in reversed(messages):
+                self.public_messages.append(message)
+            logger.info(f"✓ {len(messages)} messages publics chargés")
+
+            # Charger les statistiques par nœud
+            node_stats = self.persistence.load_node_stats()
+            if node_stats:
+                # Fusionner avec les stats existantes
+                for node_id, stats in node_stats.items():
+                    self.node_packet_stats[node_id] = stats
+                logger.info(f"✓ Statistiques de {len(node_stats)} nœuds chargées")
+
+            # Charger les statistiques globales
+            global_stats = self.persistence.load_global_stats()
+            if global_stats:
+                self.global_packet_stats = global_stats
+                logger.info("✓ Statistiques globales chargées")
+
+            # Charger les statistiques réseau
+            network_stats = self.persistence.load_network_stats()
+            if network_stats:
+                self.network_stats = network_stats
+                logger.info("✓ Statistiques réseau chargées")
+
+            # Afficher un résumé
+            summary = self.persistence.get_stats_summary()
+            logger.info(f"Base de données : {summary.get('database_size_mb', 0)} MB")
+
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement des données persistées : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def save_statistics(self):
+        """
+        Sauvegarde les statistiques agrégées dans SQLite.
+        À appeler périodiquement pour éviter la perte de données.
+        """
+        try:
+            # Sauvegarder les statistiques par nœud
+            self.persistence.save_node_stats(dict(self.node_packet_stats))
+
+            # Sauvegarder les statistiques globales
+            self.persistence.save_global_stats(self.global_packet_stats)
+
+            # Sauvegarder les statistiques réseau
+            self.persistence.save_network_stats(self.network_stats)
+
+            logger.debug("Statistiques sauvegardées dans SQLite")
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde des statistiques : {e}")
+
+    def cleanup_old_persisted_data(self, hours: int = 48):
+        """
+        Nettoie les anciennes données dans SQLite.
+
+        Args:
+            hours: Nombre d'heures à conserver (par défaut 48h)
+        """
+        try:
+            self.persistence.cleanup_old_data(hours=hours)
+            logger.info(f"Nettoyage des données SQLite (> {hours}h)")
+        except Exception as e:
+            logger.error(f"Erreur lors du nettoyage des données : {e}")
+
+    def clear_traffic_history(self):
+        """
+        Efface tout l'historique du trafic (mémoire et SQLite).
+        """
+        try:
+            # Effacer les données en mémoire
+            self.all_packets.clear()
+            self.public_messages.clear()
+            self.node_packet_stats.clear()
+            self.packet_history.clear()
+
+            # Réinitialiser les statistiques globales
+            self.global_packet_stats = {
+                'total_packets': 0,
+                'by_type': defaultdict(int),
+                'total_bytes': 0,
+                'unique_nodes': set(),
+                'busiest_hour': None,
+                'quietest_hour': None,
+                'last_reset': time.time()
+            }
+
+            # Réinitialiser les statistiques réseau
+            self.network_stats = {
+                'total_hops': 0,
+                'max_hops_seen': 0,
+                'avg_rssi': 0.0,
+                'avg_snr': 0.0,
+                'packets_direct': 0,
+                'packets_relayed': 0
+            }
+
+            # Effacer les données dans SQLite
+            self.persistence.clear_all_data()
+
+            logger.info("Historique du trafic effacé (mémoire et SQLite)")
+            return True
+
+        except Exception as e:
+            logger.error(f"Erreur lors de l'effacement de l'historique : {e}")
+            return False
+
+    def get_persistence_stats(self) -> str:
+        """
+        Retourne un rapport sur l'état de la persistance.
+
+        Returns:
+            Texte formaté avec les statistiques de la base de données
+        """
+        try:
+            summary = self.persistence.get_stats_summary()
+
+            lines = ["📊 STATISTIQUES DE PERSISTANCE"]
+            lines.append("=" * 40)
+            lines.append(f"Total paquets : {summary.get('total_packets', 0):,}")
+            lines.append(f"Total messages : {summary.get('total_messages', 0):,}")
+            lines.append(f"Nœuds uniques : {summary.get('total_nodes', 0)}")
+            lines.append(f"Taille DB : {summary.get('database_size_mb', 0):.2f} MB")
+
+            if summary.get('oldest_packet'):
+                lines.append(f"\nPaquet le plus ancien : {summary['oldest_packet']}")
+            if summary.get('newest_packet'):
+                lines.append(f"Paquet le plus récent : {summary['newest_packet']}")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des stats de persistance : {e}")
+            return f"❌ Erreur : {e}"
 
