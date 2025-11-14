@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""
+Gestionnaire des commandes de statistiques
+Logique métier réutilisable par mesh ET Telegram
+"""
+
+import time
+from collections import defaultdict
+from utils import error_print, debug_print
+import traceback
+
+
+class StatsCommands:
+    """
+    Gestionnaire des statistiques réseau Meshtastic
+    Fournit des méthodes de génération de rapports réutilisables
+    """
+
+    def __init__(self, traffic_monitor, node_manager):
+        """
+        Args:
+            traffic_monitor: Instance de TrafficMonitor
+            node_manager: Instance de NodeManager
+        """
+        self.traffic_monitor = traffic_monitor
+        self.node_manager = node_manager
+
+    def get_channel_stats(self, hours=24):
+        """
+        Générer les statistiques d'utilisation du canal par nœud
+
+        Args:
+            hours: Période d'analyse en heures (défaut: 24)
+
+        Returns:
+            str: Rapport formaté des statistiques de canal
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            tm = self.traffic_monitor
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+
+            lines = []
+            lines.append(f"📡 STATISTIQUES D'UTILISATION DU CANAL ({hours}h)")
+            lines.append("=" * 50)
+
+            # Collecter les données de télémétrie par nœud
+            node_channel_data = {}
+
+            for packet in tm.all_packets:
+                if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
+                    from_id = packet['from_id']
+
+                    # Extraire les données de télémétrie directement du paquet
+                    if 'telemetry' in packet:
+                        telemetry = packet['telemetry']
+                        ch_util = telemetry.get('channel_util')
+                        air_util = telemetry.get('air_util')
+
+                        if ch_util is not None:
+                            if from_id not in node_channel_data:
+                                node_channel_data[from_id] = {
+                                    'channel_utils': [],
+                                    'air_utils': [],
+                                    'name': self.node_manager.get_node_name(from_id)
+                                }
+
+                            node_channel_data[from_id]['channel_utils'].append(ch_util)
+                            if air_util is not None:
+                                node_channel_data[from_id]['air_utils'].append(air_util)
+
+            if not node_channel_data:
+                return f"📭 Aucune donnée de télémétrie dans les {hours}h"
+
+            # Calculer les moyennes et trier par utilisation du canal
+            node_averages = []
+            for node_id, data in node_channel_data.items():
+                avg_channel = sum(data['channel_utils']) / len(data['channel_utils'])
+                avg_air = sum(data['air_utils']) / len(data['air_utils']) if data['air_utils'] else 0
+                node_averages.append({
+                    'id': node_id,
+                    'name': data['name'],
+                    'avg_channel': avg_channel,
+                    'avg_air': avg_air,
+                    'samples': len(data['channel_utils'])
+                })
+
+            # Trier par utilisation du canal (décroissant)
+            node_averages.sort(key=lambda x: x['avg_channel'], reverse=True)
+
+            lines.append(f"\n📊 Nœuds actifs: {len(node_averages)}")
+            lines.append("")
+
+            # Afficher les statistiques par nœud
+            for i, node_data in enumerate(node_averages, 1):
+                name = node_data['name'][:20]
+                avg_ch = node_data['avg_channel']
+                avg_air = node_data['avg_air']
+                samples = node_data['samples']
+
+                # Icône selon le niveau d'utilisation
+                if avg_ch > 25:
+                    icon = "🔴"
+                    status = "CRITIQUE"
+                elif avg_ch > 15:
+                    icon = "🟡"
+                    status = "ÉLEVÉ"
+                elif avg_ch > 10:
+                    icon = "🟢"
+                    status = "NORMAL"
+                else:
+                    icon = "⚪"
+                    status = "FAIBLE"
+
+                lines.append(f"{i}. {icon} {name}")
+                lines.append(f"   Canal: {avg_ch:.1f}% ({status})")
+                if avg_air > 0:
+                    lines.append(f"   Air TX: {avg_air:.1f}%")
+                lines.append(f"   Échantillons: {samples}")
+
+                # Avertissement si utilisation élevée
+                if avg_ch > 15:
+                    lines.append(f"   ⚠️  Réduire la fréquence des paquets")
+
+                lines.append("")
+
+            # Statistiques globales
+            lines.append("=" * 50)
+            lines.append("📈 STATISTIQUES GLOBALES:")
+            lines.append("")
+
+            total_avg_channel = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
+            max_channel = max(n['avg_channel'] for n in node_averages)
+            min_channel = min(n['avg_channel'] for n in node_averages)
+
+            lines.append(f"Utilisation moyenne du canal: {total_avg_channel:.1f}%")
+            lines.append(f"Utilisation max: {max_channel:.1f}%")
+            lines.append(f"Utilisation min: {min_channel:.1f}%")
+
+            # Seuils recommandés
+            lines.append("")
+            lines.append("📋 SEUILS RECOMMANDÉS:")
+            lines.append("  🟢 < 10% : Normal")
+            lines.append("  🟡 10-15% : Acceptable")
+            lines.append("  🟠 15-25% : Élevé")
+            lines.append("  🔴 > 25% : Critique")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur get_channel_stats: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_top_talkers(self, hours=24, top_n=10, include_packet_types=True):
+        """
+        Générer le rapport des top talkers
+
+        Args:
+            hours: Période d'analyse en heures
+            top_n: Nombre de top nodes à afficher
+            include_packet_types: Inclure le détail par type de paquet
+
+        Returns:
+            str: Rapport formaté des top talkers
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_top_talkers_report(
+                hours, top_n, include_packet_types
+            )
+
+        except Exception as e:
+            error_print(f"Erreur get_top_talkers: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_packet_type_summary(self, hours=24):
+        """
+        Générer un résumé des types de paquets
+
+        Args:
+            hours: Période d'analyse en heures
+
+        Returns:
+            str: Résumé formaté des types de paquets
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_packet_type_summary(hours)
+
+        except Exception as e:
+            error_print(f"Erreur get_packet_type_summary: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_histogram(self, packet_filter='all', hours=24):
+        """
+        Générer un histogramme de distribution horaire des paquets
+
+        Args:
+            packet_filter: Type de paquet ('all', 'messages', 'pos', 'info', 'telemetry', etc.)
+            hours: Période d'analyse en heures
+
+        Returns:
+            str: Histogramme formaté
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_hourly_histogram(packet_filter, hours)
+
+        except Exception as e:
+            error_print(f"Erreur get_histogram: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_traffic_report(self, hours=8):
+        """
+        Générer le rapport de trafic public
+
+        Args:
+            hours: Période d'analyse en heures
+
+        Returns:
+            str: Rapport formaté du trafic
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_traffic_report(hours)
+
+        except Exception as e:
+            error_print(f"Erreur get_traffic_report: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
