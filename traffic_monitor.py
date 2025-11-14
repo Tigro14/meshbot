@@ -203,7 +203,21 @@ class TrafficMonitor:
                 'size': packet_size,
                 'is_broadcast': to_id in [0xFFFFFFFF, 0]
             }
-            
+
+            # Extraire les données de télémétrie pour channel_stats
+            if packet_type == 'TELEMETRY_APP' and 'decoded' in packet:
+                decoded = packet['decoded']
+                if 'telemetry' in decoded:
+                    telemetry = decoded['telemetry']
+                    if 'deviceMetrics' in telemetry:
+                        metrics = telemetry['deviceMetrics']
+                        packet_entry['telemetry'] = {
+                            'battery': metrics.get('batteryLevel'),
+                            'voltage': metrics.get('voltage'),
+                            'channel_util': metrics.get('channelUtilization'),
+                            'air_util': metrics.get('airUtilTx')
+                        }
+
             self.all_packets.append(packet_entry)
 
             # Capturer les positions GPS

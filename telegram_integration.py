@@ -2832,24 +2832,23 @@ class TelegramIntegration:
                     if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
                         from_id = packet['from_id']
 
-                        if from_id in tm.node_packet_stats:
-                            stats = tm.node_packet_stats[from_id]
-                            if 'telemetry_stats' in stats:
-                                tel_stats = stats['telemetry_stats']
-                                ch_util = tel_stats.get('last_channel_util')
-                                air_util = tel_stats.get('last_air_util')
+                        # Extraire les données de télémétrie directement du paquet
+                        if 'telemetry' in packet:
+                            telemetry = packet['telemetry']
+                            ch_util = telemetry.get('channel_util')
+                            air_util = telemetry.get('air_util')
 
-                                if ch_util is not None:
-                                    if from_id not in node_channel_data:
-                                        node_channel_data[from_id] = {
-                                            'channel_utils': [],
-                                            'air_utils': [],
-                                            'name': tm.node_manager.get_node_name(from_id)
-                                        }
+                            if ch_util is not None:
+                                if from_id not in node_channel_data:
+                                    node_channel_data[from_id] = {
+                                        'channel_utils': [],
+                                        'air_utils': [],
+                                        'name': tm.node_manager.get_node_name(from_id)
+                                    }
 
-                                    node_channel_data[from_id]['channel_utils'].append(ch_util)
-                                    if air_util is not None:
-                                        node_channel_data[from_id]['air_utils'].append(air_util)
+                                node_channel_data[from_id]['channel_utils'].append(ch_util)
+                                if air_util is not None:
+                                    node_channel_data[from_id]['air_utils'].append(air_util)
 
                 if not node_channel_data:
                     return f"📭 Aucune donnée de télémétrie dans les {hours}h"
