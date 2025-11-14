@@ -146,20 +146,30 @@ class TrafficDBBrowser:
 
         # Ligne de titre
         stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
-        stdscr.addstr(0, 0, title.center(width)[:width])
+        try:
+            stdscr.addstr(0, 0, title.center(width)[:width-1])
+        except curses.error:
+            pass
         stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
 
         # Info compteur
         info = f" {len(self.items)} items"
         if self.items:
             info += f" | Row {self.current_row + 1}/{len(self.items)}"
-        stdscr.addstr(1, 0, info[:width])
+        try:
+            stdscr.addstr(1, 0, info[:width-1])
+        except curses.error:
+            pass
 
     def draw_footer(self, stdscr, height, width):
         """Dessine le pied de page avec les raccourcis"""
         footer = "↑/↓:Nav ENTER:Details /:Search f:Filter v:View r:Refresh q:Quit ?:Help"
         stdscr.attron(curses.color_pair(2))
-        stdscr.addstr(height - 1, 0, footer[:width].ljust(width))
+        # Ne pas remplir le dernier caractère pour éviter l'erreur curses
+        try:
+            stdscr.addstr(height - 1, 0, footer[:width-1].ljust(width-1))
+        except curses.error:
+            pass
         stdscr.attroff(curses.color_pair(2))
 
     def draw_packet_line(self, stdscr, y, x, width, item, is_selected):
@@ -379,10 +389,10 @@ class TrafficDBBrowser:
         height, width = stdscr.getmaxyx()
 
         for i, line in enumerate(help_text):
-            if i >= height - 1:
+            if i >= height - 2:  # Laisser au moins 2 lignes de marge
                 break
             try:
-                stdscr.addstr(i, 2, line[:width-4])
+                stdscr.addstr(i, 2, line[:width-5])
             except curses.error:
                 pass
 
@@ -419,11 +429,17 @@ class TrafficDBBrowser:
         stdscr.clear()
         height, width = stdscr.getmaxyx()
 
-        stdscr.addstr(0, 0, "SELECT PACKET TYPE (or press 0 to clear filter):")
-        stdscr.addstr(1, 0, "─" * width)
+        try:
+            stdscr.addstr(0, 0, "SELECT PACKET TYPE (or press 0 to clear filter):"[:width-1])
+            stdscr.addstr(1, 0, ("─" * (width-1))[:width-1])
+        except curses.error:
+            pass
 
         for i, ptype in enumerate(types[:height - 4], 1):
-            stdscr.addstr(i + 1, 2, f"{i}. {ptype}")
+            try:
+                stdscr.addstr(i + 1, 2, f"{i}. {ptype}"[:width-3])
+            except curses.error:
+                pass
 
         stdscr.refresh()
 
