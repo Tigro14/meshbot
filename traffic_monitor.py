@@ -1111,26 +1111,100 @@ class TrafficMonitor:
         except Exception as e:
             debug_print(f"Erreur enregistrement paquet: {e}")
 
+    def get_packet_histogram_overview(self, hours=24):
+        """
+        Vue d'ensemble compacte de tous les types de paquets (pour /histo).
+        Utilise self.all_packets qui est chargé depuis SQLite au démarrage.
+
+        Args:
+            hours: Période à analyser (défaut: 24h)
+
+        Returns:
+            str: Vue d'ensemble formatée avec compteurs par type
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+
+            # Compter les paquets par type
+            type_counts = defaultdict(int)
+            for packet in self.all_packets:
+                if packet['timestamp'] >= cutoff_time:
+                    type_counts[packet['packet_type']] += 1
+
+            # Mapping des noms courts
+            short_names = {
+                'POSITION_APP': 'POS',
+                'TELEMETRY_APP': 'TELE',
+                'NODEINFO_APP': 'NODE',
+                'TEXT_MESSAGE_APP': 'TEXT'
+            }
+
+            lines = [f"📦 Paquets ({hours}h):"]
+            total = 0
+
+            # Afficher les types principaux
+            for full_name, short_name in short_names.items():
+                count = type_counts.get(full_name, 0)
+                if count > 0:
+                    lines.append(f"{short_name}: {count}")
+                    total += count
+
+            # Autres types (si présents)
+            other_count = sum(count for ptype, count in type_counts.items()
+                             if ptype not in short_names)
+            if other_count > 0:
+                lines.append(f"OTHER: {other_count}")
+                total += other_count
+
+            lines.append(f"📊 Total: {total} paquets")
+            lines.append("")
+            lines.append("Détails: /histo <type>")
+            lines.append("Types: pos, tele, node, text")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur génération vue d'ensemble: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+
     def get_hourly_histogram(self, packet_filter='all', hours=24):
         """
-        Générer un histogramme de distribution horaire des paquets
-        
+        Générer un histogramme de distribution horaire des paquets.
+        Utilise self.all_packets qui est chargé depuis SQLite au démarrage.
+
         Args:
             packet_filter: 'all', 'messages', 'pos', 'info', 'telemetry', etc.
             hours: Nombre d'heures à analyser (défaut: 24)
-        
+
         Returns:
             str: Histogramme ASCII formaté
         """
         try:
             current_time = time.time()
             cutoff_time = current_time - (hours * 3600)
-            
+
+            # Mapping des filtres vers les types de paquets réels
+            filter_mapping = {
+                'messages': 'TEXT_MESSAGE_APP',
+                'pos': 'POSITION_APP',
+                'info': 'NODEINFO_APP',
+                'telemetry': 'TELEMETRY_APP',
+                'traceroute': 'TRACEROUTE_APP',
+                'routing': 'ROUTING_APP'
+            }
+
             # Filtrer les paquets par période et type
             filtered_packets = []
-            for pkt in self.packet_history:
+            for pkt in self.all_packets:
                 if pkt['timestamp'] >= cutoff_time:
-                    if packet_filter == 'all' or pkt['type'] == packet_filter:
+                    if packet_filter == 'all':
+                        filtered_packets.append(pkt)
+                    elif packet_filter in filter_mapping:
+                        if pkt['packet_type'] == filter_mapping[packet_filter]:
+                            filtered_packets.append(pkt)
+                    elif pkt['packet_type'] == packet_filter:
                         filtered_packets.append(pkt)
             
             if not filtered_packets:
