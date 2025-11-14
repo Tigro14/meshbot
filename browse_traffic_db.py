@@ -344,7 +344,9 @@ class TrafficDBBrowser:
             lines.append(f"Timestamp    : {self.format_timestamp(item.get('timestamp'))}")
             lines.append(f"From ID      : !{self.format_node_id(item.get('from_id'))}")
             lines.append(f"Sender       : {item.get('sender_name') or 'Unknown'}")
-            lines.append(f"To ID        : {item.get('to_id') or 'N/A'}")
+            to_id = item.get('to_id')
+            to_id_str = f"!{self.format_node_id(to_id)}" if to_id is not None else 'N/A'
+            lines.append(f"To ID        : {to_id_str}")
             lines.append(f"Packet Type  : {item.get('packet_type') or 'N/A'}")
             lines.append(f"RSSI         : {item.get('rssi') or 'N/A'} dBm")
             lines.append(f"SNR          : {item.get('snr') or 'N/A'} dB")
