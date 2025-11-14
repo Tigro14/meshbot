@@ -1204,7 +1204,7 @@ class TrafficMonitor:
     def add_public_message(self, packet, message_text, source='local'):
         """
         Enregistrer un message public avec collecte de statistiques avancées
-        
+
         Args:
             packet: Packet Meshtastic
             message_text: Texte du message
@@ -1213,10 +1213,10 @@ class TrafficMonitor:
         try:
             from_id = packet.get('from', 0)
             timestamp = time.time()
-            
+
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
-            
+
             # Enregistrer le message avec source
             message_entry = {
                 'timestamp': timestamp,
@@ -1228,8 +1228,14 @@ class TrafficMonitor:
                 'message_length': len(message_text),
                 'source': source  # ← AJOUT
             }
-            
+
             self.public_messages.append(message_entry)
+
+            # Sauvegarder le message dans SQLite
+            try:
+                self.persistence.save_public_message(message_entry)
+            except Exception as e:
+                logger.error(f"Erreur lors de la sauvegarde du message public : {e}")
             
             # === MISE À JOUR DES STATISTIQUES ===
             self._update_node_statistics(from_id, sender_name, message_text, timestamp)
@@ -1615,14 +1621,14 @@ class TrafficMonitor:
         try:
             logger.info("Chargement des données persistées...")
 
-            # Charger les paquets (dernières 24h, max 5000)
-            packets = self.persistence.load_packets(hours=24, limit=5000)
+            # Charger les paquets (dernières 48h pour correspondre à la rétention, max 5000)
+            packets = self.persistence.load_packets(hours=48, limit=5000)
             for packet in reversed(packets):  # Inverser pour avoir l'ordre chronologique
                 self.all_packets.append(packet)
             logger.info(f"✓ {len(packets)} paquets chargés")
 
-            # Charger les messages publics (dernières 24h, max 2000)
-            messages = self.persistence.load_public_messages(hours=24, limit=2000)
+            # Charger les messages publics (dernières 48h pour correspondre à la rétention, max 2000)
+            messages = self.persistence.load_public_messages(hours=48, limit=2000)
             for message in reversed(messages):
                 self.public_messages.append(message)
             logger.info(f"✓ {len(messages)} messages publics chargés")
