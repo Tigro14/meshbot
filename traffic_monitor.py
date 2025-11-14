@@ -200,9 +200,10 @@ class TrafficMonitor:
             rssi = packet.get('rssi', packet.get('rxRssi', 0))
             snr = packet.get('snr', packet.get('rxSnr', 0.0))
 
-            # Identifier le type de paquet
+            # Identifier le type de paquet et détecter le chiffrement
             packet_type = 'UNKNOWN'
             message_text = None
+            is_encrypted = False
 
             if 'decoded' in packet:
                 decoded = packet['decoded']
@@ -217,9 +218,16 @@ class TrafficMonitor:
                         sender_name = self.node_manager.get_node_name(from_id)
                         debug_print(f"⏭️  Télémétrie serial ignorée (non-radio): {sender_name}")
                     return
-                
+
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
+            elif 'encrypted' in packet:
+                # Paquet chiffré - on ne peut pas le lire mais on le compte
+                is_encrypted = True
+                packet_type = 'ENCRYPTED'
+                # Essayer de déduire le type si possible depuis le paquet
+                if 'pkiEncrypted' in packet:
+                    packet_type = 'PKI_ENCRYPTED'
         
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
@@ -245,7 +253,8 @@ class TrafficMonitor:
                 'snr': snr,
                 'hops': hops_taken,
                 'size': packet_size,
-                'is_broadcast': to_id in [0xFFFFFFFF, 0]
+                'is_broadcast': to_id in [0xFFFFFFFF, 0],
+                'is_encrypted': is_encrypted
             }
 
             # Extraire les données de télémétrie pour channel_stats

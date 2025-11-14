@@ -52,10 +52,19 @@ class TrafficPersistence:
                     hops INTEGER,
                     size INTEGER,
                     is_broadcast INTEGER,
+                    is_encrypted INTEGER DEFAULT 0,
                     telemetry TEXT,
                     position TEXT
                 )
             ''')
+
+            # Migration : ajouter is_encrypted si elle n'existe pas
+            try:
+                cursor.execute("SELECT is_encrypted FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                # La colonne n'existe pas, l'ajouter
+                logger.info("Migration DB : ajout de la colonne is_encrypted")
+                cursor.execute("ALTER TABLE packets ADD COLUMN is_encrypted INTEGER DEFAULT 0")
 
             # Index pour optimiser les requêtes sur les paquets
             cursor.execute('''
@@ -157,8 +166,8 @@ class TrafficPersistence:
             cursor.execute('''
                 INSERT INTO packets (
                     timestamp, from_id, to_id, source, sender_name, packet_type,
-                    message, rssi, snr, hops, size, is_broadcast, telemetry, position
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    message, rssi, snr, hops, size, is_broadcast, is_encrypted, telemetry, position
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 packet.get('timestamp'),
                 packet.get('from_id'),
@@ -172,6 +181,7 @@ class TrafficPersistence:
                 packet.get('hops'),
                 packet.get('size'),
                 1 if packet.get('is_broadcast') else 0,
+                1 if packet.get('is_encrypted') else 0,
                 telemetry,
                 position
             ))

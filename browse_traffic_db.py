@@ -37,6 +37,7 @@ class TrafficDBBrowser:
         self.items = []
         self.filter_type = None
         self.search_term = None
+        self.filter_encrypted = 'all'  # 'all', 'only', 'exclude'
         self.detail_mode = False
         self.detail_scroll = 0
 
@@ -55,19 +56,27 @@ class TrafficDBBrowser:
 
         query = 'SELECT * FROM packets'
         params = []
+        conditions = []
 
         # Appliquer le filtre de type
         if self.filter_type:
-            query += ' WHERE packet_type = ?'
+            conditions.append('packet_type = ?')
             params.append(self.filter_type)
+
+        # Appliquer le filtre de chiffrement
+        if self.filter_encrypted == 'only':
+            conditions.append('is_encrypted = 1')
+        elif self.filter_encrypted == 'exclude':
+            conditions.append('(is_encrypted = 0 OR is_encrypted IS NULL)')
 
         # Appliquer la recherche
         if self.search_term:
-            if self.filter_type:
-                query += ' AND message LIKE ?'
-            else:
-                query += ' WHERE message LIKE ?'
+            conditions.append('message LIKE ?')
             params.append(f'%{self.search_term}%')
+
+        # Construire la clause WHERE
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
 
         query += ' ORDER BY timestamp DESC LIMIT 1000'
 
@@ -150,6 +159,10 @@ class TrafficDBBrowser:
         title = f"{icon} {view_name}"
         if self.filter_type:
             title += f" [Filter: {self.filter_type}]"
+        if self.filter_encrypted == 'only':
+            title += f" [🔒 Encrypted only]"
+        elif self.filter_encrypted == 'exclude':
+            title += f" [Clear only]"
         if self.search_term:
             title += f" [Search: '{self.search_term}']"
 
@@ -177,7 +190,10 @@ class TrafficDBBrowser:
         view_cycle = {'packets': 'Messages', 'messages': 'Nodes', 'nodes': 'Packets'}
         next_view = view_cycle.get(self.current_view, 'View')
 
-        footer = f"↑/↓:Nav ENTER:Details /:Search f:Filter v:Switch→{next_view} r:Refresh q:Quit ?:Help"
+        # Indicateur du cycle de chiffrement
+        enc_status = {'all': 'All', 'only': '🔒Only', 'exclude': 'Clear'}[self.filter_encrypted]
+
+        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Encrypt({enc_status}) v:→{next_view} r:Refresh q:Quit"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -192,9 +208,13 @@ class TrafficDBBrowser:
         name = (item.get('sender_name') or 'Unknown')[:15]
         ptype = (item.get('packet_type') or 'N/A')[:20]
         source = (item.get('source') or '?')[:8]
-        msg = self.truncate(item.get('message') or '', width - 70)
 
-        line = f"{ts} {source:8s} {name:15s} {ptype:20s} {msg}"
+        # Indicateur de chiffrement
+        encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
+
+        msg = self.truncate(item.get('message') or '', width - 73)
+
+        line = f"{ts} {source:8s} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -240,7 +260,7 @@ class TrafficDBBrowser:
         try:
             stdscr.attron(curses.A_BOLD)
             if self.current_view == 'packets':
-                header = "Timestamp    Source   Sender          Type                 Message"
+                header = "Timestamp    Source   Sender          Type                    Message"
             elif self.current_view == 'messages':
                 header = "Timestamp    Source   Sender          Message"
             elif self.current_view == 'nodes':
@@ -614,9 +634,20 @@ class TrafficDBBrowser:
                         self.search_term = term
                         self.load_data()
                         self.current_row = 0
-                elif key == ord('f'):  # Filtrer
+                elif key == ord('f'):  # Filtrer par type
                     if self.current_view == 'packets':
                         self.filter_dialog(stdscr)
+                        self.load_data()
+                        self.current_row = 0
+                elif key == ord('e'):  # Filtrer chiffrement
+                    if self.current_view == 'packets':
+                        # Cycler entre all, only, exclude
+                        if self.filter_encrypted == 'all':
+                            self.filter_encrypted = 'only'
+                        elif self.filter_encrypted == 'only':
+                            self.filter_encrypted = 'exclude'
+                        else:
+                            self.filter_encrypted = 'all'
                         self.load_data()
                         self.current_row = 0
                 elif key == ord('v'):  # Changer de vue
