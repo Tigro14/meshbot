@@ -138,11 +138,20 @@ class TrafficDBBrowser:
 
     def draw_header(self, stdscr, height, width):
         """Dessine l'en-tête"""
-        title = f"Traffic DB Browser - {self.current_view.upper()}"
+        # Indicateurs de vue avec icônes et descriptions
+        view_info = {
+            'packets': ('📦', 'ALL PACKETS', 'Tous les paquets reçus'),
+            'messages': ('💬', 'MESSAGES', 'Messages publics broadcast'),
+            'nodes': ('🌐', 'NODES', 'Statistiques par nœud')
+        }
+
+        icon, view_name, view_desc = view_info.get(self.current_view, ('?', 'UNKNOWN', ''))
+
+        title = f"{icon} {view_name}"
         if self.filter_type:
             title += f" [Filter: {self.filter_type}]"
         if self.search_term:
-            title += f" [Search: {self.search_term}]"
+            title += f" [Search: '{self.search_term}']"
 
         # Ligne de titre
         stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
@@ -152,10 +161,11 @@ class TrafficDBBrowser:
             pass
         stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
 
-        # Info compteur
+        # Info compteur + description de la vue
         info = f" {len(self.items)} items"
         if self.items:
             info += f" | Row {self.current_row + 1}/{len(self.items)}"
+        info += f" | {view_desc}"
         try:
             stdscr.addstr(1, 0, info[:width-1])
         except curses.error:
@@ -163,7 +173,11 @@ class TrafficDBBrowser:
 
     def draw_footer(self, stdscr, height, width):
         """Dessine le pied de page avec les raccourcis"""
-        footer = "↑/↓:Nav ENTER:Details /:Search f:Filter v:View r:Refresh q:Quit ?:Help"
+        # Indiquer la prochaine vue dans le cycle
+        view_cycle = {'packets': 'Messages', 'messages': 'Nodes', 'nodes': 'Packets'}
+        next_view = view_cycle.get(self.current_view, 'View')
+
+        footer = f"↑/↓:Nav ENTER:Details /:Search f:Filter v:Switch→{next_view} r:Refresh q:Quit ?:Help"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -377,24 +391,31 @@ class TrafficDBBrowser:
             "TRAFFIC DB BROWSER - HELP",
             "",
             "Navigation:",
-            "  ↑/↓ or j/k      - Move up/down",
-            "  PgUp/PgDn       - Page up/down",
-            "  Home/End        - First/last item",
+            "  ↑/↓ or j/k      - Move up/down in list",
+            "  PgUp/PgDn       - Page up/down (10 items)",
+            "  Home/End        - Jump to first/last item",
             "",
             "Actions:",
-            "  ENTER           - View item details",
-            "  /               - Search in messages",
-            "  f               - Filter by packet type",
-            "  v               - Change view (packets/messages/nodes)",
-            "  r               - Refresh data from DB",
+            "  ENTER           - View full details of selected item",
+            "  /               - Search text in messages (type text + ENTER)",
+            "                    Press ESC to cancel search input",
+            "  f               - Filter by packet type (packets view only)",
+            "  v               - Switch view mode:",
+            "                    📦 Packets  → 💬 Messages → 🌐 Nodes → (cycle)",
+            "  r               - Refresh data from database",
+            "",
+            "Views explained:",
+            "  📦 PACKETS      - All received packets (any type)",
+            "  💬 MESSAGES     - Public broadcast text messages only",
+            "  🌐 NODES        - Aggregated statistics per node",
             "",
             "In detail view:",
-            "  ↑/↓             - Scroll detail text",
-            "  ESC or ENTER    - Return to list",
+            "  ↑/↓             - Scroll through detail text",
+            "  ESC or ENTER    - Return to list view",
             "",
             "Other:",
-            "  q or ESC        - Quit (from list view)",
-            "  ?               - This help",
+            "  q or ESC        - Quit browser (from list view)",
+            "  ?               - Show this help",
             "",
             "Press any key to return..."
         ]
@@ -414,20 +435,71 @@ class TrafficDBBrowser:
         stdscr.getch()
 
     def get_input(self, stdscr, prompt):
-        """Demande une saisie utilisateur"""
+        """Demande une saisie utilisateur avec une meilleure interface"""
         height, width = stdscr.getmaxyx()
-        curses.echo()
+
+        # Effacer la zone de saisie
         try:
-            stdscr.addstr(height - 2, 0, prompt[:width])
-            stdscr.clrtoeol()
+            stdscr.addstr(height - 2, 0, " " * (width - 1))
+            stdscr.addstr(height - 2, 0, prompt[:width - 1])
             stdscr.refresh()
-            input_str = stdscr.getstr(height - 2, len(prompt), width - len(prompt) - 1).decode('utf-8')
-        except:
-            input_str = ''
+        except curses.error:
+            pass
+
+        # Activer le curseur et l'écho
+        curses.curs_set(1)
+        curses.echo()
+
+        input_str = ''
+        try:
+            # Position du curseur pour la saisie
+            cursor_x = len(prompt)
+
+            # Boucle de saisie caractère par caractère pour plus de contrôle
+            while True:
+                try:
+                    stdscr.move(height - 2, cursor_x + len(input_str))
+                    stdscr.refresh()
+                except:
+                    pass
+
+                ch = stdscr.getch()
+
+                # Enter ou Newline
+                if ch in [10, 13, curses.KEY_ENTER]:
+                    break
+                # Escape
+                elif ch == 27:
+                    input_str = ''
+                    break
+                # Backspace
+                elif ch in [curses.KEY_BACKSPACE, 127, 8]:
+                    if input_str:
+                        input_str = input_str[:-1]
+                        try:
+                            stdscr.addstr(height - 2, cursor_x, input_str + " ")
+                        except:
+                            pass
+                # Caractères imprimables
+                elif 32 <= ch <= 126:
+                    input_str += chr(ch)
+                    try:
+                        stdscr.addstr(height - 2, cursor_x, input_str)
+                    except:
+                        pass
+
+        except Exception as e:
+            pass
         finally:
             curses.noecho()
+            curses.curs_set(0)
+            # Effacer la ligne de saisie
+            try:
+                stdscr.addstr(height - 2, 0, " " * (width - 1))
+            except:
+                pass
 
-        return input_str
+        return input_str.strip()
 
     def filter_dialog(self, stdscr):
         """Dialogue pour filtrer par type de paquet"""
