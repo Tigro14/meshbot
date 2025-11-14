@@ -219,8 +219,22 @@ class TrafficDBBrowser:
 
     def draw_list(self, stdscr, height, width):
         """Dessine la liste d'items"""
-        list_height = height - 3  # Header (2) + Footer (1)
-        start_y = 2
+        list_height = height - 4  # Header (2) + Column header (1) + Footer (1)
+        start_y = 3  # Commence après l'en-tête de colonne
+
+        # Dessiner l'en-tête de colonnes
+        try:
+            stdscr.attron(curses.A_BOLD)
+            if self.current_view == 'packets':
+                header = "Timestamp    Source   Sender          Type                 Message"
+            elif self.current_view == 'messages':
+                header = "Timestamp    Source   Sender          Message"
+            elif self.current_view == 'nodes':
+                header = "Node ID   Packets       Size"
+            stdscr.addstr(2, 0, header[:width-1])
+            stdscr.attroff(curses.A_BOLD)
+        except curses.error:
+            pass
 
         # Ajuster le scroll si nécessaire
         if self.current_row < self.scroll_offset:

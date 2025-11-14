@@ -147,6 +147,12 @@ class TrafficMonitor:
 
         # Charger les données existantes au démarrage
         self._load_persisted_data()
+
+        # === DÉDUPLICATION DES PAQUETS ===
+        # Cache pour éviter les doublons (même paquet reçu via serial et TCP)
+        # Format: {packet_id: timestamp} avec nettoyage automatique
+        self._recent_packets = {}
+        self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
     def add_packet(self, packet, source='unknown'):
         """
@@ -162,6 +168,33 @@ class TrafficMonitor:
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
             timestamp = time.time()
+
+            # === DÉDUPLICATION DES PAQUETS ===
+            # Créer une clé unique pour détecter les doublons
+            packet_id = packet.get('id', None)  # ID Meshtastic unique
+
+            # Nettoyer le cache des anciens paquets (> 5 secondes)
+            current_time = timestamp
+            self._recent_packets = {
+                k: v for k, v in self._recent_packets.items()
+                if current_time - v < self._dedup_window
+            }
+
+            # Créer une clé de déduplication
+            if packet_id:
+                dedup_key = f"{packet_id}_{from_id}_{to_id}"
+            else:
+                # Fallback si pas d'ID : utiliser from/to/timestamp arrondi
+                dedup_key = f"{from_id}_{to_id}_{int(timestamp)}"
+
+            # Vérifier si c'est un doublon
+            if dedup_key in self._recent_packets:
+                # Paquet déjà vu récemment, probablement doublon local/tigrog2
+                logger.debug(f"Paquet dupliqué ignoré: {dedup_key} (source={source})")
+                return
+
+            # Enregistrer ce paquet comme vu
+            self._recent_packets[dedup_key] = timestamp
 
             # === EXTRACTION RSSI/SNR ===
             rssi = packet.get('rssi', packet.get('rxRssi', 0))
