@@ -225,14 +225,13 @@ class TrafficDBBrowser:
         ts = self.format_timestamp(item.get('timestamp'))
         name = (item.get('sender_name') or 'Unknown')[:15]
         ptype = (item.get('packet_type') or 'N/A')[:20]
-        source = (item.get('source') or '?')[:8]
 
         # Indicateur de chiffrement
         encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
 
-        msg = self.truncate(item.get('message') or '', width - 73)
+        msg = self.truncate(item.get('message') or '', width - 64)
 
-        line = f"{ts} {source:8s} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -244,10 +243,9 @@ class TrafficDBBrowser:
         """Dessine une ligne de message"""
         ts = self.format_timestamp(item.get('timestamp'))
         name = (item.get('sender_name') or 'Unknown')[:15]
-        source = (item.get('source') or '?')[:8]
-        msg = self.truncate(item.get('message') or '', width - 45)
+        msg = self.truncate(item.get('message') or '', width - 36)
 
-        line = f"{ts} {source:8s} {name:15s} {msg}"
+        line = f"{ts} {name:15s} {msg}"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -278,9 +276,9 @@ class TrafficDBBrowser:
         try:
             stdscr.attron(curses.A_BOLD)
             if self.current_view == 'packets':
-                header = "Timestamp    Source   Sender          Type                    Message"
+                header = "Timestamp    Sender          Type                    Message"
             elif self.current_view == 'messages':
-                header = "Timestamp    Source   Sender          Message"
+                header = "Timestamp    Sender          Message"
             elif self.current_view == 'nodes':
                 header = "Node ID   Packets       Size"
             stdscr.addstr(2, 0, header[:width-1])
@@ -329,7 +327,6 @@ class TrafficDBBrowser:
             lines.append(f"From ID      : !{self.format_node_id(item.get('from_id'))}")
             lines.append(f"Sender       : {item.get('sender_name') or 'Unknown'}")
             lines.append(f"To ID        : {item.get('to_id') or 'N/A'}")
-            lines.append(f"Source       : {item.get('source') or 'N/A'}")
             lines.append(f"Packet Type  : {item.get('packet_type') or 'N/A'}")
             lines.append(f"RSSI         : {item.get('rssi') or 'N/A'} dBm")
             lines.append(f"SNR          : {item.get('snr') or 'N/A'} dB")
@@ -364,7 +361,6 @@ class TrafficDBBrowser:
             lines.append(f"Timestamp    : {self.format_timestamp(item.get('timestamp'))}")
             lines.append(f"From ID      : !{self.format_node_id(item.get('from_id'))}")
             lines.append(f"Sender       : {item.get('sender_name') or 'Unknown'}")
-            lines.append(f"Source       : {item.get('source') or 'N/A'}")
             lines.append(f"RSSI         : {item.get('rssi') or 'N/A'} dBm")
             lines.append(f"SNR          : {item.get('snr') or 'N/A'} dB")
             lines.append(f"Length       : {item.get('message_length') or 0} chars")
@@ -510,7 +506,6 @@ class TrafficDBBrowser:
                         f.write(f"[{i}/{len(self.items)}] {ts}\n")
                         f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
                         f.write(f"  To: {item.get('to_id')}\n")
-                        f.write(f"  Source: {item.get('source')}\n")
                         f.write(f"  Type: {item.get('packet_type')}\n")
                         if item.get('is_encrypted'):
                             f.write(f"  🔒 ENCRYPTED\n")
@@ -527,7 +522,6 @@ class TrafficDBBrowser:
                         ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
                         f.write(f"[{i}/{len(self.items)}] {ts}\n")
                         f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
-                        f.write(f"  Source: {item.get('source')}\n")
                         f.write(f"  Message: {item.get('message') or ''}\n")
                         if item.get('rssi') is not None:
                             f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
@@ -555,7 +549,7 @@ class TrafficDBBrowser:
         try:
             with open(filename, 'w', newline='', encoding='utf-8') as f:
                 if self.current_view == 'packets':
-                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'to_id', 'source',
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'to_id',
                                  'packet_type', 'is_encrypted', 'message', 'rssi', 'snr', 'hops', 'size']
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
@@ -567,7 +561,6 @@ class TrafficDBBrowser:
                             'from_id': item.get('from_id'),
                             'sender_name': item.get('sender_name'),
                             'to_id': item.get('to_id'),
-                            'source': item.get('source'),
                             'packet_type': item.get('packet_type'),
                             'is_encrypted': 'Yes' if item.get('is_encrypted') else 'No',
                             'message': item.get('message') or '',
@@ -579,7 +572,7 @@ class TrafficDBBrowser:
                         writer.writerow(row)
 
                 elif self.current_view == 'messages':
-                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'source', 'message', 'rssi', 'snr']
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'message', 'rssi', 'snr']
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
 
@@ -589,7 +582,6 @@ class TrafficDBBrowser:
                             'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
                             'from_id': item.get('from_id'),
                             'sender_name': item.get('sender_name'),
-                            'source': item.get('source'),
                             'message': item.get('message') or '',
                             'rssi': item.get('rssi') or '',
                             'snr': item.get('snr') or ''
