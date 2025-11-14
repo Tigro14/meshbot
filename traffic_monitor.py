@@ -288,30 +288,13 @@ class TrafficMonitor:
                         lat = position.get('latitude')
                         lon = position.get('longitude')
                         alt = position.get('altitude')
-                        
+
                         if lat is not None and lon is not None:
                             self.node_manager.update_node_position(from_id, lat, lon, alt)
                             #debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
-            
-            # Si c'est un message texte public, l'ajouter aussi à la file des messages
-            if packet_type == 'TEXT_MESSAGE_APP' and message_text and packet_entry['is_broadcast']:
-                message_data = {
-                    'timestamp': timestamp,
-                    'from_id': from_id,
-                    'sender_name': sender_name,
-                    'message': message_text,
-                    'rssi': rssi,
-                    'snr': snr,
-                    'message_length': len(message_text),
-                    'source': source
-                }
-                self.public_messages.append(message_data)
 
-                # Sauvegarder le message public dans SQLite
-                try:
-                    self.persistence.save_public_message(message_data)
-                except Exception as e:
-                    logger.error(f"Erreur lors de la sauvegarde du message public : {e}")
+            # NOTE: Les messages publics sont maintenant gérés par add_public_message()
+            # appelé depuis main_bot.py pour éviter les doublons
             
             # Mise à jour des statistiques
             self._update_packet_statistics(from_id, sender_name, packet_entry, packet)
