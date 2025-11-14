@@ -31,6 +31,24 @@ def format_timestamp(ts):
     return 'N/A'
 
 
+def format_node_id(node_id):
+    """Formate un ID de nœud de manière sûre (gère int et str)"""
+    if node_id is None:
+        return 'unknown'
+
+    # Si c'est déjà une chaîne, la retourner telle quelle
+    if isinstance(node_id, str):
+        # Nettoyer si nécessaire (enlever le ! si présent)
+        return node_id.lstrip('!')
+
+    # Si c'est un entier, formater en hex
+    if isinstance(node_id, int):
+        return f"{node_id:08x}"
+
+    # Fallback
+    return str(node_id)
+
+
 def format_size(size_bytes):
     """Formate une taille en octets de manière lisible"""
     for unit in ['B', 'KB', 'MB', 'GB']:
@@ -133,7 +151,7 @@ def show_summary(conn):
         from_id = row['from_id']
         name = row['sender_name'] or 'Inconnu'
         count = row['count']
-        print(f"  {i:2d}. {Colors.YELLOW}{name:20s}{Colors.ENDC} (!{from_id:08x}) - {Colors.GREEN}{count:,}{Colors.ENDC} paquets")
+        print(f"  {i:2d}. {Colors.YELLOW}{name:20s}{Colors.ENDC} (!{format_node_id(from_id)}) - {Colors.GREEN}{count:,}{Colors.ENDC} paquets")
 
 
 def show_recent_packets(conn, limit=20):
@@ -158,7 +176,7 @@ def show_recent_packets(conn, limit=20):
         hops = row['hops'] if row['hops'] is not None else 0
 
         print(f"\n{Colors.BOLD}[{ts}]{Colors.ENDC} {Colors.CYAN}{source:8s}{Colors.ENDC}")
-        print(f"  De : {Colors.YELLOW}{name}{Colors.ENDC} (!{row['from_id']:08x})")
+        print(f"  De : {Colors.YELLOW}{name}{Colors.ENDC} (!{format_node_id(row['from_id'])})")
         print(f"  Type : {Colors.GREEN}{ptype}{Colors.ENDC}")
         print(f"  Signal : RSSI={rssi} dBm, SNR={snr} dB, Hops={hops}")
 
@@ -188,7 +206,7 @@ def show_recent_messages(conn, limit=20):
         snr = row['snr'] if row['snr'] is not None else 'N/A'
 
         print(f"\n{Colors.BOLD}[{ts}]{Colors.ENDC} {Colors.CYAN}{source:8s}{Colors.ENDC}")
-        print(f"  {Colors.YELLOW}{name}{Colors.ENDC} (!{row['from_id']:08x})")
+        print(f"  {Colors.YELLOW}{name}{Colors.ENDC} (!{format_node_id(row['from_id'])})")
         print(f"  {Colors.GREEN}{message}{Colors.ENDC}")
         print(f"  Signal : RSSI={rssi} dBm, SNR={snr} dB")
 
@@ -217,7 +235,7 @@ def show_node_stats(conn, node_id=None):
             print(f"{Colors.RED}Nœud {node_id} non trouvé{Colors.ENDC}")
             continue
 
-        print(f"\n{Colors.BOLD}Nœud : !{row['node_id']:08x}{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}Nœud : !{format_node_id(row['node_id'])}{Colors.ENDC}")
         print(f"  Total paquets : {Colors.GREEN}{row['total_packets']:,}{Colors.ENDC}")
         print(f"  Total octets : {Colors.GREEN}{format_size(row['total_bytes'])}{Colors.ENDC}")
         print(f"  Dernière maj : {Colors.YELLOW}{format_timestamp(row['last_updated'])}{Colors.ENDC}")
