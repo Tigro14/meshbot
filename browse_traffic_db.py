@@ -14,6 +14,8 @@ Touches:
   s              : Inverser l'ordre de tri
   v              : Changer de vue (packets/messages/nodes)
   r              : Rafraîchir les données
+  x              : Exporter vers texte
+  c              : Exporter vers CSV
   q ou ESC       : Quitter
   ?              : Aide
 """
@@ -25,6 +27,8 @@ from datetime import datetime
 from collections import defaultdict
 import json
 import re
+import csv
+import os
 
 
 class TrafficDBBrowser:
@@ -207,7 +211,7 @@ class TrafficDBBrowser:
         # Indicateur d'ordre de tri
         sort_icon = '↓' if self.sort_order == 'desc' else '↑'
 
-        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Encrypt({enc_status}) s:Sort{sort_icon} v:→{next_view} r:Refresh q:Quit"
+        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Enc({enc_status}) s:Sort{sort_icon} x:TXT c:CSV v:→{next_view} r:Refresh q:Quit"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -441,6 +445,12 @@ class TrafficDBBrowser:
             "                    📦 Packets  → 💬 Messages → 🌐 Nodes → (cycle)",
             "  r               - Refresh data from database",
             "",
+            "Export:",
+            "  x               - Export current view to text file (.txt)",
+            "                    Includes all filters and current sort order",
+            "  c               - Export current view to CSV file (.csv)",
+            "                    Structured data for spreadsheet/analysis tools",
+            "",
             "Views explained:",
             "  📦 PACKETS      - All received packets (any type)",
             "  💬 MESSAGES     - Public broadcast text messages only",
@@ -470,6 +480,159 @@ class TrafficDBBrowser:
 
         stdscr.refresh()
         stdscr.getch()
+
+    def export_to_text(self):
+        """Exporte la vue actuelle vers un fichier texte formaté"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"traffic_export_{self.current_view}_{timestamp}.txt"
+
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                # En-tête
+                f.write("=" * 80 + "\n")
+                f.write(f"Traffic Database Export - {self.current_view.upper()} View\n")
+                f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Total items: {len(self.items)}\n")
+
+                if self.filter_type:
+                    f.write(f"Filter: {self.filter_type}\n")
+                if self.filter_encrypted != 'all':
+                    f.write(f"Encryption filter: {self.filter_encrypted}\n")
+                if self.search_term:
+                    f.write(f"Search: '{self.search_term}'\n")
+
+                f.write("=" * 80 + "\n\n")
+
+                # Données
+                if self.current_view == 'packets':
+                    for i, item in enumerate(self.items, 1):
+                        ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
+                        f.write(f"[{i}/{len(self.items)}] {ts}\n")
+                        f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
+                        f.write(f"  To: {item.get('to_id')}\n")
+                        f.write(f"  Source: {item.get('source')}\n")
+                        f.write(f"  Type: {item.get('packet_type')}\n")
+                        if item.get('is_encrypted'):
+                            f.write(f"  🔒 ENCRYPTED\n")
+                        if item.get('message'):
+                            f.write(f"  Message: {item.get('message')}\n")
+                        if item.get('rssi') is not None:
+                            f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
+                        if item.get('hops') is not None:
+                            f.write(f"  Hops: {item.get('hops')}\n")
+                        f.write("\n")
+
+                elif self.current_view == 'messages':
+                    for i, item in enumerate(self.items, 1):
+                        ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
+                        f.write(f"[{i}/{len(self.items)}] {ts}\n")
+                        f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
+                        f.write(f"  Source: {item.get('source')}\n")
+                        f.write(f"  Message: {item.get('message') or ''}\n")
+                        if item.get('rssi') is not None:
+                            f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
+                        f.write("\n")
+
+                elif self.current_view == 'nodes':
+                    for i, item in enumerate(self.items, 1):
+                        f.write(f"[{i}/{len(self.items)}] Node: {item.get('node_id')}\n")
+                        f.write(f"  Total packets: {item.get('total_packets'):,}\n")
+                        f.write(f"  Total bytes: {item.get('total_bytes'):,}\n")
+                        if item.get('packet_types'):
+                            packet_types = json.loads(item.get('packet_types'))
+                            f.write(f"  Packet types: {packet_types}\n")
+                        f.write("\n")
+
+            return filename
+        except Exception as e:
+            return None
+
+    def export_to_csv(self):
+        """Exporte la vue actuelle vers un fichier CSV"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"traffic_export_{self.current_view}_{timestamp}.csv"
+
+        try:
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                if self.current_view == 'packets':
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'to_id', 'source',
+                                 'packet_type', 'is_encrypted', 'message', 'rssi', 'snr', 'hops', 'size']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for item in self.items:
+                        row = {
+                            'timestamp': item.get('timestamp'),
+                            'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
+                            'from_id': item.get('from_id'),
+                            'sender_name': item.get('sender_name'),
+                            'to_id': item.get('to_id'),
+                            'source': item.get('source'),
+                            'packet_type': item.get('packet_type'),
+                            'is_encrypted': 'Yes' if item.get('is_encrypted') else 'No',
+                            'message': item.get('message') or '',
+                            'rssi': item.get('rssi') or '',
+                            'snr': item.get('snr') or '',
+                            'hops': item.get('hops') or '',
+                            'size': item.get('size') or ''
+                        }
+                        writer.writerow(row)
+
+                elif self.current_view == 'messages':
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'source', 'message', 'rssi', 'snr']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for item in self.items:
+                        row = {
+                            'timestamp': item.get('timestamp'),
+                            'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
+                            'from_id': item.get('from_id'),
+                            'sender_name': item.get('sender_name'),
+                            'source': item.get('source'),
+                            'message': item.get('message') or '',
+                            'rssi': item.get('rssi') or '',
+                            'snr': item.get('snr') or ''
+                        }
+                        writer.writerow(row)
+
+                elif self.current_view == 'nodes':
+                    fieldnames = ['node_id', 'total_packets', 'total_bytes', 'packet_types', 'last_updated']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for item in self.items:
+                        row = {
+                            'node_id': item.get('node_id'),
+                            'total_packets': item.get('total_packets'),
+                            'total_bytes': item.get('total_bytes'),
+                            'packet_types': item.get('packet_types') or '',
+                            'last_updated': item.get('last_updated') or ''
+                        }
+                        writer.writerow(row)
+
+            return filename
+        except Exception as e:
+            return None
+
+    def show_export_notification(self, stdscr, filename, success=True):
+        """Affiche une notification d'export"""
+        height, width = stdscr.getmaxyx()
+
+        if success and filename:
+            msg = f"✓ Exported to: {filename}"
+        else:
+            msg = "✗ Export failed"
+
+        # Afficher en bas de l'écran pendant 2 secondes
+        try:
+            stdscr.attron(curses.color_pair(1) if success else curses.color_pair(2))
+            stdscr.addstr(height - 2, 0, msg[:width-1].ljust(width-1))
+            stdscr.attroff(curses.color_pair(1) if success else curses.color_pair(2))
+            stdscr.refresh()
+            curses.napms(2000)  # Pause 2 secondes
+        except curses.error:
+            pass
 
     def get_input(self, stdscr, prompt):
         """Demande une saisie utilisateur avec une meilleure interface"""
@@ -685,6 +848,12 @@ class TrafficDBBrowser:
                     self.current_row = 0
                 elif key == ord('r'):  # Rafraîchir
                     self.load_data()
+                elif key == ord('x'):  # Export vers texte
+                    filename = self.export_to_text()
+                    self.show_export_notification(stdscr, filename, success=(filename is not None))
+                elif key == ord('c'):  # Export vers CSV
+                    filename = self.export_to_csv()
+                    self.show_export_notification(stdscr, filename, success=(filename is not None))
                 elif key == ord('?'):  # Aide
                     self.show_help(stdscr)
 
