@@ -12,10 +12,13 @@ Touches:
   f              : Filtrer par type
   e              : Filtrer chiffrement
   s              : Inverser l'ordre de tri
+  F              : Focus sur un nœud (depuis vue nodes)
+  0              : Retirer le filtre de nœud
   v              : Changer de vue (packets/messages/nodes)
   r              : Rafraîchir les données
-  x              : Exporter vers texte
-  c              : Exporter vers CSV
+  x              : Exporter vers texte (complet)
+  c              : Exporter vers CSV (complet)
+  S              : Exporter screen (lignes visibles)
   q ou ESC       : Quitter
   ?              : Aide
 """
@@ -42,6 +45,7 @@ class TrafficDBBrowser:
         self.scroll_offset = 0
         self.items = []
         self.filter_type = None
+        self.filter_node = None  # Filter by specific node ID
         self.search_term = None
         self.filter_encrypted = 'all'  # 'all', 'only', 'exclude'
         self.sort_order = 'desc'  # 'desc' (newest first) or 'asc' (oldest first)
@@ -75,6 +79,11 @@ class TrafficDBBrowser:
             conditions.append('is_encrypted = 1')
         elif self.filter_encrypted == 'exclude':
             conditions.append('(is_encrypted = 0 OR is_encrypted IS NULL)')
+
+        # Appliquer le filtre de nœud
+        if self.filter_node:
+            conditions.append('from_id = ?')
+            params.append(self.filter_node)
 
         # Appliquer la recherche
         if self.search_term:
@@ -176,6 +185,8 @@ class TrafficDBBrowser:
             title += f" [Clear only]"
         if self.search_term:
             title += f" [Search: '{self.search_term}']"
+        if self.filter_node:
+            title += f" [Node: !{self.format_node_id(self.filter_node)}]"
         # Indicateur d'ordre de tri (seulement pour packets et messages)
         if self.current_view in ['packets', 'messages']:
             sort_icon = '↓' if self.sort_order == 'desc' else '↑'
@@ -211,7 +222,14 @@ class TrafficDBBrowser:
         # Indicateur d'ordre de tri
         sort_icon = '↓' if self.sort_order == 'desc' else '↑'
 
-        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Enc({enc_status}) s:Sort{sort_icon} x:TXT c:CSV v:→{next_view} r:Refresh q:Quit"
+        # Footer adapté selon la vue
+        if self.current_view == 'nodes':
+            footer = f"↑/↓:Nav ENTER:Details F:Focus v:→{next_view} x:TXT c:CSV S:Screen r:Refresh q:Quit"
+        elif self.current_view == 'packets':
+            focus_hint = " 0:ClearNode" if self.filter_node else ""
+            footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Enc({enc_status}) s:Sort{sort_icon}{focus_hint} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
+        else:  # messages
+            footer = f"↑/↓:Nav ENTER:Details /:Search s:Sort{sort_icon} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -437,15 +455,20 @@ class TrafficDBBrowser:
             "  e               - Filter encryption (all/only/exclude encrypted)",
             "  s               - Toggle sort order (newest ↓ / oldest ↑ first)",
             "                    Applies to packets and messages views only",
+            "  F               - Focus on selected node (from nodes view)",
+            "                    Switch to packets view filtered by this node",
+            "  0               - Clear node filter (when active)",
             "  v               - Switch view mode:",
             "                    📦 Packets  → 💬 Messages → 🌐 Nodes → (cycle)",
             "  r               - Refresh data from database",
             "",
             "Export:",
             "  x               - Export current view to text file (.txt)",
-            "                    Includes all filters and current sort order",
+            "                    Includes all items with filters and sort order",
             "  c               - Export current view to CSV file (.csv)",
             "                    Structured data for spreadsheet/analysis tools",
+            "  S               - Export screen (visible lines only)",
+            "                    Plain text export of currently visible items",
             "",
             "Views explained:",
             "  📦 PACKETS      - All received packets (any type)",
@@ -602,6 +625,61 @@ class TrafficDBBrowser:
                             'last_updated': item.get('last_updated') or ''
                         }
                         writer.writerow(row)
+
+            return filename
+        except Exception as e:
+            return None
+
+    def export_screen(self, stdscr):
+        """Exporte l'affichage actuel de la liste (lignes visibles seulement)"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"traffic_screen_{self.current_view}_{timestamp}.txt"
+
+        try:
+            height, width = stdscr.getmaxyx()
+            list_height = height - 4  # Header (2) + Column header (1) + Footer (1)
+
+            with open(filename, 'w', encoding='utf-8') as f:
+                # Déterminer les items visibles
+                visible_items = self.items[self.scroll_offset:self.scroll_offset + list_height]
+
+                # Exporter selon la vue
+                if self.current_view == 'packets':
+                    for item in visible_items:
+                        ts = self.format_timestamp(item.get('timestamp'))
+                        name = (item.get('sender_name') or 'Unknown')[:15]
+                        ptype = (item.get('packet_type') or 'N/A')[:20]
+                        encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
+                        msg = self.truncate(item.get('message') or '', 80)
+
+                        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+                        f.write(line + '\n')
+
+                elif self.current_view == 'messages':
+                    for item in visible_items:
+                        ts = self.format_timestamp(item.get('timestamp'))
+                        name = (item.get('sender_name') or 'Unknown')[:15]
+                        msg = self.truncate(item.get('message') or '', 80)
+
+                        line = f"{ts} {name:15s} {msg}"
+                        f.write(line + '\n')
+
+                elif self.current_view == 'nodes':
+                    for item in visible_items:
+                        node_id = self.format_node_id(item.get('node_id'))[:10]
+                        packets = item.get('total_packets', 0)
+                        size_bytes = item.get('total_bytes', 0)
+
+                        # Formater la taille
+                        if size_bytes < 1024:
+                            size = f"{size_bytes}B"
+                        elif size_bytes < 1024 * 1024:
+                            size = f"{size_bytes/1024:.1f}KB"
+                        else:
+                            size = f"{size_bytes/(1024*1024):.1f}MB"
+
+                        line = f"{node_id:10s} {packets:8d}   {size:>10s}"
+                        f.write(line + '\n')
 
             return filename
         except Exception as e:
@@ -835,9 +913,26 @@ class TrafficDBBrowser:
                     current_idx = views.index(self.current_view)
                     self.current_view = views[(current_idx + 1) % len(views)]
                     self.filter_type = None
+                    self.filter_node = None
                     self.search_term = None
                     self.load_data()
                     self.current_row = 0
+                elif key == ord('F'):  # Focus sur un nœud (depuis la vue nodes)
+                    if self.current_view == 'nodes' and self.items and self.current_row < len(self.items):
+                        # Récupérer le node_id de l'item sélectionné
+                        selected_node = self.items[self.current_row]
+                        node_id = selected_node.get('node_id')
+                        if node_id:
+                            # Basculer vers la vue packets avec filtre sur ce nœud
+                            self.filter_node = node_id
+                            self.current_view = 'packets'
+                            self.load_data()
+                            self.current_row = 0
+                elif key == ord('0'):  # Retirer le filtre de nœud
+                    if self.filter_node:
+                        self.filter_node = None
+                        self.load_data()
+                        self.current_row = 0
                 elif key == ord('r'):  # Rafraîchir
                     self.load_data()
                 elif key == ord('x'):  # Export vers texte
@@ -845,6 +940,9 @@ class TrafficDBBrowser:
                     self.show_export_notification(stdscr, filename, success=(filename is not None))
                 elif key == ord('c'):  # Export vers CSV
                     filename = self.export_to_csv()
+                    self.show_export_notification(stdscr, filename, success=(filename is not None))
+                elif key == ord('S'):  # Export écran (visible lines only)
+                    filename = self.export_screen(stdscr)
                     self.show_export_notification(stdscr, filename, success=(filename is not None))
                 elif key == ord('?'):  # Aide
                     self.show_help(stdscr)
