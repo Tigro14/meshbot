@@ -351,6 +351,7 @@ class UtilityCommands:
             "/top",
             "/trace",
             "/packets",
+            "/channel_stats",
             "/legend",
             "/weather",
             "/help"
@@ -391,12 +392,15 @@ class UtilityCommands:
         • /stats - Statistiques globales du réseau
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
-        • /histo [type] [h] 
+        • /histo [type] [h]
           Types disponibles:
              - all : tous les paquets (défaut)
              - messages : messages texte uniquement
              - pos : positions uniquement
              - info : nodeinfo uniquement
+        • /channel_stats [heures] - Trafic par canal
+          Défaut: 24h, max 48h
+          Distingue canal 0 (défaut) vs canaux perso
 
         📢 DIFFUSION
         •echo <message> - Diffuser sur le réseau
@@ -502,6 +506,41 @@ class UtilityCommands:
             
         except Exception as e:
             error_msg = f"❌ Erreur packets: {str(e)[:50]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)
+
+    def handle_channel_stats(self, message, sender_id, sender_info):
+        """
+        Commande /channel_stats pour voir les statistiques par canal
+        Usage: /channel_stats [heures]
+        """
+        info_print(f"Channel stats: {sender_info}")
+
+        # Parser les arguments
+        parts = message.split()
+        hours = 24  # Défaut: 24 heures
+
+        if len(parts) > 1:
+            try:
+                requested = int(parts[1])
+                hours = max(1, min(48, requested))
+            except ValueError:
+                hours = 24
+
+        if not self.traffic_monitor:
+            self.sender.send_single("❌ Traffic monitor non disponible", sender_id, sender_info)
+            return
+
+        try:
+            # Rapport des canaux
+            report = self.traffic_monitor.get_channel_statistics(hours)
+
+            self.sender.log_conversation(sender_id, sender_info,
+                                        f"/channel_stats {hours}" if hours != 24 else "/channel_stats",
+                                        report)
+            self.sender.send_single(report, sender_id, sender_info)
+
+        except Exception as e:
+            error_msg = f"❌ Erreur channel_stats: {str(e)[:50]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
 
     def handle_histo(self, message, sender_id, sender_info):

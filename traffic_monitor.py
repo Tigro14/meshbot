@@ -61,6 +61,7 @@ class TrafficMonitor:
         self.node_packet_stats = defaultdict(lambda: {
             'total_packets': 0,
             'by_type': defaultdict(int),  # Type -> count
+            'by_channel': defaultdict(int),  # Channel -> count
             'total_bytes': 0,
             'first_seen': None,
             'last_seen': None,
@@ -94,6 +95,7 @@ class TrafficMonitor:
         self.global_packet_stats = {
             'total_packets': 0,
             'by_type': defaultdict(int),
+            'by_channel': defaultdict(int),  # Channel -> count
             'total_bytes': 0,
             'unique_nodes': set(),
             'busiest_hour': None,
@@ -156,6 +158,12 @@ class TrafficMonitor:
             rssi = packet.get('rssi', packet.get('rxRssi', 0))
             snr = packet.get('snr', packet.get('rxSnr', 0.0))
 
+            # === EXTRACTION CANAL ===
+            # Le canal peut être dans 'channel' ou 'channelIndex'
+            channel = packet.get('channel', packet.get('channelIndex', 0))
+            if channel is None:
+                channel = 0  # Par défaut canal 0
+
             # Identifier le type de paquet
             packet_type = 'UNKNOWN'
             message_text = None
@@ -193,6 +201,7 @@ class TrafficMonitor:
                 'timestamp': timestamp,
                 'from_id': from_id,
                 'to_id': to_id,
+                'channel': channel,
                 'source': source,
                 'sender_name': sender_name,
                 'packet_type': packet_type,
@@ -393,6 +402,7 @@ class TrafficMonitor:
         # Compteurs généraux
         stats['total_packets'] += 1
         stats['by_type'][packet_type] += 1
+        stats['by_channel'][packet_entry['channel']] += 1
         stats['total_bytes'] += packet_entry['size']
         
         # Timestamps
@@ -455,6 +465,7 @@ class TrafficMonitor:
         """Mettre à jour les statistiques globales"""
         self.global_packet_stats['total_packets'] += 1
         self.global_packet_stats['by_type'][packet_entry['packet_type']] += 1
+        self.global_packet_stats['by_channel'][packet_entry['channel']] += 1
         self.global_packet_stats['total_bytes'] += packet_entry['size']
         self.global_packet_stats['unique_nodes'].add(packet_entry['from_id'])
     
@@ -1540,4 +1551,127 @@ class TrafficMonitor:
             import traceback
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
+
+    def get_channel_statistics(self, hours=24):
+        """
+        Rapport détaillé sur le trafic par canal
+        Distingue canal 0 (défaut) vs canaux personnalisés (1-7)
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+
+            lines = []
+            lines.append(f"📡 STATISTIQUES PAR CANAL ({hours}h)")
+            lines.append("=" * 50)
+
+            # Filtrer les paquets récents
+            recent_packets = [p for p in self.all_packets if p['timestamp'] >= cutoff_time]
+
+            if len(recent_packets) == 0:
+                return "Aucun paquet récent"
+
+            # Compter par canal
+            channel_counts = defaultdict(int)
+            channel_types = defaultdict(lambda: defaultdict(int))
+            channel_nodes = defaultdict(set)
+            channel_bytes = defaultdict(int)
+
+            for packet in recent_packets:
+                channel = packet.get('channel', 0)
+                channel_counts[channel] += 1
+                channel_types[channel][packet['packet_type']] += 1
+                channel_nodes[channel].add(packet['from_id'])
+                channel_bytes[channel] += packet.get('size', 0)
+
+            total_packets = len(recent_packets)
+
+            # Vue d'ensemble
+            lines.append(f"\n📊 VUE D'ENSEMBLE:")
+            lines.append(f"Total paquets: {total_packets}")
+            lines.append(f"Canaux actifs: {len(channel_counts)}")
+
+            # Canal 0 (défaut)
+            if 0 in channel_counts:
+                count = channel_counts[0]
+                percentage = (count / total_packets * 100)
+                lines.append(f"\n🔵 CANAL 0 (DÉFAUT):")
+                lines.append(f"  Paquets: {count} ({percentage:.1f}%)")
+                lines.append(f"  Nœuds uniques: {len(channel_nodes[0])}")
+                lines.append(f"  Bytes: {channel_bytes[0]:,}")
+
+                # Top 3 types de paquets
+                top_types = sorted(channel_types[0].items(), key=lambda x: x[1], reverse=True)[:3]
+                if top_types:
+                    lines.append(f"  Types principaux:")
+                    for ptype, cnt in top_types:
+                        type_name = self.packet_type_names.get(ptype, ptype)
+                        lines.append(f"    • {type_name}: {cnt}")
+
+            # Canaux personnalisés (1-7)
+            custom_channels = [ch for ch in sorted(channel_counts.keys()) if ch > 0]
+
+            if custom_channels:
+                custom_total = sum(channel_counts[ch] for ch in custom_channels)
+                custom_percentage = (custom_total / total_packets * 100)
+
+                lines.append(f"\n🟢 CANAUX PERSONNALISÉS:")
+                lines.append(f"  Paquets totaux: {custom_total} ({custom_percentage:.1f}%)")
+                lines.append("")
+
+                for channel in custom_channels:
+                    count = channel_counts[channel]
+                    percentage = (count / total_packets * 100)
+
+                    lines.append(f"  📻 Canal {channel}:")
+                    lines.append(f"    Paquets: {count} ({percentage:.1f}%)")
+                    lines.append(f"    Nœuds: {len(channel_nodes[channel])}")
+
+                    # Liste des nœuds
+                    node_names = [self.node_manager.get_node_name(nid) for nid in channel_nodes[channel]]
+                    lines.append(f"    Actifs: {', '.join(node_names[:5])}")
+                    if len(node_names) > 5:
+                        lines.append(f"           (+{len(node_names)-5} autres)")
+
+                    # Top 2 types
+                    top_types = sorted(channel_types[channel].items(), key=lambda x: x[1], reverse=True)[:2]
+                    if top_types:
+                        type_list = [f"{self.packet_type_names.get(t, t)} ({c})" for t, c in top_types]
+                        lines.append(f"    Types: {', '.join(type_list)}")
+
+                    lines.append("")
+            else:
+                lines.append(f"\n⚪ Aucun canal personnalisé détecté")
+                lines.append(f"   Tous les paquets sur canal 0 (défaut)")
+
+            # Statistiques par nœud
+            lines.append(f"\n👥 UTILISATION PAR NŒUD:")
+            lines.append("-" * 50)
+
+            node_channel_usage = defaultdict(lambda: defaultdict(int))
+            for packet in recent_packets:
+                node_channel_usage[packet['from_id']][packet.get('channel', 0)] += 1
+
+            # Nœuds utilisant plusieurs canaux
+            multi_channel_nodes = {nid: channels for nid, channels in node_channel_usage.items() if len(channels) > 1}
+
+            if multi_channel_nodes:
+                lines.append("Nœuds multi-canaux:")
+                for node_id in sorted(multi_channel_nodes.keys(),
+                                     key=lambda x: sum(multi_channel_nodes[x].values()),
+                                     reverse=True)[:5]:
+                    name = self.node_manager.get_node_name(node_id)
+                    channels = multi_channel_nodes[node_id]
+                    ch_list = [f"Ch{ch}({cnt})" for ch, cnt in sorted(channels.items())]
+                    lines.append(f"  • {name}: {', '.join(ch_list)}")
+            else:
+                lines.append("Aucun nœud n'utilise plusieurs canaux")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur statistiques canal: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
 
