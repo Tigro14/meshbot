@@ -10,6 +10,8 @@ Touches:
   ENTER          : Voir les détails d'un paquet
   /              : Rechercher
   f              : Filtrer par type
+  e              : Filtrer chiffrement
+  s              : Inverser l'ordre de tri
   v              : Changer de vue (packets/messages/nodes)
   r              : Rafraîchir les données
   q ou ESC       : Quitter
@@ -38,6 +40,7 @@ class TrafficDBBrowser:
         self.filter_type = None
         self.search_term = None
         self.filter_encrypted = 'all'  # 'all', 'only', 'exclude'
+        self.sort_order = 'desc'  # 'desc' (newest first) or 'asc' (oldest first)
         self.detail_mode = False
         self.detail_scroll = 0
 
@@ -78,7 +81,9 @@ class TrafficDBBrowser:
         if conditions:
             query += ' WHERE ' + ' AND '.join(conditions)
 
-        query += ' ORDER BY timestamp DESC LIMIT 1000'
+        # Appliquer l'ordre de tri
+        order = 'DESC' if self.sort_order == 'desc' else 'ASC'
+        query += f' ORDER BY timestamp {order} LIMIT 1000'
 
         cursor.execute(query, params)
         self.items = [dict(row) for row in cursor.fetchall()]
@@ -95,7 +100,9 @@ class TrafficDBBrowser:
             query += ' WHERE message LIKE ?'
             params.append(f'%{self.search_term}%')
 
-        query += ' ORDER BY timestamp DESC LIMIT 1000'
+        # Appliquer l'ordre de tri
+        order = 'DESC' if self.sort_order == 'desc' else 'ASC'
+        query += f' ORDER BY timestamp {order} LIMIT 1000'
 
         cursor.execute(query, params)
         self.items = [dict(row) for row in cursor.fetchall()]
@@ -165,6 +172,10 @@ class TrafficDBBrowser:
             title += f" [Clear only]"
         if self.search_term:
             title += f" [Search: '{self.search_term}']"
+        # Indicateur d'ordre de tri (seulement pour packets et messages)
+        if self.current_view in ['packets', 'messages']:
+            sort_icon = '↓' if self.sort_order == 'desc' else '↑'
+            title += f" [{sort_icon}]"
 
         # Ligne de titre
         stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
@@ -193,7 +204,10 @@ class TrafficDBBrowser:
         # Indicateur du cycle de chiffrement
         enc_status = {'all': 'All', 'only': '🔒Only', 'exclude': 'Clear'}[self.filter_encrypted]
 
-        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Encrypt({enc_status}) v:→{next_view} r:Refresh q:Quit"
+        # Indicateur d'ordre de tri
+        sort_icon = '↓' if self.sort_order == 'desc' else '↑'
+
+        footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Encrypt({enc_status}) s:Sort{sort_icon} v:→{next_view} r:Refresh q:Quit"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -420,6 +434,9 @@ class TrafficDBBrowser:
             "  /               - Search text in messages (type text + ENTER)",
             "                    Press ESC to cancel search input",
             "  f               - Filter by packet type (packets view only)",
+            "  e               - Filter encryption (all/only/exclude encrypted)",
+            "  s               - Toggle sort order (newest ↓ / oldest ↑ first)",
+            "                    Applies to packets and messages views only",
             "  v               - Switch view mode:",
             "                    📦 Packets  → 💬 Messages → 🌐 Nodes → (cycle)",
             "  r               - Refresh data from database",
@@ -650,6 +667,14 @@ class TrafficDBBrowser:
                             self.filter_encrypted = 'all'
                         self.load_data()
                         self.current_row = 0
+                elif key == ord('s'):  # Inverser l'ordre de tri
+                    if self.current_view in ['packets', 'messages']:
+                        # Basculer entre desc et asc
+                        self.sort_order = 'asc' if self.sort_order == 'desc' else 'desc'
+                        self.load_data()
+                        # Garder la position relative (inverser la sélection)
+                        if self.items:
+                            self.current_row = len(self.items) - 1 - self.current_row
                 elif key == ord('v'):  # Changer de vue
                     views = ['packets', 'messages', 'nodes']
                     current_idx = views.index(self.current_view)
