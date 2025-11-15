@@ -34,6 +34,25 @@ class CLIMessageSender:
         debug_print(f"[CLI] CLIMessageSender.send_chunks() called, message length: {len(message)}")
         self.cli_platform.send_message(self.user_id, message)
 
+    def send_single(self, message, recipient_id, recipient_info):
+        """Envoyer un message simple au client CLI"""
+        debug_print(f"[CLI] CLIMessageSender.send_single() called, message length: {len(message)}")
+        self.cli_platform.send_message(self.user_id, message)
+
+    def log_conversation(self, sender_id, sender_info, query, response, processing_time=None):
+        """Log une conversation (pour CLI, juste loguer dans console)"""
+        from utils import conversation_print
+        try:
+            conversation_print("=" * 40)
+            conversation_print(f"CLI USER: {sender_info} (!{sender_id:08x})")
+            conversation_print(f"QUERY: {query}")
+            conversation_print(f"RESPONSE: {response}")
+            if processing_time:
+                conversation_print(f"TIME: {processing_time:.2f}s")
+            conversation_print("=" * 40)
+        except Exception as e:
+            error_print(f"Erreur logging CLI: {e}")
+
     def check_throttling(self, sender_id, sender_info):
         """Pas de throttling pour CLI locale"""
         return True
