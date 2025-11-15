@@ -282,7 +282,7 @@ class UnifiedStatsCommands:
             lines.append(f"📡 CANAL ({hours}h)")
 
             if channel == 'mesh':
-                lines.append("=" * 30)
+                lines.append("=" * 15)  # Version compacte pour mesh
             else:
                 lines.append("=" * 50)
 
@@ -346,9 +346,36 @@ class UnifiedStatsCommands:
 
             # Afficher selon le canal
             if channel == 'mesh':
-                # Version compacte pour LoRa
-                for i, node_data in enumerate(node_averages[:5], 1):  # Top 5
-                    name = node_data['name'][:10]
+                # Version ultra-compacte pour LoRa (pagination 180 chars)
+                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
+
+                # Compter la distribution par niveau
+                count_crit = len([n for n in node_averages if n['avg_channel'] > 25])
+                count_high = len([n for n in node_averages if 15 < n['avg_channel'] <= 25])
+                count_norm = len([n for n in node_averages if 10 < n['avg_channel'] <= 15])
+                count_low = len([n for n in node_averages if n['avg_channel'] <= 10])
+
+                # Synthèse globale
+                lines.append(f"Moy:{total_avg:.1f}% | {len(node_averages)}n")
+
+                # Distribution compacte
+                distrib_parts = []
+                if count_crit > 0:
+                    distrib_parts.append(f"{count_crit}🔴")
+                if count_high > 0:
+                    distrib_parts.append(f"{count_high}🟡")
+                if count_norm > 0:
+                    distrib_parts.append(f"{count_norm}🟢")
+                if count_low > 0:
+                    distrib_parts.append(f"{count_low}⚪")
+
+                if distrib_parts:
+                    lines.append(" ".join(distrib_parts))
+
+                # Top 3 nœuds (ultra-compact)
+                lines.append("---")
+                for i, node_data in enumerate(node_averages[:3], 1):
+                    name = node_data['name'][:8]  # Nom encore plus court
                     avg_ch = node_data['avg_channel']
 
                     # Icône selon niveau
@@ -363,9 +390,11 @@ class UnifiedStatsCommands:
 
                     lines.append(f"{i}.{icon}{name}:{avg_ch:.1f}%")
 
-                # Moyenne réseau
-                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
-                lines.append(f"Moy:{total_avg:.1f}%")
+                # Alerte si moyenne élevée
+                if total_avg > 15:
+                    lines.append("⚠️ Canal chargé")
+                elif total_avg > 10:
+                    lines.append("✓ Canal OK")
 
             else:  # telegram - version détaillée
                 lines.append(f"\n📊 Nœuds actifs: {len(node_averages)}")
