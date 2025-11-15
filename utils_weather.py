@@ -435,9 +435,9 @@ def get_rain_graph(location=None):
         if not values:
             return "❌ Aucune donnée pluie"
 
-        # Échantillonner pour avoir ~48 points (16h par jour x 3 jours)
+        # Échantillonner pour avoir 72 points (24h par jour x 3 jours = résolution horaire)
         # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
-        target_points = 48
+        target_points = 72
         if len(values) > target_points:
             window_size = len(values) // target_points
             if window_size < 1:
@@ -486,25 +486,22 @@ def get_rain_graph(location=None):
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm" if max_precip > 0 else "0mm"
 
-        # Calculer les positions des séparateurs de jours
-        third = width // 3
-        two_thirds = (width * 2) // 3
-
-        # Créer la timeline avec les séparateurs
-        timeline = []
+        # Créer une échelle horaire lisible (marqueurs toutes les 6h)
+        # 24h par jour, 3 jours = 72 points
+        # Marqueurs à 0h, 6h, 12h, 18h pour chaque jour
+        hour_scale = []
         for i in range(width):
-            if i == 0:
-                timeline.append('A')
-            elif i == third:
-                timeline.append('│')
-            elif i == third + 1:
-                timeline.append('D')
-            elif i == two_thirds:
-                timeline.append('│')
-            elif i == two_thirds + 1:
-                timeline.append('J')
+            hour = i % 24
+            if hour == 0:
+                hour_scale.append('0')
+            elif hour == 6:
+                hour_scale.append('6')
+            elif hour == 12:
+                hour_scale.append('12')
+            elif hour == 18:
+                hour_scale.append('18')
             else:
-                timeline.append(' ')
+                hour_scale.append(' ')
 
         lines = []
         lines.append(f"🌧️ {location_name} 3j (max:{max_str})")
@@ -520,7 +517,8 @@ def get_rain_graph(location=None):
             lines.append(mid_str)
         lines.append(low_str)  # La ligne basse est toujours affichée
 
-        lines.append(''.join(timeline))
+        # Ajouter l'échelle horaire
+        lines.append(''.join(hour_scale))
 
         return "\n".join(lines)
 
