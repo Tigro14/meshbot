@@ -339,34 +339,49 @@ class CLIServerPlatform(MessagingPlatform):
             if command.lower() in ['quit', 'exit']:
                 return
 
-            # Créer un sender spécial CLI pour cet utilisateur
-            cli_sender = CLIMessageSender(self, user_id)
-
-            # Créer un pseudo-packet Mesh
-            mesh_id, mesh_name = self.get_user_mapping(user_id)
-
-            if not mesh_id:
-                mesh_id = user_id
-                mesh_name = "CLI User"
-
-            packet = {
-                'from': mesh_id,
-                'to': 0xFFFFFFFF,  # Broadcast
-                'decoded': {
-                    'portnum': 'TEXT_MESSAGE_APP',
-                    'text': command
-                },
-                'id': 0,
-                'rxTime': 0,
-                'hopLimit': 0,
-                'channel': 0
-            }
-
-            decoded = packet['decoded']
-
             # Traiter via le message router
             if self.message_handler and self.message_handler.router:
                 router = self.message_handler.router
+
+                # Créer un sender spécial CLI pour cet utilisateur
+                cli_sender = CLIMessageSender(self, user_id)
+
+                # Créer un pseudo-packet Mesh
+                mesh_id, mesh_name = self.get_user_mapping(user_id)
+
+                if not mesh_id:
+                    mesh_id = user_id
+                    mesh_name = "CLI User"
+
+                # Obtenir l'ID du nœud local pour adresser correctement le message
+                my_node_id = 0xFFFFFFFF  # Default broadcast
+                try:
+                    if hasattr(router.interface, 'get_interface'):
+                        actual_interface = router.interface.get_interface()
+                    else:
+                        actual_interface = router.interface
+
+                    if actual_interface and hasattr(actual_interface, 'localNode'):
+                        if actual_interface.localNode:
+                            my_node_id = getattr(actual_interface.localNode, 'nodeNum', 0xFFFFFFFF)
+                            debug_print(f"[CLI] Local node ID: {hex(my_node_id)}")
+                except Exception as e:
+                    debug_print(f"[CLI] Could not get local node ID: {e}")
+
+                packet = {
+                    'from': mesh_id,
+                    'to': my_node_id,  # Adresser au nœud local pour que le routeur traite
+                    'decoded': {
+                        'portnum': 'TEXT_MESSAGE_APP',
+                        'text': command
+                    },
+                    'id': 0,
+                    'rxTime': 0,
+                    'hopLimit': 0,
+                    'channel': 0
+                }
+
+                decoded = packet['decoded']
 
                 # Créer un wrapper d'interface pour unified_stats
                 cli_interface = CLIInterfaceWrapper(router.interface, self, user_id)
