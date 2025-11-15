@@ -332,10 +332,81 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
+def get_rain_graph(location=None):
+    """
+    Récupérer le graphe ASCII des précipitations sur 3 jours
+
+    Args:
+        location: Ville/lieu pour la météo (ex: "Paris", "London")
+                 Si None ou vide, utilise la géolocalisation par IP
+
+    Returns:
+        str: Graphe ASCII des précipitations ou message d'erreur
+
+    Exemples:
+        >>> rain = get_rain_graph("Paris")
+        >>> print(rain)
+        🌧️ Précipitations Paris (3j):
+        [Graphe ASCII...]
+    """
+    try:
+        # Normaliser la location
+        if not location:
+            location = DEFAULT_LOCATION
+
+        # Construire l'URL v2n (narrow format avec graphes ASCII)
+        if location:
+            location_encoded = location.replace(' ', '+')
+            wttr_url = f"https://v2n.wttr.in/{location_encoded}"
+        else:
+            wttr_url = "https://v2n.wttr.in"
+
+        info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
+
+        # Appel curl vers wttr.in v2n
+        result = subprocess.run(
+            ['curl', '-s', wttr_url],
+            capture_output=True,
+            text=True,
+            timeout=CURL_TIMEOUT
+        )
+
+        if result.returncode != 0 or not result.stdout:
+            error_msg = "❌ Erreur récupération graphe pluie"
+            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+            return error_msg
+
+        # Retourner la sortie complète (c'est déjà formaté)
+        output = result.stdout.strip()
+
+        if not output:
+            return "❌ Graphe pluie vide"
+
+        # Ajouter un titre
+        location_name = location if location else "local"
+        return f"🌧️ Précipitations {location_name} (3j):\n\n{output}"
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
+        error_print(error_msg)
+        return error_msg
+
+    except FileNotFoundError:
+        error_msg = "❌ Commande curl non trouvée"
+        error_print(error_msg)
+        return error_msg
+
+    except Exception as e:
+        error_print(f"❌ Erreur inattendue dans get_rain_graph: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+        return f"❌ Erreur: {str(e)[:50]}"
+
+
 def get_cache_info():
     """
     Obtenir des informations sur l'état du cache
-    
+
     Returns:
         dict: Informations sur le cache ou None si pas de cache
         {
@@ -345,7 +416,7 @@ def get_cache_info():
             'data': str,
             'timestamp': float
         }
-    
+
     Exemple:
         >>> info = get_cache_info()
         >>> if info and info['is_valid']:
