@@ -174,7 +174,7 @@ class CLIServerPlatform(MessagingPlatform):
                     'message': message
                 }
                 data = json.dumps(response) + '\n'
-                conn.sendall(data.encode('utf-8'))
+                conn.sendall(data.encode('utf-8', errors='replace'))
                 debug_print(f"CLI→ Sent {len(message)} chars to {hex(user_id)}")
             except Exception as e:
                 error_print(f"Failed to send to CLI client: {e}")
@@ -201,7 +201,7 @@ class CLIServerPlatform(MessagingPlatform):
                     'message': f"🚨 ALERTE: {message}"
                 }
                 data = json.dumps(alert) + '\n'
-                conn.sendall(data.encode('utf-8'))
+                conn.sendall(data.encode('utf-8', errors='replace'))
                 debug_print(f"CLI→ Alert sent to {hex(user_id)}")
             except Exception as e:
                 error_print(f"Failed to send alert to CLI client: {e}")
@@ -279,7 +279,7 @@ class CLIServerPlatform(MessagingPlatform):
                 'type': 'welcome',
                 'message': '🤖 Connected to MeshBot CLI\nType /help for commands, "quit" to exit'
             }
-            client_socket.sendall((json.dumps(welcome) + '\n').encode('utf-8'))
+            client_socket.sendall((json.dumps(welcome) + '\n').encode('utf-8', errors='replace'))
 
             # Buffer pour messages incomplets
             buffer = ""
@@ -295,7 +295,8 @@ class CLIServerPlatform(MessagingPlatform):
                         break
 
                     # Décoder et ajouter au buffer
-                    buffer += data.decode('utf-8')
+                    # Utiliser errors='replace' pour gérer les caractères UTF-8 invalides/surrogates
+                    buffer += data.decode('utf-8', errors='replace')
 
                     # Traiter les lignes complètes (séparées par \n)
                     while '\n' in buffer:
