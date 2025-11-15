@@ -305,9 +305,22 @@ class StatsCommands(TelegramCommandBase):
         def get_histogram():
             """Fonction synchrone pour obtenir l'histogramme"""
             try:
-                # Utiliser node_manager pour générer l'histogramme
-                return self.node_manager.get_packet_histogram_single(
-                    packet_type, hours)
+                # Mapping des types courts vers les filtres traffic_monitor
+                type_mapping = {
+                    'ALL': 'all',
+                    'POS': 'pos',
+                    'TELE': 'telemetry',
+                    'NODE': 'info',
+                    'TEXT': 'messages'
+                }
+
+                filter_type = type_mapping.get(packet_type, 'all')
+
+                # Utiliser traffic_monitor qui charge depuis SQLite
+                return self.traffic_monitor.get_hourly_histogram(
+                    packet_filter=filter_type,
+                    hours=hours
+                )
             except Exception as e:
                 error_print(f"Erreur get_histogram: {e}")
                 import traceback
