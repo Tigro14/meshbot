@@ -63,6 +63,29 @@ TELEGRAM_AI_CONFIG = {
     "max_response_chars": 3000  # Plus long pour Telegram
 }
 
+# ID utilisateur CLI
+CLI_USER_ID = 0xC11A0001  # ID fictif pour la CLI
+CLI_TO_MESH_MAPPING = {
+    # Par défaut, la CLI n'a pas de mapping mesh
+    # Décommenter et configurer si besoin:
+    # 0xCLI00001: {
+    0xC11A0001: {
+        "mesh_name": "tigro"
+    }
+}
+
+CLI_SERVER_HOST = '127.0.0.1'
+CLI_SERVER_PORT = 9999
+
+# Configuration AI pour CLI
+CLI_AI_CONFIG = {
+    "system_prompt": "Tu es un assistant intelligent accessible via CLI locale...",
+    "max_tokens": 4000,
+    "temperature": 0.8,
+    "timeout": 120,
+    "max_response_chars": 3000
+}
+
 # ========================================
 # CONFIGURATION PLATEFORMES MESSAGERIE
 # ========================================
