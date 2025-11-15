@@ -28,7 +28,11 @@ class SystemCommands:
     def handle_sys(self, sender_id, sender_info):
         """Gérer la commande /sys - VERSION AVEC UPTIME BOT"""
         info_print(f"Sys: {sender_info}")
-        
+
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        # Sans ça, le thread async pourrait utiliser le sender après qu'il soit restauré
+        current_sender = self.sender
+
         def get_system_info():
             try:
                 system_info = []
@@ -111,13 +115,13 @@ class SystemCommands:
                     pass
                 
                 response = "🖥️ Système RPI5:\n" + "\n".join(system_info) if system_info else "⚠️ Erreur système"
-                self.sender.send_chunks(response, sender_id, sender_info)
-                self.sender.log_conversation(sender_id, sender_info, "/sys", response)
-                
+                current_sender.send_chunks(response, sender_id, sender_info)
+                current_sender.log_conversation(sender_id, sender_info, "/sys", response)
+
             except Exception as e:
                 error_msg = f"⚠️ Erreur système: {str(e)[:100]}"
                 error_print(f"Erreur sys: {e}")
-                self.sender.send_single(error_msg, sender_id, sender_info)
+                current_sender.send_single(error_msg, sender_id, sender_info)
         
         threading.Thread(target=get_system_info, daemon=True).start()
     
@@ -253,7 +257,10 @@ class SystemCommands:
     def handle_g2(self, sender_id, sender_info):
         """Gérer la commande /g2"""
         info_print(f"G2 Config: {sender_info}")
-        
+
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        current_sender = self.sender
+
         def get_g2_config():
             try:
                 debug_print(f"Connexion TCP à {REMOTE_NODE_HOST}...")
@@ -286,19 +293,19 @@ class SystemCommands:
                     remote_interface.close()
                     
                     response = f"⚙️ Config {REMOTE_NODE_NAME}:\n" + "\n".join(config_info) if config_info else f"⚠️ Config inaccessible"
-                
-                    self.sender.log_conversation(sender_id, sender_info, "/g2", response)
-                    self.sender.send_chunks(response, sender_id, sender_info)
+
+                    current_sender.log_conversation(sender_id, sender_info, "/g2", response)
+                    current_sender.send_chunks(response, sender_id, sender_info)
 
                 except Exception as e:
-                    self.sender.send_single(f"⚠️ Erreur: {str(e)[:50]}", sender_id, sender_info)
+                    current_sender.send_single(f"⚠️ Erreur: {str(e)[:50]}", sender_id, sender_info)
 
-                
+
             except Exception as e:
                 error_msg = f"⚠️ Erreur config: {str(e)[:50]}"
                 error_print(f"Erreur G2: {e}")
                 try:
-                    self.sender.send_single(error_msg, sender_id, sender_info)
+                    current_sender.send_single(error_msg, sender_id, sender_info)
                 except:
                     pass
         

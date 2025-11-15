@@ -50,16 +50,19 @@ class NetworkCommands:
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
         """Gérer la commande /my - infos signal vues par tigrog2"""
         info_print(f"My: {sender_info}")
-        
+
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        current_sender = self.sender
+
         def get_remote_signal_info():
             try:
                 remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
                 
                 if not remote_nodes:
                     response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
-                    self.sender.send_single(response, sender_id, sender_info)
+                    current_sender.send_single(response, sender_id, sender_info)
                     return
-                
+
                 # Normaliser l'ID
                 sender_id_normalized = sender_id & 0xFFFFFFFF
 
@@ -70,28 +73,28 @@ class NetworkCommands:
                     if node_id_normalized == sender_id_normalized:
                         sender_node_data = node
                         break
-                
+
                 if sender_node_data:
                     response = self._format_my_response(sender_node_data)
                 else:
                     response = self._format_my_not_found(remote_nodes)
-                
+
                 if is_broadcast:
                     # Réponse publique avec préfixe
-                    author_short = self.sender.get_short_name(sender_id)
+                    author_short = current_sender.get_short_name(sender_id)
                     response = f"{author_short}: {response}"
                     self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
                 else:
                     # Réponse privée
-                    self.sender.log_conversation(sender_id, sender_info, "/my", response)
-                    self.sender.send_single(response, sender_id, sender_info)
-                
+                    current_sender.log_conversation(sender_id, sender_info, "/my", response)
+                    current_sender.send_single(response, sender_id, sender_info)
+
             except Exception as e:
                 error_print(f"Erreur commande /my: {e}")
                 error_print(traceback.format_exc())
                 try:
                     error_response = f"⚠️ Erreur: {str(e)[:30]}"
-                    self.sender.send_single(error_response, sender_id, sender_info)
+                    current_sender.send_single(error_response, sender_id, sender_info)
                 except:
                     pass
         
@@ -209,6 +212,9 @@ class NetworkCommands:
         """
         info_print(f"Trace: {sender_info}")
 
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        current_sender = self.sender
+
         def analyze_route():
             try:
                 # Extraire données packet
@@ -282,15 +288,15 @@ class NetworkCommands:
 
                 response = "\n".join(lines)
 
-                self.sender.log_conversation(sender_id, sender_info, "/trace", response)
-                self.sender.send_chunks(response, sender_id, sender_info)
+                current_sender.log_conversation(sender_id, sender_info, "/trace", response)
+                current_sender.send_chunks(response, sender_id, sender_info)
 
                 info_print(f"✅ Trace→{sender_info}")
 
             except Exception as e:
                 error_print(f"Erreur /trace: {e}")
                 try:
-                    self.sender.send_single(f"⚠️ Erreur trace", sender_id, sender_info)
+                    current_sender.send_single(f"⚠️ Erreur trace", sender_id, sender_info)
                 except:
                     pass
 
