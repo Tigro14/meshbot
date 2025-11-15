@@ -334,20 +334,21 @@ def get_weather_data(location=None):
 
 def get_rain_graph(location=None):
     """
-    Récupérer le graphe ASCII des précipitations sur 3 jours
+    Récupérer le graphe ASCII des précipitations sur 3 jours (compact sparkline)
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
 
     Returns:
-        str: Graphe ASCII des précipitations ou message d'erreur
+        str: Graphe sparkline compact des précipitations (3 lignes max)
 
     Exemples:
         >>> rain = get_rain_graph("Paris")
         >>> print(rain)
-        🌧️ Précipitations Paris (3j):
-        [Graphe ASCII...]
+        🌧️ Paris 3j (max:1.2mm)
+        ▁▂▃█▇▄▂▁▁▁▃▄▆▇▅▃▁▁▁▁▂▃▄▃▂▁
+        Aujour│   Demain  │J+2
     """
     try:
         # Normaliser la location
@@ -376,15 +377,68 @@ def get_rain_graph(location=None):
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
             return error_msg
 
-        # Retourner la sortie complète (c'est déjà formaté)
         output = result.stdout.strip()
 
         if not output:
             return "❌ Graphe pluie vide"
 
-        # Ajouter un titre
+        # Parser la sortie pour extraire les précipitations
+        lines = output.split('\n')
+
+        # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
+        rain_chars = []
+        max_precip = 0.0
+
+        for line in lines:
+            # Ligne avec la valeur max (ex: "1.25mm|95%")
+            if 'mm' in line and '|' in line and '%' in line:
+                try:
+                    # Extraire la valeur max (ex: "1.25mm")
+                    mm_part = line.split('mm')[0].strip()
+                    max_precip = float(mm_part.split()[-1])
+                except:
+                    pass
+
+            # Ligne avec les caractères de graphe ASCII
+            if any(c in line for c in '█▇▆▅▄▃▂▁_'):
+                # Extraire juste les caractères du graphe
+                for char in line:
+                    if char in '█▇▆▅▄▃▂▁_ ':
+                        if char == '_':
+                            rain_chars.append('▁')
+                        elif char == ' ':
+                            rain_chars.append('▁')
+                        else:
+                            rain_chars.append(char)
+
+        if not rain_chars:
+            return "❌ Graphe pluie non trouvé"
+
+        # Nettoyer et compacter les caractères
+        # Garder environ 24-36 caractères (8-12h par jour sur 3 jours)
+        rain_str = ''.join(rain_chars)
+
+        # Supprimer les espaces consécutifs
+        import re
+        rain_str = re.sub(r'▁+', '▁', rain_str)
+
+        # Limiter la longueur (garder ~72 chars max pour 3 jours)
+        if len(rain_str) > 72:
+            # Échantillonner pour réduire
+            step = len(rain_str) // 60
+            if step > 1:
+                rain_str = ''.join([rain_str[i] for i in range(0, len(rain_str), step)])
+
+        # Formater la sortie compacte
         location_name = location if location else "local"
-        return f"🌧️ Précipitations {location_name} (3j):\n\n{output}"
+        max_str = f"{max_precip:.1f}mm" if max_precip > 0 else "0mm"
+
+        lines = []
+        lines.append(f"🌧️ {location_name} 3j (max:{max_str})")
+        lines.append(rain_str[:72])  # Limiter à 72 chars
+        lines.append("Aujour│   Demain  │J+2")
+
+        return "\n".join(lines)
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
