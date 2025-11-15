@@ -58,6 +58,8 @@ class TrafficMonitor:
             'DETECTION_SENSOR_APP': '👁️ Détection',
             'STORE_FORWARD_APP': '💾 StoreForward',
             'PAXCOUNTER_APP': '🚶 Paxcounter',
+            'ENCRYPTED': '🔐 Chiffré',
+            'PKI_ENCRYPTED': '🔐 PKI Chiffré',
             'UNKNOWN': '❓ Inconnu'
         }
         
@@ -154,15 +156,20 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
-    def add_packet(self, packet, source='unknown'):
+    def add_packet(self, packet, source='unknown', my_node_id=None):
         """
         Enregistrer TOUT type de paquet avec statistiques complètes
 
-        IMPORTANT: Filtre les paquets TELEMETRY_APP de source 'local' car:
+        IMPORTANT: Filtre les paquets TELEMETRY_APP auto-générés (from_id == my_node_id) car:
         - Device Metrics sont envoyés toutes les 60s sur serial (pour les apps)
         - Ces paquets serial ne passent PAS par la radio
         - Seuls les paquets selon device_update_interval sont envoyés sur radio
         - On ne veut compter que le trafic radio réel dans les stats mesh
+
+        Args:
+            packet: Paquet Meshtastic à enregistrer
+            source: Source du paquet ('local', 'tigrog2', etc.)
+            my_node_id: ID du nœud local (pour filtrer auto-génération)
         """
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
@@ -216,14 +223,14 @@ class TrafficMonitor:
                 decoded = packet['decoded']
                 packet_type = decoded.get('portnum', 'UNKNOWN')
 
-                # === FILTRE: Exclure les paquets TELEMETRY_APP de source 'local' ===
-                # Ces paquets sont envoyés toutes les 60s sur serial uniquement,
-                # ils ne représentent PAS le trafic radio et polluent les stats mesh
-                if packet_type == 'TELEMETRY_APP' and source == 'local':
-                    # Loguer mais ne pas enregistrer dans les stats
+                # === FILTRE: Exclure les paquets TELEMETRY_APP AUTO-GÉNÉRÉS ===
+                # Seuls les paquets télémétrie du nœud LOCAL sont filtrés (auto-générés)
+                # Les paquets télémétrie des AUTRES nœuds reçus par radio sont conservés
+                if packet_type == 'TELEMETRY_APP' and my_node_id and from_id == my_node_id:
+                    # Paquet auto-généré par le nœud local
                     if DEBUG_MODE:
                         sender_name = self.node_manager.get_node_name(from_id)
-                        debug_print(f"⏭️  Télémétrie serial ignorée (non-radio): {sender_name}")
+                        debug_print(f"⏭️  Télémétrie auto-générée ignorée (non-radio): {sender_name}")
                     return
 
                 if packet_type == 'TEXT_MESSAGE_APP':
@@ -437,13 +444,6 @@ class TrafficMonitor:
         except Exception as e:
             return None
 
-    def add_public_message(self, packet, message_text):
-        """
-        Méthode de compatibilité pour les messages texte
-        Redirige vers add_packet
-        """
-        self.add_packet(packet)
-    
     def _extract_message_text(self, decoded):
         """Extraire le texte d'un message décodé"""
         message = ""
@@ -577,6 +577,7 @@ class TrafficMonitor:
                 'position': 0,
                 'nodeinfo': 0,
                 'routing': 0,
+                'encrypted': 0,
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
@@ -647,6 +648,8 @@ class TrafficMonitor:
                         stats['nodeinfo'] += 1
                     elif packet_type == 'ROUTING_APP':
                         stats['routing'] += 1
+                    elif packet_type in ('ENCRYPTED', 'PKI_ENCRYPTED'):
+                        stats['encrypted'] += 1
                     else:
                         stats['other'] += 1
             
@@ -703,9 +706,11 @@ class TrafficMonitor:
                         breakdown.append(f"ℹ️{stats['nodeinfo']}")
                     if stats['routing'] > 0:
                         breakdown.append(f"🔀{stats['routing']}")
+                    if stats['encrypted'] > 0:
+                        breakdown.append(f"🔐{stats['encrypted']}")
                     if stats['other'] > 0:
                         breakdown.append(f"❓{stats['other']}")
-                    
+
                     if breakdown:
                         lines.append(f"   Types: {' '.join(breakdown)}")
                 

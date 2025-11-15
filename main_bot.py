@@ -99,20 +99,25 @@ class MeshBot:
             # Déterminer la source du paquet
             is_from_serial = (interface == self.interface)
             source = 'local' if is_from_serial else 'tigrog2'
-            
+
+            # Obtenir l'ID du nœud local pour filtrage
+            my_id = None
+            if hasattr(self.interface, 'localNode') and self.interface.localNode:
+                my_id = getattr(self.interface.localNode, 'nodeNum', 0)
+
             # Mise à jour de la base de nœuds depuis TOUS les packets
             self.node_manager.update_node_from_packet(packet)
             self.node_manager.update_rx_history(packet)
             self.node_manager.track_packet_type(packet)
-            
+
             if 'decoded' in packet:
                 portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
                 self.packet_history.add_packet(portnum)
-            
+
             # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
-                self.traffic_monitor.add_packet(packet, source=source)  
+                self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)  
             
             # ========================================
             # PHASE 2: FILTRAGE

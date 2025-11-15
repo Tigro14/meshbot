@@ -41,9 +41,9 @@ class AdminCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /channel_stats {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.get_channel_stats,
+            self.telegram.business_stats.get_channel_stats,
             hours
         )
 
@@ -69,9 +69,9 @@ class AdminCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /cleartraffic: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.clear_traffic_history
+            self.telegram.business_stats.clear_traffic_history
         )
 
         await update.message.reply_text(response)
@@ -89,9 +89,9 @@ class AdminCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /dbstats: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.get_persistence_stats
+            self.telegram.business_stats.get_persistence_stats
         )
 
         await update.message.reply_text(response)
@@ -119,9 +119,9 @@ class AdminCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /cleanup {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.cleanup_old_data,
+            self.telegram.business_stats.cleanup_old_data,
             hours
         )
 

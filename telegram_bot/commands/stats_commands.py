@@ -34,9 +34,9 @@ class StatsCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /trafic {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.get_traffic_report,
+            self.telegram.business_stats.get_traffic_report,
             hours
         )
         await update.message.reply_text(response)
@@ -162,13 +162,13 @@ class StatsCommands(TelegramCommandBase):
         # Message d'attente
         await update.message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         def get_detailed_stats():
             # Rapport détaillé avec types de paquets
-            report = self.telegram.stats_commands.get_top_talkers(hours, top_n, include_packet_types=True)
+            report = self.telegram.business_stats.get_top_talkers(hours, top_n, include_packet_types=True)
 
             # Ajouter le résumé des types de paquets
-            packet_summary = self.telegram.stats_commands.get_packet_type_summary(hours)
+            packet_summary = self.telegram.business_stats.get_packet_type_summary(hours)
             if packet_summary:
                 report += "\n\n" + packet_summary
 
@@ -218,11 +218,11 @@ class StatsCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /packets {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         def get_packet_stats():
             try:
                 # Résumé détaillé des types
-                summary = self.telegram.stats_commands.get_packet_type_summary(hours)
+                summary = self.telegram.business_stats.get_packet_type_summary(hours)
 
                 # Ajouter les stats réseau
                 tm = self.message_handler.traffic_monitor
@@ -305,9 +305,22 @@ class StatsCommands(TelegramCommandBase):
         def get_histogram():
             """Fonction synchrone pour obtenir l'histogramme"""
             try:
-                # Utiliser node_manager pour générer l'histogramme
-                return self.node_manager.get_packet_histogram_single(
-                    packet_type, hours)
+                # Mapping des types courts vers les filtres traffic_monitor
+                type_mapping = {
+                    'ALL': 'all',
+                    'POS': 'pos',
+                    'TELE': 'telemetry',
+                    'NODE': 'info',
+                    'TEXT': 'messages'
+                }
+
+                filter_type = type_mapping.get(packet_type, 'all')
+
+                # Utiliser traffic_monitor qui charge depuis SQLite
+                return self.traffic_monitor.get_hourly_histogram(
+                    packet_filter=filter_type,
+                    hours=hours
+                )
             except Exception as e:
                 error_print(f"Erreur get_histogram: {e}")
                 import traceback
