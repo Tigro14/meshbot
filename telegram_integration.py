@@ -104,8 +104,7 @@ class TelegramIntegration:
         if telegram_user_id in TELEGRAM_TO_MESH_MAPPING:
             mapping = TELEGRAM_TO_MESH_MAPPING[telegram_user_id]
             debug_print(
-                f"✅ Mapping Telegram {telegram_user_id} → {
-                    mapping['display_name']}")
+                f"✅ Mapping Telegram {telegram_user_id} → {mapping['display_name']}")
             return mapping
         else:
             debug_print(f"⚠️ Pas de mapping pour {telegram_user_id}")
@@ -222,6 +221,14 @@ class TelegramIntegration:
                 CommandHandler("stats", self._stats_command))
             self.application.add_handler(
                 CommandHandler("channel_stats", self._channel_stats_command))
+
+            # Commandes de persistance du trafic
+            self.application.add_handler(
+                CommandHandler("cleartraffic", self._cleartraffic_command))
+            self.application.add_handler(
+                CommandHandler("dbstats", self._dbstats_command))
+            self.application.add_handler(
+                CommandHandler("cleanup", self._cleanup_command))
 
             # Après le dernier add_handler
             info_print(
@@ -370,8 +377,7 @@ class TelegramIntegration:
 
         # 🔍 DEBUG
         info_print(
-            f"DEBUG help_text length: {
-                len(help_text) if help_text else 'None'}")
+            f"DEBUG help_text length: {len(help_text) if help_text else 'None'}")
         info_print(
             f"DEBUG help_text preview: {help_text[:100] if help_text else 'None'}")
 
@@ -2643,5 +2649,76 @@ class TelegramIntegration:
                 await asyncio.sleep(0.5)
         else:
             await update.message.reply_text(response)
+
+    async def _cleartraffic_command(self, update: Update,
+                                    context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /cleartraffic - Efface tout l'historique du trafic
+        Usage: /cleartraffic
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        info_print(f"📱 Telegram /cleartraffic: {user.username}")
+
+        # Utiliser la logique métier partagée
+        response = await asyncio.to_thread(
+            self.stats_commands.clear_traffic_history
+        )
+
+        await update.message.reply_text(response)
+
+    async def _dbstats_command(self, update: Update,
+                               context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /dbstats - Affiche les statistiques de la base de données
+        Usage: /dbstats
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        info_print(f"📱 Telegram /dbstats: {user.username}")
+
+        # Utiliser la logique métier partagée
+        response = await asyncio.to_thread(
+            self.stats_commands.get_persistence_stats
+        )
+
+        await update.message.reply_text(response)
+
+    async def _cleanup_command(self, update: Update,
+                              context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /cleanup - Nettoie les anciennes données (par défaut > 48h)
+        Usage: /cleanup [heures]
+        Exemple: /cleanup 72 (supprime les données de plus de 72h)
+        """
+        user = update.effective_user
+        if not self._check_authorization(user.id):
+            await update.message.reply_text("❌ Non autorisé")
+            return
+
+        # Récupérer le nombre d'heures (par défaut 48)
+        hours = 48
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(24, min(720, hours))  # Entre 24h et 30 jours
+            except ValueError:
+                hours = 48
+
+        info_print(f"📱 Telegram /cleanup {hours}h: {user.username}")
+
+        # Utiliser la logique métier partagée
+        response = await asyncio.to_thread(
+            self.stats_commands.cleanup_old_data,
+            hours
+        )
+
+        await update.message.reply_text(response)
 
 

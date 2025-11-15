@@ -391,12 +391,20 @@ class UtilityCommands:
         • /stats - Statistiques globales du réseau
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
-        • /histo [type] [h] 
+        • /histo [type] [h]
           Types disponibles:
              - all : tous les paquets (défaut)
              - messages : messages texte uniquement
              - pos : positions uniquement
              - info : nodeinfo uniquement
+
+        💾 PERSISTANCE TRAFIC
+        • /dbstats - Stats de la base de données
+          Affiche le nombre de paquets, taille DB, etc.
+        • /cleanup [heures] - Nettoie anciennes données
+          Défaut: 48h, supprime données plus anciennes
+        • /cleartraffic - Efface tout l'historique
+          ⚠️  Supprime toutes les données (mémoire + DB)
 
         📢 DIFFUSION
         •echo <message> - Diffuser sur le réseau
@@ -536,20 +544,28 @@ class UtilityCommands:
                 hours = 24
         
         try:
-            # Obtenir l'histogramme
+            # Obtenir l'histogramme depuis traffic_monitor (utilise SQLite)
             if packet_type == 'ALL':
-                histogram = self.node_manager.get_packet_histogram_single('ALL', hours)
+                histogram = self.traffic_monitor.get_packet_histogram_overview(hours)
                 command_log = "/histo"
             else:
-                histogram = self.node_manager.get_packet_histogram_single(packet_type, hours)
+                # Pour les types spécifiques, utiliser get_hourly_histogram
+                type_mapping = {
+                    'POS': 'pos',
+                    'TELE': 'telemetry',
+                    'NODE': 'info',
+                    'TEXT': 'messages'
+                }
+                filter_type = type_mapping.get(packet_type, 'all')
+                histogram = self.traffic_monitor.get_hourly_histogram(filter_type, hours)
                 command_log = f"/histo {packet_type.lower()}"
                 if hours != 24:
                     command_log += f" {hours}"
-            
+
             # Logger et envoyer
             self.sender.log_conversation(sender_id, sender_info, command_log, histogram)
             self.sender.send_single(histogram, sender_id, sender_info)
-            
+
             info_print(f"✅ Histogram {packet_type} ({hours}h) envoyé à {sender_info}")
             
         except Exception as e:
