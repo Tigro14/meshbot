@@ -34,9 +34,9 @@ class StatsCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /trafic {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
-            self.telegram.stats_commands.get_traffic_report,
+            self.telegram.business_stats.get_traffic_report,
             hours
         )
         await update.message.reply_text(response)
@@ -162,13 +162,13 @@ class StatsCommands(TelegramCommandBase):
         # Message d'attente
         await update.message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         def get_detailed_stats():
             # Rapport détaillé avec types de paquets
-            report = self.telegram.stats_commands.get_top_talkers(hours, top_n, include_packet_types=True)
+            report = self.telegram.business_stats.get_top_talkers(hours, top_n, include_packet_types=True)
 
             # Ajouter le résumé des types de paquets
-            packet_summary = self.telegram.stats_commands.get_packet_type_summary(hours)
+            packet_summary = self.telegram.business_stats.get_packet_type_summary(hours)
             if packet_summary:
                 report += "\n\n" + packet_summary
 
@@ -218,11 +218,11 @@ class StatsCommands(TelegramCommandBase):
 
         info_print(f"📱 Telegram /packets {hours}h: {user.username}")
 
-        # Utiliser la logique métier partagée
+        # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         def get_packet_stats():
             try:
                 # Résumé détaillé des types
-                summary = self.telegram.stats_commands.get_packet_type_summary(hours)
+                summary = self.telegram.business_stats.get_packet_type_summary(hours)
 
                 # Ajouter les stats réseau
                 tm = self.message_handler.traffic_monitor

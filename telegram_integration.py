@@ -34,6 +34,9 @@ from telegram_bot.commands import (
     AdminCommands
 )
 
+# Import de la logique métier pour les stats (alias pour éviter conflit)
+from handlers.command_handlers.stats_commands import StatsCommands as BusinessStatsCommands
+
 # Import des gestionnaires spécialisés
 from telegram_bot.traceroute_manager import TracerouteManager
 from telegram_bot.alert_manager import AlertManager
@@ -84,7 +87,17 @@ class TelegramIntegration:
         # Les commandes sans dépendances d'abord
         self.basic_commands = BasicCommands(self)
         self.system_commands = SystemCommands(self)
+
+        # Créer l'instance de la logique métier pour les stats
+        # (utilisée par les commandes Telegram pour accéder aux méthodes de génération de rapports)
+        self.business_stats = BusinessStatsCommands(
+            traffic_monitor=self.message_handler.traffic_monitor,
+            node_manager=self.node_manager
+        )
+
+        # Créer le wrapper Telegram pour les commandes stats
         self.stats_commands = StatsCommands(self)
+
         self.mesh_commands = MeshCommands(self)
         self.utility_commands = UtilityCommands(self)
         self.ai_commands = AICommands(self)
