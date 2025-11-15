@@ -71,11 +71,12 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 ```
 
 ### Key Statistics
-- **~17,021 lines** of Python code
-- **60 modules** with clear separation of concerns
+- **~17,697 lines** of Python code
+- **62 modules** with clear separation of concerns
 - **Dual-channel design**: Constrained LoRa (180 chars) vs Rich Telegram (3000 chars)
 - **Multi-platform ready**: Pluggable architecture for Telegram, Discord, Matrix
 - **SQLite persistence**: 48-hour traffic history with automatic cleanup
+- **Unified statistics**: Single `/stats` command with multiple sub-commands
 
 ---
 
@@ -115,6 +116,24 @@ New map generation tools added in `map/` directory:
 - Network planning and optimization
 - Coverage gap identification
 - Community engagement and transparency
+
+### Unified Statistics System
+
+New unified statistics command system consolidates all statistics functionality:
+- **Single Entry Point**: `/stats` command with sub-commands
+- **Channel Adaptation**: Automatically adapts output for Mesh (180 chars) vs Telegram (longer)
+- **Business Logic Centralization**: All statistics logic in `unified_stats.py`
+- **Backward Compatibility**: Legacy commands (`/top`, `/packets`, `/histo`) remain as aliases
+
+**Sub-commands:**
+- `/stats` or `/stats global` - Network overview
+- `/stats top [hours] [n]` - Top talkers
+- `/stats packets [hours]` - Packet type distribution
+- `/stats channel [hours]` - Channel utilization
+- `/stats histo [type] [hours]` - Type-specific histogram
+- `/stats traffic [hours]` - Public message history (Telegram only)
+
+See `STATS_CONSOLIDATION_PLAN.md` for detailed architecture.
 
 ---
 
@@ -161,7 +180,8 @@ MeshBot (Orchestrator)
 │       ├── AICommands (/bot)
 │       ├── NetworkCommands (/nodes, /my, /trace)
 │       ├── SystemCommands (/sys, /rebootpi, /rebootg2)
-│       ├── StatsCommands (/top, /histo, /stats, /packets)
+│       ├── UnifiedStatsCommands (/stats with sub-commands)
+│       ├── StatsCommands (Legacy: /top, /histo, /packets)
 │       ├── MeshCommands (/echo, /annonce)
 │       └── UtilityCommands (/help, /power, /weather, etc.)
 ├── MessageSender (Throttling + chunking)
@@ -207,7 +227,8 @@ MeshBot (Orchestrator)
 │       ├── ai_commands.py      # /bot
 │       ├── network_commands.py # /nodes, /my, /trace
 │       ├── system_commands.py  # /sys, /rebootpi, /rebootg2
-│       ├── stats_commands.py   # /top, /histo, /stats, /packets
+│       ├── stats_commands.py   # Legacy stats commands
+│       ├── unified_stats.py    # Unified /stats command (NEW)
 │       ├── mesh_commands.py    # /echo, /annonce
 │       ├── utility_commands.py # /help, /power, /weather, etc.
 │       └── signal_utils.py     # Signal formatting utilities
@@ -1920,6 +1941,7 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | Orchestrator | `main_bot.py` | MeshBot class, lifecycle |
 | Message routing | `handlers/message_router.py` | Command dispatcher (Mesh) |
 | Message delivery | `handlers/message_sender.py` | Throttling + chunking |
+| Unified stats | `handlers/command_handlers/unified_stats.py` | Unified /stats command |
 | Command handlers | `handlers/command_handlers/*.py` | Domain logic (Mesh) |
 | Platform manager | `platforms/platform_manager.py` | Multi-platform orchestrator |
 | Platform interface | `platforms/platform_interface.py` | Abstract platform base |
@@ -1946,11 +1968,16 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | `/sys` | `system_commands.py` | System info |
 | `/rebootpi` | `system_commands.py` | Reboot Pi (admin) |
 | `/rebootg2` | `system_commands.py` | Reboot router (admin) |
-| `/top [hours]` | `stats_commands.py` | Top talkers |
-| `/histo [type]` | `stats_commands.py` | Packet histogram |
-| `/stats` | `stats_commands.py` | Channel stats |
-| `/packets` | `stats_commands.py` | Packet stats |
-| `/trafic [hours]` | `stats_commands.py` | Message history |
+| `/stats [sub]` | `unified_stats.py` | Unified statistics (NEW) |
+| `/stats global` | `unified_stats.py` | Network overview |
+| `/stats top` | `unified_stats.py` | Top talkers |
+| `/stats packets` | `unified_stats.py` | Packet distribution |
+| `/stats channel` | `unified_stats.py` | Channel utilization |
+| `/stats histo` | `unified_stats.py` | Type histogram |
+| `/stats traffic` | `unified_stats.py` | Message history (Telegram) |
+| `/top [hours]` | `stats_commands.py` | Top talkers (legacy alias) |
+| `/histo [type]` | `stats_commands.py` | Packet histogram (legacy) |
+| `/packets` | `stats_commands.py` | Packet stats (legacy) |
 | `/echo <msg>` | `mesh_commands.py` | Broadcast via router |
 | `/annonce <msg>` | `mesh_commands.py` | Broadcast via bot |
 | `/power` | `utility_commands.py` | ESPHome data |
@@ -2006,28 +2033,47 @@ This document should be updated when:
 **Last updated**: 2025-11-15
 **Updated by**: Claude (AI Assistant)
 **Changes in this update**:
-- Updated line count: ~15,251 → ~17,021 lines
-- Updated module count: 40+ → 60 modules
+- Updated line count: ~17,021 → ~17,697 lines
+- Updated module count: 60 → 62 modules
+- **NEW: Unified Statistics System** - Documented new `/stats` command with sub-commands
+- Added `unified_stats.py` to command handlers documentation
+- Updated command reference table with `/stats` sub-commands and legacy aliases
+- Added new documentation files to Additional Resources:
+  - STATS_CONSOLIDATION_PLAN.md
+  - PLATFORMS.md
+  - ENCRYPTED_PACKETS_EXPLAINED.md
+  - PR_DESCRIPTION.md
+- Updated component hierarchy to include UnifiedStatsCommands
+- Enhanced directory structure with unified_stats.py
+- Updated key file locations table with unified stats handler
+
+**Previous major changes (v2.0)**:
 - Added new **Platforms Architecture** section documenting multi-platform support
 - Added new **Map Generation** section for network visualization tools
 - Updated directory structure to include `platforms/`, `telegram_bot/`, and `map/` directories
 - Documented new `AlertManager` for Telegram notifications
 - Added `platform_config.py` to configuration documentation
-- Updated component hierarchy to show new platform management layer
-- Added **Recent Architectural Changes** section highlighting v2.0 refactoring
-- Updated configuration best practices for multi-platform setup
-- Enhanced key file locations table with platform-related files
 
-**Next review**: When significant changes occur or new platforms are implemented
+**Next review**: When significant changes occur or new platforms/features are implemented
 
 ---
 
 ## Additional Resources
 
+### Documentation Files
+
 - **README.md**: User-facing documentation
+- **CLAUDE.md**: This file - AI assistant guide
 - **BROWSE_TRAFFIC_DB.md**: Web UI for traffic database
 - **TRAFFIC_DB_VIEWER.md**: CLI database viewer
-- **llama.cpp-integration/READMELLAMA.md**: Llama.cpp setup guide
+- **STATS_CONSOLIDATION_PLAN.md**: Unified statistics system architecture
+- **PLATFORMS.md**: Multi-platform architecture documentation
+- **ENCRYPTED_PACKETS_EXPLAINED.md**: Guide to encrypted vs direct messages
+- **PR_DESCRIPTION.md**: Pull request templates and guidelines
+- **llama.cpp-integration/README.md**: Llama.cpp setup guide
+
+### External References
+
 - **Meshtastic Python Docs**: https://meshtastic.org/docs/software/python/cli/
 - **python-telegram-bot Docs**: https://python-telegram-bot.org/
 
