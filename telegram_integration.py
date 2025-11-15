@@ -36,6 +36,7 @@ from telegram_bot.commands import (
 
 # Import de la logique métier pour les stats (alias pour éviter conflit)
 from handlers.command_handlers.stats_commands import StatsCommands as BusinessStatsCommands
+from handlers.command_handlers.unified_stats import UnifiedStatsCommands
 
 # Import des gestionnaires spécialisés
 from telegram_bot.traceroute_manager import TracerouteManager
@@ -91,6 +92,12 @@ class TelegramIntegration:
         # Créer l'instance de la logique métier pour les stats
         # (utilisée par les commandes Telegram pour accéder aux méthodes de génération de rapports)
         self.business_stats = BusinessStatsCommands(
+            traffic_monitor=self.message_handler.traffic_monitor,
+            node_manager=self.node_manager
+        )
+
+        # Créer le système unifié de statistiques (nouveau)
+        self.unified_stats = UnifiedStatsCommands(
             traffic_monitor=self.message_handler.traffic_monitor,
             node_manager=self.node_manager
         )

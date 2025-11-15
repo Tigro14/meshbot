@@ -6,7 +6,7 @@ Orchestre tous les gestionnaires de commandes
 """
 
 from config import DEBUG_MODE
-from utils import info_print, debug_print
+from utils import info_print, debug_print, error_print
 from .message_sender import MessageSender
 from .command_handlers import (
     AICommands,
@@ -14,25 +14,30 @@ from .command_handlers import (
     SystemCommands,
     UtilityCommands
 )
+from .command_handlers.unified_stats import UnifiedStatsCommands
 
 class MessageRouter:
-    def __init__(self, llama_client, esphome_client, remote_nodes_client, 
-                 node_manager, context_manager, interface, traffic_monitor=None,     
+    def __init__(self, llama_client, esphome_client, remote_nodes_client,
+                 node_manager, context_manager, interface, traffic_monitor=None,
                  bot_start_time=None,packet_history=None):
-        
+
         # Dépendances
         self.node_manager = node_manager
         self.interface = interface
-        
+        self.traffic_monitor = traffic_monitor
+
         # Message sender (gère envoi et throttling)
         self.sender = MessageSender(interface, node_manager)
-        
+
         # Gestionnaires de commandes par domaine
         self.ai_handler = AICommands(llama_client, self.sender)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager)
-        self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time) 
+        self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
         self.packet_history = packet_history
+
+        # Gestionnaire unifié des statistiques (nouveau système)
+        self.unified_stats = UnifiedStatsCommands(traffic_monitor, node_manager) if traffic_monitor else None
    
     def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""
@@ -119,7 +124,13 @@ class MessageRouter:
         elif message.startswith('/g2'):
             self.system_handler.handle_g2(sender_id, sender_info)
         # ===================================================================
-        
+
+        # ===================================================================
+        # Commandes de statistiques unifiées (nouveau système)
+        # ===================================================================
+        elif message.startswith('/stats'):
+            self._handle_unified_stats(message, sender_id, sender_info)
+
         # Commandes utilitaires
         elif message.startswith('/power'):
             self.utility_handler.handle_power(sender_id, sender_info)
@@ -155,6 +166,45 @@ class MessageRouter:
                 if DEBUG_MODE:
                     debug_print(f"Message normal reçu: '{message}'")
     
+    def _handle_unified_stats(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /stats [subcommand] [params]
+        Nouveau système unifié pour Mesh et Telegram
+        """
+        # Vérifier que unified_stats est disponible
+        if not self.unified_stats:
+            self.sender.send_single("❌ Stats non disponibles", sender_id, sender_info)
+            return
+
+        # Vérifier throttling
+        if not self.sender.check_throttling(sender_id, sender_info):
+            return
+
+        # Parser les arguments
+        parts = message.split()
+        subcommand = parts[1] if len(parts) > 1 else 'global'
+        params = parts[2:] if len(parts) > 2 else []
+
+        try:
+            # Appeler la business logic unifiée (channel='mesh' pour LoRa)
+            response = self.unified_stats.get_stats(
+                subcommand=subcommand,
+                params=params,
+                channel='mesh'  # Adaptation automatique pour LoRa
+            )
+
+            # Logger et envoyer
+            self.sender.log_conversation(sender_id, sender_info, message, response)
+            self.sender.send_chunks(response, sender_id, sender_info)
+
+            info_print(f"✅ Stats '{subcommand}' envoyées à {sender_info}")
+
+        except Exception as e:
+            error_print(f"Erreur _handle_unified_stats: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            self.sender.send_single(f"❌ Erreur: {str(e)[:50]}", sender_id, sender_info)
+
     def cleanup_throttling_data(self):
         """Nettoyer les données de throttling (appelé périodiquement)"""
         self.sender.cleanup_throttling()
