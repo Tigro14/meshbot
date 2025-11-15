@@ -396,11 +396,46 @@ class UnifiedStatsCommands:
                 elif total_avg > 10:
                     lines.append("✓ Canal OK")
 
-            else:  # telegram - version détaillée
-                lines.append(f"\n📊 Nœuds actifs: {len(node_averages)}")
-                lines.append("")
+            else:  # telegram - version détaillée avec synthèse
+                # Calculer stats globales d'abord
+                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
+                max_ch = max(n['avg_channel'] for n in node_averages)
+                min_ch = min(n['avg_channel'] for n in node_averages)
 
-                for i, node_data in enumerate(node_averages, 1):
+                # Distribution par niveau
+                count_crit = len([n for n in node_averages if n['avg_channel'] > 25])
+                count_high = len([n for n in node_averages if 15 < n['avg_channel'] <= 25])
+                count_norm = len([n for n in node_averages if 10 < n['avg_channel'] <= 15])
+                count_low = len([n for n in node_averages if n['avg_channel'] <= 10])
+
+                # SYNTHÈSE GLOBALE EN TÊTE
+                lines.append("\n**📊 SYNTHÈSE RÉSEAU**")
+                lines.append(f"Nœuds actifs: **{len(node_averages)}**")
+                lines.append(f"Moyenne canal: **{total_avg:.1f}%**")
+                lines.append(f"Range: {min_ch:.1f}% - {max_ch:.1f}%")
+
+                # État global
+                if total_avg > 20:
+                    lines.append("🔴 **État: CRITIQUE - Réduire trafic**")
+                elif total_avg > 15:
+                    lines.append("🟡 **État: ÉLEVÉ - Attention**")
+                elif total_avg > 10:
+                    lines.append("🟢 **État: NORMAL**")
+                else:
+                    lines.append("⚪ **État: FAIBLE**")
+
+                # Distribution visuelle
+                lines.append(f"\n**Distribution:**")
+                lines.append(f"🔴 Critique (>25%): {count_crit} nœuds")
+                lines.append(f"🟡 Élevé (15-25%): {count_high} nœuds")
+                lines.append(f"🟢 Normal (10-15%): {count_norm} nœuds")
+                lines.append(f"⚪ Faible (<10%): {count_low} nœuds")
+
+                # DÉTAILS TOP NŒUDS (limité à 15)
+                lines.append(f"\n**📈 TOP {min(15, len(node_averages))} NŒUDS**")
+                lines.append("=" * 50)
+
+                for i, node_data in enumerate(node_averages[:15], 1):
                     name = node_data['name'][:20]
                     avg_ch = node_data['avg_channel']
                     avg_air = node_data['avg_air']
@@ -420,7 +455,7 @@ class UnifiedStatsCommands:
                         icon = "⚪"
                         status = "FAIBLE"
 
-                    lines.append(f"{i}. {icon} {name}")
+                    lines.append(f"\n{i}. {icon} **{name}**")
                     lines.append(f"   Canal: {avg_ch:.1f}% ({status})")
                     if avg_air > 0:
                         lines.append(f"   Air TX: {avg_air:.1f}%")
@@ -429,23 +464,19 @@ class UnifiedStatsCommands:
                     if avg_ch > 15:
                         lines.append("   ⚠️ Réduire fréquence paquets")
 
-                    lines.append("")
+                # Résumé des nœuds non affichés
+                if len(node_averages) > 15:
+                    remaining = len(node_averages) - 15
+                    remaining_avg = sum(n['avg_channel'] for n in node_averages[15:]) / remaining
+                    lines.append(f"\n... et **{remaining} autres nœuds** (moy: {remaining_avg:.1f}%)")
 
-                # Stats globales
-                lines.append("=" * 50)
-                lines.append("📈 GLOBALES:")
-                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
-                max_ch = max(n['avg_channel'] for n in node_averages)
-                min_ch = min(n['avg_channel'] for n in node_averages)
-                lines.append(f"Moy: {total_avg:.1f}%")
-                lines.append(f"Max: {max_ch:.1f}%")
-                lines.append(f"Min: {min_ch:.1f}%")
-
-                lines.append("\n📋 SEUILS:")
-                lines.append("🟢 <10% Normal")
-                lines.append("🟡 10-15% Acceptable")
-                lines.append("🟠 15-25% Élevé")
-                lines.append("🔴 >25% Critique")
+                # LÉGENDE SEUILS
+                lines.append("\n" + "=" * 50)
+                lines.append("**📋 SEUILS DE RÉFÉRENCE**")
+                lines.append("🟢 <10% = Normal")
+                lines.append("🟡 10-15% = Acceptable")
+                lines.append("🟠 15-25% = Élevé")
+                lines.append("🔴 >25% = Critique")
 
             return "\n".join(lines)
 
