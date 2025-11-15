@@ -34,6 +34,11 @@ class CLIServerPlatform(MessagingPlatform):
         # Stockage des connexions actives (pour envoyer réponses)
         self.active_connections = {}  # {user_id: socket}
 
+    @property
+    def platform_name(self) -> str:
+        """Nom de la plateforme"""
+        return 'cli_server'
+
     def start(self):
         """Démarrer le serveur TCP CLI"""
         if not self.config.enabled:
@@ -103,6 +108,30 @@ class CLIServerPlatform(MessagingPlatform):
                 debug_print(f"CLI→ Sent {len(message)} chars to {hex(user_id)}")
             except Exception as e:
                 error_print(f"Failed to send to CLI client: {e}")
+                # Nettoyer la connexion morte
+                if user_id in self.active_connections:
+                    del self.active_connections[user_id]
+
+    def send_alert(self, message):
+        """
+        Envoyer une alerte à tous les clients CLI connectés
+
+        Args:
+            message: Message d'alerte
+        """
+        # Envoyer à tous les clients connectés
+        for user_id in list(self.active_connections.keys()):
+            try:
+                conn = self.active_connections[user_id]
+                alert = {
+                    'type': 'alert',
+                    'message': f"🚨 ALERTE: {message}"
+                }
+                data = json.dumps(alert) + '\n'
+                conn.sendall(data.encode('utf-8'))
+                debug_print(f"CLI→ Alert sent to {hex(user_id)}")
+            except Exception as e:
+                error_print(f"Failed to send alert to CLI client: {e}")
                 # Nettoyer la connexion morte
                 if user_id in self.active_connections:
                     del self.active_connections[user_id]

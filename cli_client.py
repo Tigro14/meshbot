@@ -126,6 +126,12 @@ class CLIClient:
                 print(content)
                 print("─" * 60)
 
+            elif msg_type == 'alert':
+                # Alerte système
+                print("\n" + "━" * 60)
+                print(content)
+                print("━" * 60)
+
             else:
                 # Message inconnu, afficher tel quel
                 print(f"\n[{msg_type}] {content}")
