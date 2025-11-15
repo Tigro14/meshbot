@@ -58,6 +58,8 @@ class TrafficMonitor:
             'DETECTION_SENSOR_APP': '👁️ Détection',
             'STORE_FORWARD_APP': '💾 StoreForward',
             'PAXCOUNTER_APP': '🚶 Paxcounter',
+            'ENCRYPTED': '🔐 Chiffré',
+            'PKI_ENCRYPTED': '🔐 PKI Chiffré',
             'UNKNOWN': '❓ Inconnu'
         }
         
@@ -575,6 +577,7 @@ class TrafficMonitor:
                 'position': 0,
                 'nodeinfo': 0,
                 'routing': 0,
+                'encrypted': 0,
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
@@ -645,6 +648,8 @@ class TrafficMonitor:
                         stats['nodeinfo'] += 1
                     elif packet_type == 'ROUTING_APP':
                         stats['routing'] += 1
+                    elif packet_type in ('ENCRYPTED', 'PKI_ENCRYPTED'):
+                        stats['encrypted'] += 1
                     else:
                         stats['other'] += 1
             
@@ -701,9 +706,11 @@ class TrafficMonitor:
                         breakdown.append(f"ℹ️{stats['nodeinfo']}")
                     if stats['routing'] > 0:
                         breakdown.append(f"🔀{stats['routing']}")
+                    if stats['encrypted'] > 0:
+                        breakdown.append(f"🔐{stats['encrypted']}")
                     if stats['other'] > 0:
                         breakdown.append(f"❓{stats['other']}")
-                    
+
                     if breakdown:
                         lines.append(f"   Types: {' '.join(breakdown)}")
                 
