@@ -42,7 +42,11 @@ class UnifiedStatsCommands:
         params = params or []
 
         try:
-            if subcommand in ['', 'global', 'g']:
+            # Commande sans paramètre: afficher l'aide
+            if subcommand == '':
+                return self.get_help(channel)
+            # Stats globales
+            elif subcommand in ['global', 'g']:
                 return self.get_global_stats(params, channel)
             elif subcommand in ['top', 't']:
                 return self.get_top_talkers(params, channel)
@@ -66,34 +70,29 @@ class UnifiedStatsCommands:
         """Afficher l'aide des sous-commandes"""
         if channel == 'mesh':
             return (
-                "📊 /stats [cmd]\n"
-                "g=global t=top p=packets\n"
-                "ch=channel h=histo\n"
-                "Ex: /stats t 12"
+                "📊 /stats [cmd] [h]\n"
+                "g=global t=top p=pkt\n"
+                "ch=canal h=histo\n"
+                "Ex: /stats ch 24"
             )
         else:  # telegram
-            return """📊 **COMMANDES STATS**
-
-**Syntaxe:** `/stats [sous-commande] [paramètres]`
+            return """📊 **STATS - OPTIONS DISPONIBLES**
 
 **Sous-commandes:**
-• `global` - Vue d'ensemble réseau (défaut)
-• `top [hours] [n]` - Top talkers
-• `packets [hours]` - Distribution types de paquets
-• `channel [hours]` - Utilisation du canal
-• `histo [type] [hours]` - Histogramme temporel
-• `traffic [hours]` - Historique messages
-
-**Raccourcis:** g, t, p, ch, h, tr
+• `top [h] [n]` - Top talkers
+• `channel [h]` - Utilisation canal
+• `histo [type] [h]` - Historique (sparkline)
+• `packets [h]` - Types de paquets
+• `global` - Vue d'ensemble
+• `traffic [h]` - Messages publics
 
 **Exemples:**
-• `/stats` → Vue globale
-• `/stats top 24 10` → Top 10 sur 24h
-• `/stats channel 12` → Canal sur 12h
-• `/stats h pos 6` → Histo positions 6h
+• `/stats top 24 10` - Top 10 dernières 24h
+• `/stats channel 12` - Canal dernières 12h
+• `/stats histo pos 6` - Histo positions 6h
 
-**Aliases (compatibilité):**
-`/top`, `/packets`, `/histo` fonctionnent toujours!
+**Raccourcis:** t, ch, h, p, g, tr
+**Aliases:** `/top`, `/packets`, `/histo`
 """
 
     def get_global_stats(self, params, channel='mesh'):
