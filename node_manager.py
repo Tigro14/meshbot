@@ -162,8 +162,14 @@ class NodeManager:
                                 return name
         except Exception as e:
             debug_print(f"Erreur récupération nom {node_id}: {e}")
-        
-        return f"Node-{node_id:08x}"
+
+        # Générer un nom par défaut selon le type de node_id
+        if isinstance(node_id, str):
+            # Si c'est déjà une chaîne (ex: "!12345678"), l'utiliser tel quel
+            return node_id
+        else:
+            # Si c'est un int, formater en hex
+            return f"Node-{node_id:08x}"
     
     def get_node_distance(self, node_id, reference_lat=None, reference_lon=None):
         """
@@ -195,8 +201,9 @@ class NodeManager:
         """
         if node_id not in self.node_names:
             # Créer l'entrée si elle n'existe pas
+            default_name = node_id if isinstance(node_id, str) else f"Node-{node_id:08x}"
             self.node_names[node_id] = {
-                'name': f"Node-{node_id:08x}",
+                'name': default_name,
                 'lat': lat,
                 'lon': lon,
                 'alt': alt,

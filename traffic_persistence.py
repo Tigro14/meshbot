@@ -31,8 +31,34 @@ class TrafficPersistence:
     def _init_database(self):
         """Initialise la base de données et crée les tables si nécessaire."""
         try:
+            # Vérifier si le fichier DB existe et est vide (corrompu)
+            if os.path.exists(self.db_path):
+                file_size = os.path.getsize(self.db_path)
+                if file_size == 0:
+                    logger.warning(f"⚠️ Base de données vide/corrompue détectée ({self.db_path}), suppression...")
+                    os.remove(self.db_path)
+
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
+
+            # Vérifier l'intégrité de la base de données
+            cursor = self.conn.cursor()
+            try:
+                cursor.execute("PRAGMA integrity_check")
+                integrity = cursor.fetchone()[0]
+                if integrity != 'ok':
+                    logger.error(f"❌ Intégrité DB compromise : {integrity}")
+                    # Tentative de réparation ou recréation
+                    self.conn.close()
+                    logger.info("Recréation de la base de données...")
+                    os.remove(self.db_path)
+                    self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+                    self.conn.row_factory = sqlite3.Row
+                    cursor = self.conn.cursor()
+                else:
+                    logger.info("✅ Intégrité de la DB vérifiée")
+            except Exception as e:
+                logger.warning(f"Impossible de vérifier l'intégrité : {e}")
 
             cursor = self.conn.cursor()
 
@@ -143,10 +169,17 @@ class TrafficPersistence:
             ''')
 
             self.conn.commit()
-            logger.info(f"Base de données initialisée : {self.db_path}")
+            logger.info(f"✅ Base de données initialisée : {self.db_path}")
+
+            # Vérifier que les tables sont bien créées
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
+            logger.info(f"Tables créées : {', '.join(tables)}")
 
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation de la base de données : {e}")
+            logger.error(f"❌ Erreur lors de l'initialisation de la base de données : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
 
     def save_packet(self, packet: Dict[str, Any]):
@@ -157,6 +190,14 @@ class TrafficPersistence:
             packet: Dictionnaire contenant les informations du paquet
         """
         try:
+            # Vérifier que la connexion est active
+            if self.conn is None:
+                logger.error("Connexion SQLite non initialisée, tentative de reconnexion")
+                self._init_database()
+                if self.conn is None:
+                    logger.error("Impossible d'initialiser la connexion SQLite")
+                    return
+
             cursor = self.conn.cursor()
 
             # Convertir les structures complexes en JSON
@@ -188,8 +229,17 @@ class TrafficPersistence:
 
             self.conn.commit()
 
+            # Log périodique pour suivre l'activité (tous les 50 paquets)
+            if not hasattr(self, '_packet_count'):
+                self._packet_count = 0
+            self._packet_count += 1
+            if self._packet_count % 50 == 0:
+                logger.info(f"📦 {self._packet_count} paquets sauvegardés dans SQLite")
+
         except Exception as e:
-            logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
+            logger.error(f"❌ Erreur lors de la sauvegarde du paquet : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def save_public_message(self, message_data: Dict[str, Any]):
         """
@@ -199,6 +249,13 @@ class TrafficPersistence:
             message_data: Dictionnaire contenant les informations du message
         """
         try:
+            # Vérifier que la connexion est active
+            if self.conn is None:
+                logger.error("Connexion SQLite non initialisée pour save_public_message")
+                self._init_database()
+                if self.conn is None:
+                    return
+
             cursor = self.conn.cursor()
 
             cursor.execute('''

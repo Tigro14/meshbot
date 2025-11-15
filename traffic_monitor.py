@@ -164,6 +164,13 @@ class TrafficMonitor:
         - Seuls les paquets selon device_update_interval sont envoyés sur radio
         - On ne veut compter que le trafic radio réel dans les stats mesh
         """
+        # Log périodique pour suivre l'activité (tous les 10 paquets)
+        if not hasattr(self, '_packet_add_count'):
+            self._packet_add_count = 0
+        self._packet_add_count += 1
+        if self._packet_add_count % 10 == 0:
+            logger.info(f"📥 {self._packet_add_count} paquets reçus dans add_packet() (current queue: {len(self.all_packets)})")
+
         try:
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
@@ -272,6 +279,13 @@ class TrafficMonitor:
                         }
 
             self.all_packets.append(packet_entry)
+
+            # Log périodique des paquets enregistrés (tous les 25 paquets)
+            if not hasattr(self, '_packet_saved_count'):
+                self._packet_saved_count = 0
+            self._packet_saved_count += 1
+            if self._packet_saved_count % 25 == 0:
+                logger.info(f"💾 {self._packet_saved_count} paquets enregistrés dans all_packets (size: {len(self.all_packets)})")
 
             # Sauvegarder le paquet dans SQLite
             try:
@@ -1693,13 +1707,13 @@ class TrafficMonitor:
         Restaure les paquets, messages et statistiques.
         """
         try:
-            logger.info("Chargement des données persistées...")
+            logger.info("📂 Chargement des données persistées depuis SQLite...")
 
             # Charger les paquets (dernières 48h pour correspondre à la rétention, max 5000)
             packets = self.persistence.load_packets(hours=48, limit=5000)
             for packet in reversed(packets):  # Inverser pour avoir l'ordre chronologique
                 self.all_packets.append(packet)
-            logger.info(f"✓ {len(packets)} paquets chargés")
+            logger.info(f"✅ {len(packets)} paquets chargés depuis SQLite (all_packets size: {len(self.all_packets)})")
 
             # Charger les messages publics (dernières 48h pour correspondre à la rétention, max 2000)
             messages = self.persistence.load_public_messages(hours=48, limit=2000)
