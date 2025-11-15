@@ -44,87 +44,51 @@ class StatsCommands(TelegramCommandBase):
     async def stats_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
         """
-        Commande /stats - Statistiques globales du réseau
+        Commande /stats [subcommand] [params] - Système unifié de statistiques
+
+        Sous-commandes:
+            global - Vue d'ensemble (défaut)
+            top [hours] [n] - Top talkers
+            packets [hours] - Distribution types
+            channel [hours] - Utilisation canal
+            histo [type] [hours] - Histogramme
+            traffic [hours] - Messages publics
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
             await update.message.reply_text("❌ Non autorisé")
             return
 
-        info_print(f"📱 Telegram /stats: {user.username}")
+        # Parser les arguments
+        args = context.args or []
+        subcommand = args[0] if args else 'global'
+        params = args[1:] if len(args) > 1 else []
 
-        def get_global_stats():
+        info_print(f"📱 Telegram /stats {subcommand} {params}: {user.username}")
+
+        # Vérifier que unified_stats est disponible
+        if not hasattr(self.telegram, 'unified_stats') or not self.telegram.unified_stats:
+            await update.message.reply_text("❌ Système de stats non disponible")
+            return
+
+        def get_unified_stats():
+            """Appeler le système unifié"""
             try:
-                if not self.message_handler.traffic_monitor:
-                    return "❌ Traffic monitor non disponible"
-
-                tm = self.message_handler.traffic_monitor
-
-                lines = []
-                lines.append("📊 **STATISTIQUES RÉSEAU MESH**")
-                lines.append("=" * 40)
-
-                # Messages dernières 24h
-                msg_24h = tm.get_message_count(24)
-                msg_1h = tm.get_message_count(1)
-                msg_total = len(tm.public_messages)
-
-                lines.append(f"\n**📨 Messages:**")
-                lines.append(f"• Dernière heure: {msg_1h}")
-                lines.append(f"• Dernières 24h: {msg_24h}")
-                lines.append(f"• En mémoire: {msg_total}")
-
-                # Nœuds actifs
-                active_nodes_1h = set()
-                active_nodes_24h = set()
-                current_time = time.time()
-
-                for msg in tm.public_messages:
-                    if msg['timestamp'] >= current_time - 3600:
-                        active_nodes_1h.add(msg['from_id'])
-                    if msg['timestamp'] >= current_time - 86400:
-                        active_nodes_24h.add(msg['from_id'])
-
-                lines.append(f"\n**👥 Nœuds actifs:**")
-                lines.append(f"• Dernière heure: {len(active_nodes_1h)}")
-                lines.append(f"• Dernières 24h: {len(active_nodes_24h)}")
-                lines.append(
-                    f"• Total connus: {len(self.node_manager.node_names)}")
-
-                # ✅ FIX : Vérifier que les stats existent avant de les afficher
-                if hasattr(tm, 'global_stats'):
-                    busiest_hour = tm.global_stats.get('busiest_hour')
-                    quietest_hour = tm.global_stats.get('quietest_hour')
-
-                    if busiest_hour and quietest_hour:
-                        lines.append(f"\n⏰ Patterns:")
-                        lines.append(f"• Heure de pointe: {busiest_hour}")
-                        lines.append(f"• Heure creuse: {quietest_hour}")
-
-                # Top 3 des dernières heures
-                quick_stats = tm.get_quick_stats()
-                if quick_stats and "TOP" in quick_stats:
-                    lines.append(f"\n**🏆 Actifs récents (3h):**")
-                    for line in quick_stats.split('\n')[1:]:  # Skip header
-                        lines.append(f"• {line}")
-
-                # Uptime du monitoring
-                uptime_seconds = current_time - \
-                    tm.global_stats.get('last_reset', current_time)
-                uptime_hours = int(uptime_seconds / 3600)
-                lines.append(f"\n**🕐 Monitoring:**")
-                lines.append(f"• Uptime: {uptime_hours}h")
-                last_reset_time = datetime.fromtimestamp(
-                    tm.global_stats.get('last_reset', 0)).strftime('%Y-%m-%d %H:%M')
-                lines.append(f"• Dernière réinitialisation: {last_reset_time}")
-
-                return "\n".join(lines)
-
+                return self.telegram.unified_stats.get_stats(
+                    subcommand=subcommand,
+                    params=params,
+                    channel='telegram'  # Adaptation pour Telegram (réponses détaillées)
+                )
             except Exception as e:
-                error_print(f"Erreur stats globales: {e or 'Unknown error'}")
+                error_print(f"Erreur unified stats: {e}")
+                import traceback
+                error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
 
-        response = await asyncio.to_thread(get_global_stats)
+        # Exécuter dans un thread séparé
+        response = await asyncio.to_thread(get_unified_stats)
+
+        # Envoyer la réponse (Markdown si applicable)
         await update.message.reply_text(response, parse_mode='Markdown')
 
     async def top_command(self, update: Update,

@@ -10,17 +10,20 @@
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Architecture](#architecture)
-3. [Codebase Structure](#codebase-structure)
-4. [Key Conventions](#key-conventions)
-5. [Development Workflows](#development-workflows)
-6. [Common Tasks](#common-tasks)
-7. [Configuration Management](#configuration-management)
-8. [Testing Strategy](#testing-strategy)
-9. [Performance Patterns](#performance-patterns)
-10. [Security Considerations](#security-considerations)
-11. [Troubleshooting](#troubleshooting)
-12. [External Integrations](#external-integrations)
+2. [Recent Architectural Changes](#recent-architectural-changes-november-2025)
+3. [Architecture](#architecture)
+4. [Codebase Structure](#codebase-structure)
+5. [Key Conventions](#key-conventions)
+6. [Development Workflows](#development-workflows)
+7. [Common Tasks](#common-tasks)
+8. [Configuration Management](#configuration-management)
+9. [Testing Strategy](#testing-strategy)
+10. [Performance Patterns](#performance-patterns)
+11. [Security Considerations](#security-considerations)
+12. [Troubleshooting](#troubleshooting)
+13. [Platforms Architecture](#platforms-architecture)
+14. [Map Generation](#map-generation)
+15. [External Integrations](#external-integrations)
 
 ---
 
@@ -68,10 +71,50 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 ```
 
 ### Key Statistics
-- **~15,251 lines** of Python code
-- **40+ modules** with clear separation of concerns
+- **~17,021 lines** of Python code
+- **60 modules** with clear separation of concerns
 - **Dual-channel design**: Constrained LoRa (180 chars) vs Rich Telegram (3000 chars)
+- **Multi-platform ready**: Pluggable architecture for Telegram, Discord, Matrix
 - **SQLite persistence**: 48-hour traffic history with automatic cleanup
+
+---
+
+## Recent Architectural Changes (November 2025)
+
+### Multi-Platform Architecture (v2.0)
+
+The codebase has undergone a significant refactoring to support multiple messaging platforms:
+
+**Key Changes:**
+- **Platform Manager**: New `PlatformManager` orchestrates multiple messaging platforms
+- **Platform Interface**: Abstract `MessagingPlatform` base class for all platforms
+- **Telegram Refactoring**: Telegram integration moved to modular `telegram_bot/` structure
+- **Alert System**: New `AlertManager` for sending alerts to Telegram users
+- **Configuration Split**: Platform configs separated into `platform_config.py`
+
+**Benefits:**
+- Support for Telegram, Discord, Matrix simultaneously
+- Better separation of concerns
+- Easier testing and maintenance
+- Platform-independent core logic
+
+**Migration Notes:**
+- Legacy `telegram_integration.py` still exists but is deprecated
+- New code should use `platforms/telegram_platform.py`
+- Commands now organized by category in `telegram_bot/commands/`
+
+### Network Visualization
+
+New map generation tools added in `map/` directory:
+- Interactive HTML network topology maps
+- Geographic node visualization
+- Link quality analysis
+- Automated map updates via `infoup.sh`
+
+**Use Cases:**
+- Network planning and optimization
+- Coverage gap identification
+- Community engagement and transparency
 
 ---
 
@@ -129,7 +172,19 @@ MeshBot (Orchestrator)
 ├── LlamaClient (AI queries)
 ├── ESPHomeClient (Solar/battery telemetry)
 ├── RemoteNodesClient (TCP queries to tigrog2)
-└── TelegramIntegration (Telegram bridge)
+└── PlatformManager (Multi-platform orchestrator)
+    └── TelegramPlatform (Telegram integration)
+        ├── AlertManager (Alert notifications)
+        └── Command Modules
+            ├── BasicCommands (/help, /start)
+            ├── AICommands (/bot)
+            ├── NetworkCommands (/nodes, /my)
+            ├── StatsCommands (/top, /histo, /stats)
+            ├── SystemCommands (/sys, /reboot)
+            ├── MeshCommands (/echo, /annonce)
+            ├── AdminCommands (Admin operations)
+            ├── TraceCommands (/trace)
+            └── UtilityCommands (Misc utilities)
 ```
 
 ---
@@ -143,8 +198,9 @@ MeshBot (Orchestrator)
 ├── main_script.py              # Entry point (CLI arg parsing)
 ├── main_bot.py                 # MeshBot class (orchestrator)
 ├── config.py.sample            # Configuration template
+├── platform_config.py          # Platform-specific configs
 │
-├── handlers/                   # Message processing layer
+├── handlers/                   # Message processing layer (Mesh)
 │   ├── message_router.py       # Command dispatcher
 │   ├── message_sender.py       # Delivery + throttling
 │   └── command_handlers/       # Domain-specific handlers
@@ -156,6 +212,37 @@ MeshBot (Orchestrator)
 │       ├── utility_commands.py # /help, /power, /weather, etc.
 │       └── signal_utils.py     # Signal formatting utilities
 │
+├── platforms/                  # Multi-platform architecture
+│   ├── __init__.py             # Platform exports
+│   ├── platform_interface.py   # Abstract platform interface
+│   ├── platform_manager.py     # Platform orchestrator
+│   ├── telegram_platform.py    # Telegram platform implementation
+│   └── discord_platform.py     # Discord platform (future)
+│
+├── telegram_bot/               # Telegram-specific implementation
+│   ├── command_base.py         # Base class for Telegram commands
+│   ├── alert_manager.py        # Alert notification system
+│   ├── traceroute_manager.py   # Traceroute functionality
+│   └── commands/               # Telegram command modules
+│       ├── basic_commands.py   # /help, /start
+│       ├── ai_commands.py      # /bot
+│       ├── network_commands.py # /nodes, /my
+│       ├── stats_commands.py   # /top, /histo, /stats
+│       ├── system_commands.py  # /sys, /reboot
+│       ├── mesh_commands.py    # /echo, /annonce
+│       ├── admin_commands.py   # Admin operations
+│       ├── trace_commands.py   # /trace
+│       └── utility_commands.py # Misc utilities
+│
+├── map/                        # Mesh network visualization
+│   ├── generate_mesh_map.py    # Generate network topology map
+│   ├── export_neighbors.py     # Export neighbor relationships
+│   ├── info_json_clean.py      # Clean node info JSON
+│   ├── infoup.sh               # Update script
+│   ├── mesh_map.html           # Network topology visualization
+│   ├── map.html                # Node map
+│   └── meshlink.html           # Link map
+│
 ├── node_manager.py             # Node database (JSON)
 ├── traffic_monitor.py          # Packet analytics (deques + SQLite)
 ├── traffic_persistence.py      # SQLite layer
@@ -166,8 +253,8 @@ MeshBot (Orchestrator)
 ├── esphome_history.py          # ESPHome data storage
 ├── remote_nodes_client.py      # Remote mesh node queries (TCP)
 │
-├── telegram_integration.py     # Telegram bot
-├── telegram_command_base.py    # Telegram handler base class
+├── telegram_integration.py     # Legacy Telegram bot (deprecated)
+├── telegram_command_base.py    # Legacy base class (deprecated)
 │
 ├── utils.py                    # Logging utilities
 ├── utils_weather.py            # Weather fetching (wttr.in)
@@ -189,6 +276,7 @@ MeshBot (Orchestrator)
 │
 ├── meshbot.service             # Systemd service (bot)
 ├── README.md                   # User documentation
+├── CLAUDE.md                   # This file (AI assistant guide)
 ├── BROWSE_TRAFFIC_DB.md        # Traffic DB web UI docs
 ├── TRAFFIC_DB_VIEWER.md        # Traffic DB CLI docs
 └── .gitignore                  # Git ignore rules
@@ -687,6 +775,13 @@ def load_new_data(self, hours=24):
 
 ### Configuration File Structure
 
+The bot uses a two-tier configuration system:
+
+1. **`config.py`** - Main configuration (hardware, services, limits, AI)
+2. **`platform_config.py`** - Platform-specific configurations (Telegram, Discord, etc.)
+
+#### Main Configuration (`config.py`)
+
 ```python
 # config.py.sample - Template (committed to git)
 # config.py - Local instance (gitignored)
@@ -715,13 +810,32 @@ COMMAND_WINDOW_SECONDS = 300
 # ========================================
 # AI CONFIGURATION
 # ========================================
-MESH_AI_CONFIG = { ... }
-TELEGRAM_AI_CONFIG = { ... }
+MESH_AI_CONFIG = {
+    "system_prompt": "...",
+    "max_tokens": 1500,
+    "temperature": 0.7,
+    "max_response_chars": 320  # LoRa constraint
+}
+
+TELEGRAM_AI_CONFIG = {
+    "system_prompt": "...",
+    "max_tokens": 4000,
+    "temperature": 0.8,
+    "max_response_chars": 3000  # Telegram allows longer
+}
+
+# ========================================
+# PLATFORM CONFIGURATION
+# ========================================
+TELEGRAM_ENABLED = True
+TELEGRAM_BOT_TOKEN = "******************"
+TELEGRAM_AUTHORIZED_USERS = []
+TELEGRAM_ALERT_USERS = []
+TELEGRAM_TO_MESH_MAPPING = {...}
 
 # ========================================
 # SECURITY
 # ========================================
-TELEGRAM_BOT_TOKEN = "******************"
 REBOOT_PASSWORD = "secret"
 REBOOT_AUTHORIZED_USERS = [12345678, 0x16fad3dc]
 
@@ -737,14 +851,52 @@ CPU_WARNING_THRESHOLD = 90
 DEBUG_MODE = False
 ```
 
+#### Platform Configuration (`platform_config.py`)
+
+```python
+# platform_config.py - Platform-specific settings
+from platforms import PlatformConfig
+from config import *
+
+# Telegram platform
+TELEGRAM_PLATFORM_CONFIG = PlatformConfig(
+    platform_name='telegram',
+    enabled=TELEGRAM_ENABLED,
+    max_message_length=4096,
+    chunk_size=4000,
+    ai_config=TELEGRAM_AI_CONFIG,
+    authorized_users=TELEGRAM_AUTHORIZED_USERS,
+    user_to_mesh_mapping=TELEGRAM_TO_MESH_MAPPING,
+    extra_config={
+        'bot_token': TELEGRAM_BOT_TOKEN,
+        'alert_users': TELEGRAM_ALERT_USERS,
+        'polling_interval': 5.0,
+    }
+)
+
+# Discord platform (future)
+DISCORD_PLATFORM_CONFIG = PlatformConfig(
+    platform_name='discord',
+    enabled=False,  # Not yet implemented
+    max_message_length=2000,
+    chunk_size=1900,
+    ai_config={...},
+    authorized_users=[],
+    user_to_mesh_mapping={},
+    extra_config={'bot_token': '...'}
+)
+```
+
 ### Configuration Best Practices
 
 1. **Always update `config.py.sample`** when adding new options
 2. **Never commit `config.py`** (contains secrets)
-3. **Use descriptive comments** for each option
-4. **Group related options** with section headers
-5. **Provide sensible defaults** where possible
-6. **Document units** (seconds, characters, percent, etc.)
+3. **Update `platform_config.py`** when adding new platforms
+4. **Use descriptive comments** for each option
+5. **Group related options** with section headers
+6. **Provide sensible defaults** where possible
+7. **Document units** (seconds, characters, percent, etc.)
+8. **Test platform configs** independently before enabling
 
 ### Environment-Specific Configuration
 
@@ -1380,6 +1532,235 @@ netstat -an | grep 4403  # tigrog2 TCP port
 
 ---
 
+## Platforms Architecture
+
+### Overview
+
+The codebase now features a **pluggable multi-platform architecture** that allows the bot to interact with multiple messaging platforms simultaneously. This abstraction layer separates platform-specific logic from core bot functionality.
+
+### Design Pattern
+
+```
+┌─────────────────────────────────────────────┐
+│          MeshBot (Core Logic)               │
+└──────────────┬──────────────────────────────┘
+               │
+        ┌──────▼──────┐
+        │  Platform   │
+        │  Manager    │
+        └──────┬──────┘
+               │
+       ┌───────┴───────┬─────────────┐
+       │               │             │
+    ┌──▼────┐     ┌───▼───┐    ┌───▼────┐
+    │Telegram│     │Discord│    │ Matrix │
+    │Platform│     │(future)│   │(future)│
+    └────────┘     └───────┘    └────────┘
+```
+
+### Platform Interface
+
+All platforms must implement `MessagingPlatform` abstract class:
+
+```python
+# platforms/platform_interface.py
+class MessagingPlatform(ABC):
+    @abstractmethod
+    def start(self):
+        """Start the platform (connect, authenticate)"""
+        pass
+
+    @abstractmethod
+    def stop(self):
+        """Stop the platform gracefully"""
+        pass
+
+    @abstractmethod
+    def send_message(self, user_id, message):
+        """Send message to user on this platform"""
+        pass
+
+    @abstractmethod
+    def is_enabled(self):
+        """Check if platform is enabled"""
+        pass
+
+    @abstractmethod
+    def get_user_mapping(self, platform_user_id):
+        """Map platform user to Mesh identity"""
+        pass
+```
+
+### Adding a New Platform
+
+To add Discord, Matrix, or another platform:
+
+```python
+# 1. Define configuration in platform_config.py
+DISCORD_PLATFORM_CONFIG = PlatformConfig(
+    platform_name='discord',
+    enabled=True,
+    max_message_length=2000,
+    chunk_size=1900,
+    ai_config={...},
+    authorized_users=[...],
+    extra_config={'bot_token': '...'}
+)
+
+# 2. Create platform implementation
+# platforms/discord_platform.py
+class DiscordPlatform(MessagingPlatform):
+    def __init__(self, config, message_handler, node_manager, context_manager):
+        super().__init__(config, message_handler, node_manager, context_manager)
+        self.client = discord.Client(...)
+
+    def start(self):
+        # Connect to Discord
+        self.client.run(self.config.extra_config['bot_token'])
+
+    def send_message(self, user_id, message):
+        # Send via Discord API
+        pass
+
+# 3. Register in main_bot.py
+if DISCORD_ENABLED:
+    discord_platform = DiscordPlatform(
+        DISCORD_PLATFORM_CONFIG,
+        self.message_handler,
+        self.node_manager,
+        self.context_manager
+    )
+    self.platform_manager.register_platform(discord_platform)
+
+# 4. Start all platforms
+self.platform_manager.start_all()
+```
+
+### Platform Configuration
+
+Configuration is centralized in `platform_config.py`:
+
+```python
+# Each platform has its own PlatformConfig
+TELEGRAM_PLATFORM_CONFIG = PlatformConfig(
+    platform_name='telegram',
+    enabled=TELEGRAM_ENABLED,
+    max_message_length=4096,
+    chunk_size=4000,
+    ai_config=TELEGRAM_AI_CONFIG,
+    authorized_users=TELEGRAM_AUTHORIZED_USERS,
+    user_to_mesh_mapping=TELEGRAM_TO_MESH_MAPPING,
+    extra_config={
+        'bot_token': TELEGRAM_BOT_TOKEN,
+        'alert_users': TELEGRAM_ALERT_USERS,
+        'polling_interval': 5.0,
+    }
+)
+```
+
+### Telegram Platform Details
+
+The Telegram platform has been refactored into a modular command structure:
+
+```python
+# telegram_bot/commands/
+# Each command category is a separate module:
+├── basic_commands.py      # /help, /start, /status
+├── ai_commands.py         # /bot <query>
+├── network_commands.py    # /nodes, /my, /signal
+├── stats_commands.py      # /top, /histo, /stats, /packets
+├── system_commands.py     # /sys, /reboot, /uptime
+├── mesh_commands.py       # /echo, /annonce
+├── admin_commands.py      # Admin-only commands
+├── trace_commands.py      # /trace <node>
+└── utility_commands.py    # /power, /weather, etc.
+```
+
+#### Alert Manager
+
+The `AlertManager` allows sending alerts to configured Telegram users:
+
+```python
+# telegram_bot/alert_manager.py
+class AlertManager:
+    def send_alert(self, message):
+        """Send alert to all configured users"""
+        for user_id in self.alert_users:
+            asyncio.run_coroutine_threadsafe(
+                self._send_alert_async(user_id, message),
+                self.telegram.loop
+            )
+
+# Usage in main bot
+if critical_condition:
+    self.platform_manager.get_platform('telegram').alert_manager.send_alert(
+        "⚠️ Critical: Battery voltage below 11V"
+    )
+```
+
+### Benefits of Platform Architecture
+
+1. **Separation of Concerns**: Core bot logic independent of platform details
+2. **Multi-platform Support**: Run Telegram + Discord + Matrix simultaneously
+3. **Easy Testing**: Mock platforms for unit tests
+4. **Configuration Flexibility**: Each platform has its own config
+5. **Graceful Degradation**: If Telegram fails, other platforms continue
+6. **Code Reuse**: Common functionality in base class
+
+---
+
+## Map Generation
+
+The `map/` directory contains tools for visualizing the Meshtastic network topology.
+
+### Available Maps
+
+1. **`mesh_map.html`**: Interactive network topology
+   - Shows nodes and their connections
+   - Color-coded by signal strength
+   - Click nodes for details
+
+2. **`map.html`**: Geographic node map
+   - Plots nodes on map based on GPS coordinates
+   - Shows coverage areas
+
+3. **`meshlink.html`**: Link quality visualization
+   - Shows neighbor relationships
+   - Link strength indicators
+
+### Generation Scripts
+
+```bash
+# Generate network topology map
+cd map/
+python generate_mesh_map.py
+
+# Export neighbor relationships
+python export_neighbors.py
+
+# Clean node info JSON (removes sensitive data)
+python info_json_clean.py
+
+# Auto-update all maps
+./infoup.sh
+```
+
+### Map Data Sources
+
+Maps are generated from:
+- **Node database** (`node_names.json`): Node names, GPS, last seen
+- **Traffic database** (`traffic_history.db`): Packet history, signal metrics
+- **Neighbor data**: Direct node connections from NEIGHBOR_INFO packets
+
+### Use Cases
+
+- **Network planning**: Identify coverage gaps
+- **Performance analysis**: Find weak links
+- **Node placement**: Optimize antenna locations
+- **Community engagement**: Share network status with members
+
+---
+
 ## External Integrations
 
 ### Llama.cpp (AI)
@@ -1537,15 +1918,21 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 |-----------|------|---------|
 | Entry point | `main_script.py` | CLI arg parsing, starts bot |
 | Orchestrator | `main_bot.py` | MeshBot class, lifecycle |
-| Message routing | `handlers/message_router.py` | Command dispatcher |
+| Message routing | `handlers/message_router.py` | Command dispatcher (Mesh) |
 | Message delivery | `handlers/message_sender.py` | Throttling + chunking |
-| Command handlers | `handlers/command_handlers/*.py` | Domain logic |
+| Command handlers | `handlers/command_handlers/*.py` | Domain logic (Mesh) |
+| Platform manager | `platforms/platform_manager.py` | Multi-platform orchestrator |
+| Platform interface | `platforms/platform_interface.py` | Abstract platform base |
+| Telegram platform | `platforms/telegram_platform.py` | Telegram implementation |
+| Telegram commands | `telegram_bot/commands/*.py` | Telegram command modules |
+| Alert manager | `telegram_bot/alert_manager.py` | Telegram alerts |
 | Node database | `node_manager.py` | GPS, names, RX history |
 | Packet analytics | `traffic_monitor.py` | Stats, deduplication |
 | SQLite layer | `traffic_persistence.py` | Persistence |
 | AI client | `llama_client.py` | Llama.cpp integration |
-| Telegram | `telegram_integration.py` | Telegram bridge |
-| Configuration | `config.py.sample` | Config template |
+| Map generation | `map/generate_mesh_map.py` | Network topology maps |
+| Configuration | `config.py.sample` | Main config template |
+| Platform config | `platform_config.py` | Platform-specific configs |
 | Systemd service | `meshbot.service` | Service definition |
 
 ### Command Reference
@@ -1614,10 +2001,24 @@ This document should be updated when:
 - Configuration options change
 - Common issues are discovered
 - Performance patterns evolve
+- New platforms are added
 
-**Last reviewed**: 2025-11-15
-**Reviewed by**: Claude (AI Assistant)
-**Next review**: When significant changes occur
+**Last updated**: 2025-11-15
+**Updated by**: Claude (AI Assistant)
+**Changes in this update**:
+- Updated line count: ~15,251 → ~17,021 lines
+- Updated module count: 40+ → 60 modules
+- Added new **Platforms Architecture** section documenting multi-platform support
+- Added new **Map Generation** section for network visualization tools
+- Updated directory structure to include `platforms/`, `telegram_bot/`, and `map/` directories
+- Documented new `AlertManager` for Telegram notifications
+- Added `platform_config.py` to configuration documentation
+- Updated component hierarchy to show new platform management layer
+- Added **Recent Architectural Changes** section highlighting v2.0 refactoring
+- Updated configuration best practices for multi-platform setup
+- Enhanced key file locations table with platform-related files
+
+**Next review**: When significant changes occur or new platforms are implemented
 
 ---
 
