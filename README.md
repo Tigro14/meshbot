@@ -171,7 +171,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather` - Me�e�o locale sur 3 jou (par https://wttr.in).
+- `/weather` - Météo locale sur 3 jours (par https://wttr.in).
 - `/nodes` - Nœuds directs vus par tigrog2 avec niveau SNR
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
 - `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
