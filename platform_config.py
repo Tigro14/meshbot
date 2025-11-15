@@ -31,6 +31,25 @@ TELEGRAM_PLATFORM_CONFIG = PlatformConfig(
 
 
 # ========================================
+# CONFIGURATION CLI LOCALE
+# ========================================
+
+CLI_PLATFORM_CONFIG = PlatformConfig(
+    platform_name='cli',
+    enabled=CLI_ENABLED,  # Depuis config.py
+    max_message_length=10000,  # Pas de limite stricte pour CLI
+    chunk_size=9000,
+    ai_config=CLI_AI_CONFIG,  # Depuis config.py
+    authorized_users=[CLI_USER_ID],  # Seul l'utilisateur CLI local
+    user_to_mesh_mapping=CLI_TO_MESH_MAPPING,  # Depuis config.py
+    extra_config={
+        'cli_user_id': CLI_USER_ID,
+        'cli_username': 'CLI User',
+    }
+)
+
+
+# ========================================
 # CONFIGURATION DISCORD (FUTUR)
 # ========================================
 
@@ -88,6 +107,7 @@ MATRIX_PLATFORM_CONFIG = PlatformConfig(
 
 ENABLED_PLATFORMS = [
     TELEGRAM_PLATFORM_CONFIG,
+    CLI_PLATFORM_CONFIG,       # CLI locale pour dev/debug
     # DISCORD_PLATFORM_CONFIG,  # Décommenter quand implémenté
     # MATRIX_PLATFORM_CONFIG,   # Décommenter quand implémenté
 ]

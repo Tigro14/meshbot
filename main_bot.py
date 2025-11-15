@@ -27,6 +27,7 @@ from safe_serial_connection import SafeSerialConnection
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
 from platforms.telegram_platform import TelegramPlatform
+from platforms.cli_platform import CLIPlatform
 from platform_config import get_enabled_platforms
 
 class MeshBot:
@@ -345,6 +346,16 @@ class MeshBot:
 
                         # Garder la référence pour compatibilité (DEPRECATED)
                         self.telegram_integration = telegram_platform.telegram_integration
+
+                    elif platform_config.platform_name == 'cli':
+                        info_print("🖥️  Configuration plateforme CLI...")
+                        cli_platform = CLIPlatform(
+                            platform_config,
+                            self.message_handler,
+                            self.node_manager,
+                            self.context_manager
+                        )
+                        self.platform_manager.register_platform(cli_platform)
 
                     # TODO: Ajouter Discord quand implémenté
                     # elif platform_config.platform_name == 'discord':

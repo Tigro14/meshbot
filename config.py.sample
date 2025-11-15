@@ -74,7 +74,8 @@ TELEGRAM_BOT_TOKEN = "******************"  # Token du bot Telegram
 # NOTE: Avec la nouvelle architecture modulaire, vous pouvez :
 # 1. Désactiver Telegram en mettant TELEGRAM_ENABLED = False
 # 2. Ajouter Discord en activant DISCORD_ENABLED = True (futur)
-# 3. Utiliser plusieurs plateformes en même temps
+# 3. Activer la CLI locale avec CLI_ENABLED = True
+# 4. Utiliser plusieurs plateformes en même temps
 # Voir platform_config.py pour la configuration détaillée
 
 # Utilisateurs Telegram autorisés (liste vide = tous autorisés)
@@ -89,6 +90,38 @@ TELEGRAM_TO_MESH_MAPPING = {
     #     "node_id": 0x12345678,
     #     "short_name": "autre",
     #     "display_name": "Autre User"
+    # }
+}
+
+# ========================================
+# CONFIGURATION CLI LOCALE
+# ========================================
+
+# CLI locale pour interagir avec le bot en ligne de commande
+CLI_ENABLED = False  # Activer/désactiver la CLI locale (utile pour dev/debug)
+
+# Configuration IA pour CLI - Similaire à Telegram mais sans emojis
+CLI_AI_CONFIG = {
+    "system_prompt": "Tu es un assistant intelligent accessible via CLI locale. Réponds en français de manière claire et complète. Tu es utile et précis.",
+    "max_tokens": 4000,
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "top_k": 25,
+    "timeout": 120,
+    "max_response_chars": 3000
+}
+
+# ID utilisateur CLI (utilisé pour throttling et logs)
+CLI_USER_ID = 0xC11A0001  # ID fictif pour la CLI (CLI = C11)
+
+# Mapping CLI vers identité Mesh (optionnel)
+# Si défini, les messages CLI apparaîtront comme venant de ce nœud
+CLI_TO_MESH_MAPPING = {
+    # Par défaut, la CLI n'a pas de mapping mesh
+    # Décommenter et configurer si besoin:
+    # 0xC11A0001: {
+    #     "mesh_id": 0x12345678,
+    #     "mesh_name": "DevUser"
     # }
 }
 
