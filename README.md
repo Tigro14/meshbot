@@ -241,7 +241,10 @@ Le serveur CLI fonctionne en parallèle du bot principal :
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather` - Météo locale sur 3 jours (par https://wttr.in)
+- `/weather [ville]` - Météo sur 3 jours (par https://wttr.in)
+  - `/weather` - Météo locale (géolocalisée)
+  - `/weather Paris` - Météo d'une ville spécifique
+  - `/weather help` - Afficher l'aide
 - `/nodes [page]` - Nœuds directs vus par tigrog2 avec niveau SNR (paginé)
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
 - `/trace` - Traceroute de votre message vers le bot (hops, RSSI, SNR)

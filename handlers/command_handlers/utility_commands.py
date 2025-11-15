@@ -335,10 +335,42 @@ class UtilityCommands:
         ]
         return "\n".join(legend_lines)
 
-    def handle_weather(self, sender_id, sender_info):
+    def handle_weather(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /weather [ville]
+
+        Args:
+            message: Message complet (ex: "/weather London")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+        """
         info_print(f"Weather: {sender_info}")
-        weather_data = get_weather_data()
-        self.sender.log_conversation(sender_id, sender_info, "/weather", weather_data)
+
+        # Parser l'argument ville
+        parts = message.split(maxsplit=1)
+        location = None
+        if len(parts) > 1:
+            location = parts[1].strip()
+
+        # Si pas de ville ou "help"/"aide", afficher l'aide
+        if location and location.lower() in ['help', 'aide', '?']:
+            help_text = (
+                "🌤️ /weather [ville]\n"
+                "Ex:\n"
+                "/weather → Météo locale\n"
+                "/weather Paris\n"
+                "/weather London\n"
+                "/weather New York"
+            )
+            self.sender.send_single(help_text, sender_id, sender_info)
+            return
+
+        # Récupérer la météo
+        weather_data = get_weather_data(location)
+
+        # Logger et envoyer
+        cmd = f"/weather {location}" if location else "/weather"
+        self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
         self.sender.send_single(weather_data, sender_id, sender_info)
 
     def _format_help(self):
@@ -376,7 +408,9 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
-        • /weather - Météo Paris
+        • /weather [ville] - Météo 3 jours
+          /weather → Géolocalisée
+          /weather Paris, /weather London, etc.
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5

@@ -27,9 +27,10 @@ import time
 from utils import info_print, error_print
 
 # Configuration
-CACHE_FILE = "/tmp/weather_cache.json"
+CACHE_DIR = "/tmp"
 CACHE_DURATION = 300  # 5 minutes en secondes
-WTTR_URL = "https://wttr.in/?format=j1"  # Format JSON pour détails
+WTTR_BASE_URL = "https://wttr.in"
+DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
 CURL_TIMEOUT = 10  # secondes
 
 # Mapping codes météo wttr.in → émojis
@@ -188,33 +189,54 @@ def parse_weather_json(json_data):
         return "❌ Erreur format météo"
 
 
-def get_weather_data():
+def get_weather_data(location=None):
     """
     Récupérer les données météo avec système de cache
-    
+
+    Args:
+        location: Ville/lieu pour la météo (ex: "Paris", "London", "New York")
+                 Si None ou vide, utilise la géolocalisation par IP
+
     Le cache est vérifié en premier. S'il est valide (< 5 minutes),
     les données sont retournées immédiatement sans appel réseau.
-    
+
     Sinon, un appel curl est fait vers wttr.in et le cache est mis à jour.
-    
+
     Returns:
         str: Données météo formatées sur 4 lignes ou message d'erreur
-    
+
     Exemples:
-        >>> weather = get_weather_data()
+        >>> weather = get_weather_data()  # Géolocalisation
         >>> print(weather)
         Now: ☀️ 12°C 15km/h 0mm 65%
-        Today: ⛅ 14°C 18km/h 0mm 60%
-        Tomorrow: 🌧️ 11°C 22km/h 2.5mm 75%
-        Day+2: ☁️ 13°C 16km/h 0mm 70%
+
+        >>> weather = get_weather_data("London")  # Ville spécifique
+        >>> print(weather)
+        Now: 🌧️ 8°C 20km/h 2mm 80%
     """
     try:
+        # Normaliser la location
+        if not location:
+            location = DEFAULT_LOCATION
+
+        # Construire l'URL et le nom du cache
+        if location:
+            # Encoder la ville pour l'URL (espaces → +)
+            location_encoded = location.replace(' ', '+')
+            wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
+            # Nom de cache safe (espaces → _)
+            location_safe = location.replace(' ', '_').replace('/', '_')
+            cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
+        else:
+            wttr_url = f"{WTTR_BASE_URL}/?format=j1"
+            cache_file = f"{CACHE_DIR}/weather_cache_default.json"
+
         # ----------------------------------------------------------------
         # Phase 1: Vérifier le cache
         # ----------------------------------------------------------------
-        if os.path.exists(CACHE_FILE):
+        if os.path.exists(cache_file):
             try:
-                with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                with open(cache_file, 'r', encoding='utf-8') as f:
                     cache_data = json.load(f)
                 
                 cache_time = cache_data.get('timestamp', 0)
@@ -236,10 +258,10 @@ def get_weather_data():
         # ----------------------------------------------------------------
         # Phase 2: Appel curl vers wttr.in
         # ----------------------------------------------------------------
-        info_print(f"🌤️ Récupération météo depuis {WTTR_URL}...")
-        
+        info_print(f"🌤️ Récupération météo depuis {wttr_url}...")
+
         result = subprocess.run(
-            ['curl', '-s', WTTR_URL],
+            ['curl', '-s', wttr_url],
             capture_output=True,
             text=True,
             timeout=CURL_TIMEOUT
@@ -269,11 +291,12 @@ def get_weather_data():
                 'timestamp': time.time(),
                 'data': weather_data,
                 'source': 'wttr.in',
-                'url': WTTR_URL
+                'url': wttr_url,
+                'location': location or 'auto'
             }
-            
+
             try:
-                with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                with open(cache_file, 'w', encoding='utf-8') as f:
                     json.dump(cache_data, f, indent=2)
                 info_print(f"✅ Cache météo créé/mis à jour")
             except IOError as e:
