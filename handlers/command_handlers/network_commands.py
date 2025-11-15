@@ -209,6 +209,10 @@ class NetworkCommands:
         """
         Gérer la commande /trace - Traceroute mesh compact
         Analyse le chemin du message et identifie les relays
+
+        Usage:
+        - /trace → trace l'expéditeur du message
+        - /trace <node_name> → trace un nœud spécifique
         """
         info_print(f"Trace: {sender_info}")
 
@@ -217,6 +221,45 @@ class NetworkCommands:
 
         def analyze_route():
             try:
+                # Parser l'argument (node name ou ID)
+                parts = message.split()
+                target_node_name = parts[1] if len(parts) > 1 else None
+
+                # Si un nœud cible est spécifié, chercher ses infos
+                if target_node_name:
+                    # Chercher le nœud dans tigrog2
+                    remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+
+                    if not remote_nodes:
+                        response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
+                        current_sender.send_single(response, sender_id, sender_info)
+                        return
+
+                    # Chercher le nœud par nom (partiel) ou ID
+                    target_node = None
+                    target_search = target_node_name.lower()
+
+                    for node in remote_nodes:
+                        node_name = node.get('name', '').lower()
+                        node_id_hex = f"{node['id']:x}".lower()
+
+                        # Correspondance par nom (partiel) ou ID (partiel)
+                        if target_search in node_name or target_search in node_id_hex:
+                            target_node = node
+                            break
+
+                    if not target_node:
+                        response = f"❌ Nœud '{target_node_name}' introuvable"
+                        current_sender.send_single(response, sender_id, sender_info)
+                        return
+
+                    # Afficher les infos du nœud cible
+                    response = self._format_trace_target(target_node)
+                    current_sender.send_chunks(response, sender_id, sender_info)
+                    current_sender.log_conversation(sender_id, sender_info, f"/trace {target_node_name}", response)
+                    return
+
+                # Sinon, comportement par défaut : tracer l'expéditeur
                 # Extraire données packet
                 hop_limit = packet.get('hopLimit', 0)
                 hop_start = packet.get('hopStart', 5)
@@ -301,4 +344,73 @@ class NetworkCommands:
                     pass
 
         threading.Thread(target=analyze_route, daemon=True).start()
+
+    def _format_trace_target(self, node_data):
+        """
+        Formater les infos de traceroute pour un nœud cible
+
+        Args:
+            node_data: Données du nœud depuis tigrog2
+
+        Returns:
+            str: Rapport formaté
+        """
+        lines = []
+
+        # Header avec nom du nœud
+        node_name = node_data.get('name', 'Unknown')
+        node_id = node_data.get('id', 0)
+        lines.append(f"🔍 {node_name} (!{node_id:08x})")
+
+        # Signal
+        rssi = node_data.get('rssi', 0)
+        snr = node_data.get('snr', 0.0)
+
+        # Estimation RSSI depuis SNR si nécessaire
+        display_rssi = rssi
+        rssi_estimated = False
+
+        if rssi == 0 and snr != 0:
+            display_rssi = estimate_rssi_from_snr(snr)
+            rssi_estimated = True
+
+        # Afficher signal si disponible
+        if display_rssi != 0 or snr != 0:
+            icon = get_signal_quality_icon(display_rssi) if display_rssi != 0 else "📶"
+            rssi_str = f"~{display_rssi}dBm" if rssi_estimated else f"{display_rssi}dBm" if display_rssi != 0 else "n/a"
+            snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "n/a"
+            quality = get_signal_quality_description(display_rssi, snr)
+
+            lines.append(f"{icon} {rssi_str} | {snr_str}")
+            lines.append(f"📈 {quality}")
+
+            # Distance estimée
+            if display_rssi != 0 and display_rssi > -150:
+                distance_est = estimate_distance_from_rssi(display_rssi)
+                lines.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
+        else:
+            lines.append("📶 Signal: n/a")
+
+        # Statut direct
+        lines.append(f"✅ Direct → {REMOTE_NODE_NAME}")
+
+        # Last heard
+        last_heard = node_data.get('last_heard', 0)
+        if last_heard > 0:
+            time_str = format_elapsed_time(last_heard)
+            lines.append(f"⏱️ Vu il y a {time_str}")
+
+        # Distance GPS si disponible
+        if self.node_manager:
+            node_id = node_data.get('id')
+            if node_id:
+                try:
+                    gps_distance = self.node_manager.get_node_distance(node_id)
+                    if gps_distance:
+                        distance_str = self.node_manager.format_distance(gps_distance)
+                        lines.append(f"🌐 {distance_str} (GPS)")
+                except Exception:
+                    pass  # Silent fail
+
+        return "\n".join(lines)
 
