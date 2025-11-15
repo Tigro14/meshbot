@@ -80,15 +80,20 @@ class TelegramIntegration:
 
     def _init_command_handlers(self):
         """Initialiser tous les gestionnaires de commandes"""
+        # IMPORTANT: Ordre de création respecte les dépendances
+        # Les commandes sans dépendances d'abord
         self.basic_commands = BasicCommands(self)
         self.system_commands = SystemCommands(self)
-        self.network_commands = NetworkCommands(self)
         self.stats_commands = StatsCommands(self)
-        self.utility_commands = UtilityCommands(self)
         self.mesh_commands = MeshCommands(self)
+        self.utility_commands = UtilityCommands(self)
         self.ai_commands = AICommands(self)
         self.trace_commands = TraceCommands(self)
         self.admin_commands = AdminCommands(self)
+
+        # NetworkCommands doit être créé APRÈS mesh_commands et stats_commands
+        # car il en dépend dans son __init__
+        self.network_commands = NetworkCommands(self)
 
     def start(self):
         """Démarrer le bot Telegram dans un thread séparé"""
