@@ -220,6 +220,7 @@ Une fois connecté, vous pouvez envoyer toutes les commandes du bot :
 - **Pas de throttling** : Pas de limite de commandes/minute
 - **Accès complet** : Toutes les commandes du bot disponibles
 - **Pas de compétition série** : Le CLI ne touche pas au port `/dev/ttyACM0`
+- **Historique des commandes** : Navigation avec ↑/↓ (comme bash), persistant entre sessions
 - **Multi-client** : Plusieurs clients CLI peuvent se connecter simultanément (futur)
 
 ### Architecture
