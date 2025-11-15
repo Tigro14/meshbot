@@ -378,17 +378,27 @@ class UtilityCommands:
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations
+            # Graphe de précipitations (retourne 3 messages séparés)
             weather_data = get_rain_graph(location)
             cmd = f"/weather rain {location}" if location else "/weather rain"
+
+            # Logger
+            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+
+            # Découper et envoyer les 3 jours séparément
+            day_messages = weather_data.split('\n\n')
+            for i, day_msg in enumerate(day_messages):
+                self.sender.send_single(day_msg, sender_id, sender_info)
+                # Petit délai entre les messages
+                if i < len(day_messages) - 1:
+                    import time
+                    time.sleep(1)
         else:
             # Météo normale
             weather_data = get_weather_data(location)
             cmd = f"/weather {location}" if location else "/weather"
-
-        # Logger et envoyer (send_single pour éviter les lignes de séparation)
-        self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
-        self.sender.send_single(weather_data, sender_id, sender_info)
+            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+            self.sender.send_single(weather_data, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""

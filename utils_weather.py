@@ -503,24 +503,36 @@ def get_rain_graph(location=None):
             else:
                 hour_scale.append(' ')
 
-        lines = []
-        lines.append(f"🌧️ {location_name} 3j (max:{max_str})")
+        # Découper jour par jour (24h chunks) pour rester sous 220 chars/message
+        messages = []
+        day_names = ['Auj', 'Dem', 'J+2']
 
-        # Ajouter les lignes de graphe seulement si elles contiennent des données
-        high_str = ''.join(line_high).rstrip()
-        mid_str = ''.join(line_mid).rstrip()
-        low_str = ''.join(line_low)
+        for day in range(3):
+            start_idx = day * 24
+            end_idx = start_idx + 24
 
-        if high_str.strip():  # Si la ligne haute a des données
-            lines.append(high_str)
-        if mid_str.strip():   # Si la ligne moyenne a des données
-            lines.append(mid_str)
-        lines.append(low_str)  # La ligne basse est toujours affichée
+            day_lines = []
+            # Titre avec jour et max pour ce jour
+            day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
 
-        # Ajouter l'échelle horaire
-        lines.append(''.join(hour_scale))
+            # Extraire les segments pour ce jour
+            high_day = ''.join(line_high[start_idx:end_idx]).rstrip()
+            mid_day = ''.join(line_mid[start_idx:end_idx]).rstrip()
+            low_day = ''.join(line_low[start_idx:end_idx])
+            scale_day = ''.join(hour_scale[start_idx:end_idx])
 
-        return "\n".join(lines)
+            # Ajouter les lignes qui ont des données
+            if high_day.strip():
+                day_lines.append(high_day)
+            if mid_day.strip():
+                day_lines.append(mid_day)
+            day_lines.append(low_day)
+            day_lines.append(scale_day)
+
+            messages.append("\n".join(day_lines))
+
+        # Retourner les 3 messages séparés par un délimiteur
+        return "\n\n".join(messages)
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
