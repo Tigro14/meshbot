@@ -26,7 +26,6 @@ class TrafficMonitor:
         self.traffic_retention_hours = 24
 
         # === HISTOGRAMME : COLLECTE PAR TYPE DE PAQUET ===
-        self.packet_history = deque(maxlen=5000)  # Tous les paquets (24h)
         self.packet_types = {
             'TEXT_MESSAGE_APP': 'messages',
             'POSITION_APP': 'pos',
@@ -849,15 +848,6 @@ class TrafficMonitor:
             if old_count > 0:
                 debug_print(f"🧹 {old_count} paquets anciens expirés")
 
-            # Nettoyer aussi l'historique des paquets
-            try:
-                old_packet_count = sum(1 for pkt in self.packet_history
-                                      if pkt['timestamp'] < cutoff_time)
-                if old_packet_count > 0:
-                    debug_print(f"🧹 {old_packet_count} paquets anciens dans historique")
-            except Exception as e:
-                debug_print(f"Erreur nettoyage historique paquets: {e}")
-                
         except Exception as e:
             debug_print(f"Erreur nettoyage: {e}")
     
@@ -1088,45 +1078,6 @@ class TrafficMonitor:
         except Exception as e:
             error_print(f"Erreur génération historique compact: {e}")
             return f"Erreur: {str(e)[:30]}"
-
-    # ============================================================
-    # AJOUT 2: Nouvelle méthode add_packet_to_history
-    # ============================================================
-
-    def add_packet_to_history(self, packet):
-        """
-        Enregistrer un paquet dans l'historique pour l'histogramme
-        Appelé pour TOUS les paquets reçus
-        """
-        try:
-            from_id = packet.get('from', 0)
-            timestamp = time.time()
-            
-            # Déterminer le type de paquet
-            packet_type = 'unknown'
-            if 'decoded' in packet:
-                portnum = packet['decoded'].get('portnum', '')
-                packet_type = self.packet_types.get(portnum, portnum)
-            
-            # Obtenir le nom du nœud
-            sender_name = self.node_manager.get_node_name(from_id)
-            
-            # Enregistrer le paquet
-            packet_entry = {
-                'timestamp': timestamp,
-                'from_id': from_id,
-                'sender_name': sender_name,
-                'type': packet_type,
-                'rssi': packet.get('rssi', 0),
-                'snr': packet.get('snr', 0.0)
-            }
-            
-            self.packet_history.append(packet_entry)
-            
-            debug_print(f"📊 Paquet enregistré: {packet_type} de {sender_name}")
-            
-        except Exception as e:
-            debug_print(f"Erreur enregistrement paquet: {e}")
 
     def get_packet_histogram_overview(self, hours=24):
         """
@@ -1948,7 +1899,6 @@ class TrafficMonitor:
             self.all_packets.clear()
             self.public_messages.clear()
             self.node_packet_stats.clear()
-            self.packet_history.clear()
 
             # Réinitialiser les statistiques globales
             self.global_packet_stats = {

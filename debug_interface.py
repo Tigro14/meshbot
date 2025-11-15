@@ -477,17 +477,18 @@ class DebugInterface:
         try:
             histogram = self.bot.traffic_monitor.get_hourly_histogram(packet_filter, hours)
             info_print(f"→ {histogram}")
-            
-            # Afficher aussi le nombre de paquets en mémoire
-            total_packets = len(self.bot.traffic_monitor.packet_history)
-            info_print(f"\n📊 Total paquets en mémoire: {total_packets}")
-            
+
+            # Afficher aussi le nombre de paquets en DB
+            packets_db = self.bot.traffic_monitor.persistence.load_packets(hours=24, limit=10000)
+            total_packets = len(packets_db)
+            info_print(f"\n📊 Total paquets en DB (24h): {total_packets}")
+
             # Afficher la répartition par type
             type_counts = {}
-            for pkt in self.bot.traffic_monitor.packet_history:
-                pkt_type = pkt['type']
+            for pkt in packets_db:
+                pkt_type = pkt['packet_type']
                 type_counts[pkt_type] = type_counts.get(pkt_type, 0) + 1
-            
+
             if type_counts:
                 info_print("📋 Répartition par type:")
                 for pkt_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
@@ -506,26 +507,28 @@ class DebugInterface:
     def _handle_packet_stats(self):
         """
         Afficher les statistiques détaillées des paquets collectés
-        
+
         Usage:
         > pstats
         """
-        info_print("📊 Statistiques paquets:")
-        
+        info_print("📊 Statistiques paquets (DB SQLite - 24h):")
+
         try:
-            total_packets = len(self.bot.traffic_monitor.packet_history)
-            
+            # Charger les paquets depuis la DB SQLite
+            packets_db = self.bot.traffic_monitor.persistence.load_packets(hours=24, limit=10000)
+            total_packets = len(packets_db)
+
             if total_packets == 0:
-                info_print("  Aucun paquet en mémoire")
+                info_print("  Aucun paquet en DB")
                 return
-            
+
             info_print(f"  Total paquets: {total_packets}")
-            
+
             # Répartition par type
             type_counts = defaultdict(int)
-            for pkt in self.bot.traffic_monitor.packet_history:
-                type_counts[pkt['type']] += 1
-            
+            for pkt in packets_db:
+                type_counts[pkt['packet_type']] += 1
+
             info_print("\n  Par type:")
             for pkt_type in sorted(type_counts.keys()):
                 count = type_counts[pkt_type]
@@ -533,28 +536,30 @@ class DebugInterface:
                 bar_length = int(percentage / 5)  # Max 20 chars
                 bar = "█" * bar_length + "░" * (20 - bar_length)
                 info_print(f"    {pkt_type:15s} {bar} {count:4d} ({percentage:5.1f}%)")
-            
+
             # Nœuds actifs
-            unique_nodes = set(pkt['from_id'] for pkt in self.bot.traffic_monitor.packet_history)
+            unique_nodes = set(pkt['from_id'] for pkt in packets_db)
             info_print(f"\n  Nœuds uniques: {len(unique_nodes)}")
-            
+
             # Top 5 émetteurs
             node_counts = defaultdict(int)
-            for pkt in self.bot.traffic_monitor.packet_history:
-                node_counts[pkt['sender_name']] += 1
-            
+            for pkt in packets_db:
+                from_id = pkt['from_id']
+                node_name = self.bot.node_manager.get_node_name(from_id)
+                node_counts[node_name] += 1
+
             top_nodes = sorted(node_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-            
+
             if top_nodes:
                 info_print("\n  Top 5 émetteurs:")
                 for i, (name, count) in enumerate(top_nodes, 1):
                     percentage = (count / total_packets * 100)
                     info_print(f"    {i}. {name:20s}: {count:4d} ({percentage:5.1f}%)")
-            
+
             # Période couverte
-            if self.bot.traffic_monitor.packet_history:
-                oldest = min(pkt['timestamp'] for pkt in self.bot.traffic_monitor.packet_history)
-                newest = max(pkt['timestamp'] for pkt in self.bot.traffic_monitor.packet_history)
+            if packets_db:
+                oldest = min(pkt['timestamp'] for pkt in packets_db)
+                newest = max(pkt['timestamp'] for pkt in packets_db)
                 
                 from datetime import datetime
                 oldest_dt = datetime.fromtimestamp(oldest)

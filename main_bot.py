@@ -23,7 +23,6 @@ from message_handler import MessageHandler
 from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
-from packet_history import PacketHistory
 from safe_serial_connection import SafeSerialConnection
 
 # Import du nouveau gestionnaire multi-plateforme
@@ -43,7 +42,6 @@ class MeshBot:
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
-        self.packet_history = PacketHistory()
         self.remote_nodes_client = RemoteNodesClient()
         self.remote_nodes_client.set_node_manager(self.node_manager)
 
@@ -110,13 +108,8 @@ class MeshBot:
             self.node_manager.update_rx_history(packet)
             self.node_manager.track_packet_type(packet)
 
-            if 'decoded' in packet:
-                portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
-                self.packet_history.add_packet(portnum)
-
             # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
-                self.traffic_monitor.add_packet_to_history(packet)
                 self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)
 
             # ========================================
@@ -255,8 +248,6 @@ class MeshBot:
                 self.context_manager.cleanup_old_contexts()
                 self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
-                self.packet_history.cleanup_old_data()
-                self.packet_history.save_history()
 
                 # Sauvegarde des statistiques dans SQLite
                 debug_print("💾 Sauvegarde des statistiques...")
@@ -331,8 +322,7 @@ class MeshBot:
                 self.context_manager,
                 self.interface,  # Interface directe
                 self.traffic_monitor,
-                self.start_time,
-                packet_history=self.packet_history
+                self.start_time
             )
             info_print("✅ MessageHandler créé")
             

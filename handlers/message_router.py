@@ -20,7 +20,7 @@ from .command_handlers.db_commands import DBCommands
 class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
-                 bot_start_time=None,packet_history=None):
+                 bot_start_time=None):
 
         # Dépendances
         self.node_manager = node_manager
@@ -34,8 +34,7 @@ class MessageRouter:
         self.ai_handler = AICommands(llama_client, self.sender)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
-        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
-        self.packet_history = packet_history
+        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender, node_manager)
 
         # Gestionnaire unifié des statistiques (nouveau système)
         self.unified_stats = UnifiedStatsCommands(traffic_monitor, node_manager, interface) if traffic_monitor else None
