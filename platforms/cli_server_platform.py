@@ -11,6 +11,55 @@ import json
 from .platform_interface import MessagingPlatform
 from utils import info_print, debug_print, error_print
 
+
+class CLIMessageSender:
+    """
+    Message sender pour CLI qui redirige vers le socket TCP
+    au lieu de l'interface Meshtastic
+    """
+
+    def __init__(self, cli_platform, user_id):
+        self.cli_platform = cli_platform
+        self.user_id = user_id
+
+    def send_message(self, message, recipient_id, recipient_info):
+        """Envoyer un message au client CLI"""
+        # Ignorer recipient_id (serait pour mesh), envoyer au client CLI
+        debug_print(f"[CLI] CLIMessageSender.send_message() called, message length: {len(message)}")
+        self.cli_platform.send_message(self.user_id, message)
+
+    def send_chunks(self, message, recipient_id, recipient_info):
+        """Envoyer un message long au client CLI (pas de chunking nécessaire)"""
+        # Pour CLI, pas besoin de chunking (pas de limite 180 chars)
+        debug_print(f"[CLI] CLIMessageSender.send_chunks() called, message length: {len(message)}")
+        self.cli_platform.send_message(self.user_id, message)
+
+    def check_throttling(self, sender_id, sender_info):
+        """Pas de throttling pour CLI locale"""
+        return True
+
+
+class CLIInterfaceWrapper:
+    """
+    Wrapper d'interface pour CLI qui redirige sendText vers le socket TCP
+    Utilisé par UnifiedStatsCommands qui utilise l'interface directement
+    """
+
+    def __init__(self, original_interface, cli_platform, user_id):
+        self.original_interface = original_interface
+        self.cli_platform = cli_platform
+        self.user_id = user_id
+
+    def sendText(self, text, destinationId=None, wantAck=False, wantResponse=False, channelIndex=0):
+        """Intercepter sendText et rediriger vers CLI"""
+        # Envoyer au client CLI au lieu du mesh
+        debug_print(f"[CLI] CLIInterfaceWrapper.sendText() called, text length: {len(text)}")
+        self.cli_platform.send_message(self.user_id, text)
+
+    def __getattr__(self, name):
+        """Déléguer tous les autres attributs à l'interface originale"""
+        return getattr(self.original_interface, name)
+
 class CLIServerPlatform(MessagingPlatform):
     """
     Serveur TCP local pour clients CLI
@@ -93,10 +142,12 @@ class CLIServerPlatform(MessagingPlatform):
             user_id: ID du client (peut être l'ID CLI)
             message: Texte à envoyer
         """
+        debug_print(f"[CLI] send_message() called for user {hex(user_id)}, message length: {len(message)}")
         # Trouver la connexion pour cet utilisateur
         conn = self.active_connections.get(user_id)
 
         if conn:
+            debug_print(f"[CLI] Connection found for user {hex(user_id)}")
             try:
                 # Envoyer en JSON pour parsing côté client
                 response = {
@@ -111,6 +162,9 @@ class CLIServerPlatform(MessagingPlatform):
                 # Nettoyer la connexion morte
                 if user_id in self.active_connections:
                     del self.active_connections[user_id]
+        else:
+            error_print(f"[CLI] No connection found for user {hex(user_id)}")
+            debug_print(f"[CLI] Active connections: {[hex(uid) for uid in self.active_connections.keys()]}")
 
     def send_alert(self, message):
         """
@@ -266,6 +320,9 @@ class CLIServerPlatform(MessagingPlatform):
             if command.lower() in ['quit', 'exit']:
                 return
 
+            # Créer un sender spécial CLI pour cet utilisateur
+            cli_sender = CLIMessageSender(self, user_id)
+
             # Créer un pseudo-packet Mesh
             mesh_id, mesh_name = self.get_user_mapping(user_id)
 
@@ -290,11 +347,59 @@ class CLIServerPlatform(MessagingPlatform):
 
             # Traiter via le message router
             if self.message_handler and self.message_handler.router:
-                self.message_handler.router.process_text_message(
-                    packet,
-                    decoded,
-                    command
-                )
+                router = self.message_handler.router
+
+                # Créer un wrapper d'interface pour unified_stats
+                cli_interface = CLIInterfaceWrapper(router.interface, self, user_id)
+
+                # Sauvegarder les senders et interface originaux
+                debug_print(f"[CLI] Saving original senders...")
+                original_senders = {
+                    'ai': router.ai_handler.sender,
+                    'network': router.network_handler.sender,
+                    'system': router.system_handler.sender,
+                    'utility': router.utility_handler.sender,
+                    'db': router.db_handler.sender if router.db_handler else None,
+                }
+                original_interface = router.unified_stats.interface if router.unified_stats else None
+
+                try:
+                    # Remplacer par le CLI sender
+                    debug_print(f"[CLI] Swapping to CLI sender...")
+                    router.ai_handler.sender = cli_sender
+                    router.network_handler.sender = cli_sender
+                    router.system_handler.sender = cli_sender
+                    router.utility_handler.sender = cli_sender
+                    if router.db_handler:
+                        router.db_handler.sender = cli_sender
+
+                    # Remplacer l'interface pour unified_stats
+                    if router.unified_stats:
+                        router.unified_stats.interface = cli_interface
+                        debug_print(f"[CLI] Swapped unified_stats interface")
+
+                    # Traiter la commande
+                    debug_print(f"[CLI] Processing command: {command}")
+                    router.process_text_message(
+                        packet,
+                        decoded,
+                        command
+                    )
+                    debug_print(f"[CLI] Command processing completed")
+
+                finally:
+                    # Restaurer les senders originaux
+                    router.ai_handler.sender = original_senders['ai']
+                    router.network_handler.sender = original_senders['network']
+                    router.system_handler.sender = original_senders['system']
+                    router.utility_handler.sender = original_senders['utility']
+                    if router.db_handler and original_senders['db']:
+                        router.db_handler.sender = original_senders['db']
+
+                    # Restaurer l'interface originale
+                    if router.unified_stats and original_interface:
+                        router.unified_stats.interface = original_interface
+
             else:
                 error_print("Message handler not available")
 
