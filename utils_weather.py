@@ -414,29 +414,103 @@ def get_rain_graph(location=None):
         if not rain_chars:
             return "❌ Graphe pluie non trouvé"
 
-        # Nettoyer et compacter les caractères
-        # Garder environ 24-36 caractères (8-12h par jour sur 3 jours)
-        rain_str = ''.join(rain_chars)
+        # Convertir les caractères en valeurs numériques (0-7)
+        char_to_value = {
+            '▁': 0, '_': 0, ' ': 0,
+            '▂': 1,
+            '▃': 2,
+            '▄': 3,
+            '▅': 4,
+            '▆': 5,
+            '▇': 6,
+            '█': 7
+        }
 
-        # Supprimer les espaces consécutifs
-        import re
-        rain_str = re.sub(r'▁+', '▁', rain_str)
+        # Convertir en valeurs et compacter
+        values = []
+        for char in rain_chars:
+            if char in char_to_value:
+                values.append(char_to_value[char])
 
-        # Limiter la longueur (garder ~72 chars max pour 3 jours)
-        if len(rain_str) > 72:
-            # Échantillonner pour réduire
-            step = len(rain_str) // 60
-            if step > 1:
-                rain_str = ''.join([rain_str[i] for i in range(0, len(rain_str), step)])
+        if not values:
+            return "❌ Aucune donnée pluie"
 
-        # Formater la sortie compacte
+        # Échantillonner pour avoir ~48 points (16h par jour x 3 jours)
+        target_points = 48
+        if len(values) > target_points:
+            step = len(values) // target_points
+            values = [values[i] for i in range(0, len(values), step)][:target_points]
+
+        # Créer un graphe multi-lignes (3 niveaux de hauteur)
+        width = len(values)
+        line_high = []  # Valeurs >= 5 (▅▆▇█)
+        line_mid = []   # Valeurs 3-4 (▃▄)
+        line_low = []   # Valeurs 0-2 (▁▂)
+
+        for v in values:
+            # Ligne haute (>= 5)
+            if v >= 6:
+                line_high.append('█')
+            elif v == 5:
+                line_high.append('▄')
+            else:
+                line_high.append(' ')
+
+            # Ligne moyenne (3-4)
+            if v >= 4:
+                line_mid.append('█')
+            elif v == 3:
+                line_mid.append('▄')
+            else:
+                line_mid.append(' ')
+
+            # Ligne basse (toutes les valeurs > 0)
+            if v >= 2:
+                line_low.append('█')
+            elif v == 1:
+                line_low.append('▄')
+            else:
+                line_low.append('▁')
+
+        # Formater la sortie
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm" if max_precip > 0 else "0mm"
 
+        # Calculer les positions des séparateurs de jours
+        third = width // 3
+        two_thirds = (width * 2) // 3
+
+        # Créer la timeline avec les séparateurs
+        timeline = []
+        for i in range(width):
+            if i == 0:
+                timeline.append('A')
+            elif i == third:
+                timeline.append('│')
+            elif i == third + 1:
+                timeline.append('D')
+            elif i == two_thirds:
+                timeline.append('│')
+            elif i == two_thirds + 1:
+                timeline.append('J')
+            else:
+                timeline.append(' ')
+
         lines = []
         lines.append(f"🌧️ {location_name} 3j (max:{max_str})")
-        lines.append(rain_str[:72])  # Limiter à 72 chars
-        lines.append("Aujour│   Demain  │J+2")
+
+        # Ajouter les lignes de graphe seulement si elles contiennent des données
+        high_str = ''.join(line_high).rstrip()
+        mid_str = ''.join(line_mid).rstrip()
+        low_str = ''.join(line_low)
+
+        if high_str.strip():  # Si la ligne haute a des données
+            lines.append(high_str)
+        if mid_str.strip():   # Si la ligne moyenne a des données
+            lines.append(mid_str)
+        lines.append(low_str)  # La ligne basse est toujours affichée
+
+        lines.append(''.join(timeline))
 
         return "\n".join(lines)
 

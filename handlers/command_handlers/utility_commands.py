@@ -386,9 +386,9 @@ class UtilityCommands:
             weather_data = get_weather_data(location)
             cmd = f"/weather {location}" if location else "/weather"
 
-        # Logger et envoyer
+        # Logger et envoyer (send_single pour éviter les lignes de séparation)
         self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
-        self.sender.send_chunks(weather_data, sender_id, sender_info)
+        self.sender.send_single(weather_data, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
