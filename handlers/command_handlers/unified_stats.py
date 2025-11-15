@@ -17,7 +17,7 @@ class UnifiedStatsCommands:
     Adapte automatiquement les réponses selon le canal (Mesh vs Telegram)
     """
 
-    def __init__(self, traffic_monitor, node_manager):
+    def __init__(self, traffic_monitor, node_manager, interface):
         """
         Args:
             traffic_monitor: Instance de TrafficMonitor
@@ -25,6 +25,7 @@ class UnifiedStatsCommands:
         """
         self.traffic_monitor = traffic_monitor
         self.node_manager = node_manager
+        self.interface = interface
 
     def get_stats(self, subcommand='global', params=None, channel='mesh'):
         """
@@ -297,7 +298,7 @@ class UnifiedStatsCommands:
                                 node_channel_data[from_id] = {
                                     'channel_utils': [],
                                     'air_utils': [],
-                                    'name': self.node_manager.get_node_name(from_id)
+                                    'name': self.node_manager.get_node_name(from_id, interface=self.interface)
                                 }
 
                             node_channel_data[from_id]['channel_utils'].append(ch_util)

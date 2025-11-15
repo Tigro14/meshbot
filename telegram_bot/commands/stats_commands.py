@@ -89,7 +89,7 @@ class StatsCommands(TelegramCommandBase):
         response = await asyncio.to_thread(get_unified_stats)
 
         # Envoyer la réponse (Markdown si applicable)
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await self.send_message(update, response)
 
     async def top_command(self, update: Update,
                            context: ContextTypes.DEFAULT_TYPE):

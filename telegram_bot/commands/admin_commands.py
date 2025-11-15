@@ -26,11 +26,6 @@ class AdminCommands(TelegramCommandBase):
         Commande /channel_stats [heures]
         Affiche les statistiques d'utilisation du canal par nœud
         """
-        user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         hours = 24
         if context.args and len(context.args) > 0:
             try:

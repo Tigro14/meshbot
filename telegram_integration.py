@@ -93,13 +93,15 @@ class TelegramIntegration:
         # (utilisée par les commandes Telegram pour accéder aux méthodes de génération de rapports)
         self.business_stats = BusinessStatsCommands(
             traffic_monitor=self.message_handler.traffic_monitor,
-            node_manager=self.node_manager
+            node_manager=self.node_manager,
+            interface=self.message_handler.interface
         )
 
         # Créer le système unifié de statistiques (nouveau)
         self.unified_stats = UnifiedStatsCommands(
             traffic_monitor=self.message_handler.traffic_monitor,
-            node_manager=self.node_manager
+            node_manager=self.node_manager,
+            interface=self.message_handler.interface
         )
 
         # Créer le wrapper Telegram pour les commandes stats
