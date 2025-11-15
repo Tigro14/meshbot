@@ -1,25 +1,57 @@
-# CLI Locale - Guide d'utilisation
+# CLI Client - Guide d'utilisation
 
 ## Vue d'ensemble
 
-La plateforme CLI locale permet d'interagir directement avec le bot Meshtastic via ligne de commande, en parallèle de Telegram. C'est particulièrement utile pour :
+Le MeshBot inclut maintenant un **serveur CLI TCP** qui permet de se connecter au bot via un client en ligne de commande, **sans concurrence sur les ressources série**. C'est parfait pour :
 
 - 🧪 **Développement et debug** : Tester rapidement sans dépendre de Telegram
-- ⚡ **Tests locaux** : Pas de latence réseau, réponses instantanées
+- ⚡ **Tests locaux** : Latence minimale, réponses rapides
 - 🔧 **Accès SSH** : Utiliser le bot en SSH sur le Raspberry Pi
-- 💬 **Conversations AI** : Interagir avec Llama directement en local
+- 💬 **Conversations AI** : Interagir avec Llama directement
+- 🔒 **Sécurité** : Connexions locales uniquement (127.0.0.1)
 
-## Activation
+## Architecture
 
-### 1. Configurer `config.py`
+```
+┌────────────────────────────────────┐
+│  MeshBot (daemon)                  │
+│  - Interface série /dev/ttyACM0    │
+│  - Telegram                        │
+│  - Serveur CLI :9999               │◄────┐
+└────────────────────────────────────┘     │
+                                           │ TCP Socket
+┌────────────────────────────────────┐     │
+│  CLI Client (séparé)               │     │
+│  python cli_client.py              │─────┘
+│  > /bot hello                      │
+│  > /stats global                   │
+└────────────────────────────────────┘
+```
+
+**Avantages** :
+- ✅ Aucune concurrence sur les ressources série
+- ✅ Le bot continue de tourner normalement
+- ✅ Plusieurs clients peuvent se connecter (si implémenté)
+- ✅ Connexion/déconnexion à volonté
+
+## Installation
+
+### 1. Activer le serveur CLI dans le bot
+
+Éditer `config.py` :
 
 ```python
-# Dans config.py (ou config.py.sample)
-CLI_ENABLED = True  # Activer la CLI locale
+# ========================================
+# CONFIGURATION CLI SERVEUR
+# ========================================
+
+CLI_ENABLED = True  # Activer le serveur CLI
+CLI_SERVER_HOST = '127.0.0.1'  # Local only (sécurité)
+CLI_SERVER_PORT = 9999  # Port d'écoute
 
 # Configuration AI pour CLI
 CLI_AI_CONFIG = {
-    "system_prompt": "Tu es un assistant intelligent accessible via CLI locale...",
+    "system_prompt": "Tu es un assistant intelligent accessible via CLI...",
     "max_tokens": 4000,
     "temperature": 0.8,
     "timeout": 120,
@@ -30,40 +62,43 @@ CLI_AI_CONFIG = {
 CLI_USER_ID = 0xC11A0001  # ID fictif pour la CLI
 ```
 
-### 2. Mapper vers une identité Mesh (optionnel)
-
-Si vous voulez que vos messages CLI apparaissent comme venant d'un nœud Mesh spécifique :
-
-```python
-CLI_TO_MESH_MAPPING = {
-    0xC11A0001: {
-        "mesh_id": 0x12345678,  # Votre node ID mesh
-        "mesh_name": "DevUser"   # Votre nom mesh
-    }
-}
-```
-
-### 3. Démarrer le bot
+### 2. Démarrer le bot
 
 ```bash
+# Démarrer le bot normalement
 python main_script.py
+
+# Ou via systemd
+sudo systemctl start meshbot
 ```
 
-La CLI démarre automatiquement si `CLI_ENABLED = True`.
+Le serveur CLI démarre automatiquement si `CLI_ENABLED = True`.
+
+### 3. Se connecter avec le client
+
+```bash
+# Connexion par défaut (localhost:9999)
+python cli_client.py
+
+# Connexion personnalisée
+python cli_client.py --host 127.0.0.1 --port 9999
+```
 
 ## Utilisation
 
-### Interface
+### Interface client
 
-Quand la CLI est active, vous verrez :
+Quand vous lancez `cli_client.py`, vous verrez :
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🖥️  CLI LOCALE ACTIVÉE
+🖥️  MeshBot CLI Client
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Tapez vos commandes directement (ex: /help, /bot bonjour)
-Tapez 'quit' ou Ctrl+C pour sortir
+Connected to bot. Type commands or 'quit' to exit.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 Connected to MeshBot CLI
+Type /help for commands, "quit" to exit
+────────────────────────────────────────────────────────────
 
 > _
 ```
@@ -87,6 +122,7 @@ Toutes les commandes du bot sont disponibles :
 > /stats channel 12
 > /stats histo TEXT 24
 > /stats traffic
+> /stats packets
 ```
 
 #### Base de données
@@ -115,37 +151,51 @@ Toutes les commandes du bot sont disponibles :
 > /legend
 ```
 
-#### Commandes spéciales CLI
+#### Commandes client spéciales
 
-- `quit` ou `exit` : Quitter la CLI (le bot continue de tourner)
+- `quit` ou `exit` : Déconnecter le client (bot continue)
 - `clear` : Nettoyer l'écran
-- `Ctrl+C` : Interrompre la CLI
-- `Ctrl+D` : EOF, quitter proprement
+- `Ctrl+C` : Interrompre le client
+- `Ctrl+D` : Quitter proprement
 
 ### Exemple de session
 
 ```bash
+$ python cli_client.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖥️  MeshBot CLI Client
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Connected to bot. Type commands or 'quit' to exit.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 Connected to MeshBot CLI
+Type /help for commands, "quit" to exit
+────────────────────────────────────────────────────────────
+
 > /help
+
 ────────────────────────────────────────────────────────────
 🤖 Bot:
 📖 Commandes disponibles:
 /bot <question> - Discuter avec l'IA
 /nodes [page] - Liste des nœuds
-/my - Vos stats
-/stats - Statistiques réseau
-/db - Opérations base de données
+/my - Vos statistiques
+/stats [sub] - Statistiques réseau
+/db [cmd] - Opérations base de données
+/trace <node> - Traceroute mesh
 /help - Cette aide
 ────────────────────────────────────────────────────────────
 
-> /bot Bonjour !
+> /bot Salut !
+
 ────────────────────────────────────────────────────────────
 🤖 Bot:
-Bonjour ! Comment puis-je t'aider aujourd'hui ? Je suis là
+Salut ! Comment puis-je t'aider aujourd'hui ? Je suis là
 pour répondre à tes questions sur le réseau Meshtastic ou
-tout autre sujet.
+tout autre sujet qui t'intéresse.
 ────────────────────────────────────────────────────────────
 
 > /stats global
+
 ────────────────────────────────────────────────────────────
 🤖 Bot:
 📊 Stats Réseau (24h)
@@ -157,147 +207,225 @@ Types:
   NODE: 234 (19%)
   POS: 189 (15%)
   TEXT: 123 (10%)
+
+Nœud le plus actif: TigroG2 (234p)
+────────────────────────────────────────────────────────────
+
+> /db stats
+
+────────────────────────────────────────────────────────────
+🤖 Bot:
+🗄️ DB: 2.3MB
+1234pkt 123msg
+2024-11-14-2024-11-15
+(24h)
 ────────────────────────────────────────────────────────────
 
 > quit
-Sortie de la CLI (bot continue de tourner)
+👋 Disconnecting...
+$
 ```
 
-## Architecture
+## Protocole de communication
 
-La CLI s'intègre dans l'architecture multi-plateforme :
+Le serveur et le client communiquent en JSON sur TCP :
+
+### Messages envoyés par le client
 
 ```
-MeshBot
-  ├── PlatformManager
-  │   ├── TelegramPlatform    (Messages riches via Telegram)
-  │   ├── CLIPlatform         (Messages locaux via stdin/stdout)
-  │   └── DiscordPlatform     (Futur)
-  │
-  └── MessageRouter
-      └── Command Handlers
+/bot hello world\n
+/stats global\n
 ```
 
-### Fonctionnement
+(Texte brut, une ligne par commande)
 
-1. **Thread d'input** : Lit vos commandes depuis `stdin` en boucle
-2. **Simulation packet** : Crée un pseudo-packet Meshtastic
-3. **Routing** : Passe par le `MessageRouter` comme tout message
-4. **Réponse** : Affichée sur `stdout` avec formatage
+### Messages reçus du serveur
 
-### Avantages
+```json
+{"type": "welcome", "message": "Connected to MeshBot CLI..."}
+{"type": "response", "message": "Réponse du bot..."}
+```
 
-- ✅ **Pas de code dupliqué** : Utilise les mêmes handlers que Mesh/Telegram
-- ✅ **Test complet** : Teste toute la chaîne de traitement
-- ✅ **Throttling** : Même système de limitation que les autres plateformes
-- ✅ **Contexte AI** : Conversations avec historique comme Telegram
-- ✅ **Logs identiques** : Même format de logs que production
+## Sécurité
+
+### Connexions locales uniquement
+
+Par défaut, le serveur écoute sur `127.0.0.1` (localhost) uniquement :
+
+```python
+CLI_SERVER_HOST = '127.0.0.1'  # PAS 0.0.0.0 !
+```
+
+**Important** : Ne JAMAIS mettre `0.0.0.0` car cela exposerait le bot sur le réseau.
+
+### Accès SSH
+
+Pour utiliser la CLI en SSH :
+
+```bash
+# Se connecter au Pi
+ssh pi@192.168.1.100
+
+# Lancer le client CLI
+cd /home/dietpi/bot
+python cli_client.py
+```
+
+### Authentification
+
+Actuellement, pas d'authentification (connexion locale uniquement).
+
+Pour ajouter de l'authentification, modifier `cli_server_platform.py` :
+
+```python
+def _handle_client(self, client_socket, address):
+    # Demander un mot de passe
+    client_socket.sendall(b"Password: ")
+    password = client_socket.recv(1024).decode().strip()
+
+    if password != EXPECTED_PASSWORD:
+        client_socket.close()
+        return
+
+    # Suite du code...
+```
+
+## Diagnostic et debug
+
+### Le serveur ne démarre pas
+
+```bash
+# Vérifier que le port est libre
+netstat -tulpn | grep 9999
+
+# Vérifier les logs du bot
+journalctl -u meshbot -f | grep CLI
+```
+
+### Le client ne peut pas se connecter
+
+```bash
+# Vérifier que le bot tourne
+ps aux | grep main_script
+
+# Vérifier que le serveur est actif
+netstat -tulpn | grep 9999
+
+# Tester avec telnet
+telnet 127.0.0.1 9999
+```
+
+### Debug du protocole
+
+Activer le debug dans `config.py` :
+
+```python
+DEBUG_MODE = True
+```
+
+Vous verrez alors :
+
+```
+[DEBUG] CLI← /bot hello
+[DEBUG] CLI→ Sent 123 chars to 0xc11a0001
+```
 
 ## Différences avec Telegram
 
 | Aspect | CLI | Telegram |
 |--------|-----|----------|
-| **Activation** | `CLI_ENABLED = True` | `TELEGRAM_ENABLED = True` |
-| **Latence** | Instantané (local) | ~100-500ms (réseau) |
+| **Connexion** | Socket TCP local | HTTPS + polling |
+| **Latence** | ~1ms (local) | ~100-500ms (réseau) |
 | **Formatage** | Texte brut | Markdown + emojis |
 | **Limite** | 10000 chars | 4096 chars |
 | **Auth** | Locale (Pi) | Token + user IDs |
 | **Persistance** | Session uniquement | Historique Telegram |
+| **Multi-user** | 1 à la fois | Illimité |
 
-## Debug et logs
+## Limitations actuelles
 
-Les interactions CLI sont loggées comme les autres plateformes :
-
-```
-[INFO] CLI→ /bot hello
-[DEBUG] AI query from CLI User (0xc11a0001)
-[INFO] AI response: 123 chars
-```
-
-Pour activer le debug verbeux :
-
-```python
-# config.py
-DEBUG_MODE = True
-```
-
-## Limitations
-
-- ❌ **Pas de formatage riche** : Texte brut uniquement (pas de Markdown)
-- ❌ **Pas de notifications** : Pas d'alertes push
-- ❌ **Session unique** : Une seule CLI active à la fois
+- ❌ **Un seul client** : Une seule connexion CLI active à la fois
+- ❌ **Pas de formatage** : Texte brut uniquement
+- ❌ **Pas d'authentification** : Connexion locale sans password
 - ❌ **Pas d'historique** : Pas de sauvegarde des conversations
+- ❌ **Pas de couleurs** : Terminal noir et blanc
+
+## Améliorations possibles
+
+- [ ] Support multi-clients (plusieurs CLI simultanées)
+- [ ] Authentification par mot de passe
+- [ ] Support des couleurs ANSI
+- [ ] Historique des commandes (flèches ↑/↓)
+- [ ] Auto-complétion (Tab)
+- [ ] Formatage Markdown → ANSI
+- [ ] Support readline pour édition
+- [ ] Mode TLS pour connexions distantes sécurisées
 
 ## Cas d'usage
 
 ### Développement
 
 ```bash
-# Tester rapidement une nouvelle commande
-> /newcmd param1 param2
+# Terminal 1: Bot
+python main_script.py
 
-# Vérifier les stats en direct
+# Terminal 2: CLI pour tests
+python cli_client.py
+> /bot test prompt
 > /stats global
-> /db stats
-
-# Debugger l'AI
-> /bot test prompt engineering
 ```
 
-### Production (SSH)
-
-```bash
-# Se connecter au Pi
-ssh pi@192.168.1.100
-
-# Interagir avec le bot
-> /nodes
-> /my
-> /stats top 24 20
-```
-
-### Monitoring
+### Monitoring en production
 
 ```bash
 # Script de monitoring
 while true; do
-    echo "/stats global" | timeout 5 nc localhost 9999
+    echo "/stats global" | nc 127.0.0.1 9999
     sleep 300
 done
 ```
 
+### Debug d'un problème
+
+```bash
+# SSH au Pi
+ssh pi@192.168.1.100
+
+# Connecter au bot
+cd /home/dietpi/bot
+python cli_client.py
+
+# Requêtes de debug
+> /db info
+> /nodes
+> /my
+> /trace ProblematicNode
+```
+
 ## FAQ
 
-**Q: La CLI bloque-t-elle le bot ?**
-R: Non, la CLI tourne dans un thread séparé. Le bot continue de traiter les messages Mesh et Telegram normalement.
+**Q: Le bot doit-il tourner pour utiliser la CLI ?**
+R: Oui, la CLI est un client qui se connecte au serveur intégré au bot.
 
-**Q: Peut-on avoir plusieurs CLI simultanées ?**
-R: Non, une seule CLI à la fois. Mais vous pouvez utiliser CLI + Telegram + autres plateformes en parallèle.
+**Q: Puis-je utiliser CLI et Telegram en même temps ?**
+R: Oui ! Les deux sont totalement indépendants.
 
-**Q: Les messages CLI sont-ils envoyés sur le mesh ?**
-R: Non, les commandes CLI sont traitées localement uniquement. Pour envoyer sur le mesh, utilisez `/echo` ou `/annonce`.
+**Q: Le bot ralentit-il avec la CLI ?**
+R: Non, la CLI utilise un thread séparé et n'impacte pas le bot.
 
-**Q: Comment quitter sans arrêter le bot ?**
-R: Tapez `quit`, `exit`, ou `Ctrl+C`. Le bot continue de tourner en arrière-plan.
+**Q: Puis-je me connecter depuis une autre machine ?**
+R: Non par défaut (127.0.0.1). Pour permettre ça, changez `CLI_SERVER_HOST` à `0.0.0.0` et ajoutez de l'authentification.
 
-**Q: La CLI supporte-t-elle les couleurs ?**
-R: Pas pour le moment, mais c'est facile à ajouter avec `colorama` ou codes ANSI.
+**Q: Comment arrêter le serveur CLI ?**
+R: Désactivez `CLI_ENABLED = False` et redémarrez le bot.
 
-## Roadmap
-
-Améliorations possibles :
-
-- [ ] Support des couleurs ANSI
-- [ ] Historique des commandes (flèches ↑/↓)
-- [ ] Auto-complétion (Tab)
-- [ ] Envoi direct sur mesh avec `@mesh message`
-- [ ] Mode interactif AI (conversation sans `/bot`)
-- [ ] Formatage Markdown → ANSI
-- [ ] Support readline pour édition avancée
+**Q: Où sont les logs ?**
+R: Les commandes CLI sont loggées comme les autres : `journalctl -u meshbot`
 
 ## Voir aussi
 
 - `CLAUDE.md` - Documentation complète du projet
 - `PLATFORMS.md` - Architecture multi-plateforme
 - `platform_config.py` - Configuration des plateformes
-- `platforms/cli_platform.py` - Code source CLI
+- `platforms/cli_server_platform.py` - Code serveur
+- `cli_client.py` - Code client
