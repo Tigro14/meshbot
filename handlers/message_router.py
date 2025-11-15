@@ -37,7 +37,7 @@ class MessageRouter:
         self.packet_history = packet_history
 
         # Gestionnaire unifié des statistiques (nouveau système)
-        self.unified_stats = UnifiedStatsCommands(traffic_monitor, node_manager) if traffic_monitor else None
+        self.unified_stats = UnifiedStatsCommands(traffic_monitor, node_manager, interface) if traffic_monitor else None
    
     def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""

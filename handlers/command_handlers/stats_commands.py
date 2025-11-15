@@ -16,7 +16,7 @@ class StatsCommands:
     Fournit des méthodes de génération de rapports réutilisables
     """
 
-    def __init__(self, traffic_monitor, node_manager):
+    def __init__(self, traffic_monitor, node_manager, interface=None):
         """
         Args:
             traffic_monitor: Instance de TrafficMonitor
@@ -24,6 +24,7 @@ class StatsCommands:
         """
         self.traffic_monitor = traffic_monitor
         self.node_manager = node_manager
+        self.interface = interface
 
     def get_channel_stats(self, hours=24):
         """
@@ -66,7 +67,7 @@ class StatsCommands:
                                 node_channel_data[from_id] = {
                                     'channel_utils': [],
                                     'air_utils': [],
-                                    'name': self.node_manager.get_node_name(from_id)
+                                    'name': self.node_manager.get_node_name(from_id, interface=self.interface)
                                 }
 
                             node_channel_data[from_id]['channel_utils'].append(ch_util)
