@@ -1128,7 +1128,7 @@ class TrafficMonitor:
     def get_packet_histogram_overview(self, hours=24):
         """
         Vue d'ensemble compacte de tous les types de paquets (pour /histo).
-        Utilise self.all_packets qui est chargé depuis SQLite au démarrage.
+        Charge les données directement depuis SQLite pour avoir les données les plus récentes.
 
         Args:
             hours: Période à analyser (défaut: 24h)
@@ -1137,14 +1137,13 @@ class TrafficMonitor:
             str: Vue d'ensemble formatée avec compteurs par type
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
+            # Charger les paquets directement depuis la base de données
+            packets = self.persistence.load_packets(hours=hours, limit=10000)
 
             # Compter les paquets par type
             type_counts = defaultdict(int)
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
-                    type_counts[packet['packet_type']] += 1
+            for packet in packets:
+                type_counts[packet['packet_type']] += 1
 
             # Mapping des noms courts
             short_names = {
@@ -1160,9 +1159,8 @@ class TrafficMonitor:
             # Afficher les types principaux
             for full_name, short_name in short_names.items():
                 count = type_counts.get(full_name, 0)
-                if count > 0:
-                    lines.append(f"{short_name}: {count}")
-                    total += count
+                lines.append(f"{short_name}: {count}")
+                total += count
 
             # Autres types (si présents)
             other_count = sum(count for ptype, count in type_counts.items()
@@ -1186,7 +1184,7 @@ class TrafficMonitor:
     def get_hourly_histogram(self, packet_filter='all', hours=24):
         """
         Générer un histogramme de distribution horaire des paquets.
-        Utilise self.all_packets qui est chargé depuis SQLite au démarrage.
+        Charge les données directement depuis SQLite pour avoir les données les plus récentes.
 
         Args:
             packet_filter: 'all', 'messages', 'pos', 'info', 'telemetry', etc.
@@ -1196,8 +1194,8 @@ class TrafficMonitor:
             str: Histogramme ASCII formaté
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
+            # Charger les paquets directement depuis la base de données
+            all_packets = self.persistence.load_packets(hours=hours, limit=10000)
 
             # Mapping des filtres vers les types de paquets réels
             filter_mapping = {
@@ -1209,17 +1207,16 @@ class TrafficMonitor:
                 'routing': 'ROUTING_APP'
             }
 
-            # Filtrer les paquets par période et type
+            # Filtrer les paquets par type
             filtered_packets = []
-            for pkt in self.all_packets:
-                if pkt['timestamp'] >= cutoff_time:
-                    if packet_filter == 'all':
+            for pkt in all_packets:
+                if packet_filter == 'all':
+                    filtered_packets.append(pkt)
+                elif packet_filter in filter_mapping:
+                    if pkt['packet_type'] == filter_mapping[packet_filter]:
                         filtered_packets.append(pkt)
-                    elif packet_filter in filter_mapping:
-                        if pkt['packet_type'] == filter_mapping[packet_filter]:
-                            filtered_packets.append(pkt)
-                    elif pkt['packet_type'] == packet_filter:
-                        filtered_packets.append(pkt)
+                elif pkt['packet_type'] == packet_filter:
+                    filtered_packets.append(pkt)
             
             if not filtered_packets:
                 return f"📊 Aucun paquet '{packet_filter}' dans les {hours}h"
