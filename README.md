@@ -166,29 +166,104 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - Identité du nœud Meshtastic demandeur
 - ID hexadécimal du nœud pour traçabilité complète
 
+## Serveur CLI (Interface en ligne de commande)
+
+Le bot intègre un serveur TCP local permettant de se connecter via une interface CLI pour envoyer des commandes sans passer par le réseau Meshtastic. Utile pour le développement et le debug.
+
+### Configuration
+
+Dans `config.py` :
+
+```python
+# Activer le serveur CLI
+CLI_ENABLED = True
+CLI_SERVER_HOST = '127.0.0.1'  # Écoute locale uniquement (sécurité)
+CLI_SERVER_PORT = 9999
+```
+
+### Utilisation
+
+Le client CLI se connecte au bot via TCP sur localhost:9999 :
+
+```bash
+# Lancer le client CLI
+python cli_client.py
+
+# Ou avec des paramètres personnalisés
+python cli_client.py --host 127.0.0.1 --port 9999
+```
+
+Une fois connecté, vous pouvez envoyer toutes les commandes du bot :
+
+```
+> /help
+🤖 Bot:
+[Affiche l'aide complète]
+
+> /stats top 24 5
+🤖 Bot:
+📊 Top 5 talkers (24h)
+...
+
+> /trace F547F
+🤖 Bot:
+🔍 Node F547F
+📶 Signal info...
+
+> quit
+👋 Disconnecting...
+```
+
+### Fonctionnalités
+
+- **Pas de limite LoRa** : Pas de contrainte de 180 caractères
+- **Pas de throttling** : Pas de limite de commandes/minute
+- **Accès complet** : Toutes les commandes du bot disponibles
+- **Pas de compétition série** : Le CLI ne touche pas au port `/dev/ttyACM0`
+- **Multi-client** : Plusieurs clients CLI peuvent se connecter simultanément (futur)
+
+### Architecture
+
+Le serveur CLI fonctionne en parallèle du bot principal :
+- **Bot principal** : Écoute sur `/dev/ttyACM0` (serial) et TCP tigrog2
+- **Serveur CLI** : Écoute sur `127.0.0.1:9999` (TCP local)
+- **Aucune interférence** : Les deux systèmes sont indépendants
+
+### Sécurité
+
+- Écoute **uniquement** en local (`127.0.0.1`)
+- Pas d'accès distant possible
+- Idéal pour développement et debug local
+
 ## Commandes disponibles
 
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather` - Météo locale sur 3 jours (par https://wttr.in).
-- `/nodes` - Nœuds directs vus par tigrog2 avec niveau SNR
+- `/weather` - Météo locale sur 3 jours (par https://wttr.in)
+- `/nodes [page]` - Nœuds directs vus par tigrog2 avec niveau SNR (paginé)
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
-- `/trace <node>` - Le traceroute vers un node connu par le routeur mesh
-- `/sys` - Informations système (CPU, RAM, uptime)
-- `/top` - Top talkers en 24h sur le canal
-- `/histo` - Histogramme des paquets reçus par type sur 24h
-- `/stats` - Statistiques d'utilisation du canal mesh sur 24h
-- `/packets` - Statistiques des paquets reçus sur le mesh
-- `/trafic` renvoie le trafic du mesh local sur les dernières heures uniquement
+- `/trace` - Traceroute de votre message vers le bot (hops, RSSI, SNR)
+- `/trace <node>` - Afficher les infos signal d'un nœud spécifique (nom ou ID partiel)
+- `/sys` - Informations système (CPU, RAM, uptime bot et OS)
+- `/stats [sub]` - Statistiques unifiées avec sous-commandes :
+  - `/stats` ou `/stats global` - Aperçu global du réseau
+  - `/stats top [heures] [n]` - Top talkers (défaut: 24h, top 10)
+  - `/stats packets [heures]` - Distribution des types de paquets
+  - `/stats channel [heures]` - Utilisation du canal
+  - `/stats histo [type] [heures]` - Histogramme par type
+  - `/stats traffic [heures]` - Historique des messages publics (Telegram uniquement)
+- `/top [heures]` - Alias pour `/stats top` (legacy)
+- `/histo [type]` - Alias pour `/stats histo` (legacy)
+- `/packets` - Alias pour `/stats packets` (legacy)
+- `/trafic` - Trafic du mesh local sur les dernières heures
 - `/echo <message>` - Diffuser un message via le node ROUTER
 - `/annonce <message>` - Diffuser un message via le bot
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
 
 ### Commandes administration
-- `/rebootpi <passwd>` - Redémarrage du Pi5 (nécessite configuration)
-- `/rebootg2 <passwd>` - Redémarrage du node ROUTER via le MeshBOT en admin à distance + télémétrie
+- `/rebootpi <passwd>` - Redémarrage du Pi5 (nécessite configuration et autorisation)
 
 ### Les commandes specifiques Telegram
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
