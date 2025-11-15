@@ -36,6 +36,8 @@ class MessageRouter:
    
     def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""
+        info_print(f"🔵 ROUTER: process_text_message appelé avec message: '{message}'")
+
         sender_id = packet.get('from', 0)
         to_id = packet.get('to', 0)
         my_id = None
@@ -54,10 +56,19 @@ class MessageRouter:
         is_for_me = (to_id == my_id) if my_id else False
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]
-        sender_info = self.node_manager.get_node_name(sender_id, actual_interface)  
+        sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
+
+        info_print(f"🔵 ROUTER CHECKS:")
+        info_print(f"   my_id: 0x{my_id:08x}" if my_id else "   my_id: None")
+        info_print(f"   sender_id: 0x{sender_id:08x}")
+        info_print(f"   to_id: 0x{to_id:08x}")
+        info_print(f"   is_for_me: {is_for_me}")
+        info_print(f"   is_from_me: {is_from_me}")
+        info_print(f"   is_broadcast: {is_broadcast}")
 
         # Gérer echo et /my sur messages publics
         if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
+            info_print(f"🔵 ROUTER: Traitement commande publique (/echo ou /my)")
             if message.startswith('/echo '):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
@@ -72,8 +83,10 @@ class MessageRouter:
 
         # Traiter seulement si pour nous
         if not is_for_me:
+            info_print(f"⛔ ROUTER BLOQUE: is_for_me=False (to_id=0x{to_id:08x}, my_id=0x{my_id:08x})")
             return
 
+        info_print(f"✅ ROUTER: Message accepté, appel _route_command")
         # Router la commande
         self._route_command(message, sender_id, sender_info, packet)
     

@@ -122,10 +122,20 @@ class MeshBot:
             # ========================================
             # PHASE 2: FILTRAGE
             # ========================================
+            # === DIAGNOSTIC: Afficher détails de filtrage ===
+            info_print(f"🔍 DIAGNOSTIC FILTRAGE:")
+            info_print(f"   interface reçu: {type(interface).__name__} @ {id(interface)}")
+            info_print(f"   self.interface: {type(self.interface).__name__} @ {id(self.interface)}")
+            info_print(f"   is_from_serial: {is_from_serial}")
+            info_print(f"   source: {source}")
+            # === FIN DIAGNOSTIC ===
+
             # Seuls les messages de l'interface série déclenchent des commandes
             if not is_from_serial:
-                debug_print(f"📊 Paquet de {source} collecté pour stats")
+                info_print(f"⛔ BLOQUÉ: Paquet de {source} collecté pour stats uniquement")
                 return
+
+            info_print(f"✅ PASSÉ: Message de source série, traitement possible")
             
             # À partir d'ici, seuls les messages série sont traités
             
@@ -141,13 +151,24 @@ class MeshBot:
             my_id = None
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-            
+
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
             is_broadcast = (to_id == 0xFFFFFFFF)
-            
+
+            # === DIAGNOSTIC: Destinataire ===
+            info_print(f"🎯 DIAGNOSTIC DESTINATAIRE:")
+            info_print(f"   my_id: 0x{my_id:08x}" if my_id else "   my_id: None")
+            info_print(f"   from_id: 0x{from_id:08x}")
+            info_print(f"   to_id: 0x{to_id:08x}")
+            info_print(f"   is_for_me: {is_for_me}")
+            info_print(f"   is_from_me: {is_from_me}")
+            info_print(f"   is_broadcast: {is_broadcast}")
+            # === FIN DIAGNOSTIC ===
+
             # Filtrer les messages auto-générés
             if is_from_me:
+                info_print(f"⛔ BLOQUÉ: Message auto-généré")
                 return
             
             decoded = packet.get('decoded', {})
