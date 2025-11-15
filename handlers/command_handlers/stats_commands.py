@@ -40,18 +40,19 @@ class StatsCommands:
                 return "❌ Traffic monitor non disponible"
 
             tm = self.traffic_monitor
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
 
             lines = []
             lines.append(f"📡 STATISTIQUES D'UTILISATION DU CANAL ({hours}h)")
             lines.append("=" * 50)
 
+            # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
+            all_packets = tm.persistence.load_packets(hours=hours, limit=10000)
+
             # Collecter les données de télémétrie par nœud
             node_channel_data = {}
 
-            for packet in tm.all_packets:
-                if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
+            for packet in all_packets:
+                if packet['packet_type'] == 'TELEMETRY_APP':
                     from_id = packet['from_id']
 
                     # Extraire les données de télémétrie directement du paquet
