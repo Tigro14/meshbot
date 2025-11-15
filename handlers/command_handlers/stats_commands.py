@@ -55,7 +55,7 @@ class StatsCommands:
                     from_id = packet['from_id']
 
                     # Extraire les données de télémétrie directement du paquet
-                    if 'telemetry' in packet:
+                    if 'telemetry' in packet and packet['telemetry'] is not None:
                         telemetry = packet['telemetry']
                         ch_util = telemetry.get('channel_util')
                         air_util = telemetry.get('air_util')
