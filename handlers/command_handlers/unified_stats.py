@@ -279,12 +279,14 @@ class UnifiedStatsCommands:
             tm = self.traffic_monitor
 
             lines = []
-            lines.append(f"📡 CANAL ({hours}h)")
 
-            if channel == 'mesh':
-                lines.append("=" * 15)  # Version compacte pour mesh
-            else:
+            # Entête seulement pour Telegram
+            if channel == 'telegram':
+                lines.append(f"📡 CANAL ({hours}h)")
                 lines.append("=" * 50)
+            else:
+                # Pas d'entête pour mesh, juste le titre dans la première ligne de stats
+                pass
 
             # Charger les paquets de télémétrie
             all_packets = tm.persistence.load_packets(hours=hours, limit=10000)
@@ -355,8 +357,8 @@ class UnifiedStatsCommands:
                 count_norm = len([n for n in node_averages if 10 < n['avg_channel'] <= 15])
                 count_low = len([n for n in node_averages if n['avg_channel'] <= 10])
 
-                # Synthèse globale
-                lines.append(f"Moy:{total_avg:.1f}% | {len(node_averages)}n")
+                # Synthèse globale avec titre intégré
+                lines.append(f"📡 Canal({hours}h): {total_avg:.1f}% | {len(node_averages)}n")
 
                 # Distribution compacte
                 distrib_parts = []
@@ -372,10 +374,9 @@ class UnifiedStatsCommands:
                 if distrib_parts:
                     lines.append(" ".join(distrib_parts))
 
-                # Top 3 nœuds (ultra-compact)
-                lines.append("---")
-                for i, node_data in enumerate(node_averages[:3], 1):
-                    name = node_data['name'][:8]  # Nom encore plus court
+                # Top 5 nœuds (sans numérotation)
+                for node_data in node_averages[:5]:
+                    name = node_data['name'][:10]  # Nom un peu plus long (10 au lieu de 8)
                     avg_ch = node_data['avg_channel']
 
                     # Icône selon niveau
@@ -388,7 +389,7 @@ class UnifiedStatsCommands:
                     else:
                         icon = "⚪"
 
-                    lines.append(f"{i}.{icon}{name}:{avg_ch:.1f}%")
+                    lines.append(f"{icon}{name}:{avg_ch:.1f}%")
 
                 # Alerte si moyenne élevée
                 if total_avg > 15:
