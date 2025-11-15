@@ -524,9 +524,12 @@ class UnifiedStatsCommands:
                 pass
 
         try:
+            # Utiliser le nouveau format avec sparkline
+            compact = (channel == 'mesh')
             return self.traffic_monitor.get_histogram_report(
                 hours=hours,
-                packet_type=packet_type
+                packet_type=packet_type,
+                compact=compact
             )
         except Exception as e:
             error_print(f"Erreur histogram: {e}")
