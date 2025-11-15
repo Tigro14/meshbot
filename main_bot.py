@@ -198,9 +198,12 @@ class MeshBot:
                 if self.telegram_integration:
                     if message:
                         info_print(f"✅ Message présent: '{message[:30]}'")
-                        info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
 
                         try:
+                            # Vérifier que pending_traces existe avant de l'utiliser
+                            if hasattr(self.telegram_integration, 'pending_traces'):
+                                info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
+
                             trace_handled = self.telegram_integration.handle_trace_response(
                                 from_id,
                                 message
