@@ -551,6 +551,130 @@ def get_rain_graph(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
+def get_weather_geo(location=None):
+    """
+    Récupérer les informations géographiques et astronomiques
+
+    Args:
+        location: Ville/lieu pour la météo (ex: "Paris", "London")
+                 Si None ou vide, utilise la géolocalisation par IP
+
+    Returns:
+        str: Infos géo/astronomiques formatées (3 lignes)
+
+    Exemples:
+        >>> geo = get_weather_geo("Paris")
+        >>> print(geo)
+        Weather: Mist, +12°C, 94%, 5km/h, 1008hPa
+        Now: 00:53:40 | Dawn: 07:26 | Sunrise: 08:01
+        Zenith: 12:35 | Sunset: 17:08 | Dusk: 17:43
+    """
+    try:
+        # Normaliser la location
+        if not location:
+            location = DEFAULT_LOCATION
+
+        # Construire l'URL et le nom du cache
+        if location:
+            location_encoded = location.replace(' ', '+')
+            wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
+            location_safe = location.replace(' ', '_').replace('/', '_')
+            cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
+        else:
+            wttr_url = f"{WTTR_BASE_URL}/?format=j1"
+            cache_file = f"{CACHE_DIR}/weather_cache_default.json"
+
+        # Essayer de lire depuis le cache d'abord
+        weather_json = None
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                cache_time = cache_data.get('timestamp', 0)
+                current_time = time.time()
+                age_seconds = int(current_time - cache_time)
+
+                # Si cache valide (< 5 min), l'utiliser
+                if age_seconds < CACHE_DURATION:
+                    # Refaire l'appel pour avoir le JSON complet (pas juste le texte formaté)
+                    info_print(f"📊 Récupération données géo depuis {wttr_url}...")
+                    result = subprocess.run(
+                        ['curl', '-s', wttr_url],
+                        capture_output=True,
+                        text=True,
+                        timeout=CURL_TIMEOUT
+                    )
+                    if result.returncode == 0 and result.stdout:
+                        weather_json = json.loads(result.stdout.strip())
+            except:
+                pass
+
+        # Si pas de cache ou expiré, faire l'appel
+        if not weather_json:
+            info_print(f"📊 Récupération données géo depuis {wttr_url}...")
+            result = subprocess.run(
+                ['curl', '-s', wttr_url],
+                capture_output=True,
+                text=True,
+                timeout=CURL_TIMEOUT
+            )
+
+            if result.returncode != 0 or not result.stdout:
+                return "❌ Erreur récupération données géo"
+
+            weather_json = json.loads(result.stdout.strip())
+
+        # Parser les données
+        lines = []
+
+        # Ligne 1: Weather actuel
+        current = weather_json.get('current_condition', [{}])[0]
+        weather_desc = current.get('weatherDesc', [{}])[0].get('value', 'Unknown')
+        temp = current.get('temp_C', '?')
+        humidity = current.get('humidity', '?')
+        wind = current.get('windspeedKmph', '?')
+        pressure = current.get('pressure', '?')
+
+        lines.append(f"Weather: {weather_desc}, +{temp}°C, {humidity}%, {wind}km/h, {pressure}hPa")
+
+        # Ligne 2 & 3: Infos astronomiques
+        nearest_area = weather_json.get('nearest_area', [{}])[0]
+        astronomy = weather_json.get('weather', [{}])[0].get('astronomy', [{}])[0]
+
+        # Heure locale
+        local_time = time.strftime("%H:%M:%S%z")
+
+        # Données astronomiques (format HH:MM:SS, on garde juste HH:MM)
+        sunrise = astronomy.get('sunrise', '??:??:??')[:5]
+        sunset = astronomy.get('sunset', '??:??:??')[:5]
+        moonrise = astronomy.get('moonrise', '??:??:??')[:5]
+        moonset = astronomy.get('moonset', '??:??:??')[:5]
+
+        # Ligne 2: Now, Sunrise, Sunset
+        lines.append(f"Now: {local_time[:8]} | Sunrise: {sunrise} | Sunset: {sunset}")
+
+        # Ligne 3: Moonrise, Moonset
+        lines.append(f"Moonrise: {moonrise} | Moonset: {moonset}")
+
+        return "\n".join(lines)
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"❌ Timeout données géo (> {CURL_TIMEOUT}s)"
+        error_print(error_msg)
+        return error_msg
+
+    except FileNotFoundError:
+        error_msg = "❌ Commande curl non trouvée"
+        error_print(error_msg)
+        return error_msg
+
+    except Exception as e:
+        error_print(f"❌ Erreur inattendue dans get_weather_geo: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+        return f"❌ Erreur: {str(e)[:50]}"
+
+
 def get_cache_info():
     """
     Obtenir des informations sur l'état du cache
