@@ -220,6 +220,7 @@ Une fois connecté, vous pouvez envoyer toutes les commandes du bot :
 - **Pas de throttling** : Pas de limite de commandes/minute
 - **Accès complet** : Toutes les commandes du bot disponibles
 - **Pas de compétition série** : Le CLI ne touche pas au port `/dev/ttyACM0`
+- **Historique des commandes** : Navigation avec ↑/↓ (comme bash), persistant entre sessions
 - **Multi-client** : Plusieurs clients CLI peuvent se connecter simultanément (futur)
 
 ### Architecture
@@ -240,7 +241,12 @@ Le serveur CLI fonctionne en parallèle du bot principal :
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather` - Météo locale sur 3 jours (par https://wttr.in)
+- `/weather [rain] [ville]` - Météo sur 3 jours (par https://wttr.in)
+  - `/weather` - Météo locale (géolocalisée)
+  - `/weather Paris` - Météo d'une ville spécifique
+  - `/weather rain` - Graphe précipitations local (ASCII)
+  - `/weather rain Paris` - Graphe précipitations Paris
+  - `/weather help` - Afficher l'aide
 - `/nodes [page]` - Nœuds directs vus par tigrog2 avec niveau SNR (paginé)
 - `/my` - Vos signaux vus par tigrog2 (lookinglass)
 - `/trace` - Traceroute de votre message vers le bot (hops, RSSI, SNR)

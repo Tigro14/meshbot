@@ -813,12 +813,12 @@ class TrafficMonitor:
                 return "📊 Silence radio (3h)"
             
             total = sum(recent_packets.values())
-            top_3 = sorted(recent_packets.items(), key=lambda x: x[1], reverse=True)[:3]
-            
+            top_7 = sorted(recent_packets.items(), key=lambda x: x[1], reverse=True)[:7]
+
             lines = [f"🏆TOP 3h ({total} pqts):"]
-            for i, (name, count) in enumerate(top_3, 1):
+            for name, count in top_7:
                 name_short = truncate_text(name, 20)
-                lines.append(f"{i}.{name_short}:{count}")
+                lines.append(f"{name_short}:{count}")
             
             # Type dominant
             if packet_types:

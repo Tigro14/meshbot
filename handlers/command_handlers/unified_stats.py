@@ -73,7 +73,8 @@ class UnifiedStatsCommands:
                 "📊 /stats [cmd] [h]\n"
                 "g=global t=top p=pkt\n"
                 "ch=canal h=histo\n"
-                "Ex: /stats ch 24"
+                "Types histo: pos,text,node,tele\n"
+                "Ex: /stats h pos 12"
             )
         else:  # telegram
             return """📊 **STATS - OPTIONS DISPONIBLES**
@@ -514,6 +515,13 @@ class UnifiedStatsCommands:
                 'telemetry': 'TELEMETRY_APP'
             }
             packet_type = type_mapping.get(ptype_arg)
+
+            # Si type non reconnu, afficher l'aide
+            if ptype_arg and not packet_type:
+                if channel == 'mesh':
+                    return "❌ Type invalide\nTypes: pos,text,node,tele\nEx: /stats h pos 12"
+                else:
+                    return "❌ Type invalide. Types disponibles: pos, text, node, tele"
 
         if len(params) > 1:
             try:

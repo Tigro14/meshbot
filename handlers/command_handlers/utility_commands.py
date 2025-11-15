@@ -11,7 +11,7 @@ import subprocess
 import os
 import json
 import meshtastic.tcp_interface
-from utils_weather import get_weather_data
+from utils_weather import get_weather_data, get_rain_graph
 from config import *
 from utils import *
 
@@ -335,11 +335,70 @@ class UtilityCommands:
         ]
         return "\n".join(legend_lines)
 
-    def handle_weather(self, sender_id, sender_info):
+    def handle_weather(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /weather [rain] [ville]
+
+        Args:
+            message: Message complet (ex: "/weather London", "/weather rain Paris")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+        """
         info_print(f"Weather: {sender_info}")
-        weather_data = get_weather_data()
-        self.sender.log_conversation(sender_id, sender_info, "/weather", weather_data)
-        self.sender.send_single(weather_data, sender_id, sender_info)
+
+        # Parser les arguments
+        parts = message.split(maxsplit=2)
+        subcommand = None
+        location = None
+
+        if len(parts) > 1:
+            # Vérifier si c'est une sous-commande "rain"
+            if parts[1].lower() == 'rain':
+                subcommand = 'rain'
+                # La ville est le 3ème argument si présent
+                if len(parts) > 2:
+                    location = parts[2].strip()
+            else:
+                # Sinon c'est directement la ville
+                location = parts[1].strip()
+
+        # Si "help"/"aide", afficher l'aide
+        if location and location.lower() in ['help', 'aide', '?']:
+            help_text = (
+                "🌤️ /weather [rain] [ville]\n"
+                "Ex:\n"
+                "/weather → Météo locale\n"
+                "/weather Paris\n"
+                "/weather rain → Graphe pluie local\n"
+                "/weather rain Paris\n"
+                "/weather rain London"
+            )
+            self.sender.send_single(help_text, sender_id, sender_info)
+            return
+
+        # Traiter selon la sous-commande
+        if subcommand == 'rain':
+            # Graphe de précipitations (retourne 3 messages séparés)
+            weather_data = get_rain_graph(location)
+            cmd = f"/weather rain {location}" if location else "/weather rain"
+
+            # Logger
+            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+
+            # Découper et envoyer les 3 jours séparément
+            day_messages = weather_data.split('\n\n')
+            for i, day_msg in enumerate(day_messages):
+                self.sender.send_single(day_msg, sender_id, sender_info)
+                # Petit délai entre les messages
+                if i < len(day_messages) - 1:
+                    import time
+                    time.sleep(1)
+        else:
+            # Météo normale
+            weather_data = get_weather_data(location)
+            cmd = f"/weather {location}" if location else "/weather"
+            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+            self.sender.send_single(weather_data, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
@@ -376,7 +435,11 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
-        • /weather - Météo Paris
+        • /weather [rain] [ville] - Météo 3 jours
+          /weather → Géolocalisée
+          /weather Paris, /weather London, etc.
+          /weather rain → Graphe pluie local
+          /weather rain Paris → Graphe pluie Paris
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5

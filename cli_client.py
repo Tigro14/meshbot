@@ -10,6 +10,17 @@ import sys
 import threading
 import json
 import argparse
+import os
+
+# Import readline pour l'historique des commandes (Linux/Mac)
+# Sur Windows, installer: pip install pyreadline3
+try:
+    import readline
+    READLINE_AVAILABLE = True
+except ImportError:
+    READLINE_AVAILABLE = False
+    print("⚠️  readline not available - command history disabled")
+    print("   On Windows, install: pip install pyreadline3")
 
 class CLIClient:
     """Client CLI qui se connecte au serveur MeshBot"""
@@ -20,6 +31,11 @@ class CLIClient:
         self.socket = None
         self.running = False
         self.receive_thread = None
+
+        # Configurer l'historique des commandes
+        self.history_file = os.path.expanduser('~/.meshbot_cli_history')
+        if READLINE_AVAILABLE:
+            self._setup_readline()
 
     def connect(self):
         """Se connecter au serveur MeshBot"""
@@ -45,6 +61,11 @@ class CLIClient:
     def disconnect(self):
         """Se déconnecter du serveur"""
         self.running = False
+
+        # Sauvegarder l'historique avant de quitter
+        if READLINE_AVAILABLE:
+            self._save_history()
+
         if self.socket:
             try:
                 self.socket.close()
@@ -69,6 +90,40 @@ class CLIClient:
         except Exception as e:
             print(f"❌ Send error: {e}")
             return False
+
+    def _setup_readline(self):
+        """
+        Configurer readline pour l'historique des commandes
+        Permet d'utiliser ↑/↓ pour naviguer dans l'historique
+        """
+        try:
+            # Définir la taille maximale de l'historique
+            readline.set_history_length(1000)
+
+            # Charger l'historique depuis le fichier s'il existe
+            if os.path.exists(self.history_file):
+                readline.read_history_file(self.history_file)
+
+        except Exception as e:
+            # Si ça échoue, continuer sans historique (pas critique)
+            pass
+
+    def _save_history(self):
+        """
+        Sauvegarder l'historique des commandes dans un fichier
+        """
+        try:
+            # Créer le répertoire parent si nécessaire
+            history_dir = os.path.dirname(self.history_file)
+            if history_dir and not os.path.exists(history_dir):
+                os.makedirs(history_dir)
+
+            # Sauvegarder l'historique
+            readline.write_history_file(self.history_file)
+
+        except Exception as e:
+            # Erreur non-critique, ignorer silencieusement
+            pass
 
     def _receive_loop(self):
         """
@@ -156,6 +211,8 @@ class CLIClient:
         print("🖥️  MeshBot CLI Client")
         print("━" * 60)
         print("Connected to bot. Type commands or 'quit' to exit.")
+        if READLINE_AVAILABLE:
+            print("💡 Use ↑/↓ arrows to navigate command history")
         print("━" * 60)
 
         try:

@@ -27,9 +27,10 @@ import time
 from utils import info_print, error_print
 
 # Configuration
-CACHE_FILE = "/tmp/weather_cache.json"
+CACHE_DIR = "/tmp"
 CACHE_DURATION = 300  # 5 minutes en secondes
-WTTR_URL = "https://wttr.in/?format=j1"  # Format JSON pour détails
+WTTR_BASE_URL = "https://wttr.in"
+DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
 CURL_TIMEOUT = 10  # secondes
 
 # Mapping codes météo wttr.in → émojis
@@ -188,33 +189,54 @@ def parse_weather_json(json_data):
         return "❌ Erreur format météo"
 
 
-def get_weather_data():
+def get_weather_data(location=None):
     """
     Récupérer les données météo avec système de cache
-    
+
+    Args:
+        location: Ville/lieu pour la météo (ex: "Paris", "London", "New York")
+                 Si None ou vide, utilise la géolocalisation par IP
+
     Le cache est vérifié en premier. S'il est valide (< 5 minutes),
     les données sont retournées immédiatement sans appel réseau.
-    
+
     Sinon, un appel curl est fait vers wttr.in et le cache est mis à jour.
-    
+
     Returns:
         str: Données météo formatées sur 4 lignes ou message d'erreur
-    
+
     Exemples:
-        >>> weather = get_weather_data()
+        >>> weather = get_weather_data()  # Géolocalisation
         >>> print(weather)
         Now: ☀️ 12°C 15km/h 0mm 65%
-        Today: ⛅ 14°C 18km/h 0mm 60%
-        Tomorrow: 🌧️ 11°C 22km/h 2.5mm 75%
-        Day+2: ☁️ 13°C 16km/h 0mm 70%
+
+        >>> weather = get_weather_data("London")  # Ville spécifique
+        >>> print(weather)
+        Now: 🌧️ 8°C 20km/h 2mm 80%
     """
     try:
+        # Normaliser la location
+        if not location:
+            location = DEFAULT_LOCATION
+
+        # Construire l'URL et le nom du cache
+        if location:
+            # Encoder la ville pour l'URL (espaces → +)
+            location_encoded = location.replace(' ', '+')
+            wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
+            # Nom de cache safe (espaces → _)
+            location_safe = location.replace(' ', '_').replace('/', '_')
+            cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
+        else:
+            wttr_url = f"{WTTR_BASE_URL}/?format=j1"
+            cache_file = f"{CACHE_DIR}/weather_cache_default.json"
+
         # ----------------------------------------------------------------
         # Phase 1: Vérifier le cache
         # ----------------------------------------------------------------
-        if os.path.exists(CACHE_FILE):
+        if os.path.exists(cache_file):
             try:
-                with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                with open(cache_file, 'r', encoding='utf-8') as f:
                     cache_data = json.load(f)
                 
                 cache_time = cache_data.get('timestamp', 0)
@@ -236,10 +258,10 @@ def get_weather_data():
         # ----------------------------------------------------------------
         # Phase 2: Appel curl vers wttr.in
         # ----------------------------------------------------------------
-        info_print(f"🌤️ Récupération météo depuis {WTTR_URL}...")
-        
+        info_print(f"🌤️ Récupération météo depuis {wttr_url}...")
+
         result = subprocess.run(
-            ['curl', '-s', WTTR_URL],
+            ['curl', '-s', wttr_url],
             capture_output=True,
             text=True,
             timeout=CURL_TIMEOUT
@@ -269,11 +291,12 @@ def get_weather_data():
                 'timestamp': time.time(),
                 'data': weather_data,
                 'source': 'wttr.in',
-                'url': WTTR_URL
+                'url': wttr_url,
+                'location': location or 'auto'
             }
-            
+
             try:
-                with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                with open(cache_file, 'w', encoding='utf-8') as f:
                     json.dump(cache_data, f, indent=2)
                 info_print(f"✅ Cache météo créé/mis à jour")
             except IOError as e:
@@ -309,10 +332,229 @@ def get_weather_data():
         return f"❌ Erreur: {str(e)[:50]}"
 
 
+def get_rain_graph(location=None):
+    """
+    Récupérer le graphe ASCII des précipitations sur 3 jours (compact sparkline)
+
+    Args:
+        location: Ville/lieu pour la météo (ex: "Paris", "London")
+                 Si None ou vide, utilise la géolocalisation par IP
+
+    Returns:
+        str: Graphe sparkline compact des précipitations (3 lignes max)
+
+    Exemples:
+        >>> rain = get_rain_graph("Paris")
+        >>> print(rain)
+        🌧️ Paris 3j (max:1.2mm)
+        ▁▂▃█▇▄▂▁▁▁▃▄▆▇▅▃▁▁▁▁▂▃▄▃▂▁
+        Aujour│   Demain  │J+2
+    """
+    try:
+        # Normaliser la location
+        if not location:
+            location = DEFAULT_LOCATION
+
+        # Construire l'URL v2n (narrow format avec graphes ASCII)
+        if location:
+            location_encoded = location.replace(' ', '+')
+            wttr_url = f"https://v2n.wttr.in/{location_encoded}"
+        else:
+            wttr_url = "https://v2n.wttr.in"
+
+        info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
+
+        # Appel curl vers wttr.in v2n
+        result = subprocess.run(
+            ['curl', '-s', wttr_url],
+            capture_output=True,
+            text=True,
+            timeout=CURL_TIMEOUT
+        )
+
+        if result.returncode != 0 or not result.stdout:
+            error_msg = "❌ Erreur récupération graphe pluie"
+            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+            return error_msg
+
+        output = result.stdout.strip()
+
+        if not output:
+            return "❌ Graphe pluie vide"
+
+        # Parser la sortie pour extraire les précipitations
+        lines = output.split('\n')
+
+        # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
+        rain_chars = []
+        max_precip = 0.0
+
+        for line in lines:
+            # Ligne avec la valeur max (ex: "1.25mm|95%")
+            if 'mm' in line and '|' in line and '%' in line:
+                try:
+                    # Extraire la valeur max (ex: "1.25mm")
+                    mm_part = line.split('mm')[0].strip()
+                    max_precip = float(mm_part.split()[-1])
+                except:
+                    pass
+
+            # Ligne avec les caractères de graphe ASCII
+            if any(c in line for c in '█▇▆▅▄▃▂▁_'):
+                # Extraire juste les caractères du graphe
+                for char in line:
+                    if char in '█▇▆▅▄▃▂▁_ ':
+                        if char == '_':
+                            rain_chars.append('▁')
+                        elif char == ' ':
+                            rain_chars.append('▁')
+                        else:
+                            rain_chars.append(char)
+
+        if not rain_chars:
+            return "❌ Graphe pluie non trouvé"
+
+        # Convertir les caractères en valeurs numériques (0-7)
+        char_to_value = {
+            '▁': 0, '_': 0, ' ': 0,
+            '▂': 1,
+            '▃': 2,
+            '▄': 3,
+            '▅': 4,
+            '▆': 5,
+            '▇': 6,
+            '█': 7
+        }
+
+        # Convertir en valeurs et compacter
+        values = []
+        for char in rain_chars:
+            if char in char_to_value:
+                values.append(char_to_value[char])
+
+        if not values:
+            return "❌ Aucune donnée pluie"
+
+        # Échantillonner pour avoir 72 points (24h par jour x 3 jours = résolution horaire)
+        # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
+        target_points = 72
+        if len(values) > target_points:
+            window_size = len(values) // target_points
+            if window_size < 1:
+                window_size = 1
+
+            sampled = []
+            for i in range(0, len(values), window_size):
+                window = values[i:i+window_size]
+                if window:
+                    # Prendre le MAX de chaque fenêtre pour préserver les fronts raides
+                    sampled.append(max(window))
+            values = sampled[:target_points]
+
+        # Créer un graphe multi-lignes (3 niveaux de hauteur)
+        width = len(values)
+        line_high = []  # Valeurs >= 5 (▅▆▇█)
+        line_mid = []   # Valeurs 3-4 (▃▄)
+        line_low = []   # Valeurs 0-2 (▁▂)
+
+        for v in values:
+            # Ligne haute (>= 5)
+            if v >= 6:
+                line_high.append('█')
+            elif v == 5:
+                line_high.append('▄')
+            else:
+                line_high.append(' ')
+
+            # Ligne moyenne (3-4)
+            if v >= 4:
+                line_mid.append('█')
+            elif v == 3:
+                line_mid.append('▄')
+            else:
+                line_mid.append(' ')
+
+            # Ligne basse (toutes les valeurs > 0)
+            if v >= 2:
+                line_low.append('█')
+            elif v == 1:
+                line_low.append('▄')
+            else:
+                line_low.append('▁')
+
+        # Formater la sortie
+        location_name = location if location else "local"
+        max_str = f"{max_precip:.1f}mm" if max_precip > 0 else "0mm"
+
+        # Créer une échelle horaire lisible (marqueurs toutes les 6h)
+        # 24h par jour, 3 jours = 72 points
+        # Marqueurs à 0h, 6h, 12h, 18h pour chaque jour
+        hour_scale = []
+        for i in range(width):
+            hour = i % 24
+            if hour == 0:
+                hour_scale.append('0')
+            elif hour == 6:
+                hour_scale.append('6')
+            elif hour == 12:
+                hour_scale.append('12')
+            elif hour == 18:
+                hour_scale.append('18')
+            else:
+                hour_scale.append(' ')
+
+        # Découper jour par jour (24h chunks) pour rester sous 220 chars/message
+        messages = []
+        day_names = ['Auj', 'Dem', 'J+2']
+
+        for day in range(3):
+            start_idx = day * 24
+            end_idx = start_idx + 24
+
+            day_lines = []
+            # Titre avec jour et max pour ce jour
+            day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
+
+            # Extraire les segments pour ce jour
+            high_day = ''.join(line_high[start_idx:end_idx]).rstrip()
+            mid_day = ''.join(line_mid[start_idx:end_idx]).rstrip()
+            low_day = ''.join(line_low[start_idx:end_idx])
+            scale_day = ''.join(hour_scale[start_idx:end_idx])
+
+            # Ajouter les lignes qui ont des données
+            if high_day.strip():
+                day_lines.append(high_day)
+            if mid_day.strip():
+                day_lines.append(mid_day)
+            day_lines.append(low_day)
+            day_lines.append(scale_day)
+
+            messages.append("\n".join(day_lines))
+
+        # Retourner les 3 messages séparés par un délimiteur
+        return "\n\n".join(messages)
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
+        error_print(error_msg)
+        return error_msg
+
+    except FileNotFoundError:
+        error_msg = "❌ Commande curl non trouvée"
+        error_print(error_msg)
+        return error_msg
+
+    except Exception as e:
+        error_print(f"❌ Erreur inattendue dans get_rain_graph: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+        return f"❌ Erreur: {str(e)[:50]}"
+
+
 def get_cache_info():
     """
     Obtenir des informations sur l'état du cache
-    
+
     Returns:
         dict: Informations sur le cache ou None si pas de cache
         {
@@ -322,7 +564,7 @@ def get_cache_info():
             'data': str,
             'timestamp': float
         }
-    
+
     Exemple:
         >>> info = get_cache_info()
         >>> if info and info['is_valid']:
