@@ -26,6 +26,11 @@ from system_monitor import SystemMonitor
 from packet_history import PacketHistory
 from safe_serial_connection import SafeSerialConnection
 
+# Import du nouveau gestionnaire multi-plateforme
+from platforms import PlatformManager
+from platforms.telegram_platform import TelegramPlatform
+from platform_config import get_enabled_platforms
+
 class MeshBot:
     def __init__(self):
         self.interface = None
@@ -48,7 +53,8 @@ class MeshBot:
         self.debug_interface = None
         # Thread de mise à jour
         self.update_thread = None
-        self.telegram_integration = None
+        self.telegram_integration = None  # DEPRECATED: Utiliser platform_manager
+        self.platform_manager = None  # Gestionnaire multi-plateforme
 
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
@@ -323,32 +329,62 @@ class MeshBot:
             info_print("✅ MessageHandler créé")
             
             # ========================================
-            # INTÉGRATION TELEGRAM
+            # INTÉGRATION PLATEFORMES MESSAGERIE
             # ========================================
             try:
-                from telegram_integration import TelegramIntegration
-                self.telegram_integration = TelegramIntegration(
-                    self.message_handler,
-                    self.node_manager,
-                    self.context_manager
-                )
-                self.telegram_integration.start()
-                info_print("✅ Interface Telegram intégrée")
-                
-                # Test du système
-                time.sleep(5)
-                self.telegram_integration.test_trace_system()
+                info_print("🌐 Initialisation gestionnaire de plateformes...")
+                self.platform_manager = PlatformManager()
 
-                # Démarrer le monitoring système
-                from system_monitor import SystemMonitor
-                self.system_monitor = SystemMonitor(self.telegram_integration)
-                self.system_monitor.start()
-                info_print("🔍 Monitoring système démarré")
+                # Enregistrer toutes les plateformes activées
+                for platform_config in get_enabled_platforms():
+                    info_print(f"📱 Configuration plateforme: {platform_config.platform_name}")
 
-            except ImportError:
-                debug_print("📱 Module Telegram non disponible")
+                    if platform_config.platform_name == 'telegram':
+                        telegram_platform = TelegramPlatform(
+                            platform_config,
+                            self.message_handler,
+                            self.node_manager,
+                            self.context_manager
+                        )
+                        self.platform_manager.register_platform(telegram_platform)
+
+                        # Garder la référence pour compatibilité (DEPRECATED)
+                        self.telegram_integration = telegram_platform.telegram_integration
+
+                    # TODO: Ajouter Discord quand implémenté
+                    # elif platform_config.platform_name == 'discord':
+                    #     discord_platform = DiscordPlatform(...)
+                    #     self.platform_manager.register_platform(discord_platform)
+
+                # Démarrer toutes les plateformes
+                self.platform_manager.start_all()
+
+                active_platforms = self.platform_manager.get_active_platforms()
+                if active_platforms:
+                    info_print(f"✅ Plateformes actives: {', '.join(active_platforms)}")
+                else:
+                    info_print("⏸️ Aucune plateforme messagerie active")
+
+                # Test Telegram si actif
+                if self.telegram_integration:
+                    time.sleep(5)
+                    try:
+                        self.telegram_integration.test_trace_system()
+                    except AttributeError:
+                        pass  # test_trace_system n'existe peut-être pas
+
+                # Démarrer le monitoring système (si Telegram actif)
+                if self.telegram_integration:
+                    from system_monitor import SystemMonitor
+                    self.system_monitor = SystemMonitor(self.telegram_integration)
+                    self.system_monitor.start()
+                    info_print("🔍 Monitoring système démarré")
+
+            except ImportError as e:
+                info_print(f"📱 Plateformes messagerie non disponibles: {e}")
             except Exception as e:
-                error_print(f"Erreur intégration Telegram: {e}")
+                error_print(f"Erreur intégration plateformes: {e}")
+                error_print(traceback.format_exc())
             
             # ========================================
             # MISE À JOUR BASE DE NŒUDS
@@ -407,7 +443,12 @@ class MeshBot:
             self.system_monitor.stop() 
 
         # Arrêter l'intégration Telegram
-        if self.telegram_integration:
+        # Arrêter toutes les plateformes
+        if self.platform_manager:
+            self.platform_manager.stop_all()
+
+        # Compatibilité ancienne méthode (DEPRECATED)
+        if self.telegram_integration and not self.platform_manager:
             self.telegram_integration.stop()
 
         # ✅ NOUVEAU: Utiliser le gestionnaire pour fermer proprement

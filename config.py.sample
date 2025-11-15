@@ -63,9 +63,19 @@ TELEGRAM_AI_CONFIG = {
     "max_response_chars": 3000  # Plus long pour Telegram
 }
 
+# ========================================
+# CONFIGURATION PLATEFORMES MESSAGERIE
+# ========================================
+
 # Configuration Telegram Bridge
 TELEGRAM_ENABLED = True  # Activer/désactiver l'intégration Telegram
 TELEGRAM_BOT_TOKEN = "******************"  # Token du bot Telegram
+
+# NOTE: Avec la nouvelle architecture modulaire, vous pouvez :
+# 1. Désactiver Telegram en mettant TELEGRAM_ENABLED = False
+# 2. Ajouter Discord en activant DISCORD_ENABLED = True (futur)
+# 3. Utiliser plusieurs plateformes en même temps
+# Voir platform_config.py pour la configuration détaillée
 
 # Utilisateurs Telegram autorisés (liste vide = tous autorisés)
 # Format: [123456789, 987654321, ...]
