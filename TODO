@@ -1,0 +1,11 @@
+Fixer la cap des paquets encrypt
+
+N'utiliser plus qu'un seul node mesh
+
+Consolider toutes les operations DB en une seule avec options
+
+
+"/stats channel" devrait afficher le LongName au lieu de l'ID numérique
+
+améliorer /trace et tout son debug bruyant
+

@@ -26,7 +26,6 @@ class TrafficMonitor:
         self.traffic_retention_hours = 24
 
         # === HISTOGRAMME : COLLECTE PAR TYPE DE PAQUET ===
-        self.packet_history = deque(maxlen=5000)  # Tous les paquets (24h)
         self.packet_types = {
             'TEXT_MESSAGE_APP': 'messages',
             'POSITION_APP': 'pos',
@@ -849,15 +848,6 @@ class TrafficMonitor:
             if old_count > 0:
                 debug_print(f"🧹 {old_count} paquets anciens expirés")
 
-            # Nettoyer aussi l'historique des paquets
-            try:
-                old_packet_count = sum(1 for pkt in self.packet_history
-                                      if pkt['timestamp'] < cutoff_time)
-                if old_packet_count > 0:
-                    debug_print(f"🧹 {old_packet_count} paquets anciens dans historique")
-            except Exception as e:
-                debug_print(f"Erreur nettoyage historique paquets: {e}")
-                
         except Exception as e:
             debug_print(f"Erreur nettoyage: {e}")
     
@@ -1089,45 +1079,6 @@ class TrafficMonitor:
             error_print(f"Erreur génération historique compact: {e}")
             return f"Erreur: {str(e)[:30]}"
 
-    # ============================================================
-    # AJOUT 2: Nouvelle méthode add_packet_to_history
-    # ============================================================
-
-    def add_packet_to_history(self, packet):
-        """
-        Enregistrer un paquet dans l'historique pour l'histogramme
-        Appelé pour TOUS les paquets reçus
-        """
-        try:
-            from_id = packet.get('from', 0)
-            timestamp = time.time()
-            
-            # Déterminer le type de paquet
-            packet_type = 'unknown'
-            if 'decoded' in packet:
-                portnum = packet['decoded'].get('portnum', '')
-                packet_type = self.packet_types.get(portnum, portnum)
-            
-            # Obtenir le nom du nœud
-            sender_name = self.node_manager.get_node_name(from_id)
-            
-            # Enregistrer le paquet
-            packet_entry = {
-                'timestamp': timestamp,
-                'from_id': from_id,
-                'sender_name': sender_name,
-                'type': packet_type,
-                'rssi': packet.get('rssi', 0),
-                'snr': packet.get('snr', 0.0)
-            }
-            
-            self.packet_history.append(packet_entry)
-            
-            debug_print(f"📊 Paquet enregistré: {packet_type} de {sender_name}")
-            
-        except Exception as e:
-            debug_print(f"Erreur enregistrement paquet: {e}")
-
     def get_packet_histogram_overview(self, hours=24):
         """
         Vue d'ensemble compacte de tous les types de paquets (pour /histo).
@@ -1288,7 +1239,164 @@ class TrafficMonitor:
             error_print(f"Erreur génération histogramme: {e}")
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
-            
+
+    def get_histogram_report(self, hours=24, packet_type=None, compact=False):
+        """
+        Générer un histogramme avec sparkline (version moderne et compacte).
+
+        Args:
+            hours: Nombre d'heures à analyser
+            packet_type: Type de paquet à filtrer (None = tous)
+            compact: True pour version mesh (ultra-compact), False pour Telegram
+
+        Returns:
+            str: Histogramme avec sparkline
+        """
+        try:
+            # Charger les paquets depuis SQLite
+            all_packets = self.persistence.load_packets(hours=hours, limit=10000)
+
+            # Mapping des types
+            type_mapping = {
+                'POSITION_APP': ['pos', 'position'],
+                'TEXT_MESSAGE_APP': ['text', 'msg', 'message'],
+                'NODEINFO_APP': ['node', 'info', 'nodeinfo'],
+                'TELEMETRY_APP': ['tele', 'telemetry'],
+                'TRACEROUTE_APP': ['trace', 'traceroute'],
+                'ROUTING_APP': ['route', 'routing']
+            }
+
+            # Filtrer par type si spécifié
+            filtered_packets = []
+            filter_label = "TOUS"
+
+            if packet_type:
+                packet_type_lower = packet_type.lower()
+                matched_type = None
+
+                # Trouver le type correspondant
+                for full_type, aliases in type_mapping.items():
+                    if packet_type_lower in aliases or packet_type == full_type:
+                        matched_type = full_type
+                        filter_label = aliases[0].upper()
+                        break
+
+                if matched_type:
+                    filtered_packets = [p for p in all_packets if p['packet_type'] == matched_type]
+                else:
+                    filtered_packets = [p for p in all_packets if p['packet_type'] == packet_type]
+                    filter_label = packet_type.upper()
+            else:
+                filtered_packets = all_packets
+
+            if not filtered_packets:
+                return f"📊 Aucun paquet ({hours}h)"
+
+            # Compter par heure (chronologique sur les dernières X heures)
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            hourly_counts = []
+            hour_labels = []
+
+            for i in range(hours - 1, -1, -1):  # De oldest à newest
+                target_time = now - timedelta(hours=i)
+                hour_start = target_time.replace(minute=0, second=0, microsecond=0)
+                hour_end = hour_start + timedelta(hours=1)
+
+                count = sum(1 for p in filtered_packets
+                           if hour_start.timestamp() <= p['timestamp'] < hour_end.timestamp())
+                hourly_counts.append(count)
+                hour_labels.append(hour_start.strftime('%H'))
+
+            # Symboles sparkline
+            sparkline_symbols = "▁▂▃▄▅▆▇█"
+
+            # Générer sparkline
+            if not hourly_counts or max(hourly_counts) == 0:
+                sparkline = "▁" * len(hourly_counts)
+            else:
+                max_count = max(hourly_counts)
+                min_count = min(hourly_counts)
+
+                sparkline = ""
+                for count in hourly_counts:
+                    if max_count == min_count:
+                        symbol_idx = 4  # Milieu si tous égaux
+                    else:
+                        normalized = (count - min_count) / (max_count - min_count)
+                        symbol_idx = int(normalized * (len(sparkline_symbols) - 1))
+                        symbol_idx = max(0, min(len(sparkline_symbols) - 1, symbol_idx))
+                    sparkline += sparkline_symbols[symbol_idx]
+
+            # Stats
+            total = len(filtered_packets)
+            unique_nodes = len(set(p['from_id'] for p in filtered_packets))
+            avg = total / hours
+            current_hour_count = hourly_counts[-1] if hourly_counts else 0
+
+            # Tendance (3 dernières heures)
+            if len(hourly_counts) >= 3:
+                recent = hourly_counts[-3:]
+                if recent[-1] > recent[-2]:
+                    trend = "↗"
+                elif recent[-1] < recent[-2]:
+                    trend = "↘"
+                else:
+                    trend = "→"
+            else:
+                trend = "→"
+
+            # Format de sortie
+            lines = []
+
+            if compact:
+                # Version mesh ultra-compacte
+                lines.append(f"📊 {filter_label}({hours}h)")
+                lines.append(sparkline)
+                lines.append(f"{total}p {unique_nodes}n {trend}")
+                lines.append(f"Now:{current_hour_count} Avg:{avg:.1f}/h")
+            else:
+                # Version Telegram détaillée
+                lines.append(f"📊 **HISTOGRAMME {filter_label}** ({hours}h)")
+                lines.append("=" * 50)
+                lines.append("")
+                lines.append(f"**📈 Évolution temporelle:**")
+                lines.append(f"`{sparkline}`")
+                lines.append("")
+                lines.append(f"**📊 Statistiques:**")
+                lines.append(f"• Total: {total} paquets")
+                lines.append(f"• Nœuds uniques: {unique_nodes}")
+                lines.append(f"• Moyenne: {avg:.1f} paquets/heure")
+                lines.append(f"• Heure actuelle: {current_hour_count} paquets {trend}")
+                lines.append("")
+
+                # Heure de pointe
+                if hourly_counts:
+                    max_idx = hourly_counts.index(max(hourly_counts))
+                    peak_hour = hour_labels[max_idx]
+                    peak_count = hourly_counts[max_idx]
+                    lines.append(f"🏆 **Pointe:** {peak_hour}h00 ({peak_count} paquets)")
+
+                # Distribution par heure (dernières 6h seulement pour ne pas surcharger)
+                if hours <= 12:
+                    lines.append("")
+                    lines.append("**⏰ Dernières heures:**")
+                    for i in range(min(6, len(hourly_counts))):
+                        idx = -(i + 1)
+                        h = hour_labels[idx]
+                        c = hourly_counts[idx]
+                        pct = (c / total * 100) if total > 0 else 0
+                        bar_len = int(c / max(hourly_counts) * 15) if max(hourly_counts) > 0 else 0
+                        bar = "█" * bar_len
+                        lines.append(f"{h}h: {bar} {c} ({pct:.1f}%)")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur histogram_report: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
     def add_public_message(self, packet, message_text, source='local'):
         """
         Enregistrer un message public avec collecte de statistiques avancées
@@ -1791,7 +1899,6 @@ class TrafficMonitor:
             self.all_packets.clear()
             self.public_messages.clear()
             self.node_packet_stats.clear()
-            self.packet_history.clear()
 
             # Réinitialiser les statistiques globales
             self.global_packet_stats = {

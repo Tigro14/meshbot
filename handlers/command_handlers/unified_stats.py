@@ -42,7 +42,11 @@ class UnifiedStatsCommands:
         params = params or []
 
         try:
-            if subcommand in ['', 'global', 'g']:
+            # Commande sans paramètre: afficher l'aide
+            if subcommand == '':
+                return self.get_help(channel)
+            # Stats globales
+            elif subcommand in ['global', 'g']:
                 return self.get_global_stats(params, channel)
             elif subcommand in ['top', 't']:
                 return self.get_top_talkers(params, channel)
@@ -66,34 +70,29 @@ class UnifiedStatsCommands:
         """Afficher l'aide des sous-commandes"""
         if channel == 'mesh':
             return (
-                "📊 /stats [cmd]\n"
-                "g=global t=top p=packets\n"
-                "ch=channel h=histo\n"
-                "Ex: /stats t 12"
+                "📊 /stats [cmd] [h]\n"
+                "g=global t=top p=pkt\n"
+                "ch=canal h=histo\n"
+                "Ex: /stats ch 24"
             )
         else:  # telegram
-            return """📊 **COMMANDES STATS**
-
-**Syntaxe:** `/stats [sous-commande] [paramètres]`
+            return """📊 **STATS - OPTIONS DISPONIBLES**
 
 **Sous-commandes:**
-• `global` - Vue d'ensemble réseau (défaut)
-• `top [hours] [n]` - Top talkers
-• `packets [hours]` - Distribution types de paquets
-• `channel [hours]` - Utilisation du canal
-• `histo [type] [hours]` - Histogramme temporel
-• `traffic [hours]` - Historique messages
-
-**Raccourcis:** g, t, p, ch, h, tr
+• `top [h] [n]` - Top talkers
+• `channel [h]` - Utilisation canal
+• `histo [type] [h]` - Historique (sparkline)
+• `packets [h]` - Types de paquets
+• `global` - Vue d'ensemble
+• `traffic [h]` - Messages publics
 
 **Exemples:**
-• `/stats` → Vue globale
-• `/stats top 24 10` → Top 10 sur 24h
-• `/stats channel 12` → Canal sur 12h
-• `/stats h pos 6` → Histo positions 6h
+• `/stats top 24 10` - Top 10 dernières 24h
+• `/stats channel 12` - Canal dernières 12h
+• `/stats histo pos 6` - Histo positions 6h
 
-**Aliases (compatibilité):**
-`/top`, `/packets`, `/histo` fonctionnent toujours!
+**Raccourcis:** t, ch, h, p, g, tr
+**Aliases:** `/top`, `/packets`, `/histo`
 """
 
     def get_global_stats(self, params, channel='mesh'):
@@ -268,15 +267,25 @@ class UnifiedStatsCommands:
                 pass
 
         try:
+            # Mettre à jour la base de noms depuis l'interface pour avoir les LongName
+            if self.interface:
+                try:
+                    self.node_manager.update_node_database(self.interface)
+                    debug_print("📋 Base de noms mise à jour pour /stats channel")
+                except Exception as e:
+                    debug_print(f"⚠️ Erreur mise à jour noms: {e}")
+
             tm = self.traffic_monitor
 
             lines = []
-            lines.append(f"📡 CANAL ({hours}h)")
 
-            if channel == 'mesh':
-                lines.append("=" * 30)
-            else:
+            # Entête seulement pour Telegram
+            if channel == 'telegram':
+                lines.append(f"📡 CANAL ({hours}h)")
                 lines.append("=" * 50)
+            else:
+                # Pas d'entête pour mesh, juste le titre dans la première ligne de stats
+                pass
 
             # Charger les paquets de télémétrie
             all_packets = tm.persistence.load_packets(hours=hours, limit=10000)
@@ -287,6 +296,19 @@ class UnifiedStatsCommands:
             for packet in all_packets:
                 if packet['packet_type'] == 'TELEMETRY_APP':
                     from_id = packet['from_id']
+
+                    # Convertir from_id en int si c'est une string
+                    if isinstance(from_id, str):
+                        try:
+                            # Si c'est un ID hex comme "!12345678"
+                            if from_id.startswith('!'):
+                                from_id = int(from_id[1:], 16)
+                            else:
+                                # ID décimal en string
+                                from_id = int(from_id)
+                        except (ValueError, AttributeError):
+                            debug_print(f"⚠️ ID invalide ignoré: {from_id}")
+                            continue
 
                     if 'telemetry' in packet and packet['telemetry'] is not None:
                         telemetry = packet['telemetry']
@@ -325,9 +347,35 @@ class UnifiedStatsCommands:
 
             # Afficher selon le canal
             if channel == 'mesh':
-                # Version compacte pour LoRa
-                for i, node_data in enumerate(node_averages[:5], 1):  # Top 5
-                    name = node_data['name'][:10]
+                # Version ultra-compacte pour LoRa (pagination 180 chars)
+                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
+
+                # Compter la distribution par niveau
+                count_crit = len([n for n in node_averages if n['avg_channel'] > 25])
+                count_high = len([n for n in node_averages if 15 < n['avg_channel'] <= 25])
+                count_norm = len([n for n in node_averages if 10 < n['avg_channel'] <= 15])
+                count_low = len([n for n in node_averages if n['avg_channel'] <= 10])
+
+                # Synthèse globale avec titre intégré
+                lines.append(f"📡 Canal({hours}h): {total_avg:.1f}% | {len(node_averages)}n")
+
+                # Distribution compacte
+                distrib_parts = []
+                if count_crit > 0:
+                    distrib_parts.append(f"{count_crit}🔴")
+                if count_high > 0:
+                    distrib_parts.append(f"{count_high}🟡")
+                if count_norm > 0:
+                    distrib_parts.append(f"{count_norm}🟢")
+                if count_low > 0:
+                    distrib_parts.append(f"{count_low}⚪")
+
+                if distrib_parts:
+                    lines.append(" ".join(distrib_parts))
+
+                # Top 5 nœuds (sans numérotation)
+                for node_data in node_averages[:5]:
+                    name = node_data['name'][:10]  # Nom un peu plus long (10 au lieu de 8)
                     avg_ch = node_data['avg_channel']
 
                     # Icône selon niveau
@@ -340,17 +388,54 @@ class UnifiedStatsCommands:
                     else:
                         icon = "⚪"
 
-                    lines.append(f"{i}.{icon}{name}:{avg_ch:.1f}%")
+                    lines.append(f"{icon}{name}:{avg_ch:.1f}%")
 
-                # Moyenne réseau
+                # Alerte si moyenne élevée
+                if total_avg > 15:
+                    lines.append("⚠️ Canal chargé")
+                elif total_avg > 10:
+                    lines.append("✓ Canal OK")
+
+            else:  # telegram - version détaillée avec synthèse
+                # Calculer stats globales d'abord
                 total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
-                lines.append(f"Moy:{total_avg:.1f}%")
+                max_ch = max(n['avg_channel'] for n in node_averages)
+                min_ch = min(n['avg_channel'] for n in node_averages)
 
-            else:  # telegram - version détaillée
-                lines.append(f"\n📊 Nœuds actifs: {len(node_averages)}")
-                lines.append("")
+                # Distribution par niveau
+                count_crit = len([n for n in node_averages if n['avg_channel'] > 25])
+                count_high = len([n for n in node_averages if 15 < n['avg_channel'] <= 25])
+                count_norm = len([n for n in node_averages if 10 < n['avg_channel'] <= 15])
+                count_low = len([n for n in node_averages if n['avg_channel'] <= 10])
 
-                for i, node_data in enumerate(node_averages, 1):
+                # SYNTHÈSE GLOBALE EN TÊTE
+                lines.append("\n**📊 SYNTHÈSE RÉSEAU**")
+                lines.append(f"Nœuds actifs: **{len(node_averages)}**")
+                lines.append(f"Moyenne canal: **{total_avg:.1f}%**")
+                lines.append(f"Range: {min_ch:.1f}% - {max_ch:.1f}%")
+
+                # État global
+                if total_avg > 20:
+                    lines.append("🔴 **État: CRITIQUE - Réduire trafic**")
+                elif total_avg > 15:
+                    lines.append("🟡 **État: ÉLEVÉ - Attention**")
+                elif total_avg > 10:
+                    lines.append("🟢 **État: NORMAL**")
+                else:
+                    lines.append("⚪ **État: FAIBLE**")
+
+                # Distribution visuelle
+                lines.append(f"\n**Distribution:**")
+                lines.append(f"🔴 Critique (>25%): {count_crit} nœuds")
+                lines.append(f"🟡 Élevé (15-25%): {count_high} nœuds")
+                lines.append(f"🟢 Normal (10-15%): {count_norm} nœuds")
+                lines.append(f"⚪ Faible (<10%): {count_low} nœuds")
+
+                # DÉTAILS TOP NŒUDS (limité à 15)
+                lines.append(f"\n**📈 TOP {min(15, len(node_averages))} NŒUDS**")
+                lines.append("=" * 50)
+
+                for i, node_data in enumerate(node_averages[:15], 1):
                     name = node_data['name'][:20]
                     avg_ch = node_data['avg_channel']
                     avg_air = node_data['avg_air']
@@ -370,7 +455,7 @@ class UnifiedStatsCommands:
                         icon = "⚪"
                         status = "FAIBLE"
 
-                    lines.append(f"{i}. {icon} {name}")
+                    lines.append(f"\n{i}. {icon} **{name}**")
                     lines.append(f"   Canal: {avg_ch:.1f}% ({status})")
                     if avg_air > 0:
                         lines.append(f"   Air TX: {avg_air:.1f}%")
@@ -379,23 +464,19 @@ class UnifiedStatsCommands:
                     if avg_ch > 15:
                         lines.append("   ⚠️ Réduire fréquence paquets")
 
-                    lines.append("")
+                # Résumé des nœuds non affichés
+                if len(node_averages) > 15:
+                    remaining = len(node_averages) - 15
+                    remaining_avg = sum(n['avg_channel'] for n in node_averages[15:]) / remaining
+                    lines.append(f"\n... et **{remaining} autres nœuds** (moy: {remaining_avg:.1f}%)")
 
-                # Stats globales
-                lines.append("=" * 50)
-                lines.append("📈 GLOBALES:")
-                total_avg = sum(n['avg_channel'] for n in node_averages) / len(node_averages)
-                max_ch = max(n['avg_channel'] for n in node_averages)
-                min_ch = min(n['avg_channel'] for n in node_averages)
-                lines.append(f"Moy: {total_avg:.1f}%")
-                lines.append(f"Max: {max_ch:.1f}%")
-                lines.append(f"Min: {min_ch:.1f}%")
-
-                lines.append("\n📋 SEUILS:")
-                lines.append("🟢 <10% Normal")
-                lines.append("🟡 10-15% Acceptable")
-                lines.append("🟠 15-25% Élevé")
-                lines.append("🔴 >25% Critique")
+                # LÉGENDE SEUILS
+                lines.append("\n" + "=" * 50)
+                lines.append("**📋 SEUILS DE RÉFÉRENCE**")
+                lines.append("🟢 <10% = Normal")
+                lines.append("🟡 10-15% = Acceptable")
+                lines.append("🟠 15-25% = Élevé")
+                lines.append("🔴 >25% = Critique")
 
             return "\n".join(lines)
 
@@ -442,9 +523,12 @@ class UnifiedStatsCommands:
                 pass
 
         try:
+            # Utiliser le nouveau format avec sparkline
+            compact = (channel == 'mesh')
             return self.traffic_monitor.get_histogram_report(
                 hours=hours,
-                packet_type=packet_type
+                packet_type=packet_type,
+                compact=compact
             )
         except Exception as e:
             error_print(f"Erreur histogram: {e}")

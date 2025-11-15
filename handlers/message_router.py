@@ -15,11 +15,12 @@ from .command_handlers import (
     UtilityCommands
 )
 from .command_handlers.unified_stats import UnifiedStatsCommands
+from .command_handlers.db_commands import DBCommands
 
 class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
-                 bot_start_time=None,packet_history=None):
+                 bot_start_time=None):
 
         # Dépendances
         self.node_manager = node_manager
@@ -33,11 +34,13 @@ class MessageRouter:
         self.ai_handler = AICommands(llama_client, self.sender)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
-        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender,packet_history,node_manager)
-        self.packet_history = packet_history
+        self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender, node_manager)
 
         # Gestionnaire unifié des statistiques (nouveau système)
         self.unified_stats = UnifiedStatsCommands(traffic_monitor, node_manager, interface) if traffic_monitor else None
+
+        # Gestionnaire des opérations de base de données
+        self.db_handler = DBCommands(traffic_monitor, self.sender) if traffic_monitor else None
    
     def process_text_message(self, packet, decoded, message):
         """Point d'entrée principal pour traiter un message texte"""
@@ -131,6 +134,12 @@ class MessageRouter:
         elif message.startswith('/stats'):
             self._handle_unified_stats(message, sender_id, sender_info)
 
+        # ===================================================================
+        # Commandes de base de données
+        # ===================================================================
+        elif message.startswith('/db'):
+            self._handle_db(message, sender_id, sender_info)
+
         # Commandes utilitaires
         elif message.startswith('/power'):
             self.utility_handler.handle_power(sender_id, sender_info)
@@ -201,6 +210,38 @@ class MessageRouter:
 
         except Exception as e:
             error_print(f"Erreur _handle_unified_stats: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            self.sender.send_single(f"❌ Erreur: {str(e)[:50]}", sender_id, sender_info)
+
+    def _handle_db(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /db [subcommand] [params]
+        Opérations de base de données unifiées
+        """
+        # Vérifier que db_handler est disponible
+        if not self.db_handler:
+            self.sender.send_single("❌ DB non disponible", sender_id, sender_info)
+            return
+
+        # Parser les arguments
+        parts = message.split()
+        params = parts[1:] if len(parts) > 1 else []
+
+        try:
+            # Appeler le handler DB (channel='mesh' pour LoRa)
+            info_print(f"📊 Commande DB '{' '.join(params)}' de {sender_info}")
+            self.db_handler.handle_db(
+                sender_id=sender_id,
+                sender_info=sender_info,
+                params=params,
+                channel='mesh'  # Adaptation automatique pour LoRa
+            )
+
+            info_print(f"✅ DB '{params[0] if params else 'help'}' traité pour {sender_info}")
+
+        except Exception as e:
+            error_print(f"Erreur _handle_db: {e}")
             import traceback
             error_print(traceback.format_exc())
             self.sender.send_single(f"❌ Erreur: {str(e)[:50]}", sender_id, sender_info)

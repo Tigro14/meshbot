@@ -20,15 +20,14 @@ from llama_client import LlamaClient
 from esphome_client import ESPHomeClient
 from remote_nodes_client import RemoteNodesClient
 from message_handler import MessageHandler
-from debug_interface import DebugInterface
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
-from packet_history import PacketHistory
 from safe_serial_connection import SafeSerialConnection
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
 from platforms.telegram_platform import TelegramPlatform
+from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
 class MeshBot:
@@ -43,14 +42,11 @@ class MeshBot:
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
-        self.packet_history = PacketHistory()
         self.remote_nodes_client = RemoteNodesClient()
         self.remote_nodes_client.set_node_manager(self.node_manager)
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
-        # Interface de debug
-        self.debug_interface = None
         # Thread de mise à jour
         self.update_thread = None
         self.telegram_integration = None  # DEPRECATED: Utiliser platform_manager
@@ -110,13 +106,8 @@ class MeshBot:
             self.node_manager.update_rx_history(packet)
             self.node_manager.track_packet_type(packet)
 
-            if 'decoded' in packet:
-                portnum = packet['decoded'].get('portnum', 'UNKNOWN_APP')
-                self.packet_history.add_packet(portnum)
-
             # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
-                self.traffic_monitor.add_packet_to_history(packet)
                 self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)
 
             # ========================================
@@ -255,8 +246,6 @@ class MeshBot:
                 self.context_manager.cleanup_old_contexts()
                 self.node_manager.cleanup_old_rx_history()
                 self.traffic_monitor.cleanup_old_messages()
-                self.packet_history.cleanup_old_data()
-                self.packet_history.save_history()
 
                 # Sauvegarde des statistiques dans SQLite
                 debug_print("💾 Sauvegarde des statistiques...")
@@ -331,8 +320,7 @@ class MeshBot:
                 self.context_manager,
                 self.interface,  # Interface directe
                 self.traffic_monitor,
-                self.start_time,
-                packet_history=self.packet_history
+                self.start_time
             )
             info_print("✅ MessageHandler créé")
             
@@ -358,6 +346,16 @@ class MeshBot:
 
                         # Garder la référence pour compatibilité (DEPRECATED)
                         self.telegram_integration = telegram_platform.telegram_integration
+
+                    elif platform_config.platform_name == 'cli_server':
+                        info_print("🖥️  Configuration serveur CLI...")
+                        cli_server_platform = CLIServerPlatform(
+                            platform_config,
+                            self.message_handler,
+                            self.node_manager,
+                            self.context_manager
+                        )
+                        self.platform_manager.register_platform(cli_server_platform)
 
                     # TODO: Ajouter Discord quand implémenté
                     # elif platform_config.platform_name == 'discord':
@@ -412,15 +410,11 @@ class MeshBot:
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
             
             if DEBUG_MODE:
-                info_print("🔧 MODE DEBUG avec architecture modulaire")
+                info_print("🔧 MODE DEBUG activé")
                 print(f"Config: RSSI={SHOW_RSSI} SNR={SHOW_SNR} COLLECT={COLLECT_SIGNAL_METRICS}")
-                print("\nCommandes: test, bot, power, rx, my, legend, help, sys, rebootg2, rebootpi, g2, echo, config, nodes, context, update, save, mem, quit")
-                
-                # Initialiser et démarrer l'interface debug
-                self.debug_interface = DebugInterface(self)
-                threading.Thread(target=self.debug_interface.interactive_loop, daemon=True).start()
+                print("Debug via logs et commandes /stats, /db, etc.")
             else:
-                info_print("🚀 Bot en service- type /help")
+                info_print("🚀 Bot en service - type /help")
             
             # ========================================
             # BOUCLE PRINCIPALE

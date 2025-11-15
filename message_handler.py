@@ -13,10 +13,10 @@ class MessageHandler:
     Permet de garder l'interface existante sans casser le code
     """
     
-    def __init__(self, llama_client, esphome_client, remote_nodes_client, 
+    def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
-                 bot_start_time=None,packet_history=None):
-        
+                 bot_start_time=None):
+
         # Créer le router qui gère tout
         self.router = MessageRouter(
             llama_client,
@@ -26,9 +26,7 @@ class MessageHandler:
             context_manager,
             interface,
             traffic_monitor,
-            bot_start_time,
-            packet_history 
-
+            bot_start_time
         )
         
         # Exposer les propriétés nécessaires pour compatibilité

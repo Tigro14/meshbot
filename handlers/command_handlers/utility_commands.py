@@ -16,11 +16,10 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender,packet_history=None,node_manager=None):
+    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
-        self.packet_history = packet_history
         self.node_manager = node_manager
     
     def handle_power(self, sender_id, sender_info):
@@ -349,6 +348,7 @@ class UtilityCommands:
             "/annonce",
             "/nodes",
             "/stats [cmd]",
+            "/db [cmd]",
             "/top",
             "/trace",
             "/packets",
@@ -405,13 +405,15 @@ class UtilityCommands:
         • /histo [type] [h] - Histogramme (alias)
           Types: all, messages, pos, info
 
-        💾 PERSISTANCE TRAFIC
-        • /dbstats - Stats de la base de données
-          Affiche le nombre de paquets, taille DB, etc.
-        • /cleanup [heures] - Nettoie anciennes données
-          Défaut: 48h, supprime données plus anciennes
-        • /cleartraffic - Efface tout l'historique
-          ⚠️  Supprime toutes les données (mémoire + DB)
+        💾 BASE DE DONNÉES
+        • /db [cmd] [params] - Opérations base de données
+          Sous-commandes:
+             - stats : Statistiques DB (taille, nb entrées)
+             - info : Informations détaillées (tables, schema)
+             - clean [h] : Nettoyer données anciennes (défaut 48h)
+             - vacuum : Optimiser DB (VACUUM)
+          Raccourcis: s, i, v
+          Ex: /db stats, /db clean 72, /db vacuum
 
         📢 DIFFUSION
         •echo <message> - Diffuser sur le réseau
