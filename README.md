@@ -35,7 +35,7 @@ graph TD
 
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
-- Pour compiler/installer llama.cpp sur le Raspberry Pi 5, 
+- Pour compiler/installer llama.cpp sur le Raspberry Pi 5,
   voir le fichier https://github.com/Tigro14/meshbot/blob/main/llama.cpp-integration/READMELLAMA.md
 
 ## Installation
@@ -54,7 +54,7 @@ graph TD
 
 ## Configuration du redémarrage à distance
 
-Le bot dispose d'une commande cachée `/rebootpi` qui permet de redémarrer le Pi5 à distance. 
+Le bot dispose d'une commande cachée `/rebootpi` qui permet de redémarrer le Pi5 à distance.
 Pour des raisons de sécurité, cette fonctionnalité utilise un système de fichier signal.
 
 ### 1. Script de surveillance
@@ -74,7 +74,7 @@ while true; do
         cat "$SIGNAL_FILE" >> "$LOG_FILE"
         rm -f "$SIGNAL_FILE"
         echo "$(date): Exécution du redémarrage Pi..." >> "$LOG_FILE"
-        
+
         # Méthodes de redémarrage pour RPi5 (par ordre de préférence)
         # 1. systemctl (recommandé pour systemd)
         systemctl reboot || \
@@ -190,7 +190,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - `/rebootpi <passwd>` - Redémarrage du Pi5 (nécessite configuration)
 - `/rebootg2 <passwd>` - Redémarrage du node ROUTER via le MeshBOT en admin à distance + télémétrie
 
-### Les commandes specifiques Telegram 
+### Les commandes specifiques Telegram
 - le bot IA a plus de token et de contexte ca les restrictions sont moindre qu'en Mesh
 - `/fullnodes` renvoie une liste complete de tous les nodes et signal en mémoire du node répéteur
 - voir /help pour pour d'info
@@ -199,7 +199,7 @@ Le fichier `/var/log/bot-reboot.log` contient :
 
 Le fichier `config.py` contient tous les paramètres configurables :
 - Ports série et réseau
-- Token telegram 
+- Token telegram
 - Limites de throttling
 - Configuration des nœuds distants
 - Paramètres d'affichage
