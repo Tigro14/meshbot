@@ -566,9 +566,9 @@ class TrafficMonitor:
         Générer un rapport des top talkers avec breakdown par type de paquet
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
-            
+            # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
+            all_packets = self.persistence.load_packets(hours=hours, limit=10000)
+
             # Calculer les stats pour la période
             period_stats = defaultdict(lambda: {
                 'total_packets': 0,
@@ -585,8 +585,10 @@ class TrafficMonitor:
                    # ✅ AJOUT : Compter par source
             local_count = 0
             tigrog2_count = 0
-            
+
             for msg in self.public_messages:
+                current_time = time.time()
+                cutoff_time = current_time - (hours * 3600)
                 if msg['timestamp'] >= cutoff_time:
                     from_id = msg['from_id']
                     period_stats[from_id]['messages'] += 1
@@ -594,30 +596,30 @@ class TrafficMonitor:
                     period_stats[from_id]['chars'] = period_stats[from_id].get('chars', 0) + msg['message_length']
                     period_stats[from_id]['last_seen'] = msg['timestamp']
                     period_stats[from_id]['name'] = msg['sender_name']
-                    
+
                     # Compter par source
                     if msg.get('source') == 'tigrog2':
                         tigrog2_count += 1
                     else:
                         local_count += 1
-            
+
             if not period_stats:
                 return f"📊 Aucune activité dans les {hours}h"
-            
+
             # Trier par nombre de messages
             sorted_nodes = sorted(
                 period_stats.items(),
                 key=lambda x: x[1]['messages'],
                 reverse=True
             )[:top_n]
-            
+
             # Construire le rapport
             lines = []
             lines.append(f"🏆 TOP TALKERS ({hours}h)")
             lines.append(f"{'='*30}")
-            
+
             total_messages = sum(s['messages'] for _, s in period_stats.items())
-        
+
             # ✅ AJOUT : Afficher les sources
             lines.append(f"Total: {total_messages} messages")
             lines.append(f"  📻 Local: {local_count}")
@@ -625,8 +627,7 @@ class TrafficMonitor:
             lines.append("")
 
             # Parcourir tous les paquets
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
+            for packet in all_packets:
                     from_id = packet['from_id']
                     stats = period_stats[from_id]
                     stats['total_packets'] += 1
@@ -728,9 +729,8 @@ class TrafficMonitor:
             
             # Distribution par type de paquet
             type_distribution = defaultdict(int)
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
-                    type_distribution[packet['packet_type']] += 1
+            for packet in all_packets:
+                type_distribution[packet['packet_type']] += 1
             
             if type_distribution:
                 lines.append(f"\n📦 Distribution des types:")
@@ -763,16 +763,15 @@ class TrafficMonitor:
         Obtenir un résumé des types de paquets sur une période
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
-            
+            # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
+            all_packets = self.persistence.load_packets(hours=hours, limit=10000)
+
             type_counts = defaultdict(int)
             total = 0
-            
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
-                    type_counts[packet['packet_type']] += 1
-                    total += 1
+
+            for packet in all_packets:
+                type_counts[packet['packet_type']] += 1
+                total += 1
             
             if not type_counts:
                 return f"Aucun paquet dans les {hours}h"
@@ -795,17 +794,16 @@ class TrafficMonitor:
         Stats rapides pour Meshtastic (version courte)
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (3 * 3600)
-            
+            # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
+            all_packets = self.persistence.load_packets(hours=3, limit=10000)
+
             # Compter tous les paquets récents
             recent_packets = defaultdict(int)
             packet_types = defaultdict(int)
-            
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
-                    recent_packets[packet['sender_name']] += 1
-                    packet_types[packet['packet_type']] += 1
+
+            for packet in all_packets:
+                recent_packets[packet['sender_name']] += 1
+                packet_types[packet['packet_type']] += 1
             
             if not recent_packets:
                 return "📊 Silence radio (3h)"
@@ -1410,7 +1408,7 @@ class TrafficMonitor:
     def analyze_network_health(self, hours=24):
         """
         Analyser la santé du réseau et détecter les problèmes de configuration
-        
+
         Retourne un rapport détaillé avec :
         - Top talkers (nœuds bavards)
         - Nœuds avec intervalles de télémétrie trop courts
@@ -1418,21 +1416,20 @@ class TrafficMonitor:
         - Nœuds relayant beaucoup (routeurs efficaces)
         """
         try:
-            current_time = time.time()
-            cutoff_time = current_time - (hours * 3600)
-            
+            # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
+            all_packets = self.persistence.load_packets(hours=hours, limit=10000)
+
             lines = []
             lines.append(f"🔍 ANALYSE SANTÉ RÉSEAU ({hours}h)")
             lines.append("=" * 50)
-            
+
             # === 1. TOP TALKERS (nœuds bavards) ===
             node_packet_counts = defaultdict(int)
             node_telemetry_intervals = defaultdict(list)
             node_types = defaultdict(lambda: defaultdict(int))
             node_channel_util = defaultdict(list)
-            
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time:
+
+            for packet in all_packets:
                     # ✅ FILTRER: Uniquement les paquets tigrog2 (bonne antenne)
                     if packet.get('source') != 'tigrog2':
                         continue
@@ -1453,7 +1450,7 @@ class TrafficMonitor:
             
             for i, (node_id, count) in enumerate(top_talkers[:10], 1):
                 name = self.node_manager.get_node_name(node_id)
-                pct = (count / len([p for p in self.all_packets if p['timestamp'] >= cutoff_time]) * 100)
+                pct = (count / len(all_packets) * 100) if len(all_packets) > 0 else 0
                 
                 # Analyser les types de paquets
                 types = node_types[node_id]
@@ -1488,8 +1485,8 @@ class TrafficMonitor:
             
             # Calculer l'utilisation moyenne par nœud depuis les paquets de télémétrie
             node_channel_stats = {}
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time and packet['packet_type'] == 'TELEMETRY_APP':
+            for packet in all_packets:
+                if packet['packet_type'] == 'TELEMETRY_APP':
                     from_id = packet['from_id']
                     # Extraire channelUtilization depuis le paquet
                     if from_id in self.node_packet_stats:
@@ -1514,15 +1511,15 @@ class TrafficMonitor:
             # === 3. ANALYSE DES RELAIS (routeurs efficaces) ===
             lines.append(f"\n🔀 ANALYSE DES RELAIS:")
             lines.append("-" * 50)
-            
+
             relay_counts = defaultdict(int)
-            for packet in self.all_packets:
-                if packet['timestamp'] >= cutoff_time and packet['hops'] > 0:
+            for packet in all_packets:
+                if packet['hops'] > 0:
                     # Les paquets relayés passent par des nœuds intermédiaires
                     # On ne peut pas identifier précisément le relais, mais on peut compter
                     relay_counts['relayed_packets'] += 1
-            
-            direct_count = sum(1 for p in self.all_packets if p['timestamp'] >= cutoff_time and p['hops'] == 0)
+
+            direct_count = sum(1 for p in all_packets if p['hops'] == 0)
             relayed_count = relay_counts['relayed_packets']
             
             if direct_count + relayed_count > 0:
