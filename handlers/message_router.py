@@ -54,7 +54,7 @@ class MessageRouter:
         is_for_me = (to_id == my_id) if my_id else False
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]
-        sender_info = self.node_manager.get_node_name(sender_id, actual_interface)  
+        sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
         # Gérer echo et /my sur messages publics
         if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
@@ -79,11 +79,6 @@ class MessageRouter:
     
     def _route_command(self, message, sender_id, sender_info, packet):
         """Router une commande vers le bon gestionnaire"""
-        # ========== AJOUT DEBUG ==========
-        info_print(f"🎯 _route_command appelé avec: '{message}'")
-        info_print(f"   startswith('/annonce ')? {message.startswith('/annonce ')}")
-        info_print(f"   startswith('/annonce')? {message.startswith('/annonce')}")
-        # ========== FIN DEBUG ==========
         from_id = packet.get('from', 0)
         text_parts = message.split()
         if not text_parts:

@@ -117,8 +117,8 @@ class MeshBot:
             # Enregistrer TOUS les paquets pour les statistiques
             if self.traffic_monitor:
                 self.traffic_monitor.add_packet_to_history(packet)
-                self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)  
-            
+                self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)
+
             # ========================================
             # PHASE 2: FILTRAGE
             # ========================================
@@ -141,11 +141,11 @@ class MeshBot:
             my_id = None
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
-            
+
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
             is_broadcast = (to_id == 0xFFFFFFFF)
-            
+
             # Filtrer les messages auto-générés
             if is_from_me:
                 return
@@ -177,9 +177,12 @@ class MeshBot:
                 if self.telegram_integration:
                     if message:
                         info_print(f"✅ Message présent: '{message[:30]}'")
-                        info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
 
                         try:
+                            # Vérifier que pending_traces existe avant de l'utiliser
+                            if hasattr(self.telegram_integration, 'pending_traces'):
+                                info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
+
                             trace_handled = self.telegram_integration.handle_trace_response(
                                 from_id,
                                 message
