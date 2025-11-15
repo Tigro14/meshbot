@@ -142,34 +142,37 @@ class UtilityCommands:
 
     def handle_echo(self, message, sender_id, sender_info, packet):
         """Gérer la commande /echo - tigrog2 diffuse dans le mesh"""
-        
+
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        current_sender = self.sender
+
         info_print("=" * 60)
         info_print("🔊 HANDLE_ECHO APPELÉ")
         info_print("=" * 60)
         info_print(f"Message brut: '{message}'")
         info_print(f"Sender ID: 0x{sender_id:08x}")
         info_print(f"Sender info: {sender_info}")
-        
+
         # Anti-doublon
         message_id = f"{sender_id}_{message}_{int(time.time())}"
         info_print(f"Message ID: {message_id}")
         
-        if hasattr(self.sender, '_last_echo_id'):
-            info_print(f"Last echo ID: {self.sender._last_echo_id}")
-            if self.sender._last_echo_id == message_id:
+        if hasattr(current_sender, '_last_echo_id'):
+            info_print(f"Last echo ID: {current_sender._last_echo_id}")
+            if current_sender._last_echo_id == message_id:
                 info_print("⚠️ Echo déjà traité, ignoré")
                 return
-        
-        self.sender._last_echo_id = message_id
+
+        current_sender._last_echo_id = message_id
         info_print("✅ Anti-doublon OK")
-        
+
         echo_text = message[6:].strip()
         info_print(f"Texte extrait: '{echo_text}'")
         info_print(f"Longueur: {len(echo_text)} caractères")
-        
+
         if not echo_text:
             info_print("❌ Texte vide")
-            self.sender.send_single("Usage: /echo <texte>", sender_id, sender_info)
+            current_sender.send_single("Usage: /echo <texte>", sender_id, sender_info)
             return
         
         info_print(f"✅ Texte valide: '{echo_text}'")
@@ -193,8 +196,8 @@ class UtilityCommands:
                 info_print("⏳ Attente stabilisation (5s)...")
                 time.sleep(5)
                 info_print("✅ Stabilisation OK")
-                
-                author_short = self.sender.get_short_name(sender_id)
+
+                author_short = current_sender.get_short_name(sender_id)
                 echo_response = f"{author_short}: {echo_text}"
                 
                 info_print(f"📝 Message final: '{echo_response}'")
@@ -259,9 +262,9 @@ class UtilityCommands:
                 info_print("=" * 60)
                 info_print("✅ THREAD ECHO TERMINÉ")
                 info_print("=" * 60)
-                
-                self.sender.log_conversation(sender_id, sender_info, message, echo_response)
-            
+
+                current_sender.log_conversation(sender_id, sender_info, message, echo_response)
+
             except Exception as e:
                 error_print("")
                 error_print("=" * 60)
@@ -270,10 +273,10 @@ class UtilityCommands:
                 error_print(f"Exception: {e}")
                 error_print(traceback.format_exc())
                 error_print("=" * 60)
-                
+
                 try:
                     error_response = f"Erreur echo: {str(e)[:30]}"
-                    self.sender.send_single(error_response, sender_id, sender_info)
+                    current_sender.send_single(error_response, sender_id, sender_info)
                 except:
                     pass
             finally:

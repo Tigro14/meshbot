@@ -135,6 +135,59 @@ New unified statistics command system consolidates all statistics functionality:
 
 See `STATS_CONSOLIDATION_PLAN.md` for detailed architecture.
 
+### CLI Server Platform (November 2025)
+
+New TCP-based CLI server for local command-line access to the bot:
+
+**Key Features:**
+- **TCP Server**: Listens on `127.0.0.1:9999` for local connections
+- **No Serial Competition**: CLI doesn't access `/dev/ttyACM0`, runs in parallel with bot
+- **Client-Server Architecture**: Standalone `cli_client.py` connects via socket
+- **Full Command Support**: All bot commands available via CLI
+- **No LoRa Limits**: No 180-char constraint or throttling
+- **Platform Integration**: Implements `MessagingPlatform` interface
+
+**Architecture:**
+- `platforms/cli_server_platform.py` - TCP server accepting CLI connections
+- `cli_client.py` - Standalone client (interactive prompt)
+- `CLIMessageSender` - Redirects responses to TCP socket instead of Meshtastic
+- `CLIInterfaceWrapper` - Intercepts `sendText()` calls for unified_stats
+
+**Use Cases:**
+- Development and debugging without touching Meshtastic
+- Testing commands locally before deploying
+- Admin access without consuming LoRa bandwidth
+- Parallel operation with mesh network
+
+**Configuration:**
+```python
+CLI_ENABLED = True
+CLI_SERVER_HOST = '127.0.0.1'  # Local only (security)
+CLI_SERVER_PORT = 9999
+```
+
+**Security:**
+- Listens only on localhost (no remote access)
+- No authentication (relies on local-only binding)
+- Ideal for development/debug environments
+
+### Command Improvements (November 2025)
+
+**`/trace` Command Fixed:**
+- **Bug**: Always traced message sender, ignored target node argument
+- **Fix**: Now accepts node name or ID as argument
+- **Usage**:
+  - `/trace` → trace your own message (original behavior)
+  - `/trace F547F` → trace node by ID (partial match)
+  - `/trace tigro` → trace node by name (partial match)
+- **Output**: Signal strength, distance, last heard, GPS coordinates
+
+**`/g2` Command Removed:**
+- Deprecated command for tigrog2 config display
+- Not documented in help or configured for Telegram
+- Superseded by `/stats` command
+- ~60 lines of code removed
+
 ---
 
 ## Architecture
@@ -179,7 +232,7 @@ MeshBot (Orchestrator)
 │   └── MessageRouter (Command dispatcher)
 │       ├── AICommands (/bot)
 │       ├── NetworkCommands (/nodes, /my, /trace)
-│       ├── SystemCommands (/sys, /rebootpi, /rebootg2)
+│       ├── SystemCommands (/sys, /rebootpi)
 │       ├── UnifiedStatsCommands (/stats with sub-commands)
 │       ├── StatsCommands (Legacy: /top, /histo, /packets)
 │       ├── MeshCommands (/echo, /annonce)
@@ -226,7 +279,7 @@ MeshBot (Orchestrator)
 │   └── command_handlers/       # Domain-specific handlers
 │       ├── ai_commands.py      # /bot
 │       ├── network_commands.py # /nodes, /my, /trace
-│       ├── system_commands.py  # /sys, /rebootpi, /rebootg2
+│       ├── system_commands.py  # /sys, /rebootpi
 │       ├── stats_commands.py   # Legacy stats commands
 │       ├── unified_stats.py    # Unified /stats command (NEW)
 │       ├── mesh_commands.py    # /echo, /annonce
@@ -238,6 +291,7 @@ MeshBot (Orchestrator)
 │   ├── platform_interface.py   # Abstract platform interface
 │   ├── platform_manager.py     # Platform orchestrator
 │   ├── telegram_platform.py    # Telegram platform implementation
+│   ├── cli_server_platform.py  # CLI TCP server platform (localhost:9999)
 │   └── discord_platform.py     # Discord platform (future)
 │
 ├── telegram_bot/               # Telegram-specific implementation
@@ -276,6 +330,8 @@ MeshBot (Orchestrator)
 │
 ├── telegram_integration.py     # Legacy Telegram bot (deprecated)
 ├── telegram_command_base.py    # Legacy base class (deprecated)
+│
+├── cli_client.py               # Standalone CLI client (interactive)
 │
 ├── utils.py                    # Logging utilities
 ├── utils_weather.py            # Weather fetching (wttr.in)
@@ -1251,7 +1307,6 @@ def handle_rebootpi(self, sender_id, sender_info, password):
 # Commands not shown in /help
 HIDDEN_COMMANDS = [
     '/rebootpi',
-    '/rebootg2',
     # Add other admin commands
 ]
 
@@ -1948,6 +2003,8 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | Telegram platform | `platforms/telegram_platform.py` | Telegram implementation |
 | Telegram commands | `telegram_bot/commands/*.py` | Telegram command modules |
 | Alert manager | `telegram_bot/alert_manager.py` | Telegram alerts |
+| CLI server platform | `platforms/cli_server_platform.py` | TCP CLI server (localhost:9999) |
+| CLI client | `cli_client.py` | Interactive CLI client |
 | Node database | `node_manager.py` | GPS, names, RX history |
 | Packet analytics | `traffic_monitor.py` | Stats, deduplication |
 | SQLite layer | `traffic_persistence.py` | Persistence |
@@ -1964,10 +2021,9 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | `/bot <question>` | `ai_commands.py` | Query AI |
 | `/nodes [page]` | `network_commands.py` | List nodes |
 | `/my` | `network_commands.py` | Your signal |
-| `/trace <node>` | `network_commands.py` | Traceroute |
+| `/trace [node]` | `network_commands.py` | Trace sender or specific node |
 | `/sys` | `system_commands.py` | System info |
 | `/rebootpi` | `system_commands.py` | Reboot Pi (admin) |
-| `/rebootg2` | `system_commands.py` | Reboot router (admin) |
 | `/stats [sub]` | `unified_stats.py` | Unified statistics (NEW) |
 | `/stats global` | `unified_stats.py` | Network overview |
 | `/stats top` | `unified_stats.py` | Top talkers |
@@ -2033,19 +2089,23 @@ This document should be updated when:
 **Last updated**: 2025-11-15
 **Updated by**: Claude (AI Assistant)
 **Changes in this update**:
-- Updated line count: ~17,021 → ~17,697 lines
-- Updated module count: 60 → 62 modules
-- **NEW: Unified Statistics System** - Documented new `/stats` command with sub-commands
-- Added `unified_stats.py` to command handlers documentation
-- Updated command reference table with `/stats` sub-commands and legacy aliases
-- Added new documentation files to Additional Resources:
-  - STATS_CONSOLIDATION_PLAN.md
-  - PLATFORMS.md
-  - ENCRYPTED_PACKETS_EXPLAINED.md
-  - PR_DESCRIPTION.md
-- Updated component hierarchy to include UnifiedStatsCommands
-- Enhanced directory structure with unified_stats.py
-- Updated key file locations table with unified stats handler
+- **NEW: CLI Server Platform** - TCP-based local CLI for development/debug
+  - Added `platforms/cli_server_platform.py` (TCP server on localhost:9999)
+  - Added `cli_client.py` (standalone interactive client)
+  - Documented CLIMessageSender and CLIInterfaceWrapper patterns
+  - No serial port competition, runs in parallel with bot
+  - Full command support without LoRa constraints
+- **FIX: /trace command** - Now accepts target node argument
+  - `/trace [node]` can trace specific nodes by name or ID
+  - Added `_format_trace_target()` method
+  - Partial matching on node names and IDs
+- **REMOVED: /g2 command** - Deprecated and not properly documented
+  - Removed from system_commands.py (~60 lines)
+  - Removed from message_router.py routing
+  - Superseded by `/stats` command
+- Updated command reference table with corrected `/trace` usage
+- Removed `/rebootg2` from all documentation
+- Updated component hierarchy to reflect current command structure
 
 **Previous major changes (v2.0)**:
 - Added new **Platforms Architecture** section documenting multi-platform support

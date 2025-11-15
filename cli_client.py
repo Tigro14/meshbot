@@ -63,7 +63,8 @@ class CLIClient:
 
         try:
             # Envoyer avec newline
-            self.socket.sendall((command + '\n').encode('utf-8'))
+            # Utiliser errors='replace' pour gérer les caractères UTF-8 invalides/surrogates
+            self.socket.sendall((command + '\n').encode('utf-8', errors='replace'))
             return True
         except Exception as e:
             print(f"❌ Send error: {e}")
@@ -87,7 +88,8 @@ class CLIClient:
                     break
 
                 # Décoder et ajouter au buffer
-                buffer += data.decode('utf-8')
+                # Utiliser errors='replace' pour gérer les caractères UTF-8 invalides
+                buffer += data.decode('utf-8', errors='replace')
 
                 # Traiter les messages complets (JSON séparés par \n)
                 while '\n' in buffer:
@@ -125,6 +127,12 @@ class CLIClient:
                 print("🤖 Bot:")
                 print(content)
                 print("─" * 60)
+
+            elif msg_type == 'alert':
+                # Alerte système
+                print("\n" + "━" * 60)
+                print(content)
+                print("━" * 60)
 
             else:
                 # Message inconnu, afficher tel quel
