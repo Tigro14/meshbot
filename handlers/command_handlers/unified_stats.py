@@ -268,6 +268,14 @@ class UnifiedStatsCommands:
                 pass
 
         try:
+            # Mettre à jour la base de noms depuis l'interface pour avoir les LongName
+            if self.interface:
+                try:
+                    self.node_manager.update_node_database(self.interface)
+                    debug_print("📋 Base de noms mise à jour pour /stats channel")
+                except Exception as e:
+                    debug_print(f"⚠️ Erreur mise à jour noms: {e}")
+
             tm = self.traffic_monitor
 
             lines = []
