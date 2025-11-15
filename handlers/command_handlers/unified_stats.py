@@ -296,6 +296,19 @@ class UnifiedStatsCommands:
                 if packet['packet_type'] == 'TELEMETRY_APP':
                     from_id = packet['from_id']
 
+                    # Convertir from_id en int si c'est une string
+                    if isinstance(from_id, str):
+                        try:
+                            # Si c'est un ID hex comme "!12345678"
+                            if from_id.startswith('!'):
+                                from_id = int(from_id[1:], 16)
+                            else:
+                                # ID décimal en string
+                                from_id = int(from_id)
+                        except (ValueError, AttributeError):
+                            debug_print(f"⚠️ ID invalide ignoré: {from_id}")
+                            continue
+
                     if 'telemetry' in packet and packet['telemetry'] is not None:
                         telemetry = packet['telemetry']
                         ch_util = telemetry.get('channel_util')
