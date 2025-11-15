@@ -436,10 +436,20 @@ def get_rain_graph(location=None):
             return "❌ Aucune donnée pluie"
 
         # Échantillonner pour avoir ~48 points (16h par jour x 3 jours)
+        # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
         target_points = 48
         if len(values) > target_points:
-            step = len(values) // target_points
-            values = [values[i] for i in range(0, len(values), step)][:target_points]
+            window_size = len(values) // target_points
+            if window_size < 1:
+                window_size = 1
+
+            sampled = []
+            for i in range(0, len(values), window_size):
+                window = values[i:i+window_size]
+                if window:
+                    # Prendre le MAX de chaque fenêtre pour préserver les fronts raides
+                    sampled.append(max(window))
+            values = sampled[:target_points]
 
         # Créer un graphe multi-lignes (3 niveaux de hauteur)
         width = len(values)
