@@ -389,6 +389,7 @@ class CLIServerPlatform(MessagingPlatform):
                 # Sauvegarder les senders et interface originaux
                 debug_print(f"[CLI] Saving original senders...")
                 original_senders = {
+                    'router': router.sender,  # Le sender du router lui-même (important pour /stats!)
                     'ai': router.ai_handler.sender,
                     'network': router.network_handler.sender,
                     'system': router.system_handler.sender,
@@ -400,6 +401,7 @@ class CLIServerPlatform(MessagingPlatform):
                 try:
                     # Remplacer par le CLI sender
                     debug_print(f"[CLI] Swapping to CLI sender...")
+                    router.sender = cli_sender  # IMPORTANT: Swap du sender du router (utilisé par /stats)
                     router.ai_handler.sender = cli_sender
                     router.network_handler.sender = cli_sender
                     router.system_handler.sender = cli_sender
@@ -423,6 +425,8 @@ class CLIServerPlatform(MessagingPlatform):
 
                 finally:
                     # Restaurer les senders originaux
+                    debug_print(f"[CLI] Restoring original senders...")
+                    router.sender = original_senders['router']  # Restaurer le sender du router
                     router.ai_handler.sender = original_senders['ai']
                     router.network_handler.sender = original_senders['network']
                     router.system_handler.sender = original_senders['system']
