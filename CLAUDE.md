@@ -1,0 +1,1635 @@
+# CLAUDE.md - AI Assistant Guide for Meshtastic-Llama Bot
+
+**Last Updated**: 2025-11-15
+**Project**: Meshtastic-Llama Bot with Telegram Integration
+**Language**: Python 3.8+
+**Platform**: Raspberry Pi 5 / Linux
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Architecture](#architecture)
+3. [Codebase Structure](#codebase-structure)
+4. [Key Conventions](#key-conventions)
+5. [Development Workflows](#development-workflows)
+6. [Common Tasks](#common-tasks)
+7. [Configuration Management](#configuration-management)
+8. [Testing Strategy](#testing-strategy)
+9. [Performance Patterns](#performance-patterns)
+10. [Security Considerations](#security-considerations)
+11. [Troubleshooting](#troubleshooting)
+12. [External Integrations](#external-integrations)
+
+---
+
+## Project Overview
+
+### What is MeshBot?
+
+A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
+- **Meshtastic LoRa Network**: Serial + TCP connections to mesh nodes
+- **Llama AI**: Local LLM via llama.cpp for conversational AI
+- **Telegram**: Bidirectional bridge for richer interactions
+- **ESPHome**: Solar/battery telemetry monitoring
+- **Traffic Analytics**: Comprehensive SQLite-based packet monitoring
+
+### Use Case Architecture
+
+```
+┌────────────────────────────────────────────────┐
+│         Raspberry Pi 5 (Bot Host)              │
+│  ┌──────────────┐      ┌──────────────┐       │
+│  │  MeshBot     │◄────►│  Telegram    │       │
+│  │  main_bot.py │      │  Integration │       │
+│  └──────┬───────┘      └──────────────┘       │
+│         │                                       │
+│    ┌────┴────────────────┐                    │
+│    │  Message Processing  │                    │
+│    │  Router + Handlers   │                    │
+│    └────┬────────────┬────┘                    │
+│         │            │                          │
+│    ┌────▼────┐  ┌───▼──────┐                  │
+│    │ Llama   │  │ Traffic  │                  │
+│    │ Client  │  │ Monitor  │                  │
+│    └─────────┘  └──────────┘                  │
+└─────┬────────────────────────┬─────────────────┘
+      │                        │
+   ┌──▼──────┐            ┌───▼────────┐
+   │ Serial  │            │ TCP (WiFi) │
+   │ UART    │            │ 192.168.x.x│
+   └──┬──────┘            └───┬────────┘
+      │                       │
+┌─────▼──────────┐     ┌─────▼───────────────┐
+│ Meshtastic BOT │     │ Meshtastic ROUTER   │
+│ Node (Serial)  │     │ (tigrog2) via TCP   │
+└────────────────┘     └─────────────────────┘
+```
+
+### Key Statistics
+- **~15,251 lines** of Python code
+- **40+ modules** with clear separation of concerns
+- **Dual-channel design**: Constrained LoRa (180 chars) vs Rich Telegram (3000 chars)
+- **SQLite persistence**: 48-hour traffic history with automatic cleanup
+
+---
+
+## Architecture
+
+### Core Design Principles
+
+1. **Modularity**: Each component has a single, well-defined responsibility
+2. **Fail-Safe**: Graceful degradation when external services are unavailable
+3. **Observability**: Comprehensive logging at every layer
+4. **Resource-Conscious**: Memory cleanup, caching, rate limiting
+5. **Dual-Channel Philosophy**: LoRa ≠ Telegram (different constraints, different configs)
+
+### Three-Phase Message Processing
+
+All incoming messages go through this pipeline (see `main_bot.py::on_message()`):
+
+```python
+# Phase 1: COLLECTION (no filtering)
+# ALL packets (serial + TCP) are collected for statistics
+node_manager.update_node_from_packet(packet)
+traffic_monitor.add_packet(packet, source=source)
+
+# Phase 2: FILTERING
+# Only serial interface messages trigger commands
+# TCP packets (from tigrog2) are stats-only
+if not is_from_serial:
+    return  # Don't process commands from TCP
+
+# Phase 3: COMMAND PROCESSING
+# Route text messages to appropriate handlers
+if portnum == 'TEXT_MESSAGE_APP':
+    message_handler.process_text_message(packet, decoded, message)
+```
+
+**Critical**: This prevents duplicate command execution while maintaining complete traffic statistics.
+
+### Component Hierarchy
+
+```
+MeshBot (Orchestrator)
+├── MessageHandler (Backward compat wrapper)
+│   └── MessageRouter (Command dispatcher)
+│       ├── AICommands (/bot)
+│       ├── NetworkCommands (/nodes, /my, /trace)
+│       ├── SystemCommands (/sys, /rebootpi, /rebootg2)
+│       ├── StatsCommands (/top, /histo, /stats, /packets)
+│       ├── MeshCommands (/echo, /annonce)
+│       └── UtilityCommands (/help, /power, /weather, etc.)
+├── MessageSender (Throttling + chunking)
+├── NodeManager (Node database + GPS)
+├── TrafficMonitor (Packet analytics)
+│   └── TrafficPersistence (SQLite layer)
+├── ContextManager (AI conversation history)
+├── LlamaClient (AI queries)
+├── ESPHomeClient (Solar/battery telemetry)
+├── RemoteNodesClient (TCP queries to tigrog2)
+└── TelegramIntegration (Telegram bridge)
+```
+
+---
+
+## Codebase Structure
+
+### Directory Layout
+
+```
+/home/user/meshbot/
+├── main_script.py              # Entry point (CLI arg parsing)
+├── main_bot.py                 # MeshBot class (orchestrator)
+├── config.py.sample            # Configuration template
+│
+├── handlers/                   # Message processing layer
+│   ├── message_router.py       # Command dispatcher
+│   ├── message_sender.py       # Delivery + throttling
+│   └── command_handlers/       # Domain-specific handlers
+│       ├── ai_commands.py      # /bot
+│       ├── network_commands.py # /nodes, /my, /trace
+│       ├── system_commands.py  # /sys, /rebootpi, /rebootg2
+│       ├── stats_commands.py   # /top, /histo, /stats, /packets
+│       ├── mesh_commands.py    # /echo, /annonce
+│       ├── utility_commands.py # /help, /power, /weather, etc.
+│       └── signal_utils.py     # Signal formatting utilities
+│
+├── node_manager.py             # Node database (JSON)
+├── traffic_monitor.py          # Packet analytics (deques + SQLite)
+├── traffic_persistence.py      # SQLite layer
+├── context_manager.py          # AI conversation context
+│
+├── llama_client.py             # Llama.cpp integration
+├── esphome_client.py           # ESPHome telemetry
+├── esphome_history.py          # ESPHome data storage
+├── remote_nodes_client.py      # Remote mesh node queries (TCP)
+│
+├── telegram_integration.py     # Telegram bot
+├── telegram_command_base.py    # Telegram handler base class
+│
+├── utils.py                    # Logging utilities
+├── utils_weather.py            # Weather fetching (wttr.in)
+├── system_monitor.py           # CPU/RAM monitoring
+├── system_checks.py            # Pre-flight checks (temp, battery)
+│
+├── safe_serial_connection.py   # Serial wrapper
+├── safe_tcp_connection.py      # TCP wrapper
+├── tcp_interface_patch.py      # Meshtastic TCP fixes
+│
+├── message_handler.py          # Legacy wrapper (use MessageRouter)
+├── packet_history.py           # Deprecated (use TrafficMonitor)
+├── debug_interface.py          # Debug console
+│
+├── diagnostic_traffic.py       # Diagnostic script
+├── migrate_packets_to_db.py    # Migration script
+├── browse_traffic_db.py        # Web UI for traffic DB
+├── view_traffic_db.py          # CLI DB viewer
+│
+├── meshbot.service             # Systemd service (bot)
+├── README.md                   # User documentation
+├── BROWSE_TRAFFIC_DB.md        # Traffic DB web UI docs
+├── TRAFFIC_DB_VIEWER.md        # Traffic DB CLI docs
+└── .gitignore                  # Git ignore rules
+```
+
+### Critical Files for Understanding Message Flow
+
+1. **`main_bot.py::on_message()`** - Entry point for all packets
+2. **`handlers/message_router.py`** - Command routing logic
+3. **`handlers/message_sender.py`** - Throttling and delivery
+4. **Command handlers** - Domain-specific logic
+
+### Critical Files for Data Management
+
+1. **`node_manager.py`** - Node database (names, GPS, RX history)
+2. **`traffic_monitor.py`** - In-memory + SQLite packet analytics
+3. **`traffic_persistence.py`** - SQLite schema and queries
+4. **`context_manager.py`** - AI conversation context
+
+---
+
+## Key Conventions
+
+### Naming Conventions
+
+| Type | Convention | Example |
+|------|-----------|---------|
+| Files | `snake_case.py` | `message_handler.py` |
+| Classes | `PascalCase` | `MeshBot`, `NodeManager` |
+| Functions | `snake_case()` | `get_node_name()` |
+| Constants | `UPPER_SNAKE_CASE` | `MAX_MESSAGE_SIZE` |
+| Private methods | `_prefix()` | `_format_node_line()` |
+| Global config | `UPPER_SNAKE_CASE` | `SERIAL_PORT` |
+
+### Code Organization Patterns
+
+#### 1. Handler Pattern (Strategy)
+
+New commands follow this pattern:
+
+```python
+# In handlers/command_handlers/<domain>_commands.py
+class DomainCommands:
+    def __init__(self, sender, node_manager, ...):
+        self.sender = sender
+        self.node_manager = node_manager
+
+    def handle_mycommand(self, sender_id, sender_info, args):
+        # 1. Check throttling
+        if not self.sender.check_throttling(sender_id, sender_info):
+            return
+
+        # 2. Generate response
+        response = self._generate_response(args)
+
+        # 3. Send (handles chunking)
+        self.sender.send_chunks(response, sender_id, sender_info)
+
+    def _generate_response(self, args):
+        # Private helper for response generation
+        return "Response text"
+
+# In handlers/message_router.py
+def process_text_message(self, packet, decoded, message):
+    ...
+    elif message.startswith('/mycommand'):
+        args = message[11:].strip()
+        self.domain_handler.handle_mycommand(sender_id, sender_info, args)
+```
+
+#### 2. Client Pattern (External Services)
+
+```python
+class ServiceClient:
+    def __init__(self):
+        self._cache = {}  # Optional caching
+
+    def query(self, params):
+        try:
+            # Make HTTP request
+            response = requests.get(url, timeout=5)
+            data = response.json()
+
+            # Cleanup (important!)
+            response.close()
+            del response
+            gc.collect()
+
+            return self._format_response(data)
+
+        except Exception as e:
+            error_print(f"Service error: {e}")
+            return "Error: Service unavailable"
+
+    def _format_response(self, data):
+        # Format data for display
+        return formatted_text
+```
+
+#### 3. Persistence Pattern
+
+```python
+# Write path
+traffic_monitor.add_packet(packet)
+  → persistence.save_packet(packet)  # Immediate SQLite write
+
+# Read path (with time filtering)
+packets = persistence.load_packets(hours=24)
+stats = traffic_monitor.generate_stats_from_packets(packets)
+
+# Cleanup (periodic)
+persistence.cleanup_old_data(max_age_hours=48)
+```
+
+### Error Handling Patterns
+
+#### Pattern 1: Try-Except-Log
+
+```python
+try:
+    result = risky_operation()
+    return result
+except Exception as e:
+    error_print(f"Operation failed: {e}")
+    error_print(traceback.format_exc())
+    return fallback_value
+```
+
+#### Pattern 2: Graceful Degradation
+
+```python
+# Example: LlamaClient pre-flight checks
+allowed, block_reason = SystemChecks.check_llm_conditions()
+if not allowed:
+    return block_reason  # User-friendly message
+
+# If check itself fails, continue anyway (fail-open)
+try:
+    # Check system
+except Exception as check_error:
+    error_print(f"Check failed: {check_error}")
+    # Continue with request
+```
+
+#### Pattern 3: Resource Cleanup
+
+```python
+try:
+    response = requests.get(url, timeout=5)
+    data = response.json()
+    return process(data)
+finally:
+    response.close()
+    del response
+    gc.collect()  # Explicit memory cleanup
+```
+
+### Logging Utilities (`utils.py`)
+
+```python
+from utils import debug_print, info_print, error_print, conversation_print
+
+debug_print("Verbose debug info")     # Only if DEBUG_MODE=True, stderr
+info_print("Important event")         # Always shown, stdout
+conversation_print("AI says: ...")    # AI conversations
+error_print("Error occurred")         # Timestamped errors with trace
+```
+
+**Convention**: Use appropriate log level for each message type.
+
+---
+
+## Development Workflows
+
+### Git Workflow
+
+#### Branching Strategy
+
+```bash
+# Feature branches follow pattern: claude/<description>-<session-id>
+claude/fix-french-text-01E9d9UjuZxwVQSU79pBabuu
+claude/analyze-packet-traffic-diagnostics-01VVMUenRjQUwTb6KCh8uodL
+
+# Main branch: main (no separate develop branch observed)
+```
+
+#### Typical Development Cycle
+
+```bash
+# 1. Create feature branch
+git checkout -b claude/feature-name-<session-id>
+
+# 2. Make changes
+# ... edit files ...
+
+# 3. Test manually (no automated tests)
+python main_script.py --debug
+
+# 4. Commit with descriptive messages
+git add <files>
+git commit -m "Fix: Correct French text encoding in README.md"
+
+# 5. Push to remote
+git push -u origin claude/feature-name-<session-id>
+
+# 6. Create pull request (via GitHub web UI or gh cli)
+# 7. Merge to main after review
+```
+
+#### Commit Message Style
+
+From recent history:
+```
+Fix: <description>      # Bug fixes
+Add: <description>      # New features
+Update: <description>   # Enhancements
+Refactor: <description> # Code restructuring
+```
+
+### Configuration Changes
+
+1. **Never commit `config.py`** (gitignored)
+2. **Always update `config.py.sample`** with new options
+3. **Document new config options** in comments
+4. **Provide sensible defaults**
+
+Example:
+```python
+# Configuration for new feature
+NEW_FEATURE_ENABLED = True  # Enable/disable new feature
+NEW_FEATURE_THRESHOLD = 42  # Threshold value in units
+```
+
+### Adding New Commands
+
+#### Step-by-Step Process
+
+```python
+# 1. Choose appropriate handler file
+#    - AI features → ai_commands.py
+#    - Network/node queries → network_commands.py
+#    - System management → system_commands.py
+#    - Statistics → stats_commands.py
+#    - Mesh operations → mesh_commands.py
+#    - General utilities → utility_commands.py
+
+# 2. Add handler method to class
+# File: handlers/command_handlers/utility_commands.py
+class UtilityCommands:
+    def handle_newcmd(self, sender_id, sender_info):
+        # Throttling is critical
+        if not self.sender.check_throttling(sender_id, sender_info):
+            return
+
+        # Generate response
+        response = self._generate_newcmd_response()
+
+        # Send (auto-chunks if > MAX_MESSAGE_SIZE)
+        self.sender.send_chunks(response, sender_id, sender_info)
+
+    def _generate_newcmd_response(self):
+        # Keep it under 180 chars for LoRa
+        return "Response text"
+
+# 3. Route in MessageRouter
+# File: handlers/message_router.py
+def process_text_message(self, packet, decoded, message):
+    ...
+    elif message.startswith('/newcmd'):
+        self.utility_handler.handle_newcmd(sender_id, sender_info)
+
+# 4. Add to help text
+# File: handlers/command_handlers/utility_commands.py
+def handle_help(self, ...):
+    help_text = """
+    ...
+    /newcmd - Description of new command
+    """
+
+# 5. Test manually
+# Send "/newcmd" via Meshtastic or Telegram
+```
+
+### Adding New Clients/Integrations
+
+```python
+# 1. Create new client file
+# File: new_service_client.py
+import requests
+from utils import error_print, debug_print
+import gc
+
+class NewServiceClient:
+    def __init__(self, host, port):
+        self.base_url = f"http://{host}:{port}"
+        self._cache = {}
+
+    def query_data(self, param):
+        try:
+            url = f"{self.base_url}/endpoint"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+
+            # Cleanup
+            response.close()
+            del response
+            gc.collect()
+
+            return self._format_data(data)
+
+        except Exception as e:
+            error_print(f"NewService error: {e}")
+            return None
+
+    def _format_data(self, data):
+        return f"Formatted: {data}"
+
+# 2. Add to MeshBot initialization
+# File: main_bot.py
+class MeshBot:
+    def __init__(self):
+        ...
+        self.new_service = NewServiceClient(
+            host=config.NEW_SERVICE_HOST,
+            port=config.NEW_SERVICE_PORT
+        )
+
+# 3. Add config to config.py.sample
+NEW_SERVICE_HOST = "192.168.1.100"
+NEW_SERVICE_PORT = 8080
+
+# 4. Use in command handler
+# File: handlers/command_handlers/utility_commands.py
+def handle_newdata(self, sender_id, sender_info):
+    data = self.meshbot.new_service.query_data("param")
+    if data:
+        self.sender.send_chunks(data, sender_id, sender_info)
+```
+
+---
+
+## Common Tasks
+
+### Task 1: Adding a New Statistic to Traffic Monitor
+
+```python
+# 1. Update TrafficMonitor data structures
+# File: traffic_monitor.py
+class TrafficMonitor:
+    def __init__(self):
+        ...
+        self.new_metric = defaultdict(int)  # Add new metric
+
+    def add_packet(self, packet, source='local'):
+        ...
+        # Calculate and store new metric
+        self.new_metric[from_id] += calculate_new_metric(packet)
+
+# 2. Add SQLite persistence (optional)
+# File: traffic_persistence.py
+# Add column to appropriate table or create new table
+
+# 3. Create reporting method
+# File: traffic_monitor.py
+def get_new_metric_report(self, hours=24):
+    packets = self.persistence.load_packets(hours=hours)
+    # Calculate metric from packets
+    return formatted_report
+
+# 4. Add command handler
+# File: handlers/command_handlers/stats_commands.py
+def handle_newmetric(self, sender_id, sender_info):
+    report = self.traffic_monitor.get_new_metric_report(hours=24)
+    self.sender.send_chunks(report, sender_id, sender_info)
+
+# 5. Route command
+# File: handlers/message_router.py
+elif message.startswith('/newmetric'):
+    self.stats_handler.handle_newmetric(sender_id, sender_info)
+```
+
+### Task 2: Modifying AI Behavior
+
+```python
+# AI config is in config.py
+MESH_AI_CONFIG = {
+    "system_prompt": "Your new instructions here...",
+    "max_tokens": 1500,
+    "temperature": 0.7,  # Adjust creativity (0.0-1.0)
+    "top_p": 0.95,
+    "top_k": 20,
+    "timeout": 60,
+    "max_response_chars": 320  # LoRa constraint
+}
+
+TELEGRAM_AI_CONFIG = {
+    # Longer, more detailed responses
+    "max_tokens": 4000,
+    "max_response_chars": 3000
+}
+
+# LlamaClient automatically uses correct config based on channel
+# See: llama_client.py::query()
+```
+
+### Task 3: Adding System Protection Checks
+
+```python
+# File: system_checks.py
+class SystemChecks:
+    @staticmethod
+    def check_llm_conditions():
+        # CPU temp check
+        cpu_temp = SystemChecks.get_cpu_temp()
+        if cpu_temp and cpu_temp > 60:
+            return False, f"⚠️ CPU: {cpu_temp:.1f}°C (trop chaud)"
+
+        # Battery check
+        battery_voltage = SystemChecks.get_battery_voltage()
+        if battery_voltage and battery_voltage < 12.0:
+            return False, f"🔋 Batterie: {battery_voltage:.1f}V (faible)"
+
+        # Add new check here
+        if new_condition_not_met():
+            return False, "Reason for blocking"
+
+        return True, None
+
+# LlamaClient calls this before each query
+# See: llama_client.py::query()
+```
+
+### Task 4: Adjusting Throttling Limits
+
+```python
+# File: config.py
+MAX_COMMANDS_PER_WINDOW = 5  # Number of commands allowed
+COMMAND_WINDOW_SECONDS = 300  # Time window (5 minutes)
+
+# Example: Allow 10 commands per 10 minutes
+MAX_COMMANDS_PER_WINDOW = 10
+COMMAND_WINDOW_SECONDS = 600
+
+# MessageSender automatically enforces these limits
+# See: handlers/message_sender.py::check_throttling()
+```
+
+### Task 5: Adding Database Tables/Columns
+
+```python
+# File: traffic_persistence.py
+def _init_db(self):
+    cursor = self.conn.cursor()
+
+    # Add new table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS new_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp REAL,
+            data TEXT,
+            value INTEGER
+        )
+    """)
+
+    # Add index
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_new_table_timestamp
+        ON new_table(timestamp)
+    """)
+
+    self.conn.commit()
+
+# Add save/load methods
+def save_new_data(self, data):
+    cursor = self.conn.cursor()
+    cursor.execute("""
+        INSERT INTO new_table (timestamp, data, value)
+        VALUES (?, ?, ?)
+    """, (time.time(), data['text'], data['value']))
+    self.conn.commit()
+
+def load_new_data(self, hours=24):
+    cutoff = time.time() - (hours * 3600)
+    cursor = self.conn.cursor()
+    cursor.execute("""
+        SELECT * FROM new_table
+        WHERE timestamp > ?
+        ORDER BY timestamp DESC
+    """, (cutoff,))
+    return cursor.fetchall()
+```
+
+---
+
+## Configuration Management
+
+### Configuration File Structure
+
+```python
+# config.py.sample - Template (committed to git)
+# config.py - Local instance (gitignored)
+
+# Structure
+# ========================================
+# HARDWARE CONFIGURATION
+# ========================================
+SERIAL_PORT = "/dev/ttyACM0"
+REMOTE_NODE_HOST = "192.168.1.38"
+
+# ========================================
+# EXTERNAL SERVICES
+# ========================================
+LLAMA_HOST = "127.0.0.1"
+LLAMA_PORT = 8080
+ESPHOME_HOST = "192.168.1.27"
+
+# ========================================
+# LIMITS & CONSTRAINTS
+# ========================================
+MAX_MESSAGE_SIZE = 180  # LoRa constraint
+MAX_COMMANDS_PER_WINDOW = 5
+COMMAND_WINDOW_SECONDS = 300
+
+# ========================================
+# AI CONFIGURATION
+# ========================================
+MESH_AI_CONFIG = { ... }
+TELEGRAM_AI_CONFIG = { ... }
+
+# ========================================
+# SECURITY
+# ========================================
+TELEGRAM_BOT_TOKEN = "******************"
+REBOOT_PASSWORD = "secret"
+REBOOT_AUTHORIZED_USERS = [12345678, 0x16fad3dc]
+
+# ========================================
+# MONITORING & ALERTS
+# ========================================
+TEMP_WARNING_THRESHOLD = 60
+CPU_WARNING_THRESHOLD = 90
+
+# ========================================
+# DEBUG
+# ========================================
+DEBUG_MODE = False
+```
+
+### Configuration Best Practices
+
+1. **Always update `config.py.sample`** when adding new options
+2. **Never commit `config.py`** (contains secrets)
+3. **Use descriptive comments** for each option
+4. **Group related options** with section headers
+5. **Provide sensible defaults** where possible
+6. **Document units** (seconds, characters, percent, etc.)
+
+### Environment-Specific Configuration
+
+```python
+# Development
+DEBUG_MODE = True
+LLAMA_HOST = "localhost"
+
+# Production
+DEBUG_MODE = False
+LLAMA_HOST = "127.0.0.1"
+```
+
+---
+
+## Testing Strategy
+
+### Current State
+
+**No formal automated test suite exists.** Testing is manual and production-based.
+
+### Manual Testing Approach
+
+#### 1. Debug Mode
+
+```bash
+# Enable verbose logging
+# In config.py:
+DEBUG_MODE = True
+
+# Run bot
+python main_script.py --debug
+```
+
+#### 2. Debug Console
+
+```python
+# Available via debug_interface.py
+# Commands:
+#   test - Test Llama connection
+#   mem - Memory stats
+#   context - Show conversation context
+#   update - Force node DB update
+```
+
+#### 3. Testing New Commands
+
+```bash
+# Via Meshtastic
+# Send message to bot: "/newcommand"
+
+# Via Telegram
+# Send message: /newcommand
+
+# Check logs for errors
+tail -f /var/log/syslog | grep meshbot
+```
+
+#### 4. Testing External Integrations
+
+```python
+# Llama
+curl http://localhost:8080/health
+
+# ESPHome
+curl http://192.168.1.27/sensor/battery_voltage
+
+# Remote node (tigrog2)
+# Check if accessible via TCP
+```
+
+### Recommended Testing Practices
+
+When making changes, manually verify:
+
+1. **Throttling**: Send rapid commands → verify rate limit works
+2. **Chunking**: Send long text → verify splits correctly at 180 chars
+3. **Deduplication**: Same packet via serial+TCP → verify counted once
+4. **Error handling**: Kill external service → verify graceful failure
+5. **Memory**: Monitor with `gc.get_count()` after operations
+6. **Character limits**: LoRa messages must stay under 180 chars
+
+### Future Testing Recommendations
+
+```python
+# tests/test_message_router.py
+def test_command_routing():
+    router = MessageRouter(...)
+    router.process_text_message(mock_packet, mock_decoded, "/help")
+    # Assert help response sent
+
+# tests/test_traffic_monitor.py
+def test_deduplication():
+    monitor = TrafficMonitor(...)
+    monitor.add_packet(packet1, source='local')
+    monitor.add_packet(packet1, source='tigrog2')  # Same packet
+    assert len(monitor.all_packets) == 1  # Not duplicated
+
+# tests/test_node_manager.py
+def test_distance_calculation():
+    manager = NodeManager()
+    distance = manager.calculate_distance(lat1, lon1, lat2, lon2)
+    assert distance == pytest.approx(expected_km, rel=0.01)
+```
+
+---
+
+## Performance Patterns
+
+### Memory Management
+
+#### 1. Explicit Cleanup
+
+```python
+# After large HTTP requests
+response = requests.get(url)
+data = response.json()
+response.close()
+del response
+gc.collect()  # Force garbage collection
+```
+
+**Where used**: `LlamaClient`, `ESPHomeClient`, `RemoteNodesClient`
+
+#### 2. Bounded Collections
+
+```python
+from collections import deque
+
+self.all_packets = deque(maxlen=5000)  # Auto-evicts old items
+self.public_messages = deque(maxlen=2000)
+```
+
+**Where used**: `TrafficMonitor`, `ContextManager`
+
+#### 3. Lazy Regex Compilation
+
+```python
+class LlamaClient:
+    def __init__(self):
+        self._clean_patterns = None  # Compiled on first use
+
+    def _get_clean_patterns(self):
+        if self._clean_patterns is None:
+            self._clean_patterns = [
+                re.compile(r'<think>.*?</think>', re.DOTALL),
+                ...
+            ]
+        return self._clean_patterns
+```
+
+### Network Optimization
+
+#### 1. Caching
+
+```python
+class RemoteNodesClient:
+    def get_direct_nodes_with_ttl(self, host, port, days=3):
+        cache_key = f"{host}:{port}:{days}"
+
+        # Check cache
+        if cached := self._cache_get(cache_key):
+            return cached
+
+        # Fetch and cache
+        data = self._fetch_from_remote(host, port, days)
+        self._cache_set(cache_key, data, ttl=60)  # 60 seconds
+        return data
+```
+
+**TTL**: 60 seconds
+**Where used**: `RemoteNodesClient`
+
+#### 2. Deduplication
+
+```python
+class TrafficMonitor:
+    def add_packet(self, packet, source='local'):
+        # Create unique key
+        dedup_key = f"{packet_id}_{from_id}_{to_id}"
+
+        # Check if seen recently (5 seconds)
+        if dedup_key in self._recent_packets:
+            return  # Skip duplicate
+
+        # Store with timestamp
+        self._recent_packets[dedup_key] = current_time
+```
+
+**Window**: 5 seconds
+**Purpose**: Prevent counting same packet from serial + TCP
+
+#### 3. Throttling
+
+```python
+class MessageSender:
+    def check_throttling(self, sender_id, sender_info):
+        now = time.time()
+        window_start = now - COMMAND_WINDOW_SECONDS
+
+        # Clean old timestamps
+        self.command_timestamps[sender_id] = [
+            ts for ts in self.command_timestamps[sender_id]
+            if ts > window_start
+        ]
+
+        # Check limit
+        if len(self.command_timestamps[sender_id]) >= MAX_COMMANDS_PER_WINDOW:
+            wait_time = self._calculate_wait_time(sender_id)
+            self.send_message(
+                f"⏳ Limite atteinte. Attendre {wait_time}",
+                sender_id, sender_info
+            )
+            return False
+
+        return True
+```
+
+**Limits**: 5 commands per 5 minutes (configurable)
+
+### Database Optimization
+
+#### 1. Indexes
+
+```sql
+CREATE INDEX idx_packets_timestamp ON packets(timestamp);
+CREATE INDEX idx_packets_from_id ON packets(from_id);
+CREATE INDEX idx_packets_type ON packets(packet_type);
+```
+
+**Purpose**: Fast filtering on time, sender, and type
+
+#### 2. Periodic Cleanup
+
+```python
+def cleanup_old_data(self, max_age_hours=48):
+    cutoff = time.time() - (max_age_hours * 3600)
+    cursor = self.conn.cursor()
+
+    cursor.execute("DELETE FROM packets WHERE timestamp < ?", (cutoff,))
+    cursor.execute("DELETE FROM public_messages WHERE timestamp < ?", (cutoff,))
+
+    self.conn.commit()
+    cursor.execute("VACUUM")  # Reclaim space
+```
+
+**Frequency**: Every 5 minutes (via `MeshBot.periodic_cleanup()`)
+**Retention**: 48 hours
+
+#### 3. Batching (Future Improvement)
+
+Currently, packets are saved individually. Consider batching for better performance:
+
+```python
+# Current (immediate)
+def add_packet(self, packet):
+    self.persistence.save_packet(packet)
+
+# Improved (batched)
+def add_packet(self, packet):
+    self.pending_packets.append(packet)
+
+def flush_pending_packets(self):
+    # Called periodically
+    self.persistence.save_packets_batch(self.pending_packets)
+    self.pending_packets.clear()
+```
+
+---
+
+## Security Considerations
+
+### Authentication & Authorization
+
+#### 1. Telegram User Filtering
+
+```python
+# config.py
+TELEGRAM_AUTHORIZED_USERS = [12345678, 98765432]
+
+# telegram_integration.py
+async def command_handler(update: Update, context):
+    user_id = update.effective_user.id
+
+    if user_id not in TELEGRAM_AUTHORIZED_USERS:
+        await update.message.reply_text("❌ Non autorisé")
+        return
+
+    # Process command
+```
+
+**Default**: Empty list = all users allowed
+**Recommendation**: Always set authorized users in production
+
+#### 2. Reboot Command Protection
+
+```python
+# config.py
+REBOOT_AUTHORIZED_USERS = [
+    123456789,     # Telegram ID
+    0x16fad3dc     # Mesh node ID (hex)
+]
+REBOOT_PASSWORD = "secret_password"
+
+# handlers/command_handlers/system_commands.py
+def handle_rebootpi(self, sender_id, sender_info, password):
+    # Check authorization
+    if sender_id not in REBOOT_AUTHORIZED_USERS:
+        return "❌ Non autorisé"
+
+    # Check password
+    if password != REBOOT_PASSWORD:
+        return "❌ Mot de passe incorrect"
+
+    # Write signal file (separate service with root does actual reboot)
+    with open("/tmp/reboot_requested", "w") as f:
+        f.write(f"Reboot by {sender_info.get('name', 'unknown')}\n")
+        f.write(f"ID: {hex(sender_id)}\n")
+        f.write(f"Time: {time.time()}\n")
+```
+
+**Security features**:
+- Double authentication (user ID + password)
+- Audit trail (logs requester)
+- Privilege separation (bot doesn't have sudo)
+- Hidden from public help text
+
+#### 3. Hidden Commands
+
+```python
+# Commands not shown in /help
+HIDDEN_COMMANDS = [
+    '/rebootpi',
+    '/rebootg2',
+    # Add other admin commands
+]
+
+def handle_help(self):
+    # Only show public commands
+    help_text = """
+    /bot - Chat AI
+    /nodes - Liste nœuds
+    # ... public commands only
+    """
+```
+
+### System Protection
+
+#### 1. Resource Limits
+
+```python
+# system_checks.py
+class SystemChecks:
+    @staticmethod
+    def check_llm_conditions():
+        # CPU temperature
+        cpu_temp = SystemChecks.get_cpu_temp()
+        if cpu_temp and cpu_temp > 60:
+            return False, f"⚠️ CPU: {cpu_temp:.1f}°C (trop chaud)"
+
+        # Battery voltage
+        battery_voltage = SystemChecks.get_battery_voltage()
+        if battery_voltage and battery_voltage < 12.0:
+            return False, f"🔋 Batterie: {battery_voltage:.1f}V (faible)"
+
+        return True, None
+```
+
+**Philosophy**: Fail-open (if check fails, allow request)
+**Purpose**: Protect hardware, prevent thermal throttling
+
+#### 2. Timeout Protection
+
+```python
+# All HTTP requests have timeouts
+response = requests.get(url, timeout=5)
+
+# LLM queries have longer timeouts
+MESH_AI_CONFIG = {"timeout": 60}       # 1 minute
+TELEGRAM_AI_CONFIG = {"timeout": 120}  # 2 minutes
+```
+
+**Purpose**: Prevent hanging on unresponsive services
+
+#### 3. Input Validation
+
+```python
+# Always validate user input
+def handle_trace(self, sender_id, sender_info, node_name):
+    if not node_name or len(node_name) > 20:
+        self.sender.send_message("❌ Nom de nœud invalide", sender_id, sender_info)
+        return
+
+    # Sanitize for shell (if needed)
+    node_name = node_name.replace(";", "").replace("&", "")
+```
+
+### Secrets Management
+
+#### Current Approach
+
+```python
+# config.py (gitignored)
+TELEGRAM_BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+REBOOT_PASSWORD = "secret"
+```
+
+#### Recommended Improvement
+
+```python
+# Use environment variables
+import os
+
+TELEGRAM_BOT_TOKEN = os.getenv("MESHBOT_TELEGRAM_TOKEN")
+REBOOT_PASSWORD = os.getenv("MESHBOT_REBOOT_PASSWORD")
+
+# Or use dedicated secrets manager
+# - systemd credentials
+# - python-dotenv with .env file
+# - HashiCorp Vault (for advanced setups)
+```
+
+### Audit Logging
+
+```python
+# All reboot requests are logged
+# /var/log/bot-reboot.log contains:
+# - Timestamp
+# - Requester name
+# - Requester ID (hex)
+
+# Example log entry:
+# 2024-11-15 14:23:45: Redémarrage Pi demandé via signal fichier
+# Reboot by UserName
+# ID: 0x16fad3dc
+# Time: 1699999999
+```
+
+**Recommendation**: Rotate logs periodically with logrotate
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### Issue 1: Bot Not Responding to Commands
+
+**Symptoms**: Messages sent but no response
+
+**Checklist**:
+1. Check if message is from **serial interface** (TCP messages don't trigger commands)
+2. Verify throttling not triggered (5 commands per 5 min)
+3. Check logs for errors: `journalctl -u meshbot -f`
+4. Verify Meshtastic connection: Check serial interface in logs
+5. Test with simple command: `/help`
+
+**Debug**:
+```python
+# In config.py
+DEBUG_MODE = True
+
+# Restart bot
+sudo systemctl restart meshbot
+
+# Watch logs
+journalctl -u meshbot -f
+```
+
+#### Issue 2: AI Not Working
+
+**Symptoms**: `/bot` command fails or times out
+
+**Checklist**:
+1. Check llama.cpp is running: `curl http://localhost:8080/health`
+2. Check CPU temperature: May be blocking if > 60°C
+3. Check battery voltage: May be blocking if < threshold
+4. Verify llama.cpp logs: `journalctl -u llamacpp -f`
+5. Test direct API: `curl -X POST http://localhost:8080/v1/chat/completions ...`
+
+**Common causes**:
+- Llama.cpp crashed (restart: `sudo systemctl restart llamacpp`)
+- Model not loaded (check llamacpp logs)
+- System protection triggered (temp/battery)
+
+#### Issue 3: Duplicate Statistics
+
+**Symptoms**: Packet counts doubled, nodes counted twice
+
+**Cause**: Deduplication not working
+
+**Fix**:
+```python
+# traffic_monitor.py
+# Verify deduplication logic in add_packet()
+# Should have 5-second dedup window
+
+# Check if both serial and TCP are adding packets
+# Only one should increment stats
+```
+
+#### Issue 4: SQLite Database Locked
+
+**Symptoms**: `database is locked` errors
+
+**Cause**: Multiple threads accessing SQLite
+
+**Fix**:
+```python
+# Ensure connection has check_same_thread=False
+sqlite3.connect(db_path, check_same_thread=False)
+
+# Consider using connection pooling or queue for writes
+```
+
+#### Issue 5: Memory Growing Unbounded
+
+**Symptoms**: Bot memory usage increases over time
+
+**Checklist**:
+1. Check deque maxlen is set: `deque(maxlen=5000)`
+2. Verify cleanup runs periodically: `periodic_cleanup()` every 5 min
+3. Check for resource leaks: HTTP responses not closed
+4. Monitor with: `gc.get_count()`, `gc.collect()`
+
+**Debug**:
+```python
+# Add to periodic_cleanup()
+import gc
+gc.collect()
+info_print(f"Memory: {gc.get_count()}")
+```
+
+#### Issue 6: Telegram Commands Not Working
+
+**Symptoms**: Telegram bot doesn't respond
+
+**Checklist**:
+1. Check bot token is correct in `config.py`
+2. Verify telegram integration enabled: `TELEGRAM_ENABLED = True`
+3. Check user is authorized: `TELEGRAM_AUTHORIZED_USERS`
+4. Test bot connection: `curl https://api.telegram.org/bot<TOKEN>/getMe`
+5. Check asyncio loop is running
+
+**Debug**:
+```python
+# telegram_integration.py
+# Add debug logging in command handlers
+debug_print(f"Telegram command: {update.message.text}")
+```
+
+### Debug Tools
+
+#### 1. Interactive Debug Console
+
+```python
+# debug_interface.py
+# Available commands:
+#   test - Test Llama connection
+#   mem - Show memory stats
+#   context - Show AI conversation context
+#   update - Force node DB update
+#   quit - Exit debug console
+```
+
+#### 2. Traffic Database Viewer
+
+```bash
+# Web UI
+python browse_traffic_db.py
+# Open http://localhost:5000
+
+# CLI viewer
+python view_traffic_db.py
+```
+
+#### 3. Diagnostic Script
+
+```bash
+# Trace packet collection
+python diagnostic_traffic.py
+```
+
+#### 4. Manual Database Queries
+
+```bash
+sqlite3 traffic_history.db
+
+# List all tables
+.tables
+
+# Show recent packets
+SELECT * FROM packets ORDER BY timestamp DESC LIMIT 10;
+
+# Show node stats
+SELECT * FROM node_stats ORDER BY total_packets DESC;
+
+# Count packets by type
+SELECT packet_type, COUNT(*) FROM packets GROUP BY packet_type;
+```
+
+### Performance Debugging
+
+#### Monitor CPU/Memory
+
+```bash
+# System resources
+htop
+
+# Bot process specifically
+ps aux | grep python | grep main_script
+
+# Monitor over time
+watch -n 5 'ps aux | grep main_script'
+```
+
+#### Check Database Size
+
+```bash
+ls -lh traffic_history.db
+sqlite3 traffic_history.db "SELECT COUNT(*) FROM packets;"
+```
+
+#### Monitor Network
+
+```bash
+# Meshtastic serial traffic
+sudo cat /dev/ttyACM0
+
+# TCP connections
+netstat -an | grep 4403  # tigrog2 TCP port
+```
+
+---
+
+## External Integrations
+
+### Llama.cpp (AI)
+
+**Protocol**: HTTP REST API (OpenAI-compatible)
+**Default**: `http://127.0.0.1:8080`
+**Systemd**: `llamacpp.service`
+
+#### Endpoints
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Chat completion
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant"},
+      {"role": "user", "content": "Hello"}
+    ],
+    "max_tokens": 1500,
+    "temperature": 0.7
+  }'
+```
+
+#### Configuration
+
+See `llama.cpp-integration/READMELLAMA.md` for setup
+
+#### Client Code
+
+`llama_client.py::query()`
+- Dual configs (Mesh vs Telegram)
+- System protection checks
+- Response cleaning (removes `<think>` tags)
+- Conversation context integration
+
+---
+
+### ESPHome (Telemetry)
+
+**Protocol**: HTTP
+**Default**: `http://192.168.1.27:80`
+
+#### Sensors
+
+```bash
+# Battery voltage
+curl http://192.168.1.27/sensor/battery_voltage
+# {"value": 13.2}
+
+# Solar current
+curl http://192.168.1.27/sensor/solar_current
+# {"value": 1.5}
+
+# Temperature (BME280)
+curl http://192.168.1.27/sensor/temperature
+# {"value": 22.5}
+```
+
+#### Client Code
+
+`esphome_client.py::get_power_report()`
+- Fetches all sensors
+- Formats for display
+- Stores history in `ESPHomeHistory`
+
+---
+
+### Meshtastic Remote Node (tigrog2)
+
+**Protocol**: TCP (Meshtastic API)
+**Default**: `192.168.1.38:4403`
+
+#### Purpose
+
+Query extended node list from remote ROUTER node
+
+#### Client Code
+
+`remote_nodes_client.py::get_direct_nodes_with_ttl()`
+- TCP connection via `SafeTCPConnection`
+- 60-second cache
+- Filters: Direct nodes, time-based (3 days default)
+- GPS distance calculations
+
+#### Usage
+
+```python
+from remote_nodes_client import RemoteNodesClient
+
+client = RemoteNodesClient()
+nodes = client.get_direct_nodes_with_ttl(
+    host="192.168.1.38",
+    port=4403,
+    days=3
+)
+```
+
+---
+
+### Wttr.in (Weather)
+
+**Protocol**: HTTPS
+**Endpoint**: `https://wttr.in/<location>`
+
+#### Client Code
+
+`utils_weather.py::get_weather_report()`
+- ASCII art weather forecast
+- 3-day forecast
+- French language (`?lang=fr`)
+
+#### Usage
+
+```python
+from utils_weather import get_weather_report
+
+weather = get_weather_report("Paris")
+```
+
+---
+
+### Telegram Bot API
+
+**Protocol**: HTTPS (python-telegram-bot library)
+**Documentation**: https://python-telegram-bot.org/
+
+#### Configuration
+
+```python
+# config.py
+TELEGRAM_ENABLED = True
+TELEGRAM_BOT_TOKEN = "your_token_here"
+TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
+```
+
+#### Client Code
+
+`telegram_integration.py::TelegramIntegration`
+- Async/await pattern
+- User authentication & mapping
+- Bidirectional bridge (Telegram ↔ Meshtastic)
+- Rich commands (longer AI, full node lists, graphs)
+
+---
+
+## Appendix: Quick Reference
+
+### Key File Locations
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Entry point | `main_script.py` | CLI arg parsing, starts bot |
+| Orchestrator | `main_bot.py` | MeshBot class, lifecycle |
+| Message routing | `handlers/message_router.py` | Command dispatcher |
+| Message delivery | `handlers/message_sender.py` | Throttling + chunking |
+| Command handlers | `handlers/command_handlers/*.py` | Domain logic |
+| Node database | `node_manager.py` | GPS, names, RX history |
+| Packet analytics | `traffic_monitor.py` | Stats, deduplication |
+| SQLite layer | `traffic_persistence.py` | Persistence |
+| AI client | `llama_client.py` | Llama.cpp integration |
+| Telegram | `telegram_integration.py` | Telegram bridge |
+| Configuration | `config.py.sample` | Config template |
+| Systemd service | `meshbot.service` | Service definition |
+
+### Command Reference
+
+| Command | Handler | Purpose |
+|---------|---------|---------|
+| `/bot <question>` | `ai_commands.py` | Query AI |
+| `/nodes [page]` | `network_commands.py` | List nodes |
+| `/my` | `network_commands.py` | Your signal |
+| `/trace <node>` | `network_commands.py` | Traceroute |
+| `/sys` | `system_commands.py` | System info |
+| `/rebootpi` | `system_commands.py` | Reboot Pi (admin) |
+| `/rebootg2` | `system_commands.py` | Reboot router (admin) |
+| `/top [hours]` | `stats_commands.py` | Top talkers |
+| `/histo [type]` | `stats_commands.py` | Packet histogram |
+| `/stats` | `stats_commands.py` | Channel stats |
+| `/packets` | `stats_commands.py` | Packet stats |
+| `/trafic [hours]` | `stats_commands.py` | Message history |
+| `/echo <msg>` | `mesh_commands.py` | Broadcast via router |
+| `/annonce <msg>` | `mesh_commands.py` | Broadcast via bot |
+| `/power` | `utility_commands.py` | ESPHome data |
+| `/weather` | `utility_commands.py` | Weather forecast |
+| `/help` | `utility_commands.py` | Help text |
+| `/legend` | `utility_commands.py` | Signal legend |
+
+### Configuration Constants
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `SERIAL_PORT` | `/dev/ttyACM0` | Serial device |
+| `REMOTE_NODE_HOST` | `192.168.1.38` | Router IP |
+| `MAX_MESSAGE_SIZE` | `180` | LoRa limit (chars) |
+| `MAX_COMMANDS_PER_WINDOW` | `5` | Throttle limit |
+| `COMMAND_WINDOW_SECONDS` | `300` | Throttle window (5 min) |
+| `MAX_CONTEXT_MESSAGES` | `6` | AI context (3 exchanges) |
+| `CONTEXT_TIMEOUT` | `1800` | AI context timeout (30 min) |
+| `DEBUG_MODE` | `False` | Verbose logging |
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `packets` | All packets with metadata |
+| `public_messages` | Text messages only |
+| `node_stats` | Per-node aggregated stats |
+| `global_stats` | Overall network stats |
+| `network_stats` | Routing & signal metrics |
+
+### Logging Functions
+
+| Function | When to Use |
+|----------|-------------|
+| `debug_print()` | Verbose debug (DEBUG_MODE only) |
+| `info_print()` | Important events |
+| `conversation_print()` | AI conversations |
+| `error_print()` | Errors with traceback |
+
+---
+
+## Document Maintenance
+
+This document should be updated when:
+- New commands are added
+- Architecture changes significantly
+- New external integrations are added
+- Configuration options change
+- Common issues are discovered
+- Performance patterns evolve
+
+**Last reviewed**: 2025-11-15
+**Reviewed by**: Claude (AI Assistant)
+**Next review**: When significant changes occur
+
+---
+
+## Additional Resources
+
+- **README.md**: User-facing documentation
+- **BROWSE_TRAFFIC_DB.md**: Web UI for traffic database
+- **TRAFFIC_DB_VIEWER.md**: CLI database viewer
+- **llama.cpp-integration/READMELLAMA.md**: Llama.cpp setup guide
+- **Meshtastic Python Docs**: https://meshtastic.org/docs/software/python/cli/
+- **python-telegram-bot Docs**: https://python-telegram-bot.org/
+
+---
+
+**End of CLAUDE.md**
