@@ -348,6 +348,7 @@ class UtilityCommands:
             "/echo",
             "/annonce",
             "/nodes",
+            "/stats [cmd]",
             "/top",
             "/trace",
             "/packets",
@@ -384,19 +385,25 @@ class UtilityCommands:
           Défaut: 30j, max 365j, tri par longName
 
         📊 ANALYSE TRAFIC
+        • /stats [cmd] [params] - Système unifié de statistiques
+          Sous-commandes:
+             - global : Vue d'ensemble réseau (défaut)
+             - top [h] [n] : Top talkers
+             - packets [h] : Distribution types de paquets
+             - channel [h] : Utilisation du canal
+             - histo [type] [h] : Histogramme temporel
+             - traffic [h] : Historique messages publics
+          Raccourcis: g, t, p, ch, h, tr
+          Ex: /stats top 24 10, /stats channel 12
         • /trafic [heures] - Historique messages publics
           Défaut: 8h, max 24h, stats détaillées
-        • /top [heures] [nombre] - Top talkers
+        • /top [heures] [nombre] - Top talkers (alias)
           Défaut: 24h, top 10
-        • /stats - Statistiques globales du réseau
+        • /packets [heures] - Distribution paquets (alias)
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
-        • /histo [type] [h]
-          Types disponibles:
-             - all : tous les paquets (défaut)
-             - messages : messages texte uniquement
-             - pos : positions uniquement
-             - info : nodeinfo uniquement
+        • /histo [type] [h] - Histogramme (alias)
+          Types: all, messages, pos, info
 
         💾 PERSISTANCE TRAFIC
         • /dbstats - Stats de la base de données
