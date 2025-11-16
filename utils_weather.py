@@ -101,18 +101,18 @@ def get_weather_icon(weather_code):
 
 def format_weather_line(label, emoji, temp, wind, precip, humidity):
     """
-    Formater une ligne de météo avec tous les détails
-    
+    Formater une ligne de météo avec séparations visuelles pour meilleure lisibilité
+
     Args:
-        label (str): Label de la ligne (Now/Today/Tomorrow/Day+2)
+        label (str): Label de la ligne (🌡️ Maintenant/📅 Aujourd'hui/📆 Demain/📋 J+2)
         emoji (str): Émoji météo
         temp (str): Température (ex: "12")
         wind (str): Vitesse vent en km/h (ex: "15")
         precip (str): Précipitations en mm (ex: "0.5")
         humidity (str): Humidité en % (ex: "65")
-    
+
     Returns:
-        str: Ligne formatée (ex: "Now: ☀️ 12°C 15km/h 0mm 65%")
+        str: Ligne formatée avec séparations (ex: "🌡️ Maintenant: ☀️ 12°C | 💨 15km/h | 💧 0mm | 💦 65%")
     """
     # Convertir précipitations en format propre (pas de .0 inutiles)
     try:
@@ -120,8 +120,9 @@ def format_weather_line(label, emoji, temp, wind, precip, humidity):
         precip_str = f"{precip_float:.1f}mm" if precip_float % 1 != 0 else f"{int(precip_float)}mm"
     except (ValueError, TypeError):
         precip_str = f"{precip}mm"
-    
-    return f"{label}: {emoji} {temp}°C {wind}km/h {precip_str} {humidity}%"
+
+    # Format avec séparations | et émojis pour meilleure lisibilité
+    return f"{label}: {emoji} {temp}°C | 💨 {wind}km/h | 💧 {precip_str} | 💦 {humidity}%"
 
 
 def parse_weather_json(json_data):
@@ -168,14 +169,14 @@ def parse_weather_json(json_data):
         wind = current.get('windspeedKmph', '?')
         precip = current.get('precipMM', '0')
         humidity = current.get('humidity', '?')
-        
-        lines.append(format_weather_line('Now', emoji, temp, wind, precip, humidity))
-        
+
+        lines.append(format_weather_line('🌡️ Maintenant', emoji, temp, wind, precip, humidity))
+
         # ----------------------------------------------------------------
-        # Lines 2-4: TODAY, TOMORROW, DAY+2 (weather array)
+        # Lines 3-5: TODAY, TOMORROW, DAY+2 (weather array)
         # ----------------------------------------------------------------
         weather = json_data.get('weather', [])
-        day_labels = ['Today', 'Tomorrow', 'Day+2']
+        day_labels = ['📅 Aujourd\'hui', '📆 Demain', '📋 J+2']
         
         for i, label in enumerate(day_labels):
             if i < len(weather):
