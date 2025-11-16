@@ -1,0 +1,52 @@
+#!/bin/bash
+# Configuration pour le système de cartes Meshtastic
+# Copier ce fichier en 'map_config.sh' et adapter les valeurs
+
+# ============================================================================
+# CONFIGURATION MESHTASTIC
+# ============================================================================
+
+# Hôte du nœud Meshtastic à interroger (tigrog2)
+MESH_HOST="192.168.1.38"
+MESH_PORT=4403
+
+# ============================================================================
+# CONFIGURATION SERVEUR WEB DISTANT
+# ============================================================================
+
+# Serveur hébergeant les cartes HTML (accessible depuis Internet)
+# Laisser vide pour désactiver l'upload automatique
+REMOTE_USER="root"
+REMOTE_HOST="100.120.148.60"
+REMOTE_PATH="/opt/WebSites/projectsend"
+
+# ============================================================================
+# TIMEOUTS (en secondes)
+# ============================================================================
+
+# Timeout pour la commande 'meshtastic --info'
+MESHTASTIC_TIMEOUT=30
+
+# Timeout pour l'export des données de voisinage
+EXPORT_NEIGHBORS_TIMEOUT=60
+
+# Durée max d'exécution avant de considérer le lock comme expiré
+LOCK_TIMEOUT=300  # 5 minutes
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+# Taille minimale (en bytes) pour considérer un fichier JSON comme valide
+# Évite d'écraser les bonnes données avec des fichiers vides/corrompus
+MIN_FILE_SIZE=100
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+# Fichier de log (chemin relatif au répertoire map/)
+LOG_FILE="infoup.log"
+
+# Activer les logs verbeux (0=non, 1=oui)
+VERBOSE=1
