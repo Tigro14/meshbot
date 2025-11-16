@@ -24,7 +24,7 @@ import subprocess
 import os
 import json
 import time
-from utils import info_print, error_print
+from utils import info_print, error_print, debug_print
 
 # Configuration
 CACHE_DIR = "/tmp"
