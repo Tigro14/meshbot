@@ -348,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -362,6 +362,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
                    12 = Mesh compact (24 chars, 3 lines, ~124 chars total)
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
 
     Returns:
         str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
@@ -374,6 +375,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
         # Normaliser la location
         if not location:
             location = DEFAULT_LOCATION
+
+        # Clé de cache (inclut tous les paramètres qui affectent le résultat)
+        cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
+
+        # Vérifier le cache SQLite (5 minutes)
+        if persistence:
+            cached = persistence.get_weather_cache(cache_key, 'rain', max_age_seconds=300)
+            if cached:
+                return cached
 
         # Construire l'URL v2n (narrow format avec graphes ASCII)
         # Ajouter ?T pour désactiver les codes ANSI (couleurs)
@@ -528,7 +538,13 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
         # Ajouter l'échelle horaire (avec marqueur NOW intégré)
         result_lines.append(''.join(hour_scale))
 
-        return "\n".join(result_lines)
+        result = "\n".join(result_lines)
+
+        # Sauvegarder en cache SQLite
+        if persistence:
+            persistence.set_weather_cache(cache_key, 'rain', result)
+
+        return result
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"

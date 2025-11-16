@@ -6,6 +6,7 @@ Permet de conserver les données de trafic entre les redémarrages du bot.
 import sqlite3
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
@@ -166,6 +167,23 @@ class TrafficPersistence:
                     packets_direct INTEGER,
                     packets_relayed INTEGER
                 )
+            ''')
+
+            # Table pour le cache météo (centralise tous les caches weather/rain/astro)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS weather_cache (
+                    location TEXT NOT NULL,
+                    cache_type TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    timestamp REAL NOT NULL,
+                    PRIMARY KEY (location, cache_type)
+                )
+            ''')
+
+            # Index pour nettoyage périodique du cache expiré
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_weather_cache_timestamp
+                ON weather_cache(timestamp)
             ''')
 
             self.conn.commit()
@@ -621,6 +639,86 @@ class TrafficPersistence:
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des statistiques : {e}")
             return {}
+
+    def get_weather_cache(self, location: str, cache_type: str, max_age_seconds: int = 300) -> Optional[str]:
+        """
+        Récupère les données météo en cache si elles sont encore valides.
+
+        Args:
+            location: Nom de la localisation (ex: "Paris", "" pour default)
+            cache_type: Type de cache ("weather", "rain", "astro")
+            max_age_seconds: Durée de validité du cache en secondes (défaut: 300 = 5min)
+
+        Returns:
+            Les données en cache si valides, None sinon
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT data, timestamp FROM weather_cache
+                WHERE location = ? AND cache_type = ?
+            ''', (location, cache_type))
+
+            row = cursor.fetchone()
+            if row:
+                data, timestamp = row['data'], row['timestamp']
+                age = time.time() - timestamp
+
+                if age < max_age_seconds:
+                    logger.info(f"✅ Cache météo utilisé ({cache_type}/{location}): {int(age)}s/{max_age_seconds}s")
+                    return data
+                else:
+                    logger.info(f"⏱️ Cache météo expiré ({cache_type}/{location}): {int(age)}s > {max_age_seconds}s")
+                    return None
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du cache météo : {e}")
+            return None
+
+    def set_weather_cache(self, location: str, cache_type: str, data: str):
+        """
+        Stocke les données météo en cache.
+
+        Args:
+            location: Nom de la localisation (ex: "Paris", "" pour default)
+            cache_type: Type de cache ("weather", "rain", "astro")
+            data: Données à stocker (string)
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO weather_cache (location, cache_type, data, timestamp)
+                VALUES (?, ?, ?, ?)
+            ''', (location, cache_type, data, time.time()))
+
+            self.conn.commit()
+            logger.info(f"💾 Cache météo sauvegardé ({cache_type}/{location})")
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde du cache météo : {e}")
+
+    def cleanup_weather_cache(self, max_age_hours: int = 24):
+        """
+        Nettoie les entrées de cache météo expirées.
+
+        Args:
+            max_age_hours: Supprime les caches plus vieux que ce nombre d'heures
+        """
+        try:
+            cursor = self.conn.cursor()
+            cutoff = time.time() - (max_age_hours * 3600)
+
+            cursor.execute('DELETE FROM weather_cache WHERE timestamp < ?', (cutoff,))
+            deleted = cursor.rowcount
+            self.conn.commit()
+
+            if deleted > 0:
+                logger.info(f"Nettoyage cache météo : {deleted} entrées supprimées (> {max_age_hours}h)")
+
+        except Exception as e:
+            logger.error(f"Erreur lors du nettoyage du cache météo : {e}")
 
     def close(self):
         """Ferme la connexion à la base de données."""
