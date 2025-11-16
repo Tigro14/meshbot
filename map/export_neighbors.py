@@ -2,17 +2,33 @@
 """
 Script d'export des informations de voisinage Meshtastic
 Version ultra-robuste avec sérialisation récursive complète
+
+IMPORTANT: Les logs vont sur stderr, le JSON sur stdout
 """
 
 import json
 import time
+import sys
 import meshtastic.tcp_interface
 from datetime import datetime
+
+# Helper pour logger sur stderr (ne pollue pas le JSON sur stdout)
+def log(msg):
+    print(msg, file=sys.stderr)
+
+# Champs à ignorer lors de la sérialisation JSON (trop gros ou inutiles)
+IGNORED_FIELDS = {
+    'serialized_pb',      # Données protobuf brutes (énorme)
+    'DESCRIPTOR',         # Descripteur protobuf
+    '_serialized_start',  # Metadata protobuf
+    '_serialized_end',    # Metadata protobuf
+}
 
 def make_json_safe(obj, max_depth=10, current_depth=0):
     """
     Convertir récursivement n'importe quel objet en type JSON-safe
     Gère tous les types Meshtastic, protobuf, etc.
+    Filtre les champs inutiles/volumineux (IGNORED_FIELDS)
     """
     # Protection contre récursion infinie
     if current_depth > max_depth:
@@ -33,8 +49,9 @@ def make_json_safe(obj, max_depth=10, current_depth=0):
     # Dictionnaire
     if isinstance(obj, dict):
         return {
-            str(k): make_json_safe(v, max_depth, current_depth + 1) 
+            str(k): make_json_safe(v, max_depth, current_depth + 1)
             for k, v in obj.items()
+            if k not in IGNORED_FIELDS  # Filtrer les champs ignorés
         }
     
     # Objets protobuf ou Meshtastic
@@ -44,14 +61,16 @@ def make_json_safe(obj, max_depth=10, current_depth=0):
         if hasattr(obj, '__dict__'):
             obj_dict = {}
             for key, value in obj.__dict__.items():
-                if not key.startswith('_'):  # Ignorer les attributs privés
+                # Ignorer les attributs privés et les champs dans la blacklist
+                if not key.startswith('_') and key not in IGNORED_FIELDS:
                     obj_dict[key] = make_json_safe(value, max_depth, current_depth + 1)
             return obj_dict
         
         # Sinon, essayer dir() pour lister les attributs
         obj_dict = {}
         for attr_name in dir(obj):
-            if not attr_name.startswith('_') and not callable(getattr(obj, attr_name, None)):
+            # Ignorer attributs privés, callables, et champs blacklistés
+            if not attr_name.startswith('_') and attr_name not in IGNORED_FIELDS and not callable(getattr(obj, attr_name, None)):
                 try:
                     value = getattr(obj, attr_name)
                     obj_dict[attr_name] = make_json_safe(value, max_depth, current_depth + 1)
@@ -87,8 +106,8 @@ def extract_neighbors(node_info):
                     if hasattr(attr, 'neighbors'):
                         neighbor_list = getattr(attr, 'neighbors')
                         if neighbor_list:
-                            print(f"  ✓ Trouvé {len(neighbor_list)} voisins dans {attr_name}.neighbors")
-                            
+                            log(f"  ✓ Trouvé {len(neighbor_list)} voisins dans {attr_name}.neighbors")
+
                             for neighbor in neighbor_list:
                                 # Convertir le voisin en dict JSON-safe
                                 neighbor_data = make_json_safe(neighbor)
@@ -98,7 +117,7 @@ def extract_neighbors(node_info):
                 
                 # Si c'est directement neighbors
                 elif attr_name == 'neighbors' and attr:
-                    print(f"  ✓ Trouvé {len(attr)} voisins dans {attr_name}")
+                    log(f"  ✓ Trouvé {len(attr)} voisins dans {attr_name}")
                     for neighbor in attr:
                         neighbor_data = make_json_safe(neighbor)
                         neighbors.append(neighbor_data)
@@ -111,35 +130,36 @@ def extract_neighbors(node_info):
                     neighborinfo = node_info[key]
                     if isinstance(neighborinfo, dict) and 'neighbors' in neighborinfo:
                         neighbors_list = neighborinfo['neighbors']
-                        print(f"  ✓ Trouvé {len(neighbors_list)} voisins dans dict[{key}]['neighbors']")
+                        log(f"  ✓ Trouvé {len(neighbors_list)} voisins dans dict[{key}]['neighbors']")
                         return [make_json_safe(n) for n in neighbors_list]
-        
-        print(f"  ⚠ Pas d'infos de voisinage détectées")
-        return []
-        
-    except Exception as e:
-        print(f"  ✗ Erreur extraction voisins: {e}")
-        import traceback
-        print(traceback.format_exc())
+
+        log(f"  ⚠ Pas d'infos de voisinage détectées")
         return []
 
-def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
+    except Exception as e:
+        log(f"  ✗ Erreur extraction voisins: {e}")
+        import traceback
+        log(traceback.format_exc())
+        return []
+
+def export_mesh_data(host, port=4403):
     """
     Se connecter à un nœud et exporter toutes les données
+    Les logs vont sur stderr, le JSON sur stdout
     """
-    print(f"🔌 Connexion à {host}:{port}...")
-    
+    log(f"🔌 Connexion à {host}:{port}...")
+
     try:
         interface = meshtastic.tcp_interface.TCPInterface(
             hostname=host,
             portNumber=port
         )
-        
-        print("⏳ Chargement des données (10 secondes)...")
+
+        log("⏳ Chargement des données (10 secondes)...")
         time.sleep(10)  # Attendre plus longtemps
-        
+
         nodes = interface.nodes
-        print(f"📊 {len(nodes)} nœuds trouvés\n")
+        log(f"📊 {len(nodes)} nœuds trouvés\n")
         
         # Structure de sortie
         output_data = {
@@ -159,9 +179,9 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
                     node_id_clean = f"!{int(node_id, 16):08x}"
             else:
                 node_id_clean = f"!{node_id:08x}"
-            
-            print(f"Traitement de {node_id_clean}...")
-            
+
+            log(f"Traitement de {node_id_clean}...")
+
             # Convertir TOUT le nœud en JSON-safe
             node_data = make_json_safe(node_info)
             
@@ -192,139 +212,135 @@ def export_mesh_data(host, port=4403, output_file="mesh_neighbors.json"):
             'total_neighbor_entries': total_neighbors,
             'average_neighbors': total_neighbors / len(nodes) if nodes else 0
         }
-        
-        # Écrire le JSON
-        print(f"\n💾 Écriture dans {output_file}...")
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, indent=2, ensure_ascii=False)
-        
-        print(f"✅ Export réussi!")
-        print(f"📊 Statistiques:")
-        print(f"   • Nœuds avec voisins: {nodes_with_neighbors}/{len(nodes)}")
-        print(f"   • Total entrées voisins: {total_neighbors}")
+
+        # Écrire le JSON sur stdout (pas dans un fichier)
+        log(f"\n💾 Écriture JSON sur stdout...")
+        print(json.dumps(output_data, indent=2, ensure_ascii=False))
+
+        log(f"✅ Export réussi!")
+        log(f"📊 Statistiques:")
+        log(f"   • Nœuds avec voisins: {nodes_with_neighbors}/{len(nodes)}")
+        log(f"   • Total entrées voisins: {total_neighbors}")
         if nodes:
-            print(f"   • Moyenne voisins/nœud: {total_neighbors / len(nodes):.1f}")
-        
+            log(f"   • Moyenne voisins/nœud: {total_neighbors / len(nodes):.1f}")
+
         return True
-        
+
     except Exception as e:
-        print(f"✗ Erreur : {e}")
+        log(f"✗ Erreur : {e}")
         import traceback
-        print(traceback.format_exc())
+        log(traceback.format_exc())
         return False
 
 def debug_node_structure(host, port=4403):
     """
     Mode debug : afficher la structure détaillée d'un nœud
     """
-    print(f"🔍 MODE DEBUG - Analyse structure nœud sur {host}:{port}\n")
-    
+    log(f"🔍 MODE DEBUG - Analyse structure nœud sur {host}:{port}\n")
+
     try:
         interface = meshtastic.tcp_interface.TCPInterface(
             hostname=host,
             portNumber=port
         )
-        
-        print("⏳ Chargement des données (10 secondes)...")
+
+        log("⏳ Chargement des données (10 secondes)...")
         time.sleep(10)
-        
+
         nodes = interface.nodes
-        print(f"📊 {len(nodes)} nœuds trouvés\n")
-        
+        log(f"📊 {len(nodes)} nœuds trouvés\n")
+
         if not nodes:
-            print("❌ Aucun nœud trouvé")
+            log("❌ Aucun nœud trouvé")
             interface.close()
             return
         
         # Prendre le premier nœud avec le plus d'infos
         node_id, node_info = next(iter(nodes.items()))
         
-        print(f"{'='*60}")
-        print(f"📋 ANALYSE DU NŒUD {node_id}")
-        print(f"{'='*60}\n")
+        log(f"{'='*60}")
+        log(f"📋 ANALYSE DU NŒUD {node_id}")
+        log(f"{'='*60}\n")
         
-        print(f"Type: {type(node_info)}")
-        print(f"\n📦 Attributs disponibles:")
+        log(f"Type: {type(node_info)}")
+        log(f"\n📦 Attributs disponibles:")
         
         for attr_name in sorted(dir(node_info)):
             if not attr_name.startswith('_'):
                 try:
                     value = getattr(node_info, attr_name)
                     if not callable(value):
-                        print(f"   • {attr_name}: {type(value).__name__}")
+                        log(f"   • {attr_name}: {type(value).__name__}")
                         
                         # Si c'est un objet intéressant, afficher plus de détails
                         if attr_name in ['neighborinfo', 'neighbour_info', 'neighbors']:
-                            print(f"     └─ Contenu: {value}")
+                            log(f"     └─ Contenu: {value}")
                             if hasattr(value, '__dict__'):
-                                print(f"     └─ Sous-attributs: {dir(value)}")
+                                log(f"     └─ Sous-attributs: {dir(value)}")
                 except Exception as e:
-                    print(f"   • {attr_name}: [Erreur: {e}]")
+                    log(f"   • {attr_name}: [Erreur: {e}]")
         
         # Si c'est un dict
         if isinstance(node_info, dict):
-            print(f"\n📦 Clés du dictionnaire:")
+            log(f"\n📦 Clés du dictionnaire:")
             for key in sorted(node_info.keys()):
-                print(f"   • {key}: {type(node_info[key]).__name__}")
+                log(f"   • {key}: {type(node_info[key]).__name__}")
         
         # Vérification spécifique neighborinfo
-        print(f"\n{'='*60}")
-        print(f"🔍 RECHERCHE SPÉCIFIQUE NEIGHBORINFO")
-        print(f"{'='*60}\n")
+        log(f"\n{'='*60}")
+        log(f"🔍 RECHERCHE SPÉCIFIQUE NEIGHBORINFO")
+        log(f"{'='*60}\n")
         
         found_neighborinfo = False
         
         # Méthode 1
         if hasattr(node_info, 'neighborinfo'):
             neighborinfo = node_info.neighborinfo
-            print(f"✓ node_info.neighborinfo existe")
-            print(f"  Type: {type(neighborinfo)}")
-            print(f"  Valeur: {neighborinfo}")
+            log(f"✓ node_info.neighborinfo existe")
+            log(f"  Type: {type(neighborinfo)}")
+            log(f"  Valeur: {neighborinfo}")
             
             if hasattr(neighborinfo, 'neighbors'):
                 neighbors = neighborinfo.neighbors
-                print(f"  └─ .neighbors existe")
-                print(f"     Type: {type(neighbors)}")
-                print(f"     Longueur: {len(neighbors) if hasattr(neighbors, '__len__') else 'N/A'}")
-                print(f"     Contenu: {neighbors}")
+                log(f"  └─ .neighbors existe")
+                log(f"     Type: {type(neighbors)}")
+                log(f"     Longueur: {len(neighbors) if hasattr(neighbors, '__len__') else 'N/A'}")
+                log(f"     Contenu: {neighbors}")
                 found_neighborinfo = True
         else:
-            print(f"✗ node_info.neighborinfo n'existe pas")
+            log(f"✗ node_info.neighborinfo n'existe pas")
         
         # Méthode 2
         if isinstance(node_info, dict) and 'neighborinfo' in node_info:
-            print(f"\n✓ node_info['neighborinfo'] existe (dict)")
+            log(f"\n✓ node_info['neighborinfo'] existe (dict)")
             neighborinfo = node_info['neighborinfo']
-            print(f"  Type: {type(neighborinfo)}")
-            print(f"  Contenu: {neighborinfo}")
+            log(f"  Type: {type(neighborinfo)}")
+            log(f"  Contenu: {neighborinfo}")
             found_neighborinfo = True
         
         if not found_neighborinfo:
-            print(f"\n⚠️  AUCUNE INFO DE VOISINAGE TROUVÉE")
-            print(f"\nCela signifie probablement que:")
-            print(f"  1. Le module neighbor_info n'est pas activé sur les nœuds")
-            print(f"  2. Les nœuds n'ont pas encore envoyé d'infos de voisinage")
-            print(f"  3. Le temps d'attente est insuffisant (essayer 30s+)")
+            log(f"\n⚠️  AUCUNE INFO DE VOISINAGE TROUVÉE")
+            log(f"\nCela signifie probablement que:")
+            log(f"  1. Le module neighbor_info n'est pas activé sur les nœuds")
+            log(f"  2. Les nœuds n'ont pas encore envoyé d'infos de voisinage")
+            log(f"  3. Le temps d'attente est insuffisant (essayer 30s+)")
         
         interface.close()
         
     except Exception as e:
-        print(f"✗ Erreur debug: {e}")
+        log(f"✗ Erreur debug: {e}")
         import traceback
-        print(traceback.format_exc())
+        log(traceback.format_exc())
 
 if __name__ == "__main__":
-    import sys
-    
     # Configuration
     HOST = "192.168.1.38"  # tigrog2
     PORT = 4403
-    OUTPUT_FILE = "mesh_neighbors.json"
-    
+
     # Mode debug si argument --debug
     if len(sys.argv) > 1 and sys.argv[1] == "--debug":
         debug_node_structure(HOST, PORT)
     else:
-        # Export normal
-        success = export_mesh_data(HOST, PORT, OUTPUT_FILE)
+        # Export normal (JSON sur stdout, logs sur stderr)
+        success = export_mesh_data(HOST, PORT)
         sys.exit(0 if success else 1)

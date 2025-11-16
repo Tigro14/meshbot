@@ -3,3 +3,12 @@ __pycache__/
 *.db
 map/*.json
 config.py
+
+# Map system generated files and logs
+map/info.json
+map/info_neighbors.json
+map/info*.backup
+map/info*.tmp
+map/*.log
+map/.infoup.lock
+map/map_config.sh
