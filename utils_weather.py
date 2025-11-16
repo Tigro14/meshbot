@@ -473,36 +473,27 @@ def get_rain_graph(location=None, days=1):
                     sampled.append(max(window))
             values = sampled[:target_points]
 
-        # Créer un graphe multi-lignes (3 niveaux de hauteur)
+        # Créer un graphe compact sur 2 lignes
+        # Ligne 1 : Pics de forte pluie (valeurs >= 6, sparse avec espaces)
+        # Ligne 2 : Graphe complet de base (toutes valeurs)
         width = len(values)
-        line_high = []  # Valeurs >= 5 (▅▆▇█)
-        line_mid = []   # Valeurs 3-4 (▃▄)
-        line_low = []   # Valeurs 0-2 (▁▂)
+        line_peaks = []  # Pics forts seulement
+        line_base = []   # Graphe complet
+
+        value_to_char = {
+            0: '▁', 1: '▂', 2: '▃', 3: '▄',
+            4: '▅', 5: '▆', 6: '▇', 7: '█'
+        }
 
         for v in values:
-            # Ligne haute (>= 5)
+            # Ligne 1 : Seulement les pics >= 6
             if v >= 6:
-                line_high.append('█')
-            elif v == 5:
-                line_high.append('▄')
+                line_peaks.append(value_to_char[v])
             else:
-                line_high.append(' ')
+                line_peaks.append(' ')
 
-            # Ligne moyenne (3-4)
-            if v >= 4:
-                line_mid.append('█')
-            elif v == 3:
-                line_mid.append('▄')
-            else:
-                line_mid.append(' ')
-
-            # Ligne basse (toutes les valeurs > 0)
-            if v >= 2:
-                line_low.append('█')
-            elif v == 1:
-                line_low.append('▄')
-            else:
-                line_low.append('▁')
+            # Ligne 2 : Graphe complet
+            line_base.append(value_to_char[v])
 
         # Formater la sortie
         location_name = location if location else "local"
@@ -523,7 +514,7 @@ def get_rain_graph(location=None, days=1):
             else:
                 hour_scale.append(' ')
 
-        # Découper jour par jour (48 points par jour) pour rester sous 220 chars/message
+        # Découper jour par jour (48 points par jour) pour rester compact
         messages = []
         day_names = ['Auj', 'Dem', 'J+2']
 
@@ -536,18 +527,14 @@ def get_rain_graph(location=None, days=1):
             day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
 
             # Extraire les segments pour ce jour
-            high_day = ''.join(line_high[start_idx:end_idx]).rstrip()
-            mid_day = ''.join(line_mid[start_idx:end_idx]).rstrip()
-            low_day = ''.join(line_low[start_idx:end_idx])
+            peaks_day = ''.join(line_peaks[start_idx:end_idx])
+            base_day = ''.join(line_base[start_idx:end_idx])
             scale_day = ''.join(hour_scale[start_idx:end_idx])
 
-            # Ajouter les lignes avec labels d'intensité pour meilleure lisibilité
-            if high_day.strip():
-                day_lines.append(f"Fort  {high_day}")
-            if mid_day.strip():
-                day_lines.append(f"Moyen {mid_day}")
-            day_lines.append(f"Faible {low_day}")
-            day_lines.append(f"Heures {scale_day}")
+            # Format compact sur 2 lignes + échelle
+            day_lines.append(peaks_day)
+            day_lines.append(base_day)
+            day_lines.append(scale_day)
 
             messages.append("\n".join(day_lines))
 
