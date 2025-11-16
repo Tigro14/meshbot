@@ -135,8 +135,10 @@ class UtilityCommands(TelegramCommandBase):
                         await asyncio.sleep(1)
 
             elif subcommand == 'astro':
-                # Informations astronomiques
-                weather_data = await asyncio.to_thread(get_weather_astro, location)
+                # Informations astronomiques (cache SQLite 5min)
+                traffic_monitor = self.telegram.message_handler.traffic_monitor if hasattr(self.telegram.message_handler, 'traffic_monitor') else None
+                persistence = traffic_monitor.persistence if traffic_monitor else None
+                weather_data = await asyncio.to_thread(get_weather_astro, location, persistence=persistence)
                 await update.message.reply_text(weather_data)
 
             else:

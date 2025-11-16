@@ -597,20 +597,22 @@ def get_moon_emoji(moon_illumination):
         return '🌙'  # Fallback
 
 
-def get_weather_astro(location=None):
+def get_weather_astro(location=None, persistence=None):
     """
     Récupérer les informations astronomiques et météo actuelles
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
 
     Returns:
-        str: Infos astronomiques formatées (3 lignes)
+        str: Infos astronomiques formatées (4 lignes)
 
     Exemples:
         >>> astro = get_weather_astro("Paris")
         >>> print(astro)
+        📍 Paris, France
         Weather: Mist, +12°C, 94%, 5km/h, 1008hPa
         Now: 00:53:40 | Sunrise: 08:01 | Sunset: 17:08
         🌔 Moonrise: 10:23 | Moonset: 18:45 (67%)
@@ -620,55 +622,35 @@ def get_weather_astro(location=None):
         if not location:
             location = DEFAULT_LOCATION
 
-        # Construire l'URL et le nom du cache
+        # Clé de cache
+        cache_key = location or 'default'
+
+        # Vérifier le cache SQLite (5 minutes)
+        if persistence:
+            cached = persistence.get_weather_cache(cache_key, 'astro', max_age_seconds=300)
+            if cached:
+                return cached
+
+        # Construire l'URL
         if location:
             location_encoded = location.replace(' ', '+')
             wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
-            location_safe = location.replace(' ', '_').replace('/', '_')
-            cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
         else:
             wttr_url = f"{WTTR_BASE_URL}/?format=j1"
-            cache_file = f"{CACHE_DIR}/weather_cache_default.json"
 
-        # Essayer de lire depuis le cache d'abord
-        weather_json = None
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                cache_time = cache_data.get('timestamp', 0)
-                current_time = time.time()
-                age_seconds = int(current_time - cache_time)
+        # Faire l'appel API
+        info_print(f"📊 Récupération données astro depuis {wttr_url}...")
+        result = subprocess.run(
+            ['curl', '-s', wttr_url],
+            capture_output=True,
+            text=True,
+            timeout=CURL_TIMEOUT
+        )
 
-                # Si cache valide (< 5 min), l'utiliser
-                if age_seconds < CACHE_DURATION:
-                    # Refaire l'appel pour avoir le JSON complet (pas juste le texte formaté)
-                    info_print(f"📊 Récupération données géo depuis {wttr_url}...")
-                    result = subprocess.run(
-                        ['curl', '-s', wttr_url],
-                        capture_output=True,
-                        text=True,
-                        timeout=CURL_TIMEOUT
-                    )
-                    if result.returncode == 0 and result.stdout:
-                        weather_json = json.loads(result.stdout.strip())
-            except:
-                pass
+        if result.returncode != 0 or not result.stdout:
+            return "❌ Erreur récupération données astro"
 
-        # Si pas de cache ou expiré, faire l'appel
-        if not weather_json:
-            info_print(f"📊 Récupération données géo depuis {wttr_url}...")
-            result = subprocess.run(
-                ['curl', '-s', wttr_url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
-
-            if result.returncode != 0 or not result.stdout:
-                return "❌ Erreur récupération données géo"
-
-            weather_json = json.loads(result.stdout.strip())
+        weather_json = json.loads(result.stdout.strip())
 
         # Parser les données
         lines = []
@@ -717,7 +699,14 @@ def get_weather_astro(location=None):
         # Ligne 4: Moonrise, Moonset avec émoji de phase
         lines.append(f"{moon_emoji} Moonrise: {moonrise} | Moonset: {moonset} ({moon_illumination}%)")
 
-        return "\n".join(lines)
+        # Formater le résultat
+        result = "\n".join(lines)
+
+        # Sauvegarder en cache SQLite
+        if persistence:
+            persistence.set_weather_cache(cache_key, 'astro', result)
+
+        return result
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"

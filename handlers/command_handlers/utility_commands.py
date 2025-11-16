@@ -412,7 +412,9 @@ class UtilityCommands:
                     time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
-            weather_data = get_weather_astro(location)
+            # Cache SQLite 5min via traffic_monitor.persistence
+            persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
+            weather_data = get_weather_astro(location, persistence=persistence)
             cmd = f"/weather astro {location}" if location else "/weather astro"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
