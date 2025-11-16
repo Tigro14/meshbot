@@ -16,10 +16,19 @@ from datetime import datetime
 def log(msg):
     print(msg, file=sys.stderr)
 
+# Champs à ignorer lors de la sérialisation JSON (trop gros ou inutiles)
+IGNORED_FIELDS = {
+    'serialized_pb',      # Données protobuf brutes (énorme)
+    'DESCRIPTOR',         # Descripteur protobuf
+    '_serialized_start',  # Metadata protobuf
+    '_serialized_end',    # Metadata protobuf
+}
+
 def make_json_safe(obj, max_depth=10, current_depth=0):
     """
     Convertir récursivement n'importe quel objet en type JSON-safe
     Gère tous les types Meshtastic, protobuf, etc.
+    Filtre les champs inutiles/volumineux (IGNORED_FIELDS)
     """
     # Protection contre récursion infinie
     if current_depth > max_depth:
@@ -40,8 +49,9 @@ def make_json_safe(obj, max_depth=10, current_depth=0):
     # Dictionnaire
     if isinstance(obj, dict):
         return {
-            str(k): make_json_safe(v, max_depth, current_depth + 1) 
+            str(k): make_json_safe(v, max_depth, current_depth + 1)
             for k, v in obj.items()
+            if k not in IGNORED_FIELDS  # Filtrer les champs ignorés
         }
     
     # Objets protobuf ou Meshtastic
@@ -51,14 +61,16 @@ def make_json_safe(obj, max_depth=10, current_depth=0):
         if hasattr(obj, '__dict__'):
             obj_dict = {}
             for key, value in obj.__dict__.items():
-                if not key.startswith('_'):  # Ignorer les attributs privés
+                # Ignorer les attributs privés et les champs dans la blacklist
+                if not key.startswith('_') and key not in IGNORED_FIELDS:
                     obj_dict[key] = make_json_safe(value, max_depth, current_depth + 1)
             return obj_dict
         
         # Sinon, essayer dir() pour lister les attributs
         obj_dict = {}
         for attr_name in dir(obj):
-            if not attr_name.startswith('_') and not callable(getattr(obj, attr_name, None)):
+            # Ignorer attributs privés, callables, et champs blacklistés
+            if not attr_name.startswith('_') and attr_name not in IGNORED_FIELDS and not callable(getattr(obj, attr_name, None)):
                 try:
                     value = getattr(obj, attr_name)
                     obj_dict[attr_name] = make_json_safe(value, max_depth, current_depth + 1)
