@@ -348,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1):
+def get_rain_graph(location=None, days=1, max_hours=48):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -358,18 +358,16 @@ def get_rain_graph(location=None, days=1):
         days: Nombre de jours à afficher (1 ou 3)
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
+        max_hours: Nombre d'heures maximum à afficher (défaut 48)
+                   24 = Mesh (compact, ~180 chars)
+                   48 = Telegram/CLI (détaillé, ~500 chars)
 
     Returns:
-        str: Graphe sparkline compact des précipitations
+        str: Graphe sparkline compact des précipitations (5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Seulement aujourd'hui
-        >>> print(rain)
-        🌧️ Paris Auj (max:1.2mm)
-        ▁▂▃█▇▄▂▁▁▁▃▄▆▇▅▃▁▁▁▁▂▃▄▃▂▁
-        0  3  6  9  12 15 18 21
-
-        >>> rain = get_rain_graph("Paris", days=3)  # 3 jours
+        >>> rain = get_rain_graph("Paris")  # Telegram: 48h
+        >>> rain = get_rain_graph("Paris", max_hours=24)  # Mesh: 24h
     """
     try:
         # Normaliser la location
@@ -466,23 +464,24 @@ def get_rain_graph(location=None, days=1):
             cleaned = line.replace('│', '').rstrip()  # rstrip() enlève seulement espaces de FIN
             cleaned_lines.append(cleaned)
 
-        # Tronquer à ~60 caractères (environ 30 heures, 2 points/heure)
-        # Cela évite les artefacts et donne un affichage compact
-        truncate_width = 60
+        # Calculer la largeur selon max_hours (2 points par heure)
+        # max_hours=24 → 48 chars (Mesh, compact)
+        # max_hours=48 → 96 chars (Telegram/CLI, détaillé)
+        truncate_width = max_hours * 2
         truncated_lines = []
         for line in cleaned_lines:
-            # Garder seulement les 60 premiers caractères sparkline
+            # Garder seulement les N premiers caractères
             truncated = line[:truncate_width]
             truncated_lines.append(truncated)
 
-        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars")
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h)")
 
         # Formater la sortie
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm"
 
-        # Créer une échelle horaire pour 30 heures (marqueurs toutes les 3h)
-        # 60 caractères = 30 heures (2 points/heure)
+        # Créer une échelle horaire (marqueurs toutes les 3h)
+        # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
             # 2 points par heure
@@ -497,7 +496,7 @@ def get_rain_graph(location=None, days=1):
 
         # Formater le message final avec les 5 lignes du graphe original + échelle
         result_lines = []
-        result_lines.append(f"🌧️ {location_name} ~30h (max:{max_str})")
+        result_lines.append(f"🌧️ {location_name} {max_hours}h (max:{max_str})")
 
         # Ajouter les 5 lignes du graphe vertical (de haut en bas)
         for line in truncated_lines:
