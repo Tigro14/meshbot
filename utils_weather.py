@@ -406,6 +406,12 @@ def get_rain_graph(location=None, days=1):
         # Parser la sortie pour extraire les précipitations
         lines = output.split('\n')
 
+        # DEBUG: Afficher les premières lignes pour voir le format
+        debug_print(f"[RAIN DEBUG] Total lines: {len(lines)}")
+        for i, line in enumerate(lines[:50]):  # Première 50 lignes
+            if 'mm' in line or any(c in line for c in '█▇▆▅▄▃▂▁'):
+                debug_print(f"[RAIN DEBUG] Line {i}: {line[:100]}")
+
         # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
         rain_chars = []
         max_precip = 0.0
@@ -423,8 +429,11 @@ def get_rain_graph(location=None, days=1):
                     # La ligne de pluie est la SUIVANTE après mm|%
                     if i + 1 < len(lines):
                         rain_line = lines[i + 1]
+                        debug_print(f"[RAIN DEBUG] Found mm|% at line {i}: {line[:80]}")
+                        debug_print(f"[RAIN DEBUG] Next line (rain): {rain_line[:80]}")
                         break
-                except:
+                except Exception as e:
+                    debug_print(f"[RAIN DEBUG] Error parsing mm line: {e}")
                     pass
 
         # Extraire les caractères SEULEMENT de la ligne de pluie
@@ -434,6 +443,9 @@ def get_rain_graph(location=None, days=1):
                     rain_chars.append(char if char != '_' else '▁')
                 elif char == ' ':
                     rain_chars.append('▁')
+            debug_print(f"[RAIN DEBUG] Extracted {len(rain_chars)} rain chars")
+        else:
+            debug_print("[RAIN DEBUG] No rain_line found!")
 
         if not rain_chars:
             return "❌ Graphe pluie non trouvé"
