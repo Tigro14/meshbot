@@ -146,6 +146,25 @@ class UtilityCommands(TelegramCommandBase):
             error_print(f"Erreur /weather: {e}")
             await update.message.reply_text(f"❌ Erreur météo: {str(e)[:80]}")
 
+    async def rain_command(self, update: Update,
+                           context: ContextTypes.DEFAULT_TYPE):
+        """
+        Raccourci pour /weather rain [ville] [days]
+
+        Exemples:
+        /rain → Pluie locale aujourd'hui
+        /rain Paris → Pluie Paris aujourd'hui
+        /rain Paris 3 → Pluie Paris 3 jours
+        """
+        # Injecter 'rain' comme premier argument pour weather_command
+        if context.args:
+            context.args.insert(0, 'rain')
+        else:
+            context.args = ['rain']
+
+        # Appeler weather_command qui traitera 'rain' comme sous-commande
+        await self.weather_command(update, context)
+
     async def graphs_command(
             self,
             update: Update,

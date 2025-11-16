@@ -420,6 +420,22 @@ class UtilityCommands:
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
 
+    def handle_rain(self, message, sender_id, sender_info):
+        """
+        Raccourci pour /weather rain [ville] [days]
+
+        Args:
+            message: Message complet (ex: "/rain", "/rain Paris", "/rain Paris 3")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+        """
+        # Convertir "/rain [args]" en "/weather rain [args]"
+        args = message[5:].strip() if len(message) > 5 else ""  # Enlever "/rain"
+        weather_message = f"/weather rain {args}".strip()
+
+        # Appeler handle_weather avec le message reformaté
+        self.handle_weather(weather_message, sender_id, sender_info)
+
     def _format_help(self):
         """Formater l'aide des commandes"""
         help_lines = [
@@ -436,6 +452,7 @@ class UtilityCommands:
             "/packets",
             "/legend",
             "/weather",
+            "/rain",
             "/help"
         ]
         return "\n".join(help_lines)

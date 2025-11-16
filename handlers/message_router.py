@@ -64,14 +64,23 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer echo et /my sur messages publics
-        if (message.startswith('/echo ') or message.startswith('/my')) and (is_broadcast or is_for_me) and not is_from_me:
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain)
+        broadcast_commands = ['/echo ', '/my', '/weather', '/rain']
+        is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
+
+        if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
             if message.startswith('/echo '):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
             elif message.startswith('/my'):
                 info_print(f"MY PUBLIC de {sender_info}")
                 self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/weather'):
+                info_print(f"WEATHER PUBLIC de {sender_info}: '{message}'")
+                self.utility_handler.handle_weather(message, sender_id, sender_info)
+            elif message.startswith('/rain'):
+                info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
+                self.utility_handler.handle_rain(message, sender_id, sender_info)
             return
 
         # Log messages pour nous
@@ -143,6 +152,8 @@ class MessageRouter:
             self.utility_handler.handle_power(sender_id, sender_info)
         elif message.startswith('/weather'):
             self.utility_handler.handle_weather(message, sender_id, sender_info)
+        elif message.startswith('/rain'):
+            self.utility_handler.handle_rain(message, sender_id, sender_info)
         elif message.startswith('/graphs'):
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
