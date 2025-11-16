@@ -348,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=48):
+def get_rain_graph(location=None, days=1, max_hours=38):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -358,16 +358,16 @@ def get_rain_graph(location=None, days=1, max_hours=48):
         days: Nombre de jours à afficher (1 ou 3)
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
-        max_hours: Nombre d'heures maximum à afficher (défaut 48)
-                   24 = Mesh (compact, ~180 chars)
-                   48 = Telegram/CLI (détaillé, ~500 chars)
+        max_hours: Nombre d'heures maximum à afficher (défaut 38)
+                   24 = Mesh (compact, ~180 chars, displayed as "today")
+                   38 = Telegram/CLI (détaillé, ~500 chars, no line wrap)
 
     Returns:
         str: Graphe sparkline compact des précipitations (5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Telegram: 48h
-        >>> rain = get_rain_graph("Paris", max_hours=24)  # Mesh: 24h
+        >>> rain = get_rain_graph("Paris")  # Telegram: 38h
+        >>> rain = get_rain_graph("Paris", max_hours=24)  # Mesh: 24h (today)
     """
     try:
         # Normaliser la location
@@ -465,8 +465,8 @@ def get_rain_graph(location=None, days=1, max_hours=48):
             cleaned_lines.append(cleaned)
 
         # Calculer la largeur selon max_hours (2 points par heure)
-        # max_hours=24 → 48 chars (Mesh, compact)
-        # max_hours=48 → 96 chars (Telegram/CLI, détaillé)
+        # max_hours=24 → 48 chars (Mesh, compact, "today")
+        # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
         truncated_lines = []
         for line in cleaned_lines:
@@ -515,7 +515,9 @@ def get_rain_graph(location=None, days=1, max_hours=48):
 
         # Formater le message final avec les 5 lignes du graphe original + échelle + marqueur
         result_lines = []
-        result_lines.append(f"🌧️ {location_name} {max_hours}h (max:{max_str})")
+        # Afficher "today" pour 24h (Mesh), sinon afficher les heures
+        time_label = "today" if max_hours == 24 else f"{max_hours}h"
+        result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
 
         # Ajouter les 5 lignes du graphe vertical (de haut en bas)
         for line in truncated_lines:
