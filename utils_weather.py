@@ -415,29 +415,48 @@ def get_rain_graph(location=None, days=1):
         # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
         rain_chars = []
         max_precip = 0.0
-        rain_line = None
+        rain_lines = []
 
-        # Trouver la ligne mm|% et extraire SEULEMENT la ligne suivante (pluie)
+        # Trouver la ligne mm|% et extraire TOUTES les lignes du graphe multi-lignes
         for i, line in enumerate(lines):
-            # Ligne avec la valeur max (ex: "1.25mm|95%")
+            # Ligne avec la valeur max (ex: "0.42mm|100%")
             if 'mm' in line and '|' in line and '%' in line:
                 try:
-                    # Extraire la valeur max (ex: "1.25mm")
+                    # Extraire la valeur max (ex: "0.42mm")
                     mm_part = line.split('mm')[0].strip()
                     max_precip = float(mm_part.split()[-1])
+                    debug_print(f"[RAIN DEBUG] Found mm|% at line {i}: {line[:80]}")
 
-                    # La ligne de pluie est la SUIVANTE après mm|%
-                    if i + 1 < len(lines):
-                        rain_line = lines[i + 1]
-                        debug_print(f"[RAIN DEBUG] Found mm|% at line {i}: {line[:80]}")
-                        debug_print(f"[RAIN DEBUG] Next line (rain): {rain_line[:80]}")
-                        break
+                    # Extraire TOUTES les lignes suivantes avec des sparklines
+                    # Le graphe wttr.in est multi-lignes (empilé verticalement)
+                    j = i + 1
+                    while j < len(lines):
+                        next_line = lines[j]
+                        # Si la ligne contient des sparklines et n'est pas vide
+                        if any(c in next_line for c in '█▇▆▅▄▃▂▁_'):
+                            rain_lines.append(next_line)
+                            debug_print(f"[RAIN DEBUG] Rain line {j}: {next_line[:80]}")
+                            j += 1
+                        # Si ligne vide ou sans sparklines, on arrête
+                        elif next_line.strip() in ['', '│']:
+                            break
+                        else:
+                            j += 1
+                            # On continue un peu pour voir s'il y a d'autres lignes
+                            if j - i > 10:  # Max 10 lignes après mm|%
+                                break
+
+                    break
                 except Exception as e:
                     debug_print(f"[RAIN DEBUG] Error parsing mm line: {e}")
                     pass
 
-        # Extraire les caractères SEULEMENT de la ligne de pluie
-        if rain_line:
+        # Prendre la DERNIÈRE ligne du graphe (ligne de base, graphe horizontal)
+        if rain_lines:
+            rain_line = rain_lines[-1]  # Dernière ligne = base du graphe
+            debug_print(f"[RAIN DEBUG] Using last rain line (base): {rain_line[:80]}")
+
+            # Extraire les caractères de la ligne de base
             for char in rain_line:
                 if char in '█▇▆▅▄▃▂▁_':
                     rain_chars.append(char if char != '_' else '▁')
@@ -445,7 +464,7 @@ def get_rain_graph(location=None, days=1):
                     rain_chars.append('▁')
             debug_print(f"[RAIN DEBUG] Extracted {len(rain_chars)} rain chars")
         else:
-            debug_print("[RAIN DEBUG] No rain_line found!")
+            debug_print("[RAIN DEBUG] No rain_lines found!")
 
         if not rain_chars:
             return "❌ Graphe pluie non trouvé"
