@@ -512,12 +512,14 @@ def get_rain_graph(location=None, days=1):
                         sampled.append(int(sum(window) / len(window)))
             values = sampled[:target_points]
 
-        # Créer un graphe compact sur 2 lignes
-        # Ligne 1 : Pics de forte pluie (valeurs >= 6, sparse avec espaces)
-        # Ligne 2 : Graphe complet de base (toutes valeurs)
+        # Créer un graphe compact sur 3 lignes (meilleure impression verticale)
+        # Ligne 1 : Pics très forts (valeurs >= 6) - pluie intense
+        # Ligne 2 : Pics moyens (valeurs >= 3) - pluie modérée
+        # Ligne 3 : Graphe complet de base (toutes valeurs)
         width = len(values)
-        line_peaks = []  # Pics forts seulement
-        line_base = []   # Graphe complet
+        line_intense = []   # Pics >= 6 (pluie intense)
+        line_moderate = []  # Pics >= 3 (pluie modérée)
+        line_base = []      # Graphe complet
 
         value_to_char = {
             0: '▁', 1: '▂', 2: '▃', 3: '▄',
@@ -525,13 +527,19 @@ def get_rain_graph(location=None, days=1):
         }
 
         for v in values:
-            # Ligne 1 : Seulement les pics >= 6
+            # Ligne 1 : Seulement les pics >= 6 (pluie intense)
             if v >= 6:
-                line_peaks.append(value_to_char[v])
+                line_intense.append(value_to_char[v])
             else:
-                line_peaks.append(' ')
+                line_intense.append(' ')
 
-            # Ligne 2 : Graphe complet
+            # Ligne 2 : Pics >= 3 (pluie modérée et forte)
+            if v >= 3:
+                line_moderate.append(value_to_char[v])
+            else:
+                line_moderate.append(' ')
+
+            # Ligne 3 : Graphe complet
             line_base.append(value_to_char[v])
 
         # Formater la sortie
@@ -566,14 +574,16 @@ def get_rain_graph(location=None, days=1):
             day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
 
             # Extraire les segments pour ce jour
-            peaks_day = ''.join(line_peaks[start_idx:end_idx])
+            intense_day = ''.join(line_intense[start_idx:end_idx])
+            moderate_day = ''.join(line_moderate[start_idx:end_idx])
             base_day = ''.join(line_base[start_idx:end_idx])
             scale_day = ''.join(hour_scale[start_idx:end_idx])
 
-            # Format compact sur 2 lignes + échelle
-            day_lines.append(peaks_day)
-            day_lines.append(base_day)
-            day_lines.append(scale_day)
+            # Format compact sur 3 lignes de graphe + échelle
+            day_lines.append(intense_day)    # Ligne 1: Pluie intense (>= 6)
+            day_lines.append(moderate_day)   # Ligne 2: Pluie modérée (>= 3)
+            day_lines.append(base_day)       # Ligne 3: Base complète
+            day_lines.append(scale_day)      # Ligne 4: Échelle horaire
 
             messages.append("\n".join(day_lines))
 
