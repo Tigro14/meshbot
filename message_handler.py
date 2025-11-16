@@ -38,6 +38,7 @@ class MessageHandler:
         self.context_manager = context_manager
         self.interface = interface
         self.traffic_monitor = traffic_monitor
+        self.blitz_monitor = blitz_monitor
     
     def process_text_message(self, packet, decoded, message):
         """Déléguer au router"""

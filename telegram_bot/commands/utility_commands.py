@@ -147,8 +147,8 @@ class UtilityCommands(TelegramCommandBase):
                 # Éclairs détectés via Blitzortung
                 # Accéder au blitz_monitor via le message_handler
                 blitz_monitor = None
-                if hasattr(self.telegram.message_handler, 'meshbot') and hasattr(self.telegram.message_handler.meshbot, 'blitz_monitor'):
-                    blitz_monitor = self.telegram.message_handler.meshbot.blitz_monitor
+                if hasattr(self.telegram.message_handler, 'blitz_monitor'):
+                    blitz_monitor = self.telegram.message_handler.blitz_monitor
 
                 if blitz_monitor and blitz_monitor.enabled:
                     # Récupérer les éclairs récents
