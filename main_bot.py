@@ -23,6 +23,7 @@ from message_handler import MessageHandler
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from safe_serial_connection import SafeSerialConnection
+from vigilance_monitor import VigilanceMonitor
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -44,6 +45,16 @@ class MeshBot:
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.remote_nodes_client = RemoteNodesClient()
         self.remote_nodes_client.set_node_manager(self.node_manager)
+
+        # Moniteur de vigilance météo (si activé)
+        self.vigilance_monitor = None
+        if VIGILANCE_ENABLED:
+            self.vigilance_monitor = VigilanceMonitor(
+                departement=VIGILANCE_DEPARTEMENT,
+                check_interval=VIGILANCE_CHECK_INTERVAL,
+                alert_throttle=VIGILANCE_ALERT_THROTTLE,
+                alert_levels=VIGILANCE_ALERT_LEVELS
+            )
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -253,6 +264,10 @@ class MeshBot:
 
                 # Nettoyage des anciennes données SQLite (> 48h)
                 self.traffic_monitor.cleanup_old_persisted_data(hours=48)
+
+                # Vérification vigilance météo (si activée)
+                if self.vigilance_monitor:
+                    self.vigilance_monitor.check_vigilance()
 
                 debug_print("✅ Mise à jour périodique terminée")
                 
