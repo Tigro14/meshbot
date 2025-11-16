@@ -377,11 +377,12 @@ def get_rain_graph(location=None, days=1):
             location = DEFAULT_LOCATION
 
         # Construire l'URL v2n (narrow format avec graphes ASCII)
+        # Ajouter ?T pour désactiver les codes ANSI (couleurs)
         if location:
             location_encoded = location.replace(' ', '+')
-            wttr_url = f"https://v2n.wttr.in/{location_encoded}"
+            wttr_url = f"https://v2n.wttr.in/{location_encoded}?T"
         else:
-            wttr_url = "https://v2n.wttr.in"
+            wttr_url = "https://v2n.wttr.in?T"
 
         info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
 
