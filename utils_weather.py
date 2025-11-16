@@ -332,23 +332,28 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None):
+def get_rain_graph(location=None, days=1):
     """
-    Récupérer le graphe ASCII des précipitations sur 3 jours (compact sparkline)
+    Récupérer le graphe ASCII des précipitations (compact sparkline)
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
+        days: Nombre de jours à afficher (1 ou 3)
+              1 = aujourd'hui seulement (défaut)
+              3 = aujourd'hui + demain + J+2
 
     Returns:
-        str: Graphe sparkline compact des précipitations (3 lignes max)
+        str: Graphe sparkline compact des précipitations
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")
+        >>> rain = get_rain_graph("Paris")  # Seulement aujourd'hui
         >>> print(rain)
-        🌧️ Paris 3j (max:1.2mm)
+        🌧️ Paris Auj (max:1.2mm)
         ▁▂▃█▇▄▂▁▁▁▃▄▆▇▅▃▁▁▁▁▂▃▄▃▂▁
-        Aujour│   Demain  │J+2
+        0  3  6  9  12 15 18 21
+
+        >>> rain = get_rain_graph("Paris", days=3)  # 3 jours
     """
     try:
         # Normaliser la location
@@ -435,9 +440,10 @@ def get_rain_graph(location=None):
         if not values:
             return "❌ Aucune donnée pluie"
 
-        # Échantillonner pour avoir 72 points (24h par jour x 3 jours = résolution horaire)
+        # Échantillonner pour avoir 48 points par jour (résolution 30 min)
         # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
-        target_points = 72
+        # days=1 → 48 points, days=3 → 144 points
+        target_points = 48 * days
         if len(values) > target_points:
             window_size = len(values) // target_points
             if window_size < 1:
@@ -484,32 +490,30 @@ def get_rain_graph(location=None):
 
         # Formater la sortie
         location_name = location if location else "local"
-        max_str = f"{max_precip:.1f}mm" if max_precip > 0 else "0mm"
+        max_str = f"{max_precip:.1f}mm"  # Toujours avec 1 décimale
 
-        # Créer une échelle horaire lisible (marqueurs toutes les 6h)
-        # 24h par jour, 3 jours = 72 points
-        # Marqueurs à 0h, 6h, 12h, 18h pour chaque jour
+        # Créer une échelle horaire lisible (marqueurs toutes les 3h)
+        # 48 points par jour = 2 points/heure
+        # Marqueurs à 0h, 3h, 6h, 9h, 12h, 15h, 18h, 21h pour chaque jour
         hour_scale = []
         for i in range(width):
-            hour = i % 24
-            if hour == 0:
-                hour_scale.append('0')
-            elif hour == 6:
-                hour_scale.append('6')
-            elif hour == 12:
-                hour_scale.append('12')
-            elif hour == 18:
-                hour_scale.append('18')
+            # 48 points / 24h = 2 points/heure
+            hour = (i // 2) % 24
+            point_in_hour = i % 2
+
+            # Afficher seulement sur le premier point de l'heure
+            if point_in_hour == 0 and hour % 3 == 0:
+                hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
 
-        # Découper jour par jour (24h chunks) pour rester sous 220 chars/message
+        # Découper jour par jour (48 points par jour) pour rester sous 220 chars/message
         messages = []
         day_names = ['Auj', 'Dem', 'J+2']
 
-        for day in range(3):
-            start_idx = day * 24
-            end_idx = start_idx + 24
+        for day in range(days):
+            start_idx = day * 48
+            end_idx = start_idx + 48
 
             day_lines = []
             # Titre avec jour et max pour ce jour

@@ -346,30 +346,44 @@ class UtilityCommands:
         """
         info_print(f"Weather: {sender_info}")
 
-        # Parser les arguments
-        parts = message.split(maxsplit=2)
+        # Parser les arguments: /weather [rain|astro] [ville] [days]
+        parts = message.split()
         subcommand = None
         location = None
+        days = 1  # Par défaut: aujourd'hui seulement
 
         if len(parts) > 1:
             # Vérifier si c'est une sous-commande "rain" ou "astro"
             if parts[1].lower() in ['rain', 'astro']:
                 subcommand = parts[1].lower()
-                # La ville est le 3ème argument si présent
-                if len(parts) > 2:
-                    location = parts[2].strip()
+
+                # Arguments restants après la sous-commande
+                remaining = parts[2:]
+
+                # Le dernier argument est un nombre de jours ?
+                if remaining and remaining[-1].isdigit():
+                    days_arg = int(remaining[-1])
+                    if days_arg in [1, 3]:
+                        days = days_arg
+                        remaining = remaining[:-1]
+
+                # Ce qui reste est la ville (peut avoir des espaces)
+                if remaining:
+                    location = ' '.join(remaining)
             else:
                 # Sinon c'est directement la ville
-                location = parts[1].strip()
+                location = ' '.join(parts[1:])
 
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro] [ville]\n"
+                "🌤️ /weather [rain|astro] [ville] [days]\n"
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
-                "/weather rain → Graphe pluie\n"
+                "/weather rain → Pluie aujourd'hui\n"
+                "/weather rain 3 → Pluie 3j\n"
+                "/weather rain Paris 3\n"
                 "/weather astro → Infos astro\n"
                 "/weather astro Paris"
             )
@@ -378,14 +392,14 @@ class UtilityCommands:
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations (retourne 3 messages séparés)
-            weather_data = get_rain_graph(location)
-            cmd = f"/weather rain {location}" if location else "/weather rain"
+            # Graphe de précipitations
+            weather_data = get_rain_graph(location, days=days)
+            cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Logger
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
 
-            # Découper et envoyer les 3 jours séparément
+            # Découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
             day_messages = weather_data.split('\n\n')
             for i, day_msg in enumerate(day_messages):
                 self.sender.send_single(day_msg, sender_id, sender_info)

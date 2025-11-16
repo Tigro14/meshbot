@@ -241,11 +241,13 @@ Le serveur CLI fonctionne en parallèle du bot principal :
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather [rain|astro] [ville]` - Météo sur 3 jours (par https://wttr.in)
+- `/weather [rain|astro] [ville] [days]` - Météo (par https://wttr.in)
   - `/weather` - Météo locale (géolocalisée)
   - `/weather Paris` - Météo d'une ville spécifique
-  - `/weather rain` - Graphe précipitations 3j (sparklines multi-lignes)
-  - `/weather rain Paris` - Graphe précipitations Paris
+  - `/weather rain` - Graphe précipitations aujourd'hui (sparklines haute résolution)
+  - `/weather rain 3` - Graphe précipitations 3 jours
+  - `/weather rain Paris` - Précipitations Paris (aujourd'hui)
+  - `/weather rain Paris 3` - Précipitations Paris (3 jours)
   - `/weather astro` - Infos astronomiques (sunrise, sunset, moon 🌑🌕)
   - `/weather astro Paris` - Infos astronomiques Paris
   - `/weather help` - Afficher l'aide
