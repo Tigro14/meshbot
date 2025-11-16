@@ -378,7 +378,7 @@ class UtilityCommands:
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro|blitz] [ville]\n"
+                "🌤️ /weather [rain|astro|blitz|vigi] [ville]\n"
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
@@ -387,7 +387,8 @@ class UtilityCommands:
                 "/weather rain Paris 3\n"
                 "/weather astro → Infos astro\n"
                 "/weather astro Paris\n"
-                "/weather blitz → Éclairs détectés"
+                "/weather blitz → Éclairs détectés\n"
+                "/weather vigi → Info VIGILANCE"
             )
             self.sender.send_single(help_text, sender_id, sender_info)
             return
@@ -438,6 +439,25 @@ class UtilityCommands:
             else:
                 weather_data = "⚡ Surveillance éclairs désactivée"
                 self.sender.send_single(weather_data, sender_id, sender_info)
+        elif subcommand == 'vigi':
+            # Documentation du système VIGILANCE Météo-France
+            vigi_info = """📋 VIGILANCE Météo-France
+
+Surveillance automatique des alertes:
+• Départements configurés
+• Vérif toutes les 15min
+• Niveaux: Vert, Jaune, Orange, Rouge
+• Alerte auto si Orange/Rouge
+
+Types de risques surveillés:
+Vent, Pluie/Inondation, Orages, Neige/Verglas,
+Canicule, Grand froid, Avalanches, Vagues-submersion
+
+Config: VIGILANCE_* dans config.py
+Status: /sys pour voir alertes actives"""
+
+            self.sender.log_conversation(sender_id, sender_info, "/weather vigi", vigi_info)
+            self.sender.send_single(vigi_info, sender_id, sender_info)
         else:
             # Météo normale
             weather_data = get_weather_data(location)
@@ -497,11 +517,14 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
-        • /weather [rain] [ville] - Météo 3 jours
+        • /weather [rain|astro|blitz|vigi] [ville] - Météo & alertes
           /weather → Géolocalisée
           /weather Paris, /weather London, etc.
           /weather rain → Graphe pluie local
           /weather rain Paris → Graphe pluie Paris
+          /weather astro → Infos astronomiques
+          /weather blitz → Éclairs détectés
+          /weather vigi → Info VIGILANCE Météo-France
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5

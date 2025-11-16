@@ -164,6 +164,37 @@ class UtilityCommands(TelegramCommandBase):
                 else:
                     await update.message.reply_text("⚡ Surveillance des éclairs désactivée")
 
+            elif subcommand == 'vigi':
+                # Documentation du système VIGILANCE Météo-France
+                vigi_info = """📋 **VIGILANCE Météo-France**
+
+**Surveillance automatique des alertes:**
+• Départements configurés dans config.py
+• Vérification automatique toutes les 15 minutes
+• Niveaux de vigilance: Vert, Jaune, Orange, Rouge
+• Alerte automatique envoyée si Orange ou Rouge détecté
+
+**Types de risques surveillés:**
+• Vent violent
+• Pluie-inondation
+• Orages
+• Neige/Verglas
+• Canicule
+• Grand froid
+• Avalanches
+• Vagues-submersion
+
+**Configuration:**
+Variables `VIGILANCE_*` dans config.py
+- `VIGILANCE_ENABLED`: Activer/désactiver
+- `VIGILANCE_DEPARTEMENT`: Numéro département (ex: '75')
+- `VIGILANCE_CHECK_INTERVAL`: Intervalle de vérif (secondes)
+- `VIGILANCE_ALERT_LEVELS`: Niveaux déclenchant alerte
+
+**Voir status actuel:** /sys"""
+
+                await update.message.reply_text(vigi_info, parse_mode='Markdown')
+
             else:
                 # Météo normale
                 weather_data = await asyncio.to_thread(get_weather_data, location)
