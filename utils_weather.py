@@ -452,143 +452,61 @@ def get_rain_graph(location=None, days=1):
                     debug_print(f"[RAIN DEBUG] Error parsing mm line: {e}")
                     pass
 
-        # Prendre la DERNIÈRE ligne du graphe (ligne de base, graphe horizontal)
-        if rain_lines:
-            rain_line = rain_lines[-1]  # Dernière ligne = base du graphe
-            debug_print(f"[RAIN DEBUG] Using last rain line (base): {rain_line[:80]}")
+        # Garder directement les 5 lignes originales de wttr.in (meilleur rendu)
+        # On prend toutes les lignes du graphe multi-lignes vertical
+        if not rain_lines or len(rain_lines) < 5:
+            return "❌ Graphe pluie incomplet"
 
-            # Extraire les caractères de la ligne de base
-            for char in rain_line:
-                if char in '█▇▆▅▄▃▂▁_':
-                    rain_chars.append(char if char != '_' else '▁')
-                elif char == ' ':
-                    rain_chars.append('▁')
-            debug_print(f"[RAIN DEBUG] Extracted {len(rain_chars)} rain chars")
-        else:
-            debug_print("[RAIN DEBUG] No rain_lines found!")
+        debug_print(f"[RAIN DEBUG] Found {len(rain_lines)} rain graph lines")
 
-        if not rain_chars:
-            return "❌ Graphe pluie non trouvé"
+        # Nettoyer les lignes (enlever bordures │ et espaces de début/fin)
+        cleaned_lines = []
+        for line in rain_lines:
+            # Enlever les caractères de bordure │
+            cleaned = line.replace('│', '').strip()
+            cleaned_lines.append(cleaned)
 
-        # Convertir les caractères en valeurs numériques (0-7)
-        char_to_value = {
-            '▁': 0, '_': 0, ' ': 0,
-            '▂': 1,
-            '▃': 2,
-            '▄': 3,
-            '▅': 4,
-            '▆': 5,
-            '▇': 6,
-            '█': 7
-        }
+        # Tronquer à ~60 caractères (environ 30 heures, 2 points/heure)
+        # Cela évite les artefacts et donne un affichage compact
+        truncate_width = 60
+        truncated_lines = []
+        for line in cleaned_lines:
+            # Garder seulement les 60 premiers caractères sparkline
+            truncated = line[:truncate_width]
+            truncated_lines.append(truncated)
 
-        # Convertir en valeurs et compacter
-        values = []
-        for char in rain_chars:
-            if char in char_to_value:
-                values.append(char_to_value[char])
-
-        if not values:
-            return "❌ Aucune donnée pluie"
-
-        # Échantillonner pour avoir 48 points par jour (résolution 30 min)
-        # days=1 → 48 points, days=3 → 144 points
-        target_points = 48 * days
-        if len(values) > target_points:
-            window_size = len(values) // target_points
-            if window_size < 1:
-                window_size = 1
-
-            sampled = []
-            for i in range(0, len(values), window_size):
-                window = values[i:i+window_size]
-                if window:
-                    # Prendre le MAX seulement si > 1, sinon MOYENNE pour éviter faux pics
-                    max_val = max(window)
-                    if max_val > 1:
-                        sampled.append(max_val)
-                    else:
-                        # Pour les faibles valeurs, prendre la moyenne pour éviter les artefacts
-                        sampled.append(int(sum(window) / len(window)))
-            values = sampled[:target_points]
-
-        # Créer un graphe compact sur 3 lignes (meilleure impression verticale)
-        # Ligne 1 : Pics très forts (valeurs >= 6) - pluie intense
-        # Ligne 2 : Pics moyens (valeurs >= 3) - pluie modérée
-        # Ligne 3 : Graphe complet de base (toutes valeurs)
-        width = len(values)
-        line_intense = []   # Pics >= 6 (pluie intense)
-        line_moderate = []  # Pics >= 3 (pluie modérée)
-        line_base = []      # Graphe complet
-
-        value_to_char = {
-            0: '▁', 1: '▂', 2: '▃', 3: '▄',
-            4: '▅', 5: '▆', 6: '▇', 7: '█'
-        }
-
-        for v in values:
-            # Ligne 1 : Seulement les pics >= 6 (pluie intense)
-            if v >= 6:
-                line_intense.append(value_to_char[v])
-            else:
-                line_intense.append(' ')
-
-            # Ligne 2 : Pics >= 3 (pluie modérée et forte)
-            if v >= 3:
-                line_moderate.append(value_to_char[v])
-            else:
-                line_moderate.append(' ')
-
-            # Ligne 3 : Graphe complet
-            line_base.append(value_to_char[v])
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars")
 
         # Formater la sortie
         location_name = location if location else "local"
-        max_str = f"{max_precip:.1f}mm"  # Toujours avec 1 décimale
+        max_str = f"{max_precip:.1f}mm"
 
-        # Créer une échelle horaire lisible (marqueurs toutes les 3h)
-        # 48 points par jour = 2 points/heure
-        # Marqueurs à 0h, 3h, 6h, 9h, 12h, 15h, 18h, 21h pour chaque jour
+        # Créer une échelle horaire pour 30 heures (marqueurs toutes les 3h)
+        # 60 caractères = 30 heures (2 points/heure)
         hour_scale = []
-        for i in range(width):
-            # 48 points / 24h = 2 points/heure
+        for i in range(truncate_width):
+            # 2 points par heure
             hour = (i // 2) % 24
             point_in_hour = i % 2
 
-            # Afficher seulement sur le premier point de l'heure
+            # Afficher seulement sur le premier point de l'heure, toutes les 3h
             if point_in_hour == 0 and hour % 3 == 0:
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
 
-        # Découper jour par jour (48 points par jour) pour rester compact
-        messages = []
-        day_names = ['Auj', 'Dem', 'J+2']
+        # Formater le message final avec les 5 lignes du graphe original + échelle
+        result_lines = []
+        result_lines.append(f"🌧️ {location_name} ~30h (max:{max_str})")
 
-        for day in range(days):
-            start_idx = day * 48
-            end_idx = start_idx + 48
+        # Ajouter les 5 lignes du graphe vertical (de haut en bas)
+        for line in truncated_lines:
+            result_lines.append(line)
 
-            day_lines = []
-            # Titre avec jour et max pour ce jour
-            day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
+        # Ajouter l'échelle horaire
+        result_lines.append(''.join(hour_scale))
 
-            # Extraire les segments pour ce jour
-            intense_day = ''.join(line_intense[start_idx:end_idx])
-            moderate_day = ''.join(line_moderate[start_idx:end_idx])
-            base_day = ''.join(line_base[start_idx:end_idx])
-            scale_day = ''.join(hour_scale[start_idx:end_idx])
-
-            # Format compact sur 3 lignes de graphe + échelle
-            day_lines.append(intense_day)    # Ligne 1: Pluie intense (>= 6)
-            day_lines.append(moderate_day)   # Ligne 2: Pluie modérée (>= 3)
-            day_lines.append(base_day)       # Ligne 3: Base complète
-            day_lines.append(scale_day)      # Ligne 4: Échelle horaire
-
-            messages.append("\n".join(day_lines))
-
-        # Retourner les 3 messages séparés par un délimiteur
-        return "\n\n".join(messages)
+        return "\n".join(result_lines)
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
