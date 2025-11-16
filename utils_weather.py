@@ -494,7 +494,26 @@ def get_rain_graph(location=None, days=1, max_hours=48):
             else:
                 hour_scale.append(' ')
 
-        # Formater le message final avec les 5 lignes du graphe original + échelle
+        # Ajouter un marqueur pour l'heure actuelle (NOW)
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        current_minute = datetime.now().minute
+
+        # Position sur l'échelle (2 points/heure)
+        # current_hour * 2 + (1 si minute >= 30)
+        now_position = current_hour * 2
+        if current_minute >= 30:
+            now_position += 1
+
+        # Créer la ligne du marqueur "NOW"
+        now_marker = []
+        for i in range(truncate_width):
+            if i == now_position:
+                now_marker.append('↓')  # Marqueur "maintenant"
+            else:
+                now_marker.append(' ')
+
+        # Formater le message final avec les 5 lignes du graphe original + échelle + marqueur
         result_lines = []
         result_lines.append(f"🌧️ {location_name} {max_hours}h (max:{max_str})")
 
@@ -504,6 +523,10 @@ def get_rain_graph(location=None, days=1, max_hours=48):
 
         # Ajouter l'échelle horaire
         result_lines.append(''.join(hour_scale))
+
+        # Ajouter le marqueur de l'heure actuelle (si dans la plage affichée)
+        if now_position < truncate_width:
+            result_lines.append(''.join(now_marker))
 
         return "\n".join(result_lines)
 
