@@ -459,11 +459,11 @@ def get_rain_graph(location=None, days=1):
 
         debug_print(f"[RAIN DEBUG] Found {len(rain_lines)} rain graph lines")
 
-        # Nettoyer les lignes (enlever bordures │ et espaces de début/fin)
+        # Nettoyer les lignes (enlever bordures │ mais GARDER l'indentation)
         cleaned_lines = []
         for line in rain_lines:
-            # Enlever les caractères de bordure │
-            cleaned = line.replace('│', '').strip()
+            # Enlever les caractères de bordure │ mais GARDER les espaces de début (indentation)
+            cleaned = line.replace('│', '').rstrip()  # rstrip() enlève seulement espaces de FIN
             cleaned_lines.append(cleaned)
 
         # Tronquer à ~60 caractères (environ 30 heures, 2 points/heure)
