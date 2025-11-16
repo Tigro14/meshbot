@@ -170,7 +170,27 @@ class BlitzMonitor:
 
         # Pour un rayon de 50km, geohash de précision 3 est suffisant
         # Ajouter les voisins pour couvrir les bords
-        neighbors = geohash.neighbors(center_hash)
+        # pygeohash a get_adjacent(geohash, direction) où direction = 'top', 'bottom', 'right', 'left'
+        neighbors = []
+        try:
+            # Ajouter les 8 voisins (4 cardinaux + 4 diagonales)
+            neighbors.append(geohash.get_adjacent(center_hash, 'top'))
+            neighbors.append(geohash.get_adjacent(center_hash, 'bottom'))
+            neighbors.append(geohash.get_adjacent(center_hash, 'right'))
+            neighbors.append(geohash.get_adjacent(center_hash, 'left'))
+
+            # Diagonales (combiner deux directions)
+            top = geohash.get_adjacent(center_hash, 'top')
+            neighbors.append(geohash.get_adjacent(top, 'right'))  # NE
+            neighbors.append(geohash.get_adjacent(top, 'left'))   # NW
+
+            bottom = geohash.get_adjacent(center_hash, 'bottom')
+            neighbors.append(geohash.get_adjacent(bottom, 'right'))  # SE
+            neighbors.append(geohash.get_adjacent(bottom, 'left'))   # SW
+        except Exception as e:
+            error_print(f"⚡ Erreur calcul voisins geohash: {e}")
+            # Si erreur, utiliser seulement le centre
+            neighbors = []
 
         all_hashes = [center_hash] + neighbors
         return all_hashes
