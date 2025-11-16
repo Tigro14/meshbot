@@ -392,8 +392,9 @@ class UtilityCommands:
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations (Mesh: 24h compact pour limites LoRa)
-            weather_data = get_rain_graph(location, days=days, max_hours=24)
+            # Graphe de précipitations (Mesh: 12h ultra-compact pour limites LoRa ~180 chars)
+            # 3 lignes seulement (top, middle, bottom) + pas de marqueur NOW
+            weather_data = get_rain_graph(location, days=days, max_hours=12, compact_mode=True)
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Logger

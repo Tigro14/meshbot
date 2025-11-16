@@ -348,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=38):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -359,15 +359,16 @@ def get_rain_graph(location=None, days=1, max_hours=38):
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
         max_hours: Nombre d'heures maximum à afficher (défaut 38)
-                   24 = Mesh (compact, ~180 chars, displayed as "today")
-                   38 = Telegram/CLI (détaillé, ~500 chars, no line wrap)
+                   12 = Mesh compact (24 chars, 3 lines, ~124 chars total)
+                   38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
+        compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
 
     Returns:
-        str: Graphe sparkline compact des précipitations (5 lignes vertical)
+        str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Telegram: 38h
-        >>> rain = get_rain_graph("Paris", max_hours=24)  # Mesh: 24h (today)
+        >>> rain = get_rain_graph("Paris")  # Telegram: 38h, 5 lignes
+        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True)  # Mesh: 12h, 3 lignes
     """
     try:
         # Normaliser la location
@@ -513,21 +514,30 @@ def get_rain_graph(location=None, days=1, max_hours=38):
             else:
                 now_marker.append(' ')
 
-        # Formater le message final avec les 5 lignes du graphe original + échelle + marqueur
+        # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
-        # Afficher "today" pour 24h (Mesh), sinon afficher les heures
-        time_label = "today" if max_hours == 24 else f"{max_hours}h"
+        # Afficher "today" pour 12h (Mesh compact), sinon afficher les heures
+        time_label = "today" if max_hours == 12 else f"{max_hours}h"
         result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
 
-        # Ajouter les 5 lignes du graphe vertical (de haut en bas)
-        for line in truncated_lines:
-            result_lines.append(line)
+        # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
+        # Mode normal (Telegram): toutes les 5 lignes
+        if compact_mode and len(truncated_lines) >= 5:
+            # Garder lignes 0, 2, 4 (top, middle, bottom)
+            result_lines.append(truncated_lines[0])  # Top
+            result_lines.append(truncated_lines[2])  # Middle
+            result_lines.append(truncated_lines[4])  # Bottom
+        else:
+            # Toutes les 5 lignes du graphe vertical (de haut en bas)
+            for line in truncated_lines:
+                result_lines.append(line)
 
         # Ajouter l'échelle horaire
         result_lines.append(''.join(hour_scale))
 
-        # Ajouter le marqueur de l'heure actuelle (si dans la plage affichée)
-        if now_position < truncate_width:
+        # Ajouter le marqueur NOW seulement en mode non-compact (Telegram)
+        # En mode compact (Mesh), on économise ~24 chars pour rester sous 180
+        if not compact_mode and now_position < truncate_width:
             result_lines.append(''.join(now_marker))
 
         return "\n".join(result_lines)
