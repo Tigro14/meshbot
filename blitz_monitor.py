@@ -40,22 +40,35 @@ class BlitzMonitor:
     MQTT_KEEPALIVE = 60
     MQTT_TOPIC_PREFIX = "blitzortung/1.1"
 
-    def __init__(self, lat: float, lon: float, radius_km: int = 50,
-                 check_interval: int = 900, window_minutes: int = 15):
+    def __init__(self, lat: float = None, lon: float = None, radius_km: int = 50,
+                 check_interval: int = 900, window_minutes: int = 15,
+                 interface = None):
         """
         Initialiser le moniteur d'éclairs
 
         Args:
-            lat: Latitude du point de surveillance
-            lon: Longitude du point de surveillance
+            lat: Latitude du point de surveillance (optionnel si interface fourni)
+            lon: Longitude du point de surveillance (optionnel si interface fourni)
             radius_km: Rayon de surveillance en km (défaut: 50km)
             check_interval: Intervalle entre vérifications en secondes (défaut: 15min)
             window_minutes: Fenêtre temporelle pour historique (défaut: 15min)
+            interface: Interface Meshtastic pour récupérer position auto (optionnel)
         """
         if not MQTT_AVAILABLE:
             error_print("⚡ Blitz monitor: paho-mqtt ou pygeohash non disponible")
             self.enabled = False
             return
+
+        # Tenter de récupérer la position depuis l'interface Meshtastic
+        if lat is None or lon is None:
+            if interface:
+                lat, lon = self._get_position_from_interface(interface)
+
+            if lat is None or lon is None:
+                error_print("⚡ Blitz monitor: position GPS non disponible")
+                info_print("   Fournir lat/lon en paramètre ou configurer GPS sur le node")
+                self.enabled = False
+                return
 
         self.lat = lat
         self.lon = lon
@@ -81,6 +94,66 @@ class BlitzMonitor:
         info_print(f"   Position: {lat:.4f}, {lon:.4f}")
         info_print(f"   Rayon: {radius_km}km, Window: {window_minutes}min")
         info_print(f"   Geohashes: {', '.join(self.geohashes)}")
+
+    def _get_position_from_interface(self, interface) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Récupérer la position GPS du node local depuis l'interface Meshtastic
+
+        Args:
+            interface: Interface Meshtastic
+
+        Returns:
+            tuple: (latitude, longitude) ou (None, None) si non disponible
+        """
+        try:
+            # Méthode 1: Via localNode
+            if hasattr(interface, 'localNode') and interface.localNode:
+                local_node = interface.localNode
+                my_node_num = getattr(local_node, 'nodeNum', None)
+
+                # Accéder aux nodes via l'interface
+                if my_node_num and hasattr(interface, 'nodes') and my_node_num in interface.nodes:
+                    node_info = interface.nodes[my_node_num]
+
+                    if isinstance(node_info, dict) and 'position' in node_info:
+                        position = node_info['position']
+                        if isinstance(position, dict):
+                            lat = position.get('latitude') or position.get('latitudeI')
+                            lon = position.get('longitude') or position.get('longitudeI')
+
+                            # Conversion si format integer (latitudeI/longitudeI)
+                            if lat and abs(lat) > 180:
+                                lat = lat / 1e7
+                            if lon and abs(lon) > 180:
+                                lon = lon / 1e7
+
+                            if lat and lon:
+                                debug_print(f"⚡ Position récupérée depuis localNode: {lat:.4f}, {lon:.4f}")
+                                return (lat, lon)
+
+            # Méthode 2: Chercher dans tous les nodes (fallback)
+            if hasattr(interface, 'nodes'):
+                for node_id, node_info in interface.nodes.items():
+                    if isinstance(node_info, dict) and 'position' in node_info:
+                        position = node_info['position']
+                        if isinstance(position, dict):
+                            lat = position.get('latitude') or position.get('latitudeI')
+                            lon = position.get('longitude') or position.get('longitudeI')
+
+                            if lat and lon:
+                                # Conversion si nécessaire
+                                if abs(lat) > 180:
+                                    lat = lat / 1e7
+                                if abs(lon) > 180:
+                                    lon = lon / 1e7
+
+                                debug_print(f"⚡ Position récupérée depuis nodes[{node_id:08x}]: {lat:.4f}, {lon:.4f}")
+                                return (lat, lon)
+
+        except Exception as e:
+            error_print(f"⚡ Erreur récupération position: {e}")
+
+        return (None, None)
 
     def _calculate_geohashes(self, precision: int = 3) -> List[str]:
         """

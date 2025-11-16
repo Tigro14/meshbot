@@ -57,16 +57,8 @@ class MeshBot:
                 alert_levels=VIGILANCE_ALERT_LEVELS
             )
 
-        # Moniteur d'éclairs Blitzortung (si activé)
+        # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
         self.blitz_monitor = None
-        if BLITZ_ENABLED:
-            self.blitz_monitor = BlitzMonitor(
-                lat=BLITZ_LATITUDE,
-                lon=BLITZ_LONGITUDE,
-                radius_km=BLITZ_RADIUS_KM,
-                check_interval=BLITZ_CHECK_INTERVAL,
-                window_minutes=BLITZ_WINDOW_MINUTES
-            )
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -354,7 +346,30 @@ class MeshBot:
                 self.start_time
             )
             info_print("✅ MessageHandler créé")
-            
+
+            # ========================================
+            # MONITORING ÉCLAIRS BLITZORTUNG
+            # ========================================
+            if BLITZ_ENABLED:
+                info_print("⚡ Initialisation Blitz monitor...")
+                # Utiliser les coordonnées explicites si fournies, sinon auto-detect depuis interface
+                lat = BLITZ_LATITUDE if BLITZ_LATITUDE != 0.0 else None
+                lon = BLITZ_LONGITUDE if BLITZ_LONGITUDE != 0.0 else None
+
+                self.blitz_monitor = BlitzMonitor(
+                    lat=lat,
+                    lon=lon,
+                    radius_km=BLITZ_RADIUS_KM,
+                    check_interval=BLITZ_CHECK_INTERVAL,
+                    window_minutes=BLITZ_WINDOW_MINUTES,
+                    interface=self.interface
+                )
+
+                if self.blitz_monitor.enabled:
+                    info_print("✅ Blitz monitor initialisé")
+                else:
+                    info_print("⚠️ Blitz monitor désactivé (position GPS non disponible)")
+
             # ========================================
             # INTÉGRATION PLATEFORMES MESSAGERIE
             # ========================================
