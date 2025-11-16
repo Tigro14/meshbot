@@ -347,15 +347,15 @@ class UtilityCommands:
         """
         info_print(f"Weather: {sender_info}")
 
-        # Parser les arguments: /weather [rain|astro] [ville] [days]
+        # Parser les arguments: /weather [rain|astro|blitz|vigi] [ville] [days]
         parts = message.split()
         subcommand = None
         location = None
         days = 1  # Par défaut: aujourd'hui seulement
 
         if len(parts) > 1:
-            # Vérifier si c'est une sous-commande "rain", "astro", ou "blitz"
-            if parts[1].lower() in ['rain', 'astro', 'blitz']:
+            # Vérifier si c'est une sous-commande "rain", "astro", "blitz", ou "vigi"
+            if parts[1].lower() in ['rain', 'astro', 'blitz', 'vigi']:
                 subcommand = parts[1].lower()
 
                 # Arguments restants après la sous-commande

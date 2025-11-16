@@ -68,14 +68,14 @@ class UtilityCommands(TelegramCommandBase):
             await update.message.reply_text("❌ Non autorisé")
             return
 
-        # Parser les arguments: [rain|astro] [ville] [days]
+        # Parser les arguments: [rain|astro|blitz|vigi] [ville] [days]
         subcommand = None
         location = None
         days = 1  # Par défaut: aujourd'hui seulement
 
         if context.args and len(context.args) > 0:
             # Vérifier si le premier argument est une sous-commande
-            if context.args[0].lower() in ['rain', 'astro', 'blitz']:
+            if context.args[0].lower() in ['rain', 'astro', 'blitz', 'vigi']:
                 subcommand = context.args[0].lower()
                 remaining = context.args[1:]  # Arguments après la sous-commande
 
@@ -96,7 +96,7 @@ class UtilityCommands(TelegramCommandBase):
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro|blitz] [ville] [days]\n\n"
+                "🌤️ /weather [rain|astro|blitz|vigi] [ville] [days]\n\n"
                 "Exemples:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris → Météo Paris\n"
@@ -105,7 +105,8 @@ class UtilityCommands(TelegramCommandBase):
                 "/weather rain Paris 3 → Pluie Paris 3j\n"
                 "/weather astro → Infos astro\n"
                 "/weather astro Paris → Astro Paris\n"
-                "/weather blitz → Éclairs détectés"
+                "/weather blitz → Éclairs détectés\n"
+                "/weather vigi → Info VIGILANCE"
             )
             await update.message.reply_text(help_text)
             return
