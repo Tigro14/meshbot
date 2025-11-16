@@ -187,6 +187,16 @@ VIGILANCE_ALERT_THROTTLE = 3600  # Minimum 1h entre deux alertes (3600 secondes)
 VIGILANCE_ALERT_LEVELS = ['Orange', 'Rouge']  # Niveaux déclenchant une alerte automatique
 # Note: Niveaux disponibles: 'Vert', 'Jaune', 'Orange', 'Rouge'
 
+# Configuration surveillance éclairs Blitzortung.org
+BLITZ_ENABLED = True  # Activer/désactiver la surveillance des éclairs
+BLITZ_LATITUDE = 47.250  # Latitude du point de surveillance (ex: position du node)
+BLITZ_LONGITUDE = 6.023  # Longitude du point de surveillance
+BLITZ_RADIUS_KM = 50  # Rayon de surveillance en km (défaut: 50km)
+BLITZ_CHECK_INTERVAL = 900  # Vérifier toutes les 15 minutes (900 secondes)
+BLITZ_WINDOW_MINUTES = 15  # Fenêtre temporelle pour comptage éclairs (15min)
+# Note: Utilise le serveur MQTT public blitzortung.ha.sed.pl:1883
+# Dépendances: pip install paho-mqtt pygeohash
+
 REBOOT_AUTHORIZED_USERS = [
     11234530,    # trusted Telegram ID
     0x16fad3dc    # trusted mesh id

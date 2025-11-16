@@ -75,7 +75,7 @@ class UtilityCommands(TelegramCommandBase):
 
         if context.args and len(context.args) > 0:
             # Vérifier si le premier argument est une sous-commande
-            if context.args[0].lower() in ['rain', 'astro']:
+            if context.args[0].lower() in ['rain', 'astro', 'blitz']:
                 subcommand = context.args[0].lower()
                 remaining = context.args[1:]  # Arguments après la sous-commande
 
@@ -96,7 +96,7 @@ class UtilityCommands(TelegramCommandBase):
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro] [ville] [days]\n\n"
+                "🌤️ /weather [rain|astro|blitz] [ville] [days]\n\n"
                 "Exemples:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris → Météo Paris\n"
@@ -104,7 +104,8 @@ class UtilityCommands(TelegramCommandBase):
                 "/weather rain 3 → Pluie 3 jours\n"
                 "/weather rain Paris 3 → Pluie Paris 3j\n"
                 "/weather astro → Infos astro\n"
-                "/weather astro Paris → Astro Paris"
+                "/weather astro Paris → Astro Paris\n"
+                "/weather blitz → Éclairs détectés"
             )
             await update.message.reply_text(help_text)
             return
@@ -140,6 +141,28 @@ class UtilityCommands(TelegramCommandBase):
                 persistence = traffic_monitor.persistence if traffic_monitor else None
                 weather_data = await asyncio.to_thread(get_weather_astro, location, persistence=persistence)
                 await update.message.reply_text(weather_data)
+
+            elif subcommand == 'blitz':
+                # Éclairs détectés via Blitzortung
+                # Accéder au blitz_monitor via le message_handler
+                blitz_monitor = None
+                if hasattr(self.telegram.message_handler, 'meshbot') and hasattr(self.telegram.message_handler.meshbot, 'blitz_monitor'):
+                    blitz_monitor = self.telegram.message_handler.meshbot.blitz_monitor
+
+                if blitz_monitor and blitz_monitor.enabled:
+                    # Récupérer les éclairs récents
+                    recent_strikes = blitz_monitor.get_recent_strikes()
+
+                    if recent_strikes:
+                        # Formater le rapport (détaillé pour Telegram)
+                        weather_data = blitz_monitor._format_report(recent_strikes, compact=False)
+                    else:
+                        weather_data = f"⚡ Aucun éclair détecté dans les {blitz_monitor.window_minutes} dernières minutes\n"
+                        weather_data += f"Rayon de surveillance: {blitz_monitor.radius_km}km"
+
+                    await update.message.reply_text(weather_data)
+                else:
+                    await update.message.reply_text("⚡ Surveillance des éclairs désactivée")
 
             else:
                 # Météo normale

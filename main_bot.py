@@ -24,6 +24,7 @@ from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from safe_serial_connection import SafeSerialConnection
 from vigilance_monitor import VigilanceMonitor
+from blitz_monitor import BlitzMonitor
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -54,6 +55,17 @@ class MeshBot:
                 check_interval=VIGILANCE_CHECK_INTERVAL,
                 alert_throttle=VIGILANCE_ALERT_THROTTLE,
                 alert_levels=VIGILANCE_ALERT_LEVELS
+            )
+
+        # Moniteur d'éclairs Blitzortung (si activé)
+        self.blitz_monitor = None
+        if BLITZ_ENABLED:
+            self.blitz_monitor = BlitzMonitor(
+                lat=BLITZ_LATITUDE,
+                lon=BLITZ_LONGITUDE,
+                radius_km=BLITZ_RADIUS_KM,
+                check_interval=BLITZ_CHECK_INTERVAL,
+                window_minutes=BLITZ_WINDOW_MINUTES
             )
 
         # Gestionnaire de messages (initialisé après interface)
@@ -269,6 +281,10 @@ class MeshBot:
                 if self.vigilance_monitor:
                     self.vigilance_monitor.check_vigilance()
 
+                # Vérification éclairs (si activée)
+                if self.blitz_monitor and self.blitz_monitor.enabled:
+                    self.blitz_monitor.check_and_report()
+
                 debug_print("✅ Mise à jour périodique terminée")
                 
             except Exception as e:
@@ -401,6 +417,11 @@ class MeshBot:
                     self.system_monitor.start()
                     info_print("🔍 Monitoring système démarré")
 
+                # Démarrer le monitoring éclairs (si activé)
+                if self.blitz_monitor and self.blitz_monitor.enabled:
+                    self.blitz_monitor.start_monitoring()
+                    info_print("⚡ Monitoring éclairs démarré (MQTT)")
+
             except ImportError as e:
                 info_print(f"📱 Plateformes messagerie non disponibles: {e}")
             except Exception as e:
@@ -457,7 +478,11 @@ class MeshBot:
 
         # ✅ Arrêter le monitoring système
         if hasattr(self, 'system_monitor') and self.system_monitor:
-            self.system_monitor.stop() 
+            self.system_monitor.stop()
+
+        # Arrêter le monitoring éclairs
+        if self.blitz_monitor and self.blitz_monitor.enabled:
+            self.blitz_monitor.stop_monitoring()
 
         # Arrêter l'intégration Telegram
         # Arrêter toutes les plateformes

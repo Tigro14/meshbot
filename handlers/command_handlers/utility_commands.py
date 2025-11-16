@@ -353,8 +353,8 @@ class UtilityCommands:
         days = 1  # Par défaut: aujourd'hui seulement
 
         if len(parts) > 1:
-            # Vérifier si c'est une sous-commande "rain" ou "astro"
-            if parts[1].lower() in ['rain', 'astro']:
+            # Vérifier si c'est une sous-commande "rain", "astro", ou "blitz"
+            if parts[1].lower() in ['rain', 'astro', 'blitz']:
                 subcommand = parts[1].lower()
 
                 # Arguments restants après la sous-commande
@@ -377,7 +377,7 @@ class UtilityCommands:
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro] [ville] [days]\n"
+                "🌤️ /weather [rain|astro|blitz] [ville]\n"
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
@@ -385,7 +385,8 @@ class UtilityCommands:
                 "/weather rain 3 → Pluie 3j\n"
                 "/weather rain Paris 3\n"
                 "/weather astro → Infos astro\n"
-                "/weather astro Paris"
+                "/weather astro Paris\n"
+                "/weather blitz → Éclairs détectés"
             )
             self.sender.send_single(help_text, sender_id, sender_info)
             return
@@ -418,6 +419,24 @@ class UtilityCommands:
             cmd = f"/weather astro {location}" if location else "/weather astro"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
+        elif subcommand == 'blitz':
+            # Éclairs détectés via Blitzortung
+            if self.meshbot.blitz_monitor and self.meshbot.blitz_monitor.enabled:
+                # Récupérer les éclairs récents
+                recent_strikes = self.meshbot.blitz_monitor.get_recent_strikes()
+
+                if recent_strikes:
+                    # Formater le rapport (compact pour LoRa)
+                    weather_data = self.meshbot.blitz_monitor._format_report(recent_strikes, compact=True)
+                else:
+                    weather_data = f"⚡ Aucun éclair ({self.meshbot.blitz_monitor.window_minutes}min)"
+
+                cmd = "/weather blitz"
+                self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+                self.sender.send_single(weather_data, sender_id, sender_info)
+            else:
+                weather_data = "⚡ Surveillance éclairs désactivée"
+                self.sender.send_single(weather_data, sender_id, sender_info)
         else:
             # Météo normale
             weather_data = get_weather_data(location)
