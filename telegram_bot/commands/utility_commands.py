@@ -125,7 +125,9 @@ class UtilityCommands(TelegramCommandBase):
                 # Découper et envoyer jour par jour (1 ou 3 messages)
                 day_messages = weather_data.split('\n\n')
                 for i, day_msg in enumerate(day_messages):
-                    await update.message.reply_text(day_msg)
+                    # Envelopper dans <pre> pour police monospace (alignement sparklines)
+                    formatted_msg = f"<pre>{day_msg}</pre>"
+                    await update.message.reply_text(formatted_msg, parse_mode='HTML')
                     # Petit délai entre les messages
                     if i < len(day_messages) - 1:
                         await asyncio.sleep(1)
