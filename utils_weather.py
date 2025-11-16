@@ -409,28 +409,31 @@ def get_rain_graph(location=None, days=1):
         # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
         rain_chars = []
         max_precip = 0.0
+        rain_line = None
 
-        for line in lines:
+        # Trouver la ligne mm|% et extraire SEULEMENT la ligne suivante (pluie)
+        for i, line in enumerate(lines):
             # Ligne avec la valeur max (ex: "1.25mm|95%")
             if 'mm' in line and '|' in line and '%' in line:
                 try:
                     # Extraire la valeur max (ex: "1.25mm")
                     mm_part = line.split('mm')[0].strip()
                     max_precip = float(mm_part.split()[-1])
+
+                    # La ligne de pluie est la SUIVANTE après mm|%
+                    if i + 1 < len(lines):
+                        rain_line = lines[i + 1]
+                        break
                 except:
                     pass
 
-            # Ligne avec les caractères de graphe ASCII
-            if any(c in line for c in '█▇▆▅▄▃▂▁_'):
-                # Extraire juste les caractères du graphe
-                for char in line:
-                    if char in '█▇▆▅▄▃▂▁_ ':
-                        if char == '_':
-                            rain_chars.append('▁')
-                        elif char == ' ':
-                            rain_chars.append('▁')
-                        else:
-                            rain_chars.append(char)
+        # Extraire les caractères SEULEMENT de la ligne de pluie
+        if rain_line:
+            for char in rain_line:
+                if char in '█▇▆▅▄▃▂▁_':
+                    rain_chars.append(char if char != '_' else '▁')
+                elif char == ' ':
+                    rain_chars.append('▁')
 
         if not rain_chars:
             return "❌ Graphe pluie non trouvé"
@@ -457,7 +460,6 @@ def get_rain_graph(location=None, days=1):
             return "❌ Aucune donnée pluie"
 
         # Échantillonner pour avoir 48 points par jour (résolution 30 min)
-        # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
         # days=1 → 48 points, days=3 → 144 points
         target_points = 48 * days
         if len(values) > target_points:
@@ -469,8 +471,13 @@ def get_rain_graph(location=None, days=1):
             for i in range(0, len(values), window_size):
                 window = values[i:i+window_size]
                 if window:
-                    # Prendre le MAX de chaque fenêtre pour préserver les fronts raides
-                    sampled.append(max(window))
+                    # Prendre le MAX seulement si > 1, sinon MOYENNE pour éviter faux pics
+                    max_val = max(window)
+                    if max_val > 1:
+                        sampled.append(max_val)
+                    else:
+                        # Pour les faibles valeurs, prendre la moyenne pour éviter les artefacts
+                        sampled.append(int(sum(window) / len(window)))
             values = sampled[:target_points]
 
         # Créer un graphe compact sur 2 lignes
