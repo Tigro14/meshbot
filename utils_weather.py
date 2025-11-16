@@ -551,23 +551,57 @@ def get_rain_graph(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_weather_geo(location=None):
+def get_moon_emoji(moon_illumination):
     """
-    Récupérer les informations géographiques et astronomiques
+    Convertir le pourcentage d'illumination de la lune en émoji
+
+    Args:
+        moon_illumination: Pourcentage d'illumination (0-100)
+
+    Returns:
+        str: Émoji de phase lunaire
+    """
+    try:
+        illum = int(moon_illumination)
+        if illum < 6:
+            return '🌑'  # Nouvelle lune
+        elif illum < 19:
+            return '🌒'  # Premier croissant
+        elif illum < 31:
+            return '🌓'  # Premier quartier
+        elif illum < 44:
+            return '🌔'  # Gibbeuse croissante
+        elif illum < 56:
+            return '🌕'  # Pleine lune
+        elif illum < 69:
+            return '🌖'  # Gibbeuse décroissante
+        elif illum < 81:
+            return '🌗'  # Dernier quartier
+        elif illum < 94:
+            return '🌘'  # Dernier croissant
+        else:
+            return '🌑'  # Nouvelle lune
+    except:
+        return '🌙'  # Fallback
+
+
+def get_weather_astro(location=None):
+    """
+    Récupérer les informations astronomiques et météo actuelles
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
 
     Returns:
-        str: Infos géo/astronomiques formatées (3 lignes)
+        str: Infos astronomiques formatées (3 lignes)
 
     Exemples:
-        >>> geo = get_weather_geo("Paris")
-        >>> print(geo)
+        >>> astro = get_weather_astro("Paris")
+        >>> print(astro)
         Weather: Mist, +12°C, 94%, 5km/h, 1008hPa
-        Now: 00:53:40 | Dawn: 07:26 | Sunrise: 08:01
-        Zenith: 12:35 | Sunset: 17:08 | Dusk: 17:43
+        Now: 00:53:40 | Sunrise: 08:01 | Sunset: 17:08
+        🌔 Moonrise: 10:23 | Moonset: 18:45 (67%)
     """
     try:
         # Normaliser la location
@@ -649,17 +683,21 @@ def get_weather_geo(location=None):
         sunset = astronomy.get('sunset', '??:??:??')[:5]
         moonrise = astronomy.get('moonrise', '??:??:??')[:5]
         moonset = astronomy.get('moonset', '??:??:??')[:5]
+        moon_illumination = astronomy.get('moon_illumination', '50')
+
+        # Émoji de phase lunaire
+        moon_emoji = get_moon_emoji(moon_illumination)
 
         # Ligne 2: Now, Sunrise, Sunset
         lines.append(f"Now: {local_time[:8]} | Sunrise: {sunrise} | Sunset: {sunset}")
 
-        # Ligne 3: Moonrise, Moonset
-        lines.append(f"Moonrise: {moonrise} | Moonset: {moonset}")
+        # Ligne 3: Moonrise, Moonset avec émoji de phase
+        lines.append(f"{moon_emoji} Moonrise: {moonrise} | Moonset: {moonset} ({moon_illumination}%)")
 
         return "\n".join(lines)
 
     except subprocess.TimeoutExpired:
-        error_msg = f"❌ Timeout données géo (> {CURL_TIMEOUT}s)"
+        error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
         return error_msg
 
@@ -669,7 +707,7 @@ def get_weather_geo(location=None):
         return error_msg
 
     except Exception as e:
-        error_print(f"❌ Erreur inattendue dans get_weather_geo: {e}")
+        error_print(f"❌ Erreur inattendue dans get_weather_astro: {e}")
         import traceback
         error_print(traceback.format_exc())
         return f"❌ Erreur: {str(e)[:50]}"

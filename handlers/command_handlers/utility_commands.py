@@ -11,7 +11,7 @@ import subprocess
 import os
 import json
 import meshtastic.tcp_interface
-from utils_weather import get_weather_data, get_rain_graph, get_weather_geo
+from utils_weather import get_weather_data, get_rain_graph, get_weather_astro
 from config import *
 from utils import *
 
@@ -352,8 +352,8 @@ class UtilityCommands:
         location = None
 
         if len(parts) > 1:
-            # Vérifier si c'est une sous-commande "rain" ou "geo"
-            if parts[1].lower() in ['rain', 'geo']:
+            # Vérifier si c'est une sous-commande "rain" ou "astro"
+            if parts[1].lower() in ['rain', 'astro']:
                 subcommand = parts[1].lower()
                 # La ville est le 3ème argument si présent
                 if len(parts) > 2:
@@ -365,13 +365,13 @@ class UtilityCommands:
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|geo] [ville]\n"
+                "🌤️ /weather [rain|astro] [ville]\n"
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
                 "/weather rain → Graphe pluie\n"
-                "/weather geo → Infos astro\n"
-                "/weather geo Paris"
+                "/weather astro → Infos astro\n"
+                "/weather astro Paris"
             )
             self.sender.send_single(help_text, sender_id, sender_info)
             return
@@ -393,10 +393,10 @@ class UtilityCommands:
                 if i < len(day_messages) - 1:
                     import time
                     time.sleep(1)
-        elif subcommand == 'geo':
-            # Informations géographiques et astronomiques
-            weather_data = get_weather_geo(location)
-            cmd = f"/weather geo {location}" if location else "/weather geo"
+        elif subcommand == 'astro':
+            # Informations astronomiques
+            weather_data = get_weather_astro(location)
+            cmd = f"/weather astro {location}" if location else "/weather astro"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
         else:
