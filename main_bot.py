@@ -334,22 +334,6 @@ class MeshBot:
             pub.subscribe(self.on_message, "meshtastic.receive")
             info_print("✅ Abonné aux messages Meshtastic")
             self.running = True
-            
-            # ========================================
-            # INITIALISATION DES GESTIONNAIRES
-            # ========================================
-            info_print("📦 Initialisation MessageHandler...")
-            self.message_handler = MessageHandler(
-                self.llama_client,
-                self.esphome_client, 
-                self.remote_nodes_client,
-                self.node_manager,
-                self.context_manager,
-                self.interface,  # Interface directe
-                self.traffic_monitor,
-                self.start_time
-            )
-            info_print("✅ MessageHandler créé")
 
             # ========================================
             # MONITORING ÉCLAIRS BLITZORTUNG
@@ -379,6 +363,23 @@ class MeshBot:
                 except Exception as e:
                     error_print(f"Erreur initialisation blitz monitor: {e}")
                     self.blitz_monitor = None
+
+            # ========================================
+            # INITIALISATION DES GESTIONNAIRES
+            # ========================================
+            info_print("📦 Initialisation MessageHandler...")
+            self.message_handler = MessageHandler(
+                self.llama_client,
+                self.esphome_client,
+                self.remote_nodes_client,
+                self.node_manager,
+                self.context_manager,
+                self.interface,  # Interface directe
+                self.traffic_monitor,
+                self.start_time,
+                self.blitz_monitor
+            )
+            info_print("✅ MessageHandler créé")
 
             # ========================================
             # INTÉGRATION PLATEFORMES MESSAGERIE

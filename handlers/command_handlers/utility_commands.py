@@ -16,11 +16,12 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None):
+    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
         self.node_manager = node_manager
+        self.blitz_monitor = blitz_monitor
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -421,15 +422,15 @@ class UtilityCommands:
             self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'blitz':
             # Éclairs détectés via Blitzortung
-            if self.meshbot.blitz_monitor and self.meshbot.blitz_monitor.enabled:
+            if self.blitz_monitor and self.blitz_monitor.enabled:
                 # Récupérer les éclairs récents
-                recent_strikes = self.meshbot.blitz_monitor.get_recent_strikes()
+                recent_strikes = self.blitz_monitor.get_recent_strikes()
 
                 if recent_strikes:
                     # Formater le rapport (compact pour LoRa)
-                    weather_data = self.meshbot.blitz_monitor._format_report(recent_strikes, compact=True)
+                    weather_data = self.blitz_monitor._format_report(recent_strikes, compact=True)
                 else:
-                    weather_data = f"⚡ Aucun éclair ({self.meshbot.blitz_monitor.window_minutes}min)"
+                    weather_data = f"⚡ Aucun éclair ({self.blitz_monitor.window_minutes}min)"
 
                 cmd = "/weather blitz"
                 self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
