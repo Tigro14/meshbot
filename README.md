@@ -41,16 +41,86 @@ graph TD
 ## Installation
 
 ### Prérequis
-- Python 3.8+
-- Meshtastic Python library
-- Llama.cpp en cours d'exécution
-- ESPHome (optionnel)
+
+**Système :**
+- Python 3.8+ (testé sur Python 3.11-3.13)
+- Raspberry Pi 5 recommandé (fonctionne sur autres Linux)
+- Llama.cpp en cours d'exécution (voir [READMELLAMA.md](llama.cpp-integration/READMELLAMA.md))
+- ESPHome (optionnel pour télémétrie solaire/batterie)
+
+**Dépendances système (apt) :**
+```bash
+# Headers Python (requis pour pygeohash)
+sudo apt-get install python3-dev
+
+# Optionnel : outils de développement
+sudo apt-get install git python3-pip python3-venv
+```
+
+### Installation des dépendances Python
+
+**Méthode 1 : Depuis requirements.txt (recommandé)**
+```bash
+# Cloner le repository
+git clone https://github.com/Tigro14/meshbot.git
+cd meshbot
+
+# Installer les dépendances
+pip install -r requirements.txt --break-system-packages
+
+# Note: --break-system-packages nécessaire sur Raspberry Pi OS
+# et autres systèmes avec pip géré par le système
+```
+
+**Méthode 2 : Installation manuelle**
+```bash
+pip install meshtastic pypubsub requests python-telegram-bot \
+    vigilancemeteo paho-mqtt pygeohash --break-system-packages
+```
 
 ### Configuration
-1. Cloner le repository
-2. Installer les dépendances : `pip install -r requirements.txt` #TODO
-3. Configurer `config.py` avec vos paramètres
-4. Lancer : `python main_script.py`
+
+1. **Copier le template de configuration**
+   ```bash
+   cp config.py.sample config.py
+   ```
+
+2. **Éditer `config.py` avec vos paramètres**
+   - Port série du node Meshtastic (`SERIAL_PORT`)
+   - Token Telegram (`TELEGRAM_BOT_TOKEN`) si intégration Telegram
+   - Département pour vigilance météo (`VIGILANCE_DEPARTEMENT`)
+   - Configuration AI Llama (host, port, prompts)
+   - Autres paramètres selon besoins
+
+3. **Lancer le bot**
+   ```bash
+   python main_script.py
+   ```
+
+   Ou en mode debug :
+   ```bash
+   python main_script.py --debug
+   ```
+
+### Installation en tant que service systemd
+
+Voir le fichier `meshbot.service` pour un exemple de service systemd.
+
+```bash
+# Copier le service
+sudo cp meshbot.service /etc/systemd/system/
+
+# Éditer les chemins si nécessaire
+sudo nano /etc/systemd/system/meshbot.service
+
+# Activer et démarrer
+sudo systemctl daemon-reload
+sudo systemctl enable meshbot
+sudo systemctl start meshbot
+
+# Vérifier les logs
+journalctl -u meshbot -f
+```
 
 ## Configuration du redémarrage à distance
 

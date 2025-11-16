@@ -1,0 +1,45 @@
+# MeshBot - Meshtastic-Llama Bot Requirements
+# Python 3.8+ required
+
+# === Core Dependencies ===
+# Meshtastic communication
+meshtastic>=2.2.0
+
+# Message pub/sub system
+pypubsub>=4.0.3
+
+# HTTP requests
+requests>=2.31.0
+
+# === Telegram Integration ===
+# Telegram bot API
+python-telegram-bot>=21.0
+
+# === AI & External Services ===
+# Llama.cpp client uses requests (already listed above)
+
+# === Weather & Alerts ===
+# French weather vigilance alerts
+vigilancemeteo>=3.0.0
+
+# === Lightning Detection (Blitzortung) ===
+# MQTT client for real-time lightning data
+paho-mqtt>=2.1.0
+
+# Geohash encoding for geographic filtering
+pygeohash>=3.2.0
+
+# === Optional Dependencies ===
+# For development/debugging
+# ipython>=8.0.0
+
+# === Notes ===
+# Some packages require system dependencies:
+# - pygeohash requires: python3-dev (or python3.X-dev for specific Python version)
+#   Install with: sudo apt-get install python3-dev
+#
+# Installation:
+#   pip install -r requirements.txt
+#
+# Or with --break-system-packages on managed systems (like Raspberry Pi OS):
+#   pip install -r requirements.txt --break-system-packages

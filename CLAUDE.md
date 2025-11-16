@@ -1942,6 +1942,79 @@ Maps are generated from:
 
 ---
 
+## Dependencies
+
+### System Dependencies (apt/dnf/yum)
+
+**Required:**
+- `python3-dev` - Python development headers (required for pygeohash compilation)
+
+**Recommended:**
+- `git` - Version control for cloning repository
+- `python3-pip` - Python package installer
+- `python3-venv` - Virtual environment support
+
+**Installation (Debian/Ubuntu/Raspberry Pi OS):**
+```bash
+sudo apt-get update
+sudo apt-get install python3-dev git python3-pip python3-venv
+```
+
+**Installation (Fedora/CentOS/RHEL):**
+```bash
+sudo dnf install python3-devel git python3-pip
+```
+
+### Python Dependencies (pip)
+
+All Python dependencies are documented in `requirements.txt`.
+
+**Core dependencies:**
+- `meshtastic>=2.2.0` - Meshtastic protocol library
+- `pypubsub>=4.0.3` - Message pub/sub system
+- `requests>=2.31.0` - HTTP requests library
+
+**Platform integrations:**
+- `python-telegram-bot>=21.0` - Telegram Bot API
+
+**Weather & Alerts:**
+- `vigilancemeteo>=3.0.0` - French weather vigilance alerts (Météo-France)
+
+**Lightning detection (Blitzortung):**
+- `paho-mqtt>=2.1.0` - MQTT client for real-time lightning data
+- `pygeohash>=3.2.0` - Geohash encoding for geographic filtering
+
+**Installation:**
+```bash
+# From requirements.txt (recommended)
+pip install -r requirements.txt --break-system-packages
+
+# Manual installation
+pip install meshtastic pypubsub requests python-telegram-bot \
+    vigilancemeteo paho-mqtt pygeohash --break-system-packages
+```
+
+**Note on `--break-system-packages`:**
+On Raspberry Pi OS and other systems with externally-managed pip, the `--break-system-packages` flag is required. Alternatively, use a virtual environment:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### External Services
+
+**Required:**
+- **Llama.cpp server** - Local LLM inference (see `llama.cpp-integration/READMELLAMA.md`)
+
+**Optional:**
+- **ESPHome device** - For solar/battery telemetry (`/power` command)
+- **Telegram Bot Token** - For Telegram integration
+- **Remote Meshtastic node (TCP)** - For extended node database
+
+---
+
 ## External Integrations
 
 ### Llama.cpp (AI)
