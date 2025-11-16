@@ -481,7 +481,16 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm"
 
-        # Créer une échelle horaire (marqueurs toutes les 3h)
+        # Calculer la position de l'heure actuelle pour le marqueur NOW
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        current_minute = datetime.now().minute
+        # Position sur l'échelle (2 points/heure)
+        now_position = current_hour * 2
+        if current_minute >= 30:
+            now_position += 1
+
+        # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
         # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
@@ -489,30 +498,14 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
             hour = (i // 2) % 24
             point_in_hour = i % 2
 
-            # Afficher seulement sur le premier point de l'heure, toutes les 3h
-            if point_in_hour == 0 and hour % 3 == 0:
+            # Priorité au marqueur NOW si on est à cette position
+            if i == now_position and now_position < truncate_width:
+                hour_scale.append('↓')  # Marqueur "maintenant"
+            # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
+            elif point_in_hour == 0 and hour % 3 == 0:
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
-
-        # Ajouter un marqueur pour l'heure actuelle (NOW)
-        from datetime import datetime
-        current_hour = datetime.now().hour
-        current_minute = datetime.now().minute
-
-        # Position sur l'échelle (2 points/heure)
-        # current_hour * 2 + (1 si minute >= 30)
-        now_position = current_hour * 2
-        if current_minute >= 30:
-            now_position += 1
-
-        # Créer la ligne du marqueur "NOW"
-        now_marker = []
-        for i in range(truncate_width):
-            if i == now_position:
-                now_marker.append('↓')  # Marqueur "maintenant"
-            else:
-                now_marker.append(' ')
 
         # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
@@ -532,13 +525,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False):
             for line in truncated_lines:
                 result_lines.append(line)
 
-        # Ajouter l'échelle horaire
+        # Ajouter l'échelle horaire (avec marqueur NOW intégré)
         result_lines.append(''.join(hour_scale))
-
-        # Ajouter le marqueur NOW seulement en mode non-compact (Telegram)
-        # En mode compact (Mesh), on économise ~24 chars pour rester sous 180
-        if not compact_mode and now_position < truncate_width:
-            result_lines.append(''.join(now_marker))
 
         return "\n".join(result_lines)
 
