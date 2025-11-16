@@ -126,25 +126,40 @@ def format_weather_line(label, emoji, temp, wind, precip, humidity):
 
 def parse_weather_json(json_data):
     """
-    Parser le JSON de wttr.in et formater sur 4 lignes
-    
+    Parser le JSON de wttr.in et formater avec header location + 4 lignes
+
     Format:
+        📍 [City], [Country]
         Now: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Today: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Tomorrow: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Day+2: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
-    
+
     Args:
         json_data (dict): Données JSON de wttr.in
-    
+
     Returns:
-        str: Météo formatée sur 4 lignes
+        str: Météo formatée avec location + 4 lignes
     """
     try:
         lines = []
-        
+
         # ----------------------------------------------------------------
-        # Line 1: NOW (current_condition)
+        # Header: Location from nearest_area
+        # ----------------------------------------------------------------
+        nearest_area = json_data.get('nearest_area', [{}])[0]
+        area_name = nearest_area.get('areaName', [{}])[0].get('value', 'Unknown')
+        country = nearest_area.get('country', [{}])[0].get('value', '')
+
+        if country and country != area_name:
+            location_str = f"📍 {area_name}, {country}"
+        else:
+            location_str = f"📍 {area_name}"
+
+        lines.append(location_str)
+
+        # ----------------------------------------------------------------
+        # Line 2: NOW (current_condition)
         # ----------------------------------------------------------------
         current = json_data.get('current_condition', [{}])[0]
         weather_code = current.get('weatherCode', '113')
@@ -665,7 +680,19 @@ def get_weather_astro(location=None):
         # Parser les données
         lines = []
 
-        # Ligne 1: Weather actuel
+        # Ligne 1: Location header
+        nearest_area = weather_json.get('nearest_area', [{}])[0]
+        area_name = nearest_area.get('areaName', [{}])[0].get('value', 'Unknown')
+        country = nearest_area.get('country', [{}])[0].get('value', '')
+
+        if country and country != area_name:
+            location_str = f"📍 {area_name}, {country}"
+        else:
+            location_str = f"📍 {area_name}"
+
+        lines.append(location_str)
+
+        # Ligne 2: Weather actuel
         current = weather_json.get('current_condition', [{}])[0]
         weather_desc = current.get('weatherDesc', [{}])[0].get('value', 'Unknown')
         temp = current.get('temp_C', '?')
@@ -675,8 +702,7 @@ def get_weather_astro(location=None):
 
         lines.append(f"Weather: {weather_desc}, +{temp}°C, {humidity}%, {wind}km/h, {pressure}hPa")
 
-        # Ligne 2 & 3: Infos astronomiques
-        nearest_area = weather_json.get('nearest_area', [{}])[0]
+        # Ligne 3 & 4: Infos astronomiques
         astronomy = weather_json.get('weather', [{}])[0].get('astronomy', [{}])[0]
 
         # Heure locale
@@ -692,10 +718,10 @@ def get_weather_astro(location=None):
         # Émoji de phase lunaire
         moon_emoji = get_moon_emoji(moon_illumination)
 
-        # Ligne 2: Now, Sunrise, Sunset
+        # Ligne 3: Now, Sunrise, Sunset
         lines.append(f"Now: {local_time[:8]} | Sunrise: {sunrise} | Sunset: {sunset}")
 
-        # Ligne 3: Moonrise, Moonset avec émoji de phase
+        # Ligne 4: Moonrise, Moonset avec émoji de phase
         lines.append(f"{moon_emoji} Moonrise: {moonrise} | Moonset: {moonset} ({moon_illumination}%)")
 
         return "\n".join(lines)
