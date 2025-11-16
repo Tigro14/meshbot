@@ -16,11 +16,12 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None):
+    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
         self.node_manager = node_manager
+        self.blitz_monitor = blitz_monitor
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -353,8 +354,8 @@ class UtilityCommands:
         days = 1  # Par défaut: aujourd'hui seulement
 
         if len(parts) > 1:
-            # Vérifier si c'est une sous-commande "rain" ou "astro"
-            if parts[1].lower() in ['rain', 'astro']:
+            # Vérifier si c'est une sous-commande "rain", "astro", ou "blitz"
+            if parts[1].lower() in ['rain', 'astro', 'blitz']:
                 subcommand = parts[1].lower()
 
                 # Arguments restants après la sous-commande
@@ -377,7 +378,7 @@ class UtilityCommands:
         # Si "help"/"aide", afficher l'aide
         if location and location.lower() in ['help', 'aide', '?']:
             help_text = (
-                "🌤️ /weather [rain|astro] [ville] [days]\n"
+                "🌤️ /weather [rain|astro|blitz|vigi] [ville]\n"
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
@@ -385,15 +386,20 @@ class UtilityCommands:
                 "/weather rain 3 → Pluie 3j\n"
                 "/weather rain Paris 3\n"
                 "/weather astro → Infos astro\n"
-                "/weather astro Paris"
+                "/weather astro Paris\n"
+                "/weather blitz → Éclairs détectés\n"
+                "/weather vigi → Info VIGILANCE"
             )
             self.sender.send_single(help_text, sender_id, sender_info)
             return
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations
-            weather_data = get_rain_graph(location, days=days)
+            # Graphe de précipitations (Mesh: 12h ultra-compact pour limites LoRa ~180 chars)
+            # 3 lignes seulement (top, middle, bottom) + pas de marqueur NOW
+            # Cache SQLite 5min via traffic_monitor.persistence
+            persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
+            weather_data = get_rain_graph(location, days=days, max_hours=12, compact_mode=True, persistence=persistence)
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Logger
@@ -409,16 +415,71 @@ class UtilityCommands:
                     time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
-            weather_data = get_weather_astro(location)
+            # Cache SQLite 5min via traffic_monitor.persistence
+            persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
+            weather_data = get_weather_astro(location, persistence=persistence)
             cmd = f"/weather astro {location}" if location else "/weather astro"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
+        elif subcommand == 'blitz':
+            # Éclairs détectés via Blitzortung
+            if self.blitz_monitor and self.blitz_monitor.enabled:
+                # Récupérer les éclairs récents
+                recent_strikes = self.blitz_monitor.get_recent_strikes()
+
+                if recent_strikes:
+                    # Formater le rapport (compact pour LoRa)
+                    weather_data = self.blitz_monitor._format_report(recent_strikes, compact=True)
+                else:
+                    weather_data = f"⚡ Aucun éclair ({self.blitz_monitor.window_minutes}min)"
+
+                cmd = "/weather blitz"
+                self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+                self.sender.send_single(weather_data, sender_id, sender_info)
+            else:
+                weather_data = "⚡ Surveillance éclairs désactivée"
+                self.sender.send_single(weather_data, sender_id, sender_info)
+        elif subcommand == 'vigi':
+            # Documentation du système VIGILANCE Météo-France
+            vigi_info = """📋 VIGILANCE Météo-France
+
+Surveillance automatique des alertes:
+• Départements configurés
+• Vérif toutes les 15min
+• Niveaux: Vert, Jaune, Orange, Rouge
+• Alerte auto si Orange/Rouge
+
+Types de risques surveillés:
+Vent, Pluie/Inondation, Orages, Neige/Verglas,
+Canicule, Grand froid, Avalanches, Vagues-submersion
+
+Config: VIGILANCE_* dans config.py
+Status: /sys pour voir alertes actives"""
+
+            self.sender.log_conversation(sender_id, sender_info, "/weather vigi", vigi_info)
+            self.sender.send_single(vigi_info, sender_id, sender_info)
         else:
             # Météo normale
             weather_data = get_weather_data(location)
             cmd = f"/weather {location}" if location else "/weather"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
             self.sender.send_single(weather_data, sender_id, sender_info)
+
+    def handle_rain(self, message, sender_id, sender_info):
+        """
+        Raccourci pour /weather rain [ville] [days]
+
+        Args:
+            message: Message complet (ex: "/rain", "/rain Paris", "/rain Paris 3")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+        """
+        # Convertir "/rain [args]" en "/weather rain [args]"
+        args = message[5:].strip() if len(message) > 5 else ""  # Enlever "/rain"
+        weather_message = f"/weather rain {args}".strip()
+
+        # Appeler handle_weather avec le message reformaté
+        self.handle_weather(weather_message, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
@@ -436,6 +497,7 @@ class UtilityCommands:
             "/packets",
             "/legend",
             "/weather",
+            "/rain",
             "/help"
         ]
         return "\n".join(help_lines)
@@ -455,11 +517,14 @@ class UtilityCommands:
         ⚡ SYSTÈME & MONITORING
         • /power - Télémétrie complète
           Batterie, solaire, température, pression, humidité
-        • /weather [rain] [ville] - Météo 3 jours
+        • /weather [rain|astro|blitz|vigi] [ville] - Météo & alertes
           /weather → Géolocalisée
           /weather Paris, /weather London, etc.
           /weather rain → Graphe pluie local
           /weather rain Paris → Graphe pluie Paris
+          /weather astro → Infos astronomiques
+          /weather blitz → Éclairs détectés
+          /weather vigi → Info VIGILANCE Météo-France
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5

@@ -248,6 +248,7 @@ class TelegramIntegration:
         # Commandes utilitaires
         self.application.add_handler(CommandHandler("power", self.utility_commands.power_command))
         self.application.add_handler(CommandHandler("weather", self.utility_commands.weather_command))
+        self.application.add_handler(CommandHandler("rain", self.utility_commands.rain_command))
         self.application.add_handler(CommandHandler("graphs", self.utility_commands.graphs_command))
 
         # Commandes mesh

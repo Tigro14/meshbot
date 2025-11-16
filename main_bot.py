@@ -23,6 +23,8 @@ from message_handler import MessageHandler
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from safe_serial_connection import SafeSerialConnection
+from vigilance_monitor import VigilanceMonitor
+from blitz_monitor import BlitzMonitor
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -44,6 +46,23 @@ class MeshBot:
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.remote_nodes_client = RemoteNodesClient()
         self.remote_nodes_client.set_node_manager(self.node_manager)
+
+        # Moniteur de vigilance météo (si activé)
+        self.vigilance_monitor = None
+        if globals().get('VIGILANCE_ENABLED', False):
+            try:
+                self.vigilance_monitor = VigilanceMonitor(
+                    departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
+                    check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 900),
+                    alert_throttle=globals().get('VIGILANCE_ALERT_THROTTLE', 3600),
+                    alert_levels=globals().get('VIGILANCE_ALERT_LEVELS', ['Orange', 'Rouge'])
+                )
+            except Exception as e:
+                error_print(f"Erreur initialisation vigilance monitor: {e}")
+                self.vigilance_monitor = None
+
+        # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
+        self.blitz_monitor = None
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -254,6 +273,14 @@ class MeshBot:
                 # Nettoyage des anciennes données SQLite (> 48h)
                 self.traffic_monitor.cleanup_old_persisted_data(hours=48)
 
+                # Vérification vigilance météo (si activée)
+                if self.vigilance_monitor:
+                    self.vigilance_monitor.check_vigilance()
+
+                # Vérification éclairs (si activée)
+                if self.blitz_monitor and self.blitz_monitor.enabled:
+                    self.blitz_monitor.check_and_report()
+
                 debug_print("✅ Mise à jour périodique terminée")
                 
             except Exception as e:
@@ -307,23 +334,53 @@ class MeshBot:
             pub.subscribe(self.on_message, "meshtastic.receive")
             info_print("✅ Abonné aux messages Meshtastic")
             self.running = True
-            
+
+            # ========================================
+            # MONITORING ÉCLAIRS BLITZORTUNG
+            # ========================================
+            if globals().get('BLITZ_ENABLED', False):
+                try:
+                    info_print("⚡ Initialisation Blitz monitor...")
+                    # Utiliser les coordonnées explicites si fournies, sinon auto-detect depuis interface
+                    blitz_lat = globals().get('BLITZ_LATITUDE', 0.0)
+                    blitz_lon = globals().get('BLITZ_LONGITUDE', 0.0)
+                    lat = blitz_lat if blitz_lat != 0.0 else None
+                    lon = blitz_lon if blitz_lon != 0.0 else None
+
+                    self.blitz_monitor = BlitzMonitor(
+                        lat=lat,
+                        lon=lon,
+                        radius_km=globals().get('BLITZ_RADIUS_KM', 50),
+                        check_interval=globals().get('BLITZ_CHECK_INTERVAL', 900),
+                        window_minutes=globals().get('BLITZ_WINDOW_MINUTES', 15),
+                        interface=self.interface
+                    )
+
+                    if self.blitz_monitor.enabled:
+                        info_print("✅ Blitz monitor initialisé")
+                    else:
+                        info_print("⚠️ Blitz monitor désactivé (position GPS non disponible)")
+                except Exception as e:
+                    error_print(f"Erreur initialisation blitz monitor: {e}")
+                    self.blitz_monitor = None
+
             # ========================================
             # INITIALISATION DES GESTIONNAIRES
             # ========================================
             info_print("📦 Initialisation MessageHandler...")
             self.message_handler = MessageHandler(
                 self.llama_client,
-                self.esphome_client, 
+                self.esphome_client,
                 self.remote_nodes_client,
                 self.node_manager,
                 self.context_manager,
                 self.interface,  # Interface directe
                 self.traffic_monitor,
-                self.start_time
+                self.start_time,
+                self.blitz_monitor
             )
             info_print("✅ MessageHandler créé")
-            
+
             # ========================================
             # INTÉGRATION PLATEFORMES MESSAGERIE
             # ========================================
@@ -386,6 +443,11 @@ class MeshBot:
                     self.system_monitor.start()
                     info_print("🔍 Monitoring système démarré")
 
+                # Démarrer le monitoring éclairs (si activé)
+                if self.blitz_monitor and self.blitz_monitor.enabled:
+                    self.blitz_monitor.start_monitoring()
+                    info_print("⚡ Monitoring éclairs démarré (MQTT)")
+
             except ImportError as e:
                 info_print(f"📱 Plateformes messagerie non disponibles: {e}")
             except Exception as e:
@@ -442,7 +504,11 @@ class MeshBot:
 
         # ✅ Arrêter le monitoring système
         if hasattr(self, 'system_monitor') and self.system_monitor:
-            self.system_monitor.stop() 
+            self.system_monitor.stop()
+
+        # Arrêter le monitoring éclairs
+        if self.blitz_monitor and self.blitz_monitor.enabled:
+            self.blitz_monitor.stop_monitoring()
 
         # Arrêter l'intégration Telegram
         # Arrêter toutes les plateformes

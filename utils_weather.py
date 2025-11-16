@@ -24,7 +24,7 @@ import subprocess
 import os
 import json
 import time
-from utils import info_print, error_print
+from utils import info_print, error_print, debug_print
 
 # Configuration
 CACHE_DIR = "/tmp"
@@ -101,8 +101,8 @@ def get_weather_icon(weather_code):
 
 def format_weather_line(label, emoji, temp, wind, precip, humidity):
     """
-    Formater une ligne de météo avec tous les détails
-    
+    Formater une ligne de météo de manière compacte
+
     Args:
         label (str): Label de la ligne (Now/Today/Tomorrow/Day+2)
         emoji (str): Émoji météo
@@ -110,9 +110,9 @@ def format_weather_line(label, emoji, temp, wind, precip, humidity):
         wind (str): Vitesse vent en km/h (ex: "15")
         precip (str): Précipitations en mm (ex: "0.5")
         humidity (str): Humidité en % (ex: "65")
-    
+
     Returns:
-        str: Ligne formatée (ex: "Now: ☀️ 12°C 15km/h 0mm 65%")
+        str: Ligne formatée compacte (ex: "Now: ☀️ 12°C 15km/h 0mm 65%")
     """
     # Convertir précipitations en format propre (pas de .0 inutiles)
     try:
@@ -120,31 +120,47 @@ def format_weather_line(label, emoji, temp, wind, precip, humidity):
         precip_str = f"{precip_float:.1f}mm" if precip_float % 1 != 0 else f"{int(precip_float)}mm"
     except (ValueError, TypeError):
         precip_str = f"{precip}mm"
-    
+
+    # Format compact pour /weather normal
     return f"{label}: {emoji} {temp}°C {wind}km/h {precip_str} {humidity}%"
 
 
 def parse_weather_json(json_data):
     """
-    Parser le JSON de wttr.in et formater sur 4 lignes
-    
+    Parser le JSON de wttr.in et formater avec header location + 4 lignes
+
     Format:
+        📍 [City], [Country]
         Now: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Today: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Tomorrow: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
         Day+2: [emoji] [temp]°C [wind]km/h [precip]mm [humidity]%
-    
+
     Args:
         json_data (dict): Données JSON de wttr.in
-    
+
     Returns:
-        str: Météo formatée sur 4 lignes
+        str: Météo formatée avec location + 4 lignes
     """
     try:
         lines = []
-        
+
         # ----------------------------------------------------------------
-        # Line 1: NOW (current_condition)
+        # Header: Location from nearest_area
+        # ----------------------------------------------------------------
+        nearest_area = json_data.get('nearest_area', [{}])[0]
+        area_name = nearest_area.get('areaName', [{}])[0].get('value', 'Unknown')
+        country = nearest_area.get('country', [{}])[0].get('value', '')
+
+        if country and country != area_name:
+            location_str = f"📍 {area_name}, {country}"
+        else:
+            location_str = f"📍 {area_name}"
+
+        lines.append(location_str)
+
+        # ----------------------------------------------------------------
+        # Line 2: NOW (current_condition)
         # ----------------------------------------------------------------
         current = json_data.get('current_condition', [{}])[0]
         weather_code = current.get('weatherCode', '113')
@@ -153,11 +169,11 @@ def parse_weather_json(json_data):
         wind = current.get('windspeedKmph', '?')
         precip = current.get('precipMM', '0')
         humidity = current.get('humidity', '?')
-        
+
         lines.append(format_weather_line('Now', emoji, temp, wind, precip, humidity))
-        
+
         # ----------------------------------------------------------------
-        # Lines 2-4: TODAY, TOMORROW, DAY+2 (weather array)
+        # Lines 3-5: TODAY, TOMORROW, DAY+2 (weather array)
         # ----------------------------------------------------------------
         weather = json_data.get('weather', [])
         day_labels = ['Today', 'Tomorrow', 'Day+2']
@@ -332,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -342,30 +358,40 @@ def get_rain_graph(location=None, days=1):
         days: Nombre de jours à afficher (1 ou 3)
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
+        max_hours: Nombre d'heures maximum à afficher (défaut 38)
+                   12 = Mesh compact (24 chars, 3 lines, ~124 chars total)
+                   38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
+        compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
 
     Returns:
-        str: Graphe sparkline compact des précipitations
+        str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Seulement aujourd'hui
-        >>> print(rain)
-        🌧️ Paris Auj (max:1.2mm)
-        ▁▂▃█▇▄▂▁▁▁▃▄▆▇▅▃▁▁▁▁▂▃▄▃▂▁
-        0  3  6  9  12 15 18 21
-
-        >>> rain = get_rain_graph("Paris", days=3)  # 3 jours
+        >>> rain = get_rain_graph("Paris")  # Telegram: 38h, 5 lignes
+        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True)  # Mesh: 12h, 3 lignes
     """
     try:
         # Normaliser la location
         if not location:
             location = DEFAULT_LOCATION
 
+        # Clé de cache (inclut tous les paramètres qui affectent le résultat)
+        cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
+
+        # Vérifier le cache SQLite (5 minutes)
+        if persistence:
+            cached = persistence.get_weather_cache(cache_key, 'rain', max_age_seconds=300)
+            if cached:
+                return cached
+
         # Construire l'URL v2n (narrow format avec graphes ASCII)
+        # Ajouter ?T pour désactiver les codes ANSI (couleurs)
         if location:
             location_encoded = location.replace(' ', '+')
-            wttr_url = f"https://v2n.wttr.in/{location_encoded}"
+            wttr_url = f"https://v2n.wttr.in/{location_encoded}?T"
         else:
-            wttr_url = "https://v2n.wttr.in"
+            wttr_url = "https://v2n.wttr.in?T"
 
         info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
 
@@ -390,153 +416,135 @@ def get_rain_graph(location=None, days=1):
         # Parser la sortie pour extraire les précipitations
         lines = output.split('\n')
 
+        # DEBUG: Afficher les premières lignes pour voir le format
+        debug_print(f"[RAIN DEBUG] Total lines: {len(lines)}")
+        for i, line in enumerate(lines[:50]):  # Première 50 lignes
+            if 'mm' in line or any(c in line for c in '█▇▆▅▄▃▂▁'):
+                debug_print(f"[RAIN DEBUG] Line {i}: {line[:100]}")
+
         # Chercher la section avec les barres de précipitations (contient █▇▄▃▂▁_)
         rain_chars = []
         max_precip = 0.0
+        rain_lines = []
 
-        for line in lines:
-            # Ligne avec la valeur max (ex: "1.25mm|95%")
+        # Trouver la ligne mm|% et extraire TOUTES les lignes du graphe multi-lignes
+        for i, line in enumerate(lines):
+            # Ligne avec la valeur max (ex: "0.42mm|100%")
             if 'mm' in line and '|' in line and '%' in line:
                 try:
-                    # Extraire la valeur max (ex: "1.25mm")
+                    # Extraire la valeur max (ex: "0.42mm")
                     mm_part = line.split('mm')[0].strip()
                     max_precip = float(mm_part.split()[-1])
-                except:
+                    debug_print(f"[RAIN DEBUG] Found mm|% at line {i}: {line[:80]}")
+
+                    # Extraire TOUTES les lignes suivantes avec des sparklines
+                    # Le graphe wttr.in est multi-lignes (empilé verticalement)
+                    j = i + 1
+                    while j < len(lines):
+                        next_line = lines[j]
+                        # Si la ligne contient des sparklines et n'est pas vide
+                        if any(c in next_line for c in '█▇▆▅▄▃▂▁_'):
+                            rain_lines.append(next_line)
+                            debug_print(f"[RAIN DEBUG] Rain line {j}: {next_line[:80]}")
+                            j += 1
+                        # Si ligne vide ou sans sparklines, on arrête
+                        elif next_line.strip() in ['', '│']:
+                            break
+                        else:
+                            j += 1
+                            # On continue un peu pour voir s'il y a d'autres lignes
+                            if j - i > 10:  # Max 10 lignes après mm|%
+                                break
+
+                    break
+                except Exception as e:
+                    debug_print(f"[RAIN DEBUG] Error parsing mm line: {e}")
                     pass
 
-            # Ligne avec les caractères de graphe ASCII
-            if any(c in line for c in '█▇▆▅▄▃▂▁_'):
-                # Extraire juste les caractères du graphe
-                for char in line:
-                    if char in '█▇▆▅▄▃▂▁_ ':
-                        if char == '_':
-                            rain_chars.append('▁')
-                        elif char == ' ':
-                            rain_chars.append('▁')
-                        else:
-                            rain_chars.append(char)
+        # Garder directement les 5 lignes originales de wttr.in (meilleur rendu)
+        # On prend toutes les lignes du graphe multi-lignes vertical
+        if not rain_lines or len(rain_lines) < 5:
+            return "❌ Graphe pluie incomplet"
 
-        if not rain_chars:
-            return "❌ Graphe pluie non trouvé"
+        debug_print(f"[RAIN DEBUG] Found {len(rain_lines)} rain graph lines")
 
-        # Convertir les caractères en valeurs numériques (0-7)
-        char_to_value = {
-            '▁': 0, '_': 0, ' ': 0,
-            '▂': 1,
-            '▃': 2,
-            '▄': 3,
-            '▅': 4,
-            '▆': 5,
-            '▇': 6,
-            '█': 7
-        }
+        # Nettoyer les lignes (enlever bordures │ mais GARDER l'indentation)
+        cleaned_lines = []
+        for line in rain_lines:
+            # Enlever les caractères de bordure │ mais GARDER les espaces de début (indentation)
+            cleaned = line.replace('│', '').rstrip()  # rstrip() enlève seulement espaces de FIN
+            cleaned_lines.append(cleaned)
 
-        # Convertir en valeurs et compacter
-        values = []
-        for char in rain_chars:
-            if char in char_to_value:
-                values.append(char_to_value[char])
+        # Calculer la largeur selon max_hours (2 points par heure)
+        # max_hours=24 → 48 chars (Mesh, compact, "today")
+        # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
+        truncate_width = max_hours * 2
+        truncated_lines = []
+        for line in cleaned_lines:
+            # Garder seulement les N premiers caractères
+            truncated = line[:truncate_width]
+            truncated_lines.append(truncated)
 
-        if not values:
-            return "❌ Aucune donnée pluie"
-
-        # Échantillonner pour avoir 48 points par jour (résolution 30 min)
-        # IMPORTANT: Prendre le MAX de chaque fenêtre pour préserver les pics
-        # days=1 → 48 points, days=3 → 144 points
-        target_points = 48 * days
-        if len(values) > target_points:
-            window_size = len(values) // target_points
-            if window_size < 1:
-                window_size = 1
-
-            sampled = []
-            for i in range(0, len(values), window_size):
-                window = values[i:i+window_size]
-                if window:
-                    # Prendre le MAX de chaque fenêtre pour préserver les fronts raides
-                    sampled.append(max(window))
-            values = sampled[:target_points]
-
-        # Créer un graphe multi-lignes (3 niveaux de hauteur)
-        width = len(values)
-        line_high = []  # Valeurs >= 5 (▅▆▇█)
-        line_mid = []   # Valeurs 3-4 (▃▄)
-        line_low = []   # Valeurs 0-2 (▁▂)
-
-        for v in values:
-            # Ligne haute (>= 5)
-            if v >= 6:
-                line_high.append('█')
-            elif v == 5:
-                line_high.append('▄')
-            else:
-                line_high.append(' ')
-
-            # Ligne moyenne (3-4)
-            if v >= 4:
-                line_mid.append('█')
-            elif v == 3:
-                line_mid.append('▄')
-            else:
-                line_mid.append(' ')
-
-            # Ligne basse (toutes les valeurs > 0)
-            if v >= 2:
-                line_low.append('█')
-            elif v == 1:
-                line_low.append('▄')
-            else:
-                line_low.append('▁')
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h)")
 
         # Formater la sortie
         location_name = location if location else "local"
-        max_str = f"{max_precip:.1f}mm"  # Toujours avec 1 décimale
+        max_str = f"{max_precip:.1f}mm"
 
-        # Créer une échelle horaire lisible (marqueurs toutes les 3h)
-        # 48 points par jour = 2 points/heure
-        # Marqueurs à 0h, 3h, 6h, 9h, 12h, 15h, 18h, 21h pour chaque jour
+        # Calculer la position de l'heure actuelle pour le marqueur NOW
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        current_minute = datetime.now().minute
+        # Position sur l'échelle (2 points/heure)
+        now_position = current_hour * 2
+        if current_minute >= 30:
+            now_position += 1
+
+        # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
+        # 2 points par heure
         hour_scale = []
-        for i in range(width):
-            # 48 points / 24h = 2 points/heure
+        for i in range(truncate_width):
+            # 2 points par heure
             hour = (i // 2) % 24
             point_in_hour = i % 2
 
-            # Afficher seulement sur le premier point de l'heure
-            if point_in_hour == 0 and hour % 3 == 0:
+            # Priorité au marqueur NOW si on est à cette position
+            if i == now_position and now_position < truncate_width:
+                hour_scale.append('↓')  # Marqueur "maintenant"
+            # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
+            elif point_in_hour == 0 and hour % 3 == 0:
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
 
-        # Découper jour par jour (48 points par jour) pour rester sous 220 chars/message
-        messages = []
-        day_names = ['Auj', 'Dem', 'J+2']
+        # Formater le message final avec les lignes du graphe + échelle + marqueur
+        result_lines = []
+        # Afficher "today" pour 12h (Mesh compact), sinon afficher les heures
+        time_label = "today" if max_hours == 12 else f"{max_hours}h"
+        result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
 
-        for day in range(days):
-            start_idx = day * 48
-            end_idx = start_idx + 48
+        # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
+        # Mode normal (Telegram): toutes les 5 lignes
+        if compact_mode and len(truncated_lines) >= 5:
+            # Garder lignes 0, 2, 4 (top, middle, bottom)
+            result_lines.append(truncated_lines[0])  # Top
+            result_lines.append(truncated_lines[2])  # Middle
+            result_lines.append(truncated_lines[4])  # Bottom
+        else:
+            # Toutes les 5 lignes du graphe vertical (de haut en bas)
+            for line in truncated_lines:
+                result_lines.append(line)
 
-            day_lines = []
-            # Titre avec jour et max pour ce jour
-            day_lines.append(f"🌧️ {location_name} {day_names[day]} (max:{max_str})")
+        # Ajouter l'échelle horaire (avec marqueur NOW intégré)
+        result_lines.append(''.join(hour_scale))
 
-            # Extraire les segments pour ce jour
-            high_day = ''.join(line_high[start_idx:end_idx]).rstrip()
-            mid_day = ''.join(line_mid[start_idx:end_idx]).rstrip()
-            low_day = ''.join(line_low[start_idx:end_idx])
-            scale_day = ''.join(hour_scale[start_idx:end_idx])
+        result = "\n".join(result_lines)
 
-            # Ajouter les lignes qui ont des données
-            if high_day.strip():
-                day_lines.append(high_day)
-            if mid_day.strip():
-                day_lines.append(mid_day)
-            day_lines.append(low_day)
-            day_lines.append(scale_day)
+        # Sauvegarder en cache SQLite
+        if persistence:
+            persistence.set_weather_cache(cache_key, 'rain', result)
 
-            messages.append("\n".join(day_lines))
-
-        # Retourner les 3 messages séparés par un délimiteur
-        return "\n\n".join(messages)
+        return result
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
@@ -589,20 +597,22 @@ def get_moon_emoji(moon_illumination):
         return '🌙'  # Fallback
 
 
-def get_weather_astro(location=None):
+def get_weather_astro(location=None, persistence=None):
     """
     Récupérer les informations astronomiques et météo actuelles
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
 
     Returns:
-        str: Infos astronomiques formatées (3 lignes)
+        str: Infos astronomiques formatées (4 lignes)
 
     Exemples:
         >>> astro = get_weather_astro("Paris")
         >>> print(astro)
+        📍 Paris, France
         Weather: Mist, +12°C, 94%, 5km/h, 1008hPa
         Now: 00:53:40 | Sunrise: 08:01 | Sunset: 17:08
         🌔 Moonrise: 10:23 | Moonset: 18:45 (67%)
@@ -612,60 +622,52 @@ def get_weather_astro(location=None):
         if not location:
             location = DEFAULT_LOCATION
 
-        # Construire l'URL et le nom du cache
+        # Clé de cache
+        cache_key = location or 'default'
+
+        # Vérifier le cache SQLite (5 minutes)
+        if persistence:
+            cached = persistence.get_weather_cache(cache_key, 'astro', max_age_seconds=300)
+            if cached:
+                return cached
+
+        # Construire l'URL
         if location:
             location_encoded = location.replace(' ', '+')
             wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
-            location_safe = location.replace(' ', '_').replace('/', '_')
-            cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
         else:
             wttr_url = f"{WTTR_BASE_URL}/?format=j1"
-            cache_file = f"{CACHE_DIR}/weather_cache_default.json"
 
-        # Essayer de lire depuis le cache d'abord
-        weather_json = None
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                cache_time = cache_data.get('timestamp', 0)
-                current_time = time.time()
-                age_seconds = int(current_time - cache_time)
+        # Faire l'appel API
+        info_print(f"📊 Récupération données astro depuis {wttr_url}...")
+        result = subprocess.run(
+            ['curl', '-s', wttr_url],
+            capture_output=True,
+            text=True,
+            timeout=CURL_TIMEOUT
+        )
 
-                # Si cache valide (< 5 min), l'utiliser
-                if age_seconds < CACHE_DURATION:
-                    # Refaire l'appel pour avoir le JSON complet (pas juste le texte formaté)
-                    info_print(f"📊 Récupération données géo depuis {wttr_url}...")
-                    result = subprocess.run(
-                        ['curl', '-s', wttr_url],
-                        capture_output=True,
-                        text=True,
-                        timeout=CURL_TIMEOUT
-                    )
-                    if result.returncode == 0 and result.stdout:
-                        weather_json = json.loads(result.stdout.strip())
-            except:
-                pass
+        if result.returncode != 0 or not result.stdout:
+            return "❌ Erreur récupération données astro"
 
-        # Si pas de cache ou expiré, faire l'appel
-        if not weather_json:
-            info_print(f"📊 Récupération données géo depuis {wttr_url}...")
-            result = subprocess.run(
-                ['curl', '-s', wttr_url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
-
-            if result.returncode != 0 or not result.stdout:
-                return "❌ Erreur récupération données géo"
-
-            weather_json = json.loads(result.stdout.strip())
+        weather_json = json.loads(result.stdout.strip())
 
         # Parser les données
         lines = []
 
-        # Ligne 1: Weather actuel
+        # Ligne 1: Location header
+        nearest_area = weather_json.get('nearest_area', [{}])[0]
+        area_name = nearest_area.get('areaName', [{}])[0].get('value', 'Unknown')
+        country = nearest_area.get('country', [{}])[0].get('value', '')
+
+        if country and country != area_name:
+            location_str = f"📍 {area_name}, {country}"
+        else:
+            location_str = f"📍 {area_name}"
+
+        lines.append(location_str)
+
+        # Ligne 2: Weather actuel
         current = weather_json.get('current_condition', [{}])[0]
         weather_desc = current.get('weatherDesc', [{}])[0].get('value', 'Unknown')
         temp = current.get('temp_C', '?')
@@ -675,8 +677,7 @@ def get_weather_astro(location=None):
 
         lines.append(f"Weather: {weather_desc}, +{temp}°C, {humidity}%, {wind}km/h, {pressure}hPa")
 
-        # Ligne 2 & 3: Infos astronomiques
-        nearest_area = weather_json.get('nearest_area', [{}])[0]
+        # Ligne 3 & 4: Infos astronomiques
         astronomy = weather_json.get('weather', [{}])[0].get('astronomy', [{}])[0]
 
         # Heure locale
@@ -692,13 +693,20 @@ def get_weather_astro(location=None):
         # Émoji de phase lunaire
         moon_emoji = get_moon_emoji(moon_illumination)
 
-        # Ligne 2: Now, Sunrise, Sunset
+        # Ligne 3: Now, Sunrise, Sunset
         lines.append(f"Now: {local_time[:8]} | Sunrise: {sunrise} | Sunset: {sunset}")
 
-        # Ligne 3: Moonrise, Moonset avec émoji de phase
+        # Ligne 4: Moonrise, Moonset avec émoji de phase
         lines.append(f"{moon_emoji} Moonrise: {moonrise} | Moonset: {moonset} ({moon_illumination}%)")
 
-        return "\n".join(lines)
+        # Formater le résultat
+        result = "\n".join(lines)
+
+        # Sauvegarder en cache SQLite
+        if persistence:
+            persistence.set_weather_cache(cache_key, 'astro', result)
+
+        return result
 
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"

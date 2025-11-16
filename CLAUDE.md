@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Meshtastic-Llama Bot
 
-**Last Updated**: 2025-11-15
+**Last Updated**: 2025-11-16
 **Project**: Meshtastic-Llama Bot with Telegram Integration
 **Language**: Python 3.8+
 **Platform**: Raspberry Pi 5 / Linux
@@ -71,12 +71,13 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 ```
 
 ### Key Statistics
-- **~17,697 lines** of Python code
+- **~18,224 lines** of Python code
 - **62 modules** with clear separation of concerns
 - **Dual-channel design**: Constrained LoRa (180 chars) vs Rich Telegram (3000 chars)
 - **Multi-platform ready**: Pluggable architecture for Telegram, Discord, Matrix
 - **SQLite persistence**: 48-hour traffic history with automatic cleanup
 - **Unified statistics**: Single `/stats` command with multiple sub-commands
+- **Enhanced weather**: Rain graphs and astronomical data integration
 
 ---
 
@@ -188,6 +189,111 @@ CLI_SERVER_PORT = 9999
 - Superseded by `/stats` command
 - ~60 lines of code removed
 
+### Database Management System (November 2025)
+
+New unified `/db` command for database operations:
+
+**Key Features:**
+- **Single Entry Point**: `/db` command with sub-commands
+- **Maintenance Operations**: Stats, vacuum, cleanup, reset
+- **Channel Adaptation**: Compact output for Mesh (180 chars), detailed for Telegram
+- **Safety Checks**: Confirmations required for destructive operations
+
+**Sub-commands:**
+- `/db` or `/db help` - Show help
+- `/db stats` - Database statistics (size, records, age)
+- `/db vacuum` - Optimize database (reclaim space)
+- `/db cleanup [hours]` - Remove old data (default: 48h retention)
+- `/db reset` - Full database reset (requires confirmation)
+
+**Architecture:**
+- `handlers/command_handlers/db_commands.py` - Database operations handler
+- Integrated with `TrafficPersistence` for safe operations
+- Throttling and authorization checks
+
+### Weather Enhancements (November 2025)
+
+The `/weather` command has been significantly enhanced with new subcommands:
+
+**New Subcommands:**
+- `/weather` - Standard weather forecast (geolocated or custom city)
+- `/weather rain [city] [days]` - Precipitation graphs with hourly resolution
+  - Sparkline rain graphs for 1 or 3 days
+  - 72-point resolution (hourly data)
+  - Max-window sampling to preserve rain peaks
+  - Day-by-day messages for clarity
+- `/weather astro [city]` - Astronomical data
+  - Sunrise/sunset times
+  - Moon phase with emoji representation
+  - Solar noon and day length
+  - UV index
+
+**Usage Examples:**
+```
+/weather                    → Local forecast
+/weather Paris             → Paris forecast
+/weather rain              → Local rain graph (today)
+/weather rain 3            → Local rain graph (3 days)
+/weather rain Paris 3      → Paris rain graph (3 days)
+/weather astro             → Local astronomical data
+/weather astro London      → London astronomical data
+```
+
+**Implementation:**
+- `utils_weather.py::get_rain_graph()` - Rain graph generation
+- `utils_weather.py::get_weather_astro()` - Astronomical data fetching
+- Integration with wttr.in API for data
+- Multi-message support for 3-day rain forecasts
+
+### CLI Improvements (November 2025)
+
+**Command History Navigation:**
+- Interactive command history with ↑/↓ arrow keys
+- Persistent history across CLI sessions
+- Readline integration for full terminal experience
+- UTF-8 encoding fixes for special characters
+
+**Enhanced User Experience:**
+- Fixed UTF-8 encoding errors in CLI client/server communication
+- Improved error handling and connection management
+- Better response formatting for CLI output
+- Command history documented in `CLI_USAGE.md`
+
+**Documentation:**
+- New `CLI_USAGE.md` file with comprehensive CLI usage guide
+- Examples for all CLI-specific features
+- Troubleshooting section for common issues
+
+### Statistics Display Improvements (November 2025)
+
+**Channel Stats with LongName:**
+- Display human-readable node names in `/stats channel`
+- Convert numeric node IDs to LongName for better readability
+- Comprehensive channel utilization summaries for Telegram
+- Ultra-compact format for Mesh (under 180 chars)
+
+**Sparkline Histograms:**
+- Visual sparkline representation of data distributions
+- Compact histogram display for mesh channel
+- `get_histogram_report()` method for packet type visualization
+
+**Stats Command Behavior:**
+- `/stats` without parameters now shows help (instead of global stats)
+- More intuitive for new users
+- Help text adapts to channel (Mesh vs Telegram)
+
+### Codebase Cleanup (November 2025)
+
+**Removed Obsolete Components:**
+- `debug_interface.py` - 578 lines removed (replaced by CLI platform)
+- `packet_history.py` - Old packet storage system (superseded by TrafficPersistence)
+- Reduced debug noise in `/trace` and `/my` commands
+
+**Code Quality:**
+- Better separation of concerns
+- Reduced redundancy
+- Improved maintainability
+
 ---
 
 ## Architecture
@@ -284,6 +390,7 @@ MeshBot (Orchestrator)
 │       ├── unified_stats.py    # Unified /stats command (NEW)
 │       ├── mesh_commands.py    # /echo, /annonce
 │       ├── utility_commands.py # /help, /power, /weather, etc.
+│       ├── db_commands.py      # /db database operations (NEW)
 │       └── signal_utils.py     # Signal formatting utilities
 │
 ├── platforms/                  # Multi-platform architecture
@@ -343,8 +450,6 @@ MeshBot (Orchestrator)
 ├── tcp_interface_patch.py      # Meshtastic TCP fixes
 │
 ├── message_handler.py          # Legacy wrapper (use MessageRouter)
-├── packet_history.py           # Deprecated (use TrafficMonitor)
-├── debug_interface.py          # Debug console
 │
 ├── diagnostic_traffic.py       # Diagnostic script
 ├── migrate_packets_to_db.py    # Migration script
@@ -1837,6 +1942,79 @@ Maps are generated from:
 
 ---
 
+## Dependencies
+
+### System Dependencies (apt/dnf/yum)
+
+**Required:**
+- `python3-dev` - Python development headers (required for pygeohash compilation)
+
+**Recommended:**
+- `git` - Version control for cloning repository
+- `python3-pip` - Python package installer
+- `python3-venv` - Virtual environment support
+
+**Installation (Debian/Ubuntu/Raspberry Pi OS):**
+```bash
+sudo apt-get update
+sudo apt-get install python3-dev git python3-pip python3-venv
+```
+
+**Installation (Fedora/CentOS/RHEL):**
+```bash
+sudo dnf install python3-devel git python3-pip
+```
+
+### Python Dependencies (pip)
+
+All Python dependencies are documented in `requirements.txt`.
+
+**Core dependencies:**
+- `meshtastic>=2.2.0` - Meshtastic protocol library
+- `pypubsub>=4.0.3` - Message pub/sub system
+- `requests>=2.31.0` - HTTP requests library
+
+**Platform integrations:**
+- `python-telegram-bot>=21.0` - Telegram Bot API
+
+**Weather & Alerts:**
+- `vigilancemeteo>=3.0.0` - French weather vigilance alerts (Météo-France)
+
+**Lightning detection (Blitzortung):**
+- `paho-mqtt>=2.1.0` - MQTT client for real-time lightning data
+- `pygeohash>=3.2.0` - Geohash encoding for geographic filtering
+
+**Installation:**
+```bash
+# From requirements.txt (recommended)
+pip install -r requirements.txt --break-system-packages
+
+# Manual installation
+pip install meshtastic pypubsub requests python-telegram-bot \
+    vigilancemeteo paho-mqtt pygeohash --break-system-packages
+```
+
+**Note on `--break-system-packages`:**
+On Raspberry Pi OS and other systems with externally-managed pip, the `--break-system-packages` flag is required. Alternatively, use a virtual environment:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### External Services
+
+**Required:**
+- **Llama.cpp server** - Local LLM inference (see `llama.cpp-integration/READMELLAMA.md`)
+
+**Optional:**
+- **ESPHome device** - For solar/battery telemetry (`/power` command)
+- **Telegram Bot Token** - For Telegram integration
+- **Remote Meshtastic node (TCP)** - For extended node database
+
+---
+
 ## External Integrations
 
 ### Llama.cpp (AI)
@@ -1997,6 +2175,7 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | Message routing | `handlers/message_router.py` | Command dispatcher (Mesh) |
 | Message delivery | `handlers/message_sender.py` | Throttling + chunking |
 | Unified stats | `handlers/command_handlers/unified_stats.py` | Unified /stats command |
+| DB commands | `handlers/command_handlers/db_commands.py` | Database operations |
 | Command handlers | `handlers/command_handlers/*.py` | Domain logic (Mesh) |
 | Platform manager | `platforms/platform_manager.py` | Multi-platform orchestrator |
 | Platform interface | `platforms/platform_interface.py` | Abstract platform base |
@@ -2037,7 +2216,10 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | `/echo <msg>` | `mesh_commands.py` | Broadcast via router |
 | `/annonce <msg>` | `mesh_commands.py` | Broadcast via bot |
 | `/power` | `utility_commands.py` | ESPHome data |
-| `/weather` | `utility_commands.py` | Weather forecast |
+| `/weather [sub]` | `utility_commands.py` | Weather forecast |
+| `/weather rain` | `utility_commands.py` | Rain precipitation graphs |
+| `/weather astro` | `utility_commands.py` | Astronomical data |
+| `/db [sub]` | `db_commands.py` | Database operations (NEW) |
 | `/help` | `utility_commands.py` | Help text |
 | `/legend` | `utility_commands.py` | Signal legend |
 
@@ -2086,26 +2268,39 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-11-15
+**Last updated**: 2025-11-16
 **Updated by**: Claude (AI Assistant)
-**Changes in this update**:
+**Changes in this update (2025-11-16)**:
+- **NEW: Database Management** - Unified `/db` command for database operations
+  - Added `handlers/command_handlers/db_commands.py`
+  - Sub-commands: stats, vacuum, cleanup, reset
+  - Channel-adaptive output (Mesh vs Telegram)
+- **ENHANCED: Weather System** - Major weather command improvements
+  - `/weather rain [city] [days]` - Precipitation graphs with sparklines
+  - `/weather astro [city]` - Astronomical data (sunrise, moon phase, etc.)
+  - Custom city support for all weather commands
+  - 72-point hourly resolution for rain graphs
+- **IMPROVED: CLI Experience** - Command history and UTF-8 fixes
+  - Arrow key navigation (↑/↓) for command history
+  - Persistent history across sessions
+  - UTF-8 encoding fixes for special characters
+  - New `CLI_USAGE.md` documentation
+- **IMPROVED: Statistics** - Better display and usability
+  - `/stats channel` now shows LongName instead of numeric IDs
+  - Sparkline histograms for compact visualization
+  - `/stats` without params shows help (more intuitive)
+- **CLEANUP: Removed obsolete code**
+  - Deleted `debug_interface.py` (578 lines, replaced by CLI)
+  - Deleted `packet_history.py` (superseded by TrafficPersistence)
+  - Reduced debug noise in various commands
+- **Updated statistics**: Line count updated to ~18,224 lines
+- **Updated documentation**: Added CLI_USAGE.md to resources list
+- **Updated command reference**: Added `/db` and `/weather` subcommands
+
+**Previous major changes (2025-11-15)**:
 - **NEW: CLI Server Platform** - TCP-based local CLI for development/debug
-  - Added `platforms/cli_server_platform.py` (TCP server on localhost:9999)
-  - Added `cli_client.py` (standalone interactive client)
-  - Documented CLIMessageSender and CLIInterfaceWrapper patterns
-  - No serial port competition, runs in parallel with bot
-  - Full command support without LoRa constraints
 - **FIX: /trace command** - Now accepts target node argument
-  - `/trace [node]` can trace specific nodes by name or ID
-  - Added `_format_trace_target()` method
-  - Partial matching on node names and IDs
-- **REMOVED: /g2 command** - Deprecated and not properly documented
-  - Removed from system_commands.py (~60 lines)
-  - Removed from message_router.py routing
-  - Superseded by `/stats` command
-- Updated command reference table with corrected `/trace` usage
-- Removed `/rebootg2` from all documentation
-- Updated component hierarchy to reflect current command structure
+- **REMOVED: /g2 command** - Deprecated and removed
 
 **Previous major changes (v2.0)**:
 - Added new **Platforms Architecture** section documenting multi-platform support
@@ -2124,6 +2319,7 @@ This document should be updated when:
 
 - **README.md**: User-facing documentation
 - **CLAUDE.md**: This file - AI assistant guide
+- **CLI_USAGE.md**: CLI client usage guide with command history features
 - **BROWSE_TRAFFIC_DB.md**: Web UI for traffic database
 - **TRAFFIC_DB_VIEWER.md**: CLI database viewer
 - **STATS_CONSOLIDATION_PLAN.md**: Unified statistics system architecture
