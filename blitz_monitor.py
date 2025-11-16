@@ -147,7 +147,7 @@ class BlitzMonitor:
                                 if abs(lon) > 180:
                                     lon = lon / 1e7
 
-                                debug_print(f"⚡ Position récupérée depuis nodes[{node_id:08x}]: {lat:.4f}, {lon:.4f}")
+                                debug_print(f"⚡ Position récupérée depuis nodes[{node_id}]: {lat:.4f}, {lon:.4f}")
                                 return (lat, lon)
 
         except Exception as e:
