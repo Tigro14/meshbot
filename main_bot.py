@@ -49,13 +49,17 @@ class MeshBot:
 
         # Moniteur de vigilance météo (si activé)
         self.vigilance_monitor = None
-        if VIGILANCE_ENABLED:
-            self.vigilance_monitor = VigilanceMonitor(
-                departement=VIGILANCE_DEPARTEMENT,
-                check_interval=VIGILANCE_CHECK_INTERVAL,
-                alert_throttle=VIGILANCE_ALERT_THROTTLE,
-                alert_levels=VIGILANCE_ALERT_LEVELS
-            )
+        if globals().get('VIGILANCE_ENABLED', False):
+            try:
+                self.vigilance_monitor = VigilanceMonitor(
+                    departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
+                    check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 900),
+                    alert_throttle=globals().get('VIGILANCE_ALERT_THROTTLE', 3600),
+                    alert_levels=globals().get('VIGILANCE_ALERT_LEVELS', ['Orange', 'Rouge'])
+                )
+            except Exception as e:
+                error_print(f"Erreur initialisation vigilance monitor: {e}")
+                self.vigilance_monitor = None
 
         # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
         self.blitz_monitor = None
@@ -350,25 +354,31 @@ class MeshBot:
             # ========================================
             # MONITORING ÉCLAIRS BLITZORTUNG
             # ========================================
-            if BLITZ_ENABLED:
-                info_print("⚡ Initialisation Blitz monitor...")
-                # Utiliser les coordonnées explicites si fournies, sinon auto-detect depuis interface
-                lat = BLITZ_LATITUDE if BLITZ_LATITUDE != 0.0 else None
-                lon = BLITZ_LONGITUDE if BLITZ_LONGITUDE != 0.0 else None
+            if globals().get('BLITZ_ENABLED', False):
+                try:
+                    info_print("⚡ Initialisation Blitz monitor...")
+                    # Utiliser les coordonnées explicites si fournies, sinon auto-detect depuis interface
+                    blitz_lat = globals().get('BLITZ_LATITUDE', 0.0)
+                    blitz_lon = globals().get('BLITZ_LONGITUDE', 0.0)
+                    lat = blitz_lat if blitz_lat != 0.0 else None
+                    lon = blitz_lon if blitz_lon != 0.0 else None
 
-                self.blitz_monitor = BlitzMonitor(
-                    lat=lat,
-                    lon=lon,
-                    radius_km=BLITZ_RADIUS_KM,
-                    check_interval=BLITZ_CHECK_INTERVAL,
-                    window_minutes=BLITZ_WINDOW_MINUTES,
-                    interface=self.interface
-                )
+                    self.blitz_monitor = BlitzMonitor(
+                        lat=lat,
+                        lon=lon,
+                        radius_km=globals().get('BLITZ_RADIUS_KM', 50),
+                        check_interval=globals().get('BLITZ_CHECK_INTERVAL', 900),
+                        window_minutes=globals().get('BLITZ_WINDOW_MINUTES', 15),
+                        interface=self.interface
+                    )
 
-                if self.blitz_monitor.enabled:
-                    info_print("✅ Blitz monitor initialisé")
-                else:
-                    info_print("⚠️ Blitz monitor désactivé (position GPS non disponible)")
+                    if self.blitz_monitor.enabled:
+                        info_print("✅ Blitz monitor initialisé")
+                    else:
+                        info_print("⚠️ Blitz monitor désactivé (position GPS non disponible)")
+                except Exception as e:
+                    error_print(f"Erreur initialisation blitz monitor: {e}")
+                    self.blitz_monitor = None
 
             # ========================================
             # INTÉGRATION PLATEFORMES MESSAGERIE
