@@ -337,7 +337,7 @@ class UtilityCommands:
         ]
         return "\n".join(legend_lines)
 
-    def handle_weather(self, message, sender_id, sender_info):
+    def handle_weather(self, message, sender_id, sender_info, is_broadcast=False):
         """
         Gérer la commande /weather [rain] [ville]
 
@@ -345,18 +345,19 @@ class UtilityCommands:
             message: Message complet (ex: "/weather London", "/weather rain Paris")
             sender_id: ID de l'expéditeur
             sender_info: Infos sur l'expéditeur
+            is_broadcast: Si True, répondre en broadcast public
         """
-        info_print(f"Weather: {sender_info}")
+        info_print(f"Weather: {sender_info} (broadcast={is_broadcast})")
 
-        # Parser les arguments: /weather [rain|astro] [ville] [days]
+        # Parser les arguments: /weather [rain|astro|blitz|vigi] [ville] [days]
         parts = message.split()
         subcommand = None
         location = None
         days = 1  # Par défaut: aujourd'hui seulement
 
         if len(parts) > 1:
-            # Vérifier si c'est une sous-commande "rain", "astro", ou "blitz"
-            if parts[1].lower() in ['rain', 'astro', 'blitz']:
+            # Vérifier si c'est une sous-commande "rain", "astro", "blitz", ou "vigi"
+            if parts[1].lower() in ['rain', 'astro', 'blitz', 'vigi']:
                 subcommand = parts[1].lower()
 
                 # Arguments restants après la sous-commande
@@ -391,29 +392,47 @@ class UtilityCommands:
                 "/weather blitz → Éclairs détectés\n"
                 "/weather vigi → Info VIGILANCE"
             )
-            self.sender.send_single(help_text, sender_id, sender_info)
+
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                author_short = self.sender.get_short_name(sender_id)
+                response = f"{author_short}: {help_text}"
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather help")
+            else:
+                self.sender.send_single(help_text, sender_id, sender_info)
             return
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations (Mesh: 12h ultra-compact pour limites LoRa ~180 chars)
-            # 3 lignes seulement (top, middle, bottom) + pas de marqueur NOW
+            # Graphe de précipitations (Mesh: 22h ultra-compact pour limites LoRa ~210 chars)
+            # 3 lignes seulement (top, middle, bottom)
+            # Démarrage à l'heure actuelle (au lieu de minuit) pour maximiser l'info future utile
             # Cache SQLite 5min via traffic_monitor.persistence
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
-            weather_data = get_rain_graph(location, days=days, max_hours=12, compact_mode=True, persistence=persistence)
+            weather_data = get_rain_graph(location, days=days, max_hours=22, compact_mode=True, persistence=persistence, start_at_current_time=True)
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Logger
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
 
-            # Découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
-            day_messages = weather_data.split('\n\n')
-            for i, day_msg in enumerate(day_messages):
-                self.sender.send_single(day_msg, sender_id, sender_info)
-                # Petit délai entre les messages
-                if i < len(day_messages) - 1:
-                    import time
-                    time.sleep(1)
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                # Broadcast public avec préfixe du nom court
+                author_short = self.sender.get_short_name(sender_id)
+                # Pour rain, envoyer seulement le premier jour en broadcast (sinon trop long)
+                day_messages = weather_data.split('\n\n')
+                first_day = day_messages[0] if day_messages else weather_data
+                response = f"{author_short}: {first_day}"
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+            else:
+                # Réponse privée: découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
+                day_messages = weather_data.split('\n\n')
+                for i, day_msg in enumerate(day_messages):
+                    self.sender.send_single(day_msg, sender_id, sender_info)
+                    # Petit délai entre les messages
+                    if i < len(day_messages) - 1:
+                        import time
+                        time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
             # Cache SQLite 5min via traffic_monitor.persistence
@@ -421,7 +440,14 @@ class UtilityCommands:
             weather_data = get_weather_astro(location, persistence=persistence)
             cmd = f"/weather astro {location}" if location else "/weather astro"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
-            self.sender.send_single(weather_data, sender_id, sender_info)
+
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                author_short = self.sender.get_short_name(sender_id)
+                response = f"{author_short}: {weather_data}"
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+            else:
+                self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'blitz':
             # Éclairs détectés via Blitzortung
             if self.blitz_monitor and self.blitz_monitor.enabled:
@@ -436,10 +462,22 @@ class UtilityCommands:
 
                 cmd = "/weather blitz"
                 self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
-                self.sender.send_single(weather_data, sender_id, sender_info)
+
+                # Envoyer selon le mode (broadcast ou direct)
+                if is_broadcast:
+                    author_short = self.sender.get_short_name(sender_id)
+                    response = f"{author_short}: {weather_data}"
+                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+                else:
+                    self.sender.send_single(weather_data, sender_id, sender_info)
             else:
                 weather_data = "⚡ Surveillance éclairs désactivée"
-                self.sender.send_single(weather_data, sender_id, sender_info)
+                if is_broadcast:
+                    author_short = self.sender.get_short_name(sender_id)
+                    response = f"{author_short}: {weather_data}"
+                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather blitz")
+                else:
+                    self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'vigi':
             # État actuel de la vigilance Météo-France
             if self.vigilance_monitor:
@@ -467,15 +505,29 @@ class UtilityCommands:
                 vigi_info = "🌦️ Surveillance VIGILANCE désactivée"
 
             self.sender.log_conversation(sender_id, sender_info, "/weather vigi", vigi_info)
-            self.sender.send_single(vigi_info, sender_id, sender_info)
+
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                author_short = self.sender.get_short_name(sender_id)
+                response = f"{author_short}: {vigi_info}"
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather vigi")
+            else:
+                self.sender.send_single(vigi_info, sender_id, sender_info)
         else:
             # Météo normale
             weather_data = get_weather_data(location)
             cmd = f"/weather {location}" if location else "/weather"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
-            self.sender.send_single(weather_data, sender_id, sender_info)
 
-    def handle_rain(self, message, sender_id, sender_info):
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                author_short = self.sender.get_short_name(sender_id)
+                response = f"{author_short}: {weather_data}"
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+            else:
+                self.sender.send_single(weather_data, sender_id, sender_info)
+
+    def handle_rain(self, message, sender_id, sender_info, is_broadcast=False):
         """
         Raccourci pour /weather rain [ville] [days]
 
@@ -483,13 +535,14 @@ class UtilityCommands:
             message: Message complet (ex: "/rain", "/rain Paris", "/rain Paris 3")
             sender_id: ID de l'expéditeur
             sender_info: Infos sur l'expéditeur
+            is_broadcast: Si True, répondre en broadcast public
         """
         # Convertir "/rain [args]" en "/weather rain [args]"
         args = message[5:].strip() if len(message) > 5 else ""  # Enlever "/rain"
         weather_message = f"/weather rain {args}".strip()
 
         # Appeler handle_weather avec le message reformaté
-        self.handle_weather(weather_message, sender_id, sender_info)
+        self.handle_weather(weather_message, sender_id, sender_info, is_broadcast=is_broadcast)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
@@ -861,5 +914,25 @@ class UtilityCommands:
                 
         except Exception as e:
             error_print(f"Erreur channel_debug: {e}")
-            self.sender.send_single(f"Erreur: {str(e)[:50]}", 
-                                   sender_id, sender_info)            
+            self.sender.send_single(f"Erreur: {str(e)[:50]}",
+                                   sender_id, sender_info)
+
+    def _send_broadcast_via_tigrog2(self, message, sender_id, sender_info, command):
+        """
+        Envoyer un message en broadcast via tigrog2
+
+        Note: Exécuté dans un thread séparé pour ne pas bloquer
+        """
+        def send_broadcast():
+            from safe_tcp_connection import broadcast_message
+
+            debug_print(f"📡 Broadcast {command} via {REMOTE_NODE_NAME}...")
+            success, msg = broadcast_message(REMOTE_NODE_HOST, message)
+
+            if success:
+                info_print(f"✅ Broadcast {command} diffusé")
+                self.sender.log_conversation(sender_id, sender_info, command, message)
+            else:
+                error_print(f"❌ Échec broadcast {command}: {msg}")
+
+        threading.Thread(target=send_broadcast, daemon=True).start()            

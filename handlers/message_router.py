@@ -77,10 +77,10 @@ class MessageRouter:
                 self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
             elif message.startswith('/weather'):
                 info_print(f"WEATHER PUBLIC de {sender_info}: '{message}'")
-                self.utility_handler.handle_weather(message, sender_id, sender_info)
+                self.utility_handler.handle_weather(message, sender_id, sender_info, is_broadcast=is_broadcast)
             elif message.startswith('/rain'):
                 info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
-                self.utility_handler.handle_rain(message, sender_id, sender_info)
+                self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
         # Log messages pour nous
