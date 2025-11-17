@@ -79,20 +79,20 @@ class DBCommands:
                 "v=vacuum"
             )
         else:  # telegram
-            return """🗄️ **BASE DE DONNÉES - OPTIONS**
+            return """🗄️ BASE DE DONNÉES - OPTIONS
 
-**Sous-commandes:**
-• `stats` - Statistiques DB
-• `info` - Informations détaillées
-• `clean [hours]` - Nettoyer données anciennes
-• `vacuum` - Optimiser DB (VACUUM)
+Sous-commandes:
+• stats - Statistiques DB
+• info - Informations détaillées
+• clean [hours] - Nettoyer données anciennes
+• vacuum - Optimiser DB (VACUUM)
 
-**Exemples:**
-• `/db stats` - Stats DB
-• `/db clean 72` - Nettoyer > 72h
-• `/db vacuum` - Optimiser
+Exemples:
+• /db stats - Stats DB
+• /db clean 72 - Nettoyer > 72h
+• /db vacuum - Optimiser
 
-**Raccourcis:** s, i, v
+Raccourcis: s, i, v
 """
 
     def _get_db_stats(self, channel='mesh'):
@@ -152,18 +152,18 @@ class DBCommands:
                 ]
             else:  # telegram
                 lines = [
-                    "🗄️ **STATISTIQUES BASE DE DONNÉES**",
+                    "🗄️ STATISTIQUES BASE DE DONNÉES",
                     "=" * 50,
                     "",
-                    f"**📊 Taille:** {db_size_mb:.2f} MB",
-                    f"**Fichier:** `{os.path.basename(db_path)}`",
+                    f"📊 Taille: {db_size_mb:.2f} MB",
+                    f"Fichier: {os.path.basename(db_path)}",
                     "",
-                    "**📦 Entrées:**",
+                    "📦 Entrées:",
                     f"• Paquets: {packets_count:,}",
                     f"• Messages publics: {messages_count:,}",
                     f"• Stats nœuds: {node_stats_count:,}",
                     "",
-                    "**⏰ Plage temporelle:**",
+                    "⏰ Plage temporelle:",
                     f"• Plus ancien: {oldest}",
                     f"• Plus récent: {newest}",
                     f"• Durée: {span_hours:.1f} heures",
@@ -219,12 +219,12 @@ class DBCommands:
                 )
             else:  # telegram
                 return (
-                    f"🧹 **NETTOYAGE EFFECTUÉ**\n\n"
+                    f"🧹 NETTOYAGE EFFECTUÉ\n\n"
                     f"Critère: > {hours} heures\n\n"
-                    f"**Supprimés:**\n"
+                    f"Supprimés:\n"
                     f"• Paquets: {deleted_packets:,}\n"
                     f"• Messages: {deleted_messages:,}\n\n"
-                    f"**Restants:**\n"
+                    f"Restants:\n"
                     f"• Paquets: {after_packets:,}\n"
                     f"• Messages: {after_messages:,}"
                 )
@@ -260,10 +260,10 @@ class DBCommands:
                 )
             else:  # telegram
                 return (
-                    f"🔧 **DATABASE OPTIMISÉE**\n\n"
-                    f"**Taille avant:** {size_before:.2f} MB\n"
-                    f"**Taille après:** {size_after:.2f} MB\n"
-                    f"**Économisé:** {saved:.2f} MB\n\n"
+                    f"🔧 DATABASE OPTIMISÉE\n\n"
+                    f"Taille avant: {size_before:.2f} MB\n"
+                    f"Taille après: {size_after:.2f} MB\n"
+                    f"Économisé: {saved:.2f} MB\n\n"
                     f"✅ VACUUM terminé avec succès"
                 )
 
@@ -309,22 +309,22 @@ class DBCommands:
                     lines.append(f"{table[:10]}:{info['count']}")
             else:  # telegram
                 lines = [
-                    "🗄️ **INFORMATIONS BASE DE DONNÉES**",
+                    "🗄️ INFORMATIONS BASE DE DONNÉES",
                     "=" * 50,
                     "",
-                    f"**Fichier:** `{os.path.basename(db_path)}`",
-                    f"**Chemin:** `{db_path}`",
+                    f"Fichier: {os.path.basename(db_path)}",
+                    f"Chemin: {db_path}",
                     "",
-                    f"**📊 Structure:**",
+                    f"📊 Structure:",
                     f"• Tables: {len(tables)}",
                     f"• Index: {len(indexes)}",
                     "",
-                    "**📦 Tables:**"
+                    "📦 Tables:"
                 ]
 
                 for table, info in table_info.items():
                     lines.append(
-                        f"• `{table}`: {info['count']:,} entrées, "
+                        f"• {table}: {info['count']:,} entrées, "
                         f"{info['columns']} colonnes"
                     )
 

@@ -38,33 +38,45 @@ class DBCommandsTelegram(TelegramCommandBase):
         subcommand = params[0].lower() if params else ''
         args = params[1:] if len(params) > 1 else []
 
+        info_print(f"🔍 /db parsing: subcommand='{subcommand}', args={args}")
+
         # Obtenir le handler DB depuis le message router
         try:
             db_handler = self.telegram.message_handler.router.db_handler
-        except AttributeError:
+            info_print(f"✅ db_handler trouvé: {db_handler is not None}")
+        except AttributeError as e:
+            error_msg = f"❌ Gestionnaire DB non disponible: {e}"
+            info_print(error_msg)
             await update.message.reply_text("❌ Gestionnaire DB non disponible")
             return
 
         if not db_handler:
+            info_print("❌ db_handler est None")
             await update.message.reply_text("❌ Gestionnaire DB non disponible")
             return
 
         def get_db_response():
             """Générer la réponse DB dans un thread"""
             try:
+                info_print(f"🔄 get_db_response: subcommand='{subcommand}'")
                 # Appeler directement les méthodes privées qui retournent du texte
                 if subcommand == '':
-                    return db_handler._get_help('telegram')
+                    result = db_handler._get_help('telegram')
                 elif subcommand in ['stats', 's']:
-                    return db_handler._get_db_stats('telegram')
+                    info_print("📊 Appel _get_db_stats...")
+                    result = db_handler._get_db_stats('telegram')
+                    info_print(f"✅ _get_db_stats retourné: {len(result) if result else 0} chars")
                 elif subcommand in ['clean', 'cleanup']:
-                    return db_handler._cleanup_db(args, 'telegram')
+                    result = db_handler._cleanup_db(args, 'telegram')
                 elif subcommand in ['vacuum', 'v']:
-                    return db_handler._vacuum_db('telegram')
+                    result = db_handler._vacuum_db('telegram')
                 elif subcommand in ['info', 'i']:
-                    return db_handler._get_db_info('telegram')
+                    result = db_handler._get_db_info('telegram')
                 else:
-                    return db_handler._get_help('telegram')
+                    result = db_handler._get_help('telegram')
+
+                info_print(f"📤 Retour get_db_response: {len(result) if result else 0} chars")
+                return result
             except Exception as e:
                 from utils import error_print
                 import traceback as tb
@@ -73,13 +85,21 @@ class DBCommandsTelegram(TelegramCommandBase):
                 return f"❌ Erreur: {str(e)[:100]}"
 
         # Exécuter en thread pour ne pas bloquer
+        info_print("⏳ Lancement asyncio.to_thread...")
         response = await asyncio.to_thread(get_db_response)
+        info_print(f"✅ Thread terminé, réponse: {len(response) if response else 0} chars")
 
         # Diviser si trop long (limite Telegram: 4096 chars)
+        # IMPORTANT: Ne pas utiliser parse_mode='Markdown' car peut causer des erreurs
         if response and len(response) > 4000:
+            info_print(f"📦 Division en chunks ({len(response)} chars)")
             chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
-            for chunk in chunks:
-                await update.message.reply_text(chunk, parse_mode='Markdown')
+            for idx, chunk in enumerate(chunks):
+                info_print(f"📤 Envoi chunk {idx+1}/{len(chunks)}")
+                await update.message.reply_text(chunk)
                 await asyncio.sleep(0.5)
         else:
-            await update.message.reply_text(response or "✅ Commande exécutée", parse_mode='Markdown')
+            info_print(f"📤 Envoi message direct")
+            await update.message.reply_text(response or "✅ Commande exécutée")
+
+        info_print("✅ /db command terminé")
