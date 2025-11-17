@@ -121,10 +121,10 @@ class UtilityCommands(TelegramCommandBase):
 
         try:
             if subcommand == 'rain':
-                # Graphe de précipitations (Telegram: 38h détaillé, 5 lignes, cache SQLite 5min)
+                # Graphe de précipitations (Telegram: 38h compact, 3 lignes comme Mesh, cache SQLite 5min)
                 traffic_monitor = self.telegram.message_handler.traffic_monitor if hasattr(self.telegram.message_handler, 'traffic_monitor') else None
                 persistence = traffic_monitor.persistence if traffic_monitor else None
-                weather_data = await asyncio.to_thread(get_rain_graph, location, days, persistence=persistence)
+                weather_data = await asyncio.to_thread(get_rain_graph, location, days, persistence=persistence, compact_mode=True)
 
                 # Découper et envoyer jour par jour (1 ou 3 messages)
                 day_messages = weather_data.split('\n\n')
