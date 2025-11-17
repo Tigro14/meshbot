@@ -71,7 +71,13 @@ class MeshTracerouteManager:
                 }
 
             target_name = self.node_manager.get_node_name(target_node_id)
-            requester_name = requester_info.get('name', 'Unknown')
+
+            # Gérer requester_info qui peut être une string ou un dict
+            if isinstance(requester_info, dict):
+                requester_name = requester_info.get('name', 'Unknown')
+            else:
+                # requester_info est directement une string (le nom)
+                requester_name = requester_info
 
             info_print(f"🔍 Traceroute mesh: {requester_name} → {target_name}")
             debug_print(f"   Target: 0x{target_node_id:08x}")
