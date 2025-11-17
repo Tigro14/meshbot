@@ -365,7 +365,7 @@ class UtilityCommands:
                 # Le dernier argument est un nombre de jours ?
                 if remaining and remaining[-1].isdigit():
                     days_arg = int(remaining[-1])
-                    if days_arg in [1, 3]:
+                    if days_arg in [1, 2, 3]:
                         days = days_arg
                         remaining = remaining[:-1]
 

@@ -475,42 +475,54 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             cleaned = line.replace('│', '').rstrip()  # rstrip() enlève seulement espaces de FIN
             cleaned_lines.append(cleaned)
 
+        # Calculer l'heure de début et la largeur
+        # Pour "aujourd'hui" (days=1), on commence à l'heure actuelle
+        # Pour les autres jours, on commence à 0h
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        start_hour = current_hour if days == 1 else 0
+
+        # Position de départ (2 points par heure)
+        start_position = start_hour * 2
+
         # Calculer la largeur selon max_hours (2 points par heure)
-        # max_hours=24 → 48 chars (Mesh, compact, "today")
+        # max_hours=24 → 48 chars (Mesh, compact)
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
+
         truncated_lines = []
         for line in cleaned_lines:
-            # Garder seulement les N premiers caractères
-            truncated = line[:truncate_width]
+            # Extraire la portion à partir de l'heure de début
+            truncated = line[start_position:start_position + truncate_width]
             truncated_lines.append(truncated)
 
-        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h)")
+        debug_print(f"[RAIN DEBUG] Start hour: {start_hour}h, truncated to {truncate_width} chars ({max_hours}h)")
 
         # Formater la sortie
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm"
 
         # Calculer la position de l'heure actuelle pour le marqueur NOW
-        from datetime import datetime
-        current_hour = datetime.now().hour
         current_minute = datetime.now().minute
-        # Position sur l'échelle (2 points/heure)
-        now_position = current_hour * 2
-        if current_minute >= 30:
-            now_position += 1
 
         # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
         # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
-            # 2 points par heure
-            hour = (i // 2) % 24
+            # 2 points par heure, en partant de start_hour
+            hour = (start_hour + i // 2) % 24
             point_in_hour = i % 2
 
-            # Priorité au marqueur NOW si on est à cette position
-            if i == now_position and now_position < truncate_width:
-                hour_scale.append('↓')  # Marqueur "maintenant"
+            # Pour days=1, le marqueur NOW est au début (position 0 ou 1)
+            # Pour days>1, pas de marqueur NOW
+            if days == 1 and i <= 1:
+                # Position dans la première heure selon les minutes
+                if (i == 0 and current_minute < 30) or (i == 1 and current_minute >= 30):
+                    hour_scale.append('↓')  # Marqueur "maintenant"
+                elif point_in_hour == 0:
+                    hour_scale.append(str(hour))
+                else:
+                    hour_scale.append(' ')
             # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
             elif point_in_hour == 0 and hour % 3 == 0:
                 hour_scale.append(str(hour))
@@ -519,9 +531,14 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
-        # Afficher "today" pour 12h (Mesh compact), sinon afficher les heures
-        time_label = "today" if max_hours == 12 else f"{max_hours}h"
-        result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
+
+        # Déterminer le label du jour selon le paramètre days
+        # Pour l'instant, on affiche toujours "aujourd'hui" car la fonction ne gère qu'un jour
+        # TODO: Supporter multi-jours avec plusieurs graphiques
+        day_label = "aujourd'hui"
+
+        # Titre avec nom de lieu, jour et max
+        result_lines.append(f"🌧️ {location_name} {day_label} (max:{max_str})")
 
         # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
         # Mode normal (Telegram): toutes les 5 lignes
