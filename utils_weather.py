@@ -667,18 +667,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             day_after = today + timedelta(days=2)
             date_label = day_after.strftime("J+2 %d/%m")
 
-        # Calculer la position du marqueur NOW (si on démarre à minuit)
-        # Si days==1, NOW est à position 0 (on démarre maintenant)
+        # Calculer la position du marqueur NOW
+        # Depuis la refonte (days=1 démarre toujours à l'heure actuelle),
+        # le marqueur NOW n'est plus pertinent:
+        # - Pour days=1: on démarre déjà à maintenant, donc NOW est au début
+        # - Pour days=2,3: on affiche le futur, NOW n'a pas de sens
+        # Donc on désactive le marqueur NOW dans tous les cas
         now_position = -1  # -1 = pas de marqueur NOW
-        if days != 1 and not start_at_current_time:
-            # Position relative à minuit
-            now_position = current_hour * 2
-            if current_minute >= 30:
-                now_position += 1
-            # Ajuster pour l'offset (si on a commencé ailleurs que minuit)
-            now_position -= start_offset
 
-        # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
+        # Créer une échelle horaire (marqueurs toutes les 3h)
         # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
@@ -687,11 +684,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             hour = (actual_position // 2) % 24
             point_in_hour = actual_position % 2
 
-            # Priorité au marqueur NOW si on est à cette position
-            if i == now_position and 0 <= now_position < truncate_width:
-                hour_scale.append('↓')  # Marqueur "maintenant"
-            # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
-            elif point_in_hour == 0 and hour % 3 == 0:
+            # Afficher l'heure sur le premier point de l'heure, toutes les 3h
+            if point_in_hour == 0 and hour % 3 == 0:
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
