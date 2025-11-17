@@ -21,7 +21,7 @@ class SystemCommands(TelegramCommandBase):
         """Commande /sys"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         self.log_command("sys", user.username)
@@ -118,13 +118,13 @@ class SystemCommands(TelegramCommandBase):
         """Commande /cpu - Monitoring CPU en temps réel"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         self.log_command("cpu", user.username)
 
         # Message initial
-        await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")
+        await update.effective_message.reply_text("📊 Monitoring CPU (10 secondes)...")
 
         def get_cpu_monitoring():
             try:
@@ -170,7 +170,7 @@ class SystemCommands(TelegramCommandBase):
         info_print("=" * 60)
 
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments (mot de passe)
@@ -234,7 +234,7 @@ class SystemCommands(TelegramCommandBase):
         info_print("=" * 60)
 
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments (mot de passe)
