@@ -20,11 +20,7 @@ class SystemCommands(TelegramCommandBase):
     async def sys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /sys"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
-        self.log_command("sys", user.username)
+        self.log_command("sys", user.username or user.first_name)
 
         def get_sys_info():
             import subprocess
@@ -117,11 +113,7 @@ class SystemCommands(TelegramCommandBase):
     async def cpu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /cpu - Monitoring CPU en temps réel"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
-        self.log_command("cpu", user.username)
+        self.log_command("cpu", user.username or user.first_name)
 
         # Message initial
         await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")

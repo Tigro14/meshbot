@@ -20,10 +20,6 @@ class UtilityCommands(TelegramCommandBase):
             context: ContextTypes.DEFAULT_TYPE):
         """Commande /power avec graphiques d'historique"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         info_print(f"📱 Telegram /power: {user.username}")
 
         # Extraire le nombre d'heures (optionnel, défaut 24)
@@ -63,11 +59,6 @@ class UtilityCommands(TelegramCommandBase):
         /weather astro Paris → Infos astronomiques Paris
         """
         user = update.effective_user
-
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         # Parser les arguments: [rain|astro|blitz|vigi] [ville] [days]
         subcommand = None
         location = None
@@ -230,10 +221,6 @@ Variables `VIGILANCE_*` dans config.py
             context: ContextTypes.DEFAULT_TYPE):
         """Commande /graphs pour afficher uniquement les graphiques d'historique"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         # Extraire le nombre d'heures (optionnel, défaut 24)
         hours = 24
         if context.args and len(context.args) > 0:
@@ -258,10 +245,6 @@ Variables `VIGILANCE_*` dans config.py
             context: ContextTypes.DEFAULT_TYPE):
         """Commande /graph - À définir selon vos besoins"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         info_print(f"📱 Telegram /graph: {user.username}")
 
         # TODO: Implémenter selon vos besoins

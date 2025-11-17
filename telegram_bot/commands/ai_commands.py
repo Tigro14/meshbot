@@ -20,10 +20,6 @@ class AICommands(TelegramCommandBase):
         Commande /bot <question> - Chat avec l'IA
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         # Vérifier qu'il y a bien une question
         if not context.args or len(context.args) == 0:
             await update.message.reply_text(
@@ -58,10 +54,6 @@ class AICommands(TelegramCommandBase):
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /clearcontext - Nettoyer le contexte"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         info_print(f"📱 Telegram /clearcontext: {user.username}")
 
         # Utiliser le mapping

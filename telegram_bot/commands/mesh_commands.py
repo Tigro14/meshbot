@@ -21,10 +21,6 @@ class MeshCommands(TelegramCommandBase):
             context: ContextTypes.DEFAULT_TYPE):
         """Commande /echo <message> - Diffuser sur le mesh"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         if not context.args:
             await update.message.reply_text("Usage: /echo <message>")
             return

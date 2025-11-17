@@ -20,9 +20,5 @@ class TraceCommands(TelegramCommandBase):
         Délègue au TracerouteManager
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
         # Déléguer au TracerouteManager
         await self.telegram.traceroute_manager._trace_command(update, context)
