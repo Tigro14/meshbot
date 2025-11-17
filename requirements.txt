@@ -5,6 +5,9 @@
 # Meshtastic communication
 meshtastic>=2.2.0
 
+# Serial port communication (required by meshtastic)
+pyserial>=3.5
+
 # Message pub/sub system
 pypubsub>=4.0.3
 

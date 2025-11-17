@@ -1971,6 +1971,7 @@ All Python dependencies are documented in `requirements.txt`.
 
 **Core dependencies:**
 - `meshtastic>=2.2.0` - Meshtastic protocol library
+- `pyserial>=3.5` - Serial port communication (required by meshtastic)
 - `pypubsub>=4.0.3` - Message pub/sub system
 - `requests>=2.31.0` - HTTP requests library
 
@@ -1990,7 +1991,7 @@ All Python dependencies are documented in `requirements.txt`.
 pip install -r requirements.txt --break-system-packages
 
 # Manual installation
-pip install meshtastic pypubsub requests python-telegram-bot \
+pip install meshtastic pyserial pypubsub requests python-telegram-bot \
     vigilancemeteo paho-mqtt pygeohash --break-system-packages
 ```
 
