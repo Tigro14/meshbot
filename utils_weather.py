@@ -593,28 +593,20 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             cleaned = line.replace('│', '').rstrip()  # rstrip() enlève seulement espaces de FIN
             cleaned_lines.append(cleaned)
 
-        # Calculer l'heure de début et la largeur
-        # Pour "aujourd'hui" (days=1), on commence à l'heure actuelle
-        # Pour les autres jours, on commence à 0h
-        from datetime import datetime
-        current_hour = datetime.now().hour
-        start_hour = current_hour if days == 1 else 0
-
-        # Position de départ (2 points par heure)
-        start_position = start_hour * 2
-
         # Calculer la largeur selon max_hours (2 points par heure)
         # max_hours=22 → 44 chars (Mesh, compact, "today")
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
 
-        # Calculer l'offset de départ si start_at_current_time=True
+        # Calculer l'offset de départ
+        # Pour "aujourd'hui" (days=1), on commence TOUJOURS à l'heure actuelle
+        # Pour les autres jours, on commence à 0h
         from datetime import datetime
         current_hour = datetime.now().hour
         current_minute = datetime.now().minute
         start_offset = 0
 
-        if start_at_current_time:
+        if days == 1 or start_at_current_time:
             # Démarrer à l'heure actuelle au lieu de minuit
             start_offset = current_hour * 2
             if current_minute >= 30:
@@ -629,14 +621,56 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h) starting at offset {start_offset}")
 
-        # Formater la sortie
+        # Obtenir le vrai nom de la ville via l'API JSON
         location_name = location if location else "local"
+        try:
+            # Faire un appel rapide pour obtenir le nom de la ville
+            if location:
+                location_encoded = location.replace(' ', '+')
+                json_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
+            else:
+                json_url = f"{WTTR_BASE_URL}/?format=j1"
+
+            json_result = subprocess.run(
+                ['curl', '-s', json_url],
+                capture_output=True,
+                text=True,
+                timeout=5  # Timeout court
+            )
+
+            if json_result.returncode == 0 and json_result.stdout:
+                weather_json = json.loads(json_result.stdout.strip())
+                nearest_area = weather_json.get('nearest_area', [{}])[0]
+                area_name = nearest_area.get('areaName', [{}])[0].get('value', '')
+                if area_name:
+                    location_name = area_name
+        except Exception as e:
+            debug_print(f"[RAIN DEBUG] Could not fetch location name: {e}")
+            # Garder le nom par défaut
+
         max_str = f"{max_precip:.1f}mm"
 
+        # Calculer le label de date
+        from datetime import datetime, timedelta
+        today = datetime.now()
+        date_label = ""
+
+        if days == 1:
+            # Aujourd'hui avec date
+            date_label = today.strftime("aujourd'hui %d/%m")
+        elif days == 2:
+            # Demain avec date
+            tomorrow = today + timedelta(days=1)
+            date_label = tomorrow.strftime("demain %d/%m")
+        elif days == 3:
+            # J+2 avec date
+            day_after = today + timedelta(days=2)
+            date_label = day_after.strftime("J+2 %d/%m")
+
         # Calculer la position du marqueur NOW (si on démarre à minuit)
-        # Si start_at_current_time=True, NOW est à position 0
+        # Si days==1, NOW est à position 0 (on démarre maintenant)
         now_position = -1  # -1 = pas de marqueur NOW
-        if not start_at_current_time:
+        if days != 1 and not start_at_current_time:
             # Position relative à minuit
             now_position = current_hour * 2
             if current_minute >= 30:
@@ -664,9 +698,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
-        # Afficher "today" pour 22h (Mesh compact), sinon afficher les heures
-        time_label = "today" if max_hours == 22 else f"{max_hours}h"
-        result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
+        # Utiliser le label de date calculé précédemment
+        result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
 
         # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
         # Mode normal (Telegram): toutes les 5 lignes
