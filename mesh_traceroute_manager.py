@@ -79,9 +79,12 @@ class MeshTracerouteManager:
                 # requester_info est directement une string (le nom)
                 requester_name = requester_info
 
-            info_print(f"🔍 Traceroute mesh: {requester_name} → {target_name}")
-            debug_print(f"   Target: 0x{target_node_id:08x}")
-            debug_print(f"   Requester: 0x{requester_id:08x}")
+            # Identifiant unique pour les logs de cette trace
+            trace_id = f"{target_node_id:08x}"
+
+            info_print(f"[TRACE:{trace_id}] 🔍 Traceroute mesh: {requester_name} → {target_name}")
+            debug_print(f"[TRACE:{trace_id}]    Target: 0x{target_node_id:08x}")
+            debug_print(f"[TRACE:{trace_id}]    Requester: 0x{requester_id:08x}")
 
             # Envoyer paquet TRACEROUTE_APP
             # L'API Meshtastic attend un paquet vide ou un RouteDiscovery message
@@ -93,7 +96,7 @@ class MeshTracerouteManager:
                 wantResponse=True  # On veut une réponse
             )
 
-            info_print(f"✅ Paquet TRACEROUTE_APP envoyé vers 0x{target_node_id:08x}")
+            info_print(f"[TRACE:{trace_id}] ✅ Paquet TRACEROUTE_APP envoyé")
 
             # Message de confirmation au requester
             self.message_sender.send_single(
@@ -150,10 +153,15 @@ class MeshTracerouteManager:
             requester_info = trace_data['requester_info']
             elapsed = time.time() - trace_data['timestamp']
 
-            info_print(f"✅ Réponse traceroute reçue de 0x{from_id:08x} ({elapsed:.1f}s)")
+            # Identifiant unique pour les logs
+            trace_id = f"{from_id:08x}"
+
+            info_print(f"[TRACE:{trace_id}] ✅ Réponse reçue ({elapsed:.1f}s)")
 
             # Parser les routes aller/retour depuis le paquet
             route_forward, route_back = self._parse_traceroute_packet(packet)
+            debug_print(f"[TRACE:{trace_id}]    Route aller: {len(route_forward)} hops")
+            debug_print(f"[TRACE:{trace_id}]    Route retour: {len(route_back)} hops")
 
             # Formater et envoyer la réponse
             response = self._format_traceroute_response(
@@ -170,7 +178,7 @@ class MeshTracerouteManager:
                 requester_info
             )
 
-            info_print(f"📤 Réponse traceroute envoyée à 0x{requester_id:08x}")
+            info_print(f"[TRACE:{trace_id}] 📤 Réponse envoyée à 0x{requester_id:08x}")
 
             return True
 

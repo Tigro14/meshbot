@@ -396,6 +396,7 @@ class CLIServerPlatform(MessagingPlatform):
                     'system': router.system_handler.sender,
                     'utility': router.utility_handler.sender,
                     'db': router.db_handler.sender if router.db_handler else None,
+                    'mesh_traceroute': router.network_handler.mesh_traceroute.message_sender if (router.network_handler.mesh_traceroute) else None,
                 }
                 original_interface = router.unified_stats.interface if router.unified_stats else None
 
@@ -409,6 +410,9 @@ class CLIServerPlatform(MessagingPlatform):
                     router.utility_handler.sender = cli_sender
                     if router.db_handler:
                         router.db_handler.sender = cli_sender
+                    if router.network_handler.mesh_traceroute:
+                        router.network_handler.mesh_traceroute.message_sender = cli_sender
+                        debug_print(f"[CLI] Swapped mesh_traceroute sender")
 
                     # Remplacer l'interface pour unified_stats
                     if router.unified_stats:
@@ -434,6 +438,8 @@ class CLIServerPlatform(MessagingPlatform):
                     router.utility_handler.sender = original_senders['utility']
                     if router.db_handler and original_senders['db']:
                         router.db_handler.sender = original_senders['db']
+                    if router.network_handler.mesh_traceroute and original_senders['mesh_traceroute']:
+                        router.network_handler.mesh_traceroute.message_sender = original_senders['mesh_traceroute']
 
                     # Restaurer l'interface originale
                     if router.unified_stats and original_interface:
