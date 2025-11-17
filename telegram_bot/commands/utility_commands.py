@@ -21,7 +21,7 @@ class UtilityCommands(TelegramCommandBase):
         """Commande /power avec graphiques d'historique"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /power: {user.username}")
@@ -39,14 +39,14 @@ class UtilityCommands(TelegramCommandBase):
         response_current = await asyncio.to_thread(
             self.message_handler.esphome_client.parse_esphome_data
         )
-        await update.message.reply_text(f"⚡ Power:\n{response_current}")
+        await update.effective_message.reply_text(f"⚡ Power:\n{response_current}")
 
         # Message 2 : Graphiques d'historique
         response_graphs = await asyncio.to_thread(
             self.message_handler.esphome_client.get_history_graphs,
             hours
         )
-        await update.message.reply_text(response_graphs)
+        await update.effective_message.reply_text(response_graphs)
 
     async def weather_command(self, update: Update,
                               context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +65,7 @@ class UtilityCommands(TelegramCommandBase):
         user = update.effective_user
 
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments: [rain|astro|blitz|vigi] [ville] [days]
@@ -108,7 +108,7 @@ class UtilityCommands(TelegramCommandBase):
                 "/weather blitz → Éclairs détectés\n"
                 "/weather vigi → Info VIGILANCE"
             )
-            await update.message.reply_text(help_text)
+            await update.effective_message.reply_text(help_text)
             return
 
         # Log avec détails
@@ -131,7 +131,7 @@ class UtilityCommands(TelegramCommandBase):
                 for i, day_msg in enumerate(day_messages):
                     # Envelopper dans <pre> pour police monospace (alignement sparklines)
                     formatted_msg = f"<pre>{day_msg}</pre>"
-                    await update.message.reply_text(formatted_msg, parse_mode='HTML')
+                    await update.effective_message.reply_text(formatted_msg, parse_mode='HTML')
                     # Petit délai entre les messages
                     if i < len(day_messages) - 1:
                         await asyncio.sleep(1)
@@ -141,7 +141,7 @@ class UtilityCommands(TelegramCommandBase):
                 traffic_monitor = self.telegram.message_handler.traffic_monitor if hasattr(self.telegram.message_handler, 'traffic_monitor') else None
                 persistence = traffic_monitor.persistence if traffic_monitor else None
                 weather_data = await asyncio.to_thread(get_weather_astro, location, persistence=persistence)
-                await update.message.reply_text(weather_data)
+                await update.effective_message.reply_text(weather_data)
 
             elif subcommand == 'blitz':
                 # Éclairs détectés via Blitzortung
@@ -161,9 +161,9 @@ class UtilityCommands(TelegramCommandBase):
                         weather_data = f"⚡ Aucun éclair détecté dans les {blitz_monitor.window_minutes} dernières minutes\n"
                         weather_data += f"Rayon de surveillance: {blitz_monitor.radius_km}km"
 
-                    await update.message.reply_text(weather_data)
+                    await update.effective_message.reply_text(weather_data)
                 else:
-                    await update.message.reply_text("⚡ Surveillance des éclairs désactivée")
+                    await update.effective_message.reply_text("⚡ Surveillance des éclairs désactivée")
 
             elif subcommand == 'vigi':
                 # Documentation du système VIGILANCE Météo-France
@@ -194,16 +194,16 @@ Variables `VIGILANCE_*` dans config.py
 
 **Voir status actuel:** /sys"""
 
-                await update.message.reply_text(vigi_info, parse_mode='Markdown')
+                await update.effective_message.reply_text(vigi_info, parse_mode='Markdown')
 
             else:
                 # Météo normale
                 weather_data = await asyncio.to_thread(get_weather_data, location)
-                await update.message.reply_text(weather_data)
+                await update.effective_message.reply_text(weather_data)
 
         except Exception as e:
             error_print(f"Erreur /weather: {e}")
-            await update.message.reply_text(f"❌ Erreur météo: {str(e)[:80]}")
+            await update.effective_message.reply_text(f"❌ Erreur météo: {str(e)[:80]}")
 
     async def rain_command(self, update: Update,
                            context: ContextTypes.DEFAULT_TYPE):
@@ -231,7 +231,7 @@ Variables `VIGILANCE_*` dans config.py
         """Commande /graphs pour afficher uniquement les graphiques d'historique"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Extraire le nombre d'heures (optionnel, défaut 24)
@@ -250,7 +250,7 @@ Variables `VIGILANCE_*` dans config.py
             self.message_handler.esphome_client.get_history_graphs,
             hours
         )
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def graph_command(
             self,
@@ -259,10 +259,10 @@ Variables `VIGILANCE_*` dans config.py
         """Commande /graph - À définir selon vos besoins"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /graph: {user.username}")
 
         # TODO: Implémenter selon vos besoins
-        await update.message.reply_text("🚧 Commande /graph en cours d'implémentation")
+        await update.effective_message.reply_text("🚧 Commande /graph en cours d'implémentation")
