@@ -140,44 +140,40 @@ class AdminCommands(TelegramCommandBase):
 
         # Parser les arguments
         params = context.args if context.args else []
-        
+
         info_print(f"📱 Telegram /db {' '.join(params)}: {user.username}")
 
         # Appeler la logique business depuis le mesh handler
-        # Le DBCommands handler existe déjà dans handlers/command_handlers/db_commands.py
         try:
             # Récupérer le handler DB depuis message_handler
             db_handler = self.telegram.message_handler.router.db_handler
-            
+
             if not db_handler:
                 await update.message.reply_text("❌ Handler DB non disponible")
                 return
 
-            # Créer un sender fake pour Telegram (pas de throttling)
-            class TelegramSender:
-                """Sender simulé pour Telegram qui envoie directement"""
-                def __init__(self, update_obj):
-                    self.update = update_obj
-                    
+            # Classe pour collecter la réponse au lieu de l'envoyer
+            class ResponseCollector:
+                """Collecte la réponse au lieu de l'envoyer directement"""
+                def __init__(self):
+                    self.response = ""
+
                 def check_throttling(self, sender_id, sender_info):
                     # Pas de throttling pour Telegram
                     return True
-                    
+
                 def send_chunks(self, message, sender_id, sender_info):
-                    # Split si trop long
-                    if len(message) > 4000:
-                        chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
-                        for chunk in chunks:
-                            asyncio.create_task(self.update.message.reply_text(chunk))
-                    else:
-                        asyncio.create_task(self.update.message.reply_text(message))
+                    # Stocker la réponse
+                    self.response = message
 
             # Remplacer temporairement le sender
             original_sender = db_handler.sender
-            db_handler.sender = TelegramSender(update)
+            collector = ResponseCollector()
+            db_handler.sender = collector
 
-            # Appeler le handler unifié avec channel='telegram'
-            db_handler.handle_db(
+            # Appeler le handler unifié dans un thread
+            await asyncio.to_thread(
+                db_handler.handle_db,
                 sender_id=user.id,
                 sender_info={'username': user.username},
                 params=params,
@@ -187,6 +183,21 @@ class AdminCommands(TelegramCommandBase):
             # Restaurer le sender original
             db_handler.sender = original_sender
 
+            # Envoyer la réponse collectée
+            if collector.response:
+                # Split si trop long
+                if len(collector.response) > 4000:
+                    chunks = [collector.response[i:i+4000] for i in range(0, len(collector.response), 4000)]
+                    for chunk in chunks:
+                        await update.message.reply_text(chunk)
+                        await asyncio.sleep(0.5)
+                else:
+                    await update.message.reply_text(collector.response)
+            else:
+                await update.message.reply_text("❌ Aucune réponse du handler")
+
         except Exception as e:
             error_print(f"Erreur /db command: {e}")
+            import traceback
+            error_print(traceback.format_exc())
             await update.message.reply_text(f"❌ Erreur: {str(e)[:100]}")
