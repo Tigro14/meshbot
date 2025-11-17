@@ -401,13 +401,11 @@ class TracerouteManager:
         """
         Commande /trace [short_id] - Traceroute mesh actif
         VERSION AVEC FIX THREAD
+
+        Note: Pas de vérification d'autorisation - /trace est accessible à tous
         """
         user = update.effective_user
-        if not self.telegram._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
-        info_print(f"📱 Telegram /trace: {user.username}")
+        info_print(f"📱 Telegram /trace: {user.username or user.first_name}")
 
         # Vérifier si un short_id est fourni
         args = context.args
