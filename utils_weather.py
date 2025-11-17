@@ -29,6 +29,7 @@ from utils import info_print, error_print, debug_print
 # Configuration
 CACHE_DIR = "/tmp"
 CACHE_DURATION = 300  # 5 minutes en secondes
+CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
 WTTR_BASE_URL = "https://wttr.in"
 DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
 CURL_TIMEOUT = 10  # secondes
@@ -205,6 +206,72 @@ def parse_weather_json(json_data):
         return "❌ Erreur format météo"
 
 
+def _load_stale_cache(cache_file):
+    """
+    Charger le cache périmé depuis fichier JSON en cas de défaillance wttr.in
+
+    Args:
+        cache_file: Chemin du fichier de cache
+
+    Returns:
+        tuple: (data, age_hours) ou (None, 0) si pas de cache
+    """
+    if not os.path.exists(cache_file):
+        return (None, 0)
+
+    try:
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        cache_time = cache_data.get('timestamp', 0)
+        current_time = time.time()
+        age_seconds = int(current_time - cache_time)
+        age_hours = int(age_seconds / 3600)
+
+        # Ne pas servir un cache trop vieux (> 24h)
+        if age_seconds > CACHE_MAX_AGE:
+            debug_print(f"⏰ Cache trop vieux ({age_hours}h > 24h), ignoré")
+            return (None, 0)
+
+        weather_data = cache_data.get('data', '')
+        if weather_data:
+            return (weather_data, age_hours)
+
+    except Exception as e:
+        error_print(f"⚠️ Erreur lecture cache périmé: {e}")
+
+    return (None, 0)
+
+
+def _load_stale_cache_sqlite(persistence, cache_key, cache_type):
+    """
+    Charger le cache périmé depuis SQLite en cas de défaillance wttr.in
+
+    Args:
+        persistence: Instance TrafficPersistence
+        cache_key: Clé de cache
+        cache_type: Type de cache ('rain', 'astro')
+
+    Returns:
+        tuple: (data, age_hours) ou (None, 0) si pas de cache
+    """
+    if not persistence:
+        return (None, 0)
+
+    try:
+        # Récupérer le cache avec max_age_seconds très élevé (24h)
+        cached = persistence.get_weather_cache(cache_key, cache_type, max_age_seconds=CACHE_MAX_AGE)
+        if cached:
+            # Essayer de récupérer l'âge exact du cache
+            # Pour l'instant on retourne un âge approximatif
+            return (cached, 1)  # 1h par défaut (on ne connaît pas l'âge exact)
+
+    except Exception as e:
+        error_print(f"⚠️ Erreur lecture cache SQLite périmé: {e}")
+
+    return (None, 0)
+
+
 def get_weather_data(location=None):
     """
     Récupérer les données météo avec système de cache
@@ -325,30 +392,57 @@ def get_weather_data(location=None):
         else:
             error_msg = "❌ Erreur récupération météo"
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
-            
+
             if result.stderr:
                 error_print(f"   stderr: {result.stderr[:200]}")
-            
+
+            # Fallback: essayer de servir le cache périmé
+            stale_data, age_hours = _load_stale_cache(cache_file)
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
             return error_msg
     
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout météo (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return error_msg
-    
+
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return error_msg
-    
+
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_weather_data: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -359,17 +453,19 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
         max_hours: Nombre d'heures maximum à afficher (défaut 38)
-                   12 = Mesh compact (24 chars, 3 lines, ~124 chars total)
+                   22 = Mesh compact (44 chars, 3 lines, ~207 chars total)
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
         persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
+        start_at_current_time: Si True, démarre le graphe à l'heure actuelle au lieu de minuit
+                              (utile pour Mesh: affiche les prochaines heures au lieu du passé)
 
     Returns:
         str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Telegram: 38h, 5 lignes
-        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True)  # Mesh: 12h, 3 lignes
+        >>> rain = get_rain_graph("Paris")  # Telegram: 38h depuis minuit, 5 lignes
+        >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True, start_at_current_time=True)  # Mesh: 22h depuis maintenant, 3 lignes
     """
     try:
         # Normaliser la location
@@ -377,7 +473,13 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             location = DEFAULT_LOCATION
 
         # Clé de cache (inclut tous les paramètres qui affectent le résultat)
-        cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
+        # Si start_at_current_time=True, inclure l'heure dans la clé pour éviter cache périmé
+        if start_at_current_time:
+            from datetime import datetime
+            current_hour = datetime.now().hour
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_now{current_hour}"
+        else:
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
 
         # Vérifier le cache SQLite (5 minutes)
         if persistence:
@@ -406,12 +508,28 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         if result.returncode != 0 or not result.stdout:
             error_msg = "❌ Erreur récupération graphe pluie"
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
             return error_msg
 
         output = result.stdout.strip()
 
         if not output:
-            return "❌ Graphe pluie vide"
+            error_msg = "❌ Graphe pluie vide"
+            error_print(error_msg)
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+            return error_msg
 
         # Parser la sortie pour extraire les précipitations
         lines = output.split('\n')
@@ -476,40 +594,57 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             cleaned_lines.append(cleaned)
 
         # Calculer la largeur selon max_hours (2 points par heure)
-        # max_hours=24 → 48 chars (Mesh, compact, "today")
+        # max_hours=22 → 44 chars (Mesh, compact, "today")
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
+
+        # Calculer l'offset de départ si start_at_current_time=True
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        current_minute = datetime.now().minute
+        start_offset = 0
+
+        if start_at_current_time:
+            # Démarrer à l'heure actuelle au lieu de minuit
+            start_offset = current_hour * 2
+            if current_minute >= 30:
+                start_offset += 1
+            debug_print(f"[RAIN DEBUG] Starting at current time: offset={start_offset} (hour={current_hour}, min={current_minute})")
+
         truncated_lines = []
         for line in cleaned_lines:
-            # Garder seulement les N premiers caractères
-            truncated = line[:truncate_width]
+            # Extraire la portion à afficher (depuis start_offset)
+            truncated = line[start_offset:start_offset + truncate_width]
             truncated_lines.append(truncated)
 
-        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h)")
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h) starting at offset {start_offset}")
 
         # Formater la sortie
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm"
 
-        # Calculer la position de l'heure actuelle pour le marqueur NOW
-        from datetime import datetime
-        current_hour = datetime.now().hour
-        current_minute = datetime.now().minute
-        # Position sur l'échelle (2 points/heure)
-        now_position = current_hour * 2
-        if current_minute >= 30:
-            now_position += 1
+        # Calculer la position du marqueur NOW (si on démarre à minuit)
+        # Si start_at_current_time=True, NOW est à position 0
+        now_position = -1  # -1 = pas de marqueur NOW
+        if not start_at_current_time:
+            # Position relative à minuit
+            now_position = current_hour * 2
+            if current_minute >= 30:
+                now_position += 1
+            # Ajuster pour l'offset (si on a commencé ailleurs que minuit)
+            now_position -= start_offset
 
         # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
         # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
-            # 2 points par heure
-            hour = (i // 2) % 24
-            point_in_hour = i % 2
+            # Calculer l'heure réelle affichée (en tenant compte de l'offset)
+            actual_position = start_offset + i
+            hour = (actual_position // 2) % 24
+            point_in_hour = actual_position % 2
 
             # Priorité au marqueur NOW si on est à cette position
-            if i == now_position and now_position < truncate_width:
+            if i == now_position and 0 <= now_position < truncate_width:
                 hour_scale.append('↓')  # Marqueur "maintenant"
             # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
             elif point_in_hour == 0 and hour % 3 == 0:
@@ -519,8 +654,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
-        # Afficher "today" pour 12h (Mesh compact), sinon afficher les heures
-        time_label = "today" if max_hours == 12 else f"{max_hours}h"
+        # Afficher "today" pour 22h (Mesh compact), sinon afficher les heures
+        time_label = "today" if max_hours == 22 else f"{max_hours}h"
         result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
 
         # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
@@ -549,17 +684,38 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_rain_graph: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
@@ -648,7 +804,16 @@ def get_weather_astro(location=None, persistence=None):
         )
 
         if result.returncode != 0 or not result.stdout:
-            return "❌ Erreur récupération données astro"
+            error_msg = "❌ Erreur récupération données astro"
+            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+            return error_msg
 
         weather_json = json.loads(result.stdout.strip())
 
@@ -711,17 +876,38 @@ def get_weather_astro(location=None, persistence=None):
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_weather_astro: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
