@@ -29,6 +29,7 @@ from utils import info_print, error_print, debug_print
 # Configuration
 CACHE_DIR = "/tmp"
 CACHE_DURATION = 300  # 5 minutes en secondes
+CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
 WTTR_BASE_URL = "https://wttr.in"
 DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
 CURL_TIMEOUT = 10  # secondes
@@ -205,6 +206,72 @@ def parse_weather_json(json_data):
         return "❌ Erreur format météo"
 
 
+def _load_stale_cache(cache_file):
+    """
+    Charger le cache périmé depuis fichier JSON en cas de défaillance wttr.in
+
+    Args:
+        cache_file: Chemin du fichier de cache
+
+    Returns:
+        tuple: (data, age_hours) ou (None, 0) si pas de cache
+    """
+    if not os.path.exists(cache_file):
+        return (None, 0)
+
+    try:
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        cache_time = cache_data.get('timestamp', 0)
+        current_time = time.time()
+        age_seconds = int(current_time - cache_time)
+        age_hours = int(age_seconds / 3600)
+
+        # Ne pas servir un cache trop vieux (> 24h)
+        if age_seconds > CACHE_MAX_AGE:
+            debug_print(f"⏰ Cache trop vieux ({age_hours}h > 24h), ignoré")
+            return (None, 0)
+
+        weather_data = cache_data.get('data', '')
+        if weather_data:
+            return (weather_data, age_hours)
+
+    except Exception as e:
+        error_print(f"⚠️ Erreur lecture cache périmé: {e}")
+
+    return (None, 0)
+
+
+def _load_stale_cache_sqlite(persistence, cache_key, cache_type):
+    """
+    Charger le cache périmé depuis SQLite en cas de défaillance wttr.in
+
+    Args:
+        persistence: Instance TrafficPersistence
+        cache_key: Clé de cache
+        cache_type: Type de cache ('rain', 'astro')
+
+    Returns:
+        tuple: (data, age_hours) ou (None, 0) si pas de cache
+    """
+    if not persistence:
+        return (None, 0)
+
+    try:
+        # Récupérer le cache avec max_age_seconds très élevé (24h)
+        cached = persistence.get_weather_cache(cache_key, cache_type, max_age_seconds=CACHE_MAX_AGE)
+        if cached:
+            # Essayer de récupérer l'âge exact du cache
+            # Pour l'instant on retourne un âge approximatif
+            return (cached, 1)  # 1h par défaut (on ne connaît pas l'âge exact)
+
+    except Exception as e:
+        error_print(f"⚠️ Erreur lecture cache SQLite périmé: {e}")
+
+    return (None, 0)
+
+
 def get_weather_data(location=None):
     """
     Récupérer les données météo avec système de cache
@@ -325,26 +392,53 @@ def get_weather_data(location=None):
         else:
             error_msg = "❌ Erreur récupération météo"
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
-            
+
             if result.stderr:
                 error_print(f"   stderr: {result.stderr[:200]}")
-            
+
+            # Fallback: essayer de servir le cache périmé
+            stale_data, age_hours = _load_stale_cache(cache_file)
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
             return error_msg
     
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout météo (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return error_msg
-    
+
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return error_msg
-    
+
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_weather_data: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache périmé
+        stale_data, age_hours = _load_stale_cache(cache_file)
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
@@ -414,12 +508,28 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         if result.returncode != 0 or not result.stdout:
             error_msg = "❌ Erreur récupération graphe pluie"
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
             return error_msg
 
         output = result.stdout.strip()
 
         if not output:
-            return "❌ Graphe pluie vide"
+            error_msg = "❌ Graphe pluie vide"
+            error_print(error_msg)
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+            return error_msg
 
         # Parser la sortie pour extraire les précipitations
         lines = output.split('\n')
@@ -574,17 +684,38 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_rain_graph: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
@@ -673,7 +804,16 @@ def get_weather_astro(location=None, persistence=None):
         )
 
         if result.returncode != 0 or not result.stdout:
-            return "❌ Erreur récupération données astro"
+            error_msg = "❌ Erreur récupération données astro"
+            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+            return error_msg
 
         weather_json = json.loads(result.stdout.strip())
 
@@ -736,17 +876,38 @@ def get_weather_astro(location=None, persistence=None):
     except subprocess.TimeoutExpired:
         error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return error_msg
 
     except Exception as e:
         error_print(f"❌ Erreur inattendue dans get_weather_astro: {e}")
         import traceback
         error_print(traceback.format_exc())
+
+        # Fallback: cache SQLite périmé
+        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+        if stale_data:
+            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
         return f"❌ Erreur: {str(e)[:50]}"
 
 
