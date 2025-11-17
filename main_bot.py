@@ -25,6 +25,7 @@ from system_monitor import SystemMonitor
 from safe_serial_connection import SafeSerialConnection
 from vigilance_monitor import VigilanceMonitor
 from blitz_monitor import BlitzMonitor
+from mesh_traceroute_manager import MeshTracerouteManager
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -63,6 +64,9 @@ class MeshBot:
 
         # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
         self.blitz_monitor = None
+
+        # Gestionnaire de traceroute mesh (initialisé après message_handler dans start())
+        self.mesh_traceroute = None
 
         # Gestionnaire de messages (initialisé après interface)
         self.message_handler = None
@@ -162,10 +166,21 @@ class MeshBot:
             
             decoded = packet.get('decoded', {})
             portnum = decoded.get('portnum', '')
-            
+
             # ========================================
             # PHASE 3: TRAITEMENT DES COMMANDES
             # ========================================
+
+            # Traiter les réponses TRACEROUTE_APP (avant TEXT_MESSAGE_APP)
+            if portnum == 'TRACEROUTE_APP':
+                if self.mesh_traceroute:
+                    info_print(f"🔍 Réponse TRACEROUTE_APP de 0x{from_id:08x}")
+                    handled = self.mesh_traceroute.handle_traceroute_response(packet)
+                    if handled:
+                        info_print("✅ Réponse traceroute traitée")
+                        return
+                return  # Ne pas traiter comme TEXT_MESSAGE
+
             if portnum == 'TEXT_MESSAGE_APP':
                 payload = decoded.get('payload', b'')
                 
@@ -297,7 +312,14 @@ class MeshBot:
         # Nettoyage des données de throttling
         if self.message_handler:
             self.message_handler.cleanup_throttling_data()
-        
+
+        # Cleanup des traceroutes expirés
+        if self.mesh_traceroute:
+            try:
+                self.mesh_traceroute.cleanup_expired_traces()
+            except Exception as e:
+                debug_print(f"Erreur cleanup traceroutes: {e}")
+
         gc.collect()
     
     def start(self):
@@ -379,6 +401,16 @@ class MeshBot:
                 self.start_time,
                 self.blitz_monitor
             )
+
+            # Initialiser le gestionnaire de traceroute mesh (après message_handler)
+            info_print("📦 Initialisation MeshTracerouteManager...")
+            self.mesh_traceroute = MeshTracerouteManager(
+                node_manager=self.node_manager,
+                message_sender=self.message_handler.router.sender
+            )
+            # Rendre disponible au router et au network_handler pour handle_trace
+            self.message_handler.router.mesh_traceroute = self.mesh_traceroute
+            self.message_handler.router.network_handler.mesh_traceroute = self.mesh_traceroute
             info_print("✅ MessageHandler créé")
 
             # ========================================

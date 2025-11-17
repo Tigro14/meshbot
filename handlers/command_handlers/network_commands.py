@@ -13,10 +13,12 @@ from utils import *
 from .signal_utils import *
 
 class NetworkCommands:
-    def __init__(self, remote_nodes_client, sender, node_manager):
+    def __init__(self, remote_nodes_client, sender, node_manager, interface=None, mesh_traceroute=None):
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
         self.node_manager = node_manager
+        self.interface = interface
+        self.mesh_traceroute = mesh_traceroute
     
     def handle_nodes(self, message, sender_id, sender_info):  
         """Gérer la commande /nodes - Liste des nœuds directs avec pagination"""
@@ -207,143 +209,222 @@ class NetworkCommands:
 
     def handle_trace(self, message, sender_id, sender_info, packet):
         """
-        Gérer la commande /trace - Traceroute mesh compact
-        Analyse le chemin du message et identifie les relays
+        Gérer la commande /trace - Traceroute mesh avec TRACEROUTE_APP natif
 
-        Usage:
-        - /trace → trace l'expéditeur du message
-        - /trace <node_name> → trace un nœud spécifique
+        Deux modes disponibles:
+        - /trace → Mode passif: analyse le packet reçu (hops, signal)
+        - /trace <node_name> → Mode actif: traceroute natif Meshtastic vers le nœud
+
+        Le mode actif utilise TRACEROUTE_APP pour obtenir la route complète.
         """
         info_print(f"Trace: {sender_info}")
 
-        # Capturer le sender actuel pour le thread (important pour CLI!)
-        current_sender = self.sender
+        # Parser l'argument (node name ou ID)
+        parts = message.split()
+        target_node_name = parts[1].strip() if len(parts) > 1 else None
 
-        def analyze_route():
+        # Mode actif: traceroute natif vers un nœud spécifique
+        if target_node_name:
+            info_print(f"🔍 Traceroute actif vers: {target_node_name}")
+
+            # Vérifier si mesh_traceroute est disponible
             try:
-                # Parser l'argument (node name ou ID)
-                parts = message.split()
-                target_node_name = parts[1] if len(parts) > 1 else None
-
-                # Si un nœud cible est spécifié, chercher ses infos
-                if target_node_name:
-                    # Chercher le nœud dans tigrog2
-                    remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
-
-                    if not remote_nodes:
-                        response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
-                        current_sender.send_single(response, sender_id, sender_info)
-                        return
-
-                    # Chercher le nœud par nom (partiel) ou ID
-                    target_node = None
-                    target_search = target_node_name.lower()
-
-                    for node in remote_nodes:
-                        node_name = node.get('name', '').lower()
-                        node_id_hex = f"{node['id']:x}".lower()
-
-                        # Correspondance par nom (partiel) ou ID (partiel)
-                        if target_search in node_name or target_search in node_id_hex:
-                            target_node = node
-                            break
-
-                    if not target_node:
-                        response = f"❌ Nœud '{target_node_name}' introuvable"
-                        current_sender.send_single(response, sender_id, sender_info)
-                        return
-
-                    # Afficher les infos du nœud cible
-                    response = self._format_trace_target(target_node)
-                    current_sender.send_chunks(response, sender_id, sender_info)
-                    current_sender.log_conversation(sender_id, sender_info, f"/trace {target_node_name}", response)
+                mesh_traceroute = getattr(self, 'mesh_traceroute', None)
+                if not mesh_traceroute:
+                    # Fallback: utiliser l'ancienne méthode (affichage infos statiques)
+                    info_print("⚠️  MeshTracerouteManager non disponible, fallback mode passif")
+                    self._handle_trace_passive_target(target_node_name, sender_id, sender_info)
                     return
 
-                # Sinon, comportement par défaut : tracer l'expéditeur
-                # Extraire données packet
-                hop_limit = packet.get('hopLimit', 0)
-                hop_start = packet.get('hopStart', 5)
-                rssi = packet.get('rssi', 0)
-                snr = packet.get('snr', 0.0)
-                hops_taken = hop_start - hop_limit
+                # Chercher le node_id du nœud cible
+                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                if not remote_nodes:
+                    self.sender.send_single(f"⚠️ {REMOTE_NODE_NAME} inaccessible", sender_id, sender_info)
+                    return
 
-                # Construire rapport compact
-                lines = []
-                lines.append(f"🔍 {sender_info}")
+                # Chercher le nœud par nom (partiel) ou ID
+                target_node = None
+                target_search = target_node_name.lower()
 
-                # CAS 1: DIRECT (0 hop)
-                if hops_taken == 0:
-                    lines.append("✅ Direct (0 hop)")
+                for node in remote_nodes:
+                    node_name = node.get('name', '').lower()
+                    node_id_hex = f"{node['id']:x}".lower()
 
-                    if rssi != 0 or snr != 0:
-                        icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
-                        rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
-                        snr_str = f"SNR:{snr:.1f}" if snr != 0 else "n/a"
-                        quality = get_signal_quality_description(rssi, snr)
-                        lines.append(f"{icon} {rssi_str} {snr_str}")
-                        lines.append(f"{quality}")
+                    # Correspondance par nom (partiel) ou ID (partiel)
+                    if target_search in node_name or target_search in node_id_hex:
+                        target_node = node
+                        break
 
-                        if rssi != 0 and rssi > -150:
-                            dist = estimate_distance_from_rssi(rssi)
-                            lines.append(f"~{dist}")
+                if not target_node:
+                    self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
+                    return
 
-                # CAS 2: RELAYÉ (1+ hops)
-                else:
-                    lines.append(f"🔀 Relayé ({hops_taken} hop{'s' if hops_taken > 1 else ''})")
+                target_node_id = target_node['id']
 
-                    if rssi != 0 or snr != 0:
-                        icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
-                        rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
-                        snr_str = f"SNR:{snr:.1f}" if snr != 0 else "n/a"
-                        lines.append(f"{icon} {rssi_str} {snr_str}")
+                # Lancer le traceroute natif
+                info_print(f"🚀 Lancement traceroute natif vers 0x{target_node_id:08x}")
 
-                    # Analyse topologie
-                    try:
-                        remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                # Besoin de l'interface pour envoyer le paquet
+                interface = getattr(self, 'interface', None)
+                if not interface:
+                    self.sender.send_single("❌ Interface non disponible", sender_id, sender_info)
+                    return
 
-                        if remote_nodes:
-                            # Chercher émetteur dans tigrog2
-                            sender_id_norm = sender_id & 0xFFFFFFFF
-                            in_tigrog2 = any(
-                                (node['id'] & 0xFFFFFFFF) == sender_id_norm
-                                for node in remote_nodes
-                            )
+                # Envoyer la requête de traceroute
+                success = mesh_traceroute.request_traceroute(
+                    interface=interface,
+                    target_node_id=target_node_id,
+                    requester_id=sender_id,
+                    requester_info=sender_info
+                )
 
-                            if in_tigrog2:
-                                lines.append(f"Via {REMOTE_NODE_NAME}")
-                            else:
-                                lines.append(f"Hors portée {REMOTE_NODE_NAME}")
-
-                            # Top 2 relays potentiels
-                            relays = find_best_relays(remote_nodes, max_relays=2)
-                            if relays:
-                                lines.append("Relays:")
-                                for relay in relays:
-                                    name = truncate_text(relay['name'], 10)
-                                    r_rssi = relay.get('rssi', 0)
-                                    r_icon = get_signal_quality_icon(r_rssi)
-                                    if r_rssi != 0:
-                                        lines.append(f"{r_icon}{name}:{r_rssi}dBm")
-                                    else:
-                                        lines.append(f"{r_icon}{name}")
-                    except Exception:
-                        pass  # Silent fail pour topologie
-
-                response = "\n".join(lines)
-
-                current_sender.log_conversation(sender_id, sender_info, "/trace", response)
-                current_sender.send_chunks(response, sender_id, sender_info)
-
-                info_print(f"✅ Trace→{sender_info}")
+                if not success:
+                    self.sender.send_single("❌ Erreur envoi traceroute", sender_id, sender_info)
 
             except Exception as e:
-                error_print(f"Erreur /trace: {e}")
-                try:
-                    current_sender.send_single(f"⚠️ Erreur trace", sender_id, sender_info)
-                except:
-                    pass
+                error_print(f"❌ Erreur traceroute actif: {e}")
+                error_print(traceback.format_exc())
+                self.sender.send_single(f"❌ Erreur: {str(e)[:50]}", sender_id, sender_info)
 
-        threading.Thread(target=analyze_route, daemon=True).start()
+        else:
+            # Mode passif: analyser le packet reçu (comportement original)
+            self._handle_trace_passive_sender(packet, sender_id, sender_info)
+
+    def _handle_trace_passive_sender(self, packet, sender_id, sender_info):
+        """
+        Traceroute passif: analyse le paquet reçu pour estimer le chemin
+
+        Args:
+            packet: Paquet reçu
+            sender_id: ID de l'émetteur
+            sender_info: Infos de l'émetteur
+        """
+        try:
+            # Extraire données packet
+            hop_limit = packet.get('hopLimit', 0)
+            hop_start = packet.get('hopStart', 5)
+            rssi = packet.get('rssi', 0)
+            snr = packet.get('snr', 0.0)
+            hops_taken = hop_start - hop_limit
+
+            # Construire rapport compact
+            lines = []
+            lines.append(f"🔍 {sender_info}")
+
+            # CAS 1: DIRECT (0 hop)
+            if hops_taken == 0:
+                lines.append("✅ Direct (0 hop)")
+
+                if rssi != 0 or snr != 0:
+                    icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+                    rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
+                    snr_str = f"SNR:{snr:.1f}" if snr != 0 else "n/a"
+                    quality = get_signal_quality_description(rssi, snr)
+                    lines.append(f"{icon} {rssi_str} {snr_str}")
+                    lines.append(f"{quality}")
+
+                    if rssi != 0 and rssi > -150:
+                        dist = estimate_distance_from_rssi(rssi)
+                        lines.append(f"~{dist}")
+
+            # CAS 2: RELAYÉ (1+ hops)
+            else:
+                lines.append(f"🔀 Relayé ({hops_taken} hop{'s' if hops_taken > 1 else ''})")
+
+                if rssi != 0 or snr != 0:
+                    icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+                    rssi_str = f"{rssi}dBm" if rssi != 0 else "n/a"
+                    snr_str = f"SNR:{snr:.1f}" if snr != 0 else "n/a"
+                    lines.append(f"{icon} {rssi_str} {snr_str}")
+
+                # Analyse topologie
+                try:
+                    remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+
+                    if remote_nodes:
+                        # Chercher émetteur dans tigrog2
+                        sender_id_norm = sender_id & 0xFFFFFFFF
+                        in_tigrog2 = any(
+                            (node['id'] & 0xFFFFFFFF) == sender_id_norm
+                            for node in remote_nodes
+                        )
+
+                        if in_tigrog2:
+                            lines.append(f"Via {REMOTE_NODE_NAME}")
+                        else:
+                            lines.append(f"Hors portée {REMOTE_NODE_NAME}")
+
+                        # Top 2 relays potentiels
+                        relays = find_best_relays(remote_nodes, max_relays=2)
+                        if relays:
+                            lines.append("Relays:")
+                            for relay in relays:
+                                name = truncate_text(relay['name'], 10)
+                                r_rssi = relay.get('rssi', 0)
+                                r_icon = get_signal_quality_icon(r_rssi)
+                                if r_rssi != 0:
+                                    lines.append(f"{r_icon}{name}:{r_rssi}dBm")
+                                else:
+                                    lines.append(f"{r_icon}{name}")
+                except Exception:
+                    pass  # Silent fail pour topologie
+
+            response = "\n".join(lines)
+
+            self.sender.log_conversation(sender_id, sender_info, "/trace", response)
+            self.sender.send_chunks(response, sender_id, sender_info)
+
+            info_print(f"✅ Trace→{sender_info}")
+
+        except Exception as e:
+            error_print(f"Erreur /trace passif: {e}")
+            try:
+                self.sender.send_single(f"⚠️ Erreur trace", sender_id, sender_info)
+            except:
+                pass
+
+    def _handle_trace_passive_target(self, target_node_name, sender_id, sender_info):
+        """
+        Traceroute passif vers une cible: affiche infos statiques du nœud
+
+        Args:
+            target_node_name: Nom du nœud cible
+            sender_id: ID du requester
+            sender_info: Infos du requester
+        """
+        try:
+            # Chercher le nœud dans tigrog2
+            remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+
+            if not remote_nodes:
+                self.sender.send_single(f"⚠️ {REMOTE_NODE_NAME} inaccessible", sender_id, sender_info)
+                return
+
+            # Chercher le nœud par nom (partiel) ou ID
+            target_node = None
+            target_search = target_node_name.lower()
+
+            for node in remote_nodes:
+                node_name = node.get('name', '').lower()
+                node_id_hex = f"{node['id']:x}".lower()
+
+                # Correspondance par nom (partiel) ou ID (partiel)
+                if target_search in node_name or target_search in node_id_hex:
+                    target_node = node
+                    break
+
+            if not target_node:
+                self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
+                return
+
+            # Afficher les infos du nœud cible (ancien comportement)
+            response = self._format_trace_target(target_node)
+            self.sender.send_chunks(response, sender_id, sender_info)
+            self.sender.log_conversation(sender_id, sender_info, f"/trace {target_node_name}", response)
+
+        except Exception as e:
+            error_print(f"Erreur /trace passif cible: {e}")
+            self.sender.send_single(f"⚠️ Erreur", sender_id, sender_info)
 
     def _format_trace_target(self, node_data):
         """
