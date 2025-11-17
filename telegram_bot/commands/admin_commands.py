@@ -58,11 +58,7 @@ class AdminCommands(TelegramCommandBase):
         Usage: /cleartraffic
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
-        info_print(f"📱 Telegram /cleartraffic: {user.username}")
+        info_print(f"📱 Telegram /cleartraffic: {user.username or user.first_name}")
 
         # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
@@ -78,11 +74,7 @@ class AdminCommands(TelegramCommandBase):
         Usage: /dbstats
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
-        info_print(f"📱 Telegram /dbstats: {user.username}")
+        info_print(f"📱 Telegram /dbstats: {user.username or user.first_name}")
 
         # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         response = await asyncio.to_thread(
@@ -99,9 +91,6 @@ class AdminCommands(TelegramCommandBase):
         Exemple: /cleanup 72 (supprime les données de plus de 72h)
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
 
         # Récupérer le nombre d'heures (par défaut 48)
         hours = 48

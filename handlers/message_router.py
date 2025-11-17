@@ -32,7 +32,7 @@ class MessageRouter:
 
         # Gestionnaires de commandes par domaine
         self.ai_handler = AICommands(llama_client, self.sender)
-        self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager)
+        self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager, interface=interface)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender, node_manager, blitz_monitor, vigilance_monitor)
 

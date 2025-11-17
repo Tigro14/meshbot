@@ -20,10 +20,6 @@ class StatsCommands(TelegramCommandBase):
                               context: ContextTypes.DEFAULT_TYPE):
         """Commande /trafic pour historique messages publics"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         hours = 8
         if context.args and len(context.args) > 0:
             try:
@@ -55,10 +51,6 @@ class StatsCommands(TelegramCommandBase):
             traffic [hours] - Messages publics
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         # Parser les arguments
         args = context.args or []
         subcommand = args[0] if args else 'global'
@@ -98,10 +90,6 @@ class StatsCommands(TelegramCommandBase):
         Version améliorée avec tous les types de paquets
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         # Parser les arguments
         hours = 24
         top_n = 10
@@ -168,10 +156,6 @@ class StatsCommands(TelegramCommandBase):
         Affiche la distribution des types de paquets
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         hours = 1
         if context.args and len(context.args) > 0:
             try:
@@ -235,10 +219,6 @@ class StatsCommands(TelegramCommandBase):
             /histo pos 12    - POSITION sur 12h
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         # Parser les arguments
         args = context.args
         packet_type = 'ALL'  # Par défaut: vue d'ensemble

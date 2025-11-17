@@ -21,7 +21,7 @@ class BasicCommands(TelegramCommandBase):
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /start - Message de bienvenue"""
         user = update.effective_user
-        self.log_command("start", user.username)
+        self.log_command("start", user.username or user.first_name)
 
         # Ajouter le handler pour les messages texte (non-commandes)
         try:
@@ -70,11 +70,7 @@ class BasicCommands(TelegramCommandBase):
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /help - Aide détaillée pour Telegram"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
-        self.log_command("help", user.username)
+        self.log_command("help", user.username or user.first_name)
 
         # Utiliser la version détaillée pour Telegram
         help_text = self.message_handler.format_help_telegram(user.id)
@@ -98,11 +94,7 @@ class BasicCommands(TelegramCommandBase):
     async def legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /legend - Légende des indicateurs de signal"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
-        self.log_command("legend", user.username)
+        self.log_command("legend", user.username or user.first_name)
 
         legend = self.message_handler.format_legend()
         await self.send_message(update, legend)
@@ -113,10 +105,6 @@ class BasicCommands(TelegramCommandBase):
         Analyse de santé du réseau mesh
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         # Parser les arguments
         hours = 24
         if context.args and len(context.args) > 0:

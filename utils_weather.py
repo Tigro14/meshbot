@@ -343,13 +343,23 @@ def get_weather_data(location=None):
         # ----------------------------------------------------------------
         info_print(f"🌤️ Récupération météo depuis {wttr_url}...")
 
-        result = subprocess.run(
-            ['curl', '-s', wttr_url],
-            capture_output=True,
-            text=True,
-            timeout=CURL_TIMEOUT
-        )
-        
+        # Appel curl avec gestion du timeout
+        try:
+            result = subprocess.run(
+                ['curl', '-s', wttr_url],
+                capture_output=True,
+                text=True,
+                timeout=CURL_TIMEOUT
+            )
+        except subprocess.TimeoutExpired:
+            error_print(f"❌ Timeout météo (>{CURL_TIMEOUT}s)")
+            # Fallback vers cache périmé si disponible
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            return "❌ Timeout récupération météo"
+
         # ----------------------------------------------------------------
         # Phase 3: Traiter la réponse
         # ----------------------------------------------------------------
@@ -553,17 +563,30 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
 
-        # Appel curl vers wttr.in v2n
-        result = subprocess.run(
-            ['curl', '-s', wttr_url],
-            capture_output=True,
-            text=True,
-            timeout=CURL_TIMEOUT
-        )
+        # Appel curl vers wttr.in v2n avec gestion du timeout
+        try:
+            result = subprocess.run(
+                ['curl', '-s', wttr_url],
+                capture_output=True,
+                text=True,
+                timeout=CURL_TIMEOUT
+            )
 
-        if result.returncode != 0 or not result.stdout:
-            error_msg = "❌ Erreur récupération graphe pluie"
-            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+            if result.returncode != 0 or not result.stdout:
+                error_msg = "❌ Erreur récupération graphe pluie"
+                error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+                # Fallback: cache SQLite périmé
+                stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+                if stale_data:
+                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                    return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+                return error_msg
+
+        except subprocess.TimeoutExpired:
+            error_msg = f"❌ Timeout graphe pluie (>{CURL_TIMEOUT}s)"
+            error_print(error_msg)
 
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
@@ -894,18 +917,31 @@ def get_weather_astro(location=None, persistence=None):
         else:
             wttr_url = f"{WTTR_BASE_URL}/?format=j1"
 
-        # Faire l'appel API
+        # Faire l'appel API avec gestion du timeout
         info_print(f"📊 Récupération données astro depuis {wttr_url}...")
-        result = subprocess.run(
-            ['curl', '-s', wttr_url],
-            capture_output=True,
-            text=True,
-            timeout=CURL_TIMEOUT
-        )
+        try:
+            result = subprocess.run(
+                ['curl', '-s', wttr_url],
+                capture_output=True,
+                text=True,
+                timeout=CURL_TIMEOUT
+            )
 
-        if result.returncode != 0 or not result.stdout:
-            error_msg = "❌ Erreur récupération données astro"
-            error_print(f"{error_msg} (curl returncode: {result.returncode})")
+            if result.returncode != 0 or not result.stdout:
+                error_msg = "❌ Erreur récupération données astro"
+                error_print(f"{error_msg} (curl returncode: {result.returncode})")
+
+                # Fallback: cache SQLite périmé
+                stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+                if stale_data:
+                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                    return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+
+                return error_msg
+
+        except subprocess.TimeoutExpired:
+            error_msg = f"❌ Timeout données astro (>{CURL_TIMEOUT}s)"
+            error_print(error_msg)
 
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
@@ -1111,14 +1147,18 @@ def get_weather_for_city(city="Paris"):
     try:
         url = f"https://wttr.in/{city}?format=j1"
         info_print(f"🌤️ Récupération météo pour {city}...")
-        
-        result = subprocess.run(
-            ['curl', '-s', url],
-            capture_output=True,
-            text=True,
-            timeout=CURL_TIMEOUT
-        )
-        
+
+        try:
+            result = subprocess.run(
+                ['curl', '-s', url],
+                capture_output=True,
+                text=True,
+                timeout=CURL_TIMEOUT
+            )
+        except subprocess.TimeoutExpired:
+            error_print(f"❌ Timeout météo {city} (>{CURL_TIMEOUT}s)")
+            return f"❌ Timeout récupération météo pour {city}"
+
         if result.returncode == 0 and result.stdout:
             json_response = result.stdout.strip()
             

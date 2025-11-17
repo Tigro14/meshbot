@@ -145,6 +145,15 @@ class TracerouteManager:
         # === ÉTAPE 3 : Recherche par nom (short ou long) ===
         # 3.1. Chercher dans la base locale
         for node_id, full_name in self.telegram.node_manager.node_names.items():
+            # Gérer le cas où node_names contient des dicts au lieu de strings
+            if isinstance(full_name, dict):
+                # Extraire le nom du dict (priorité: longName > shortName > str(dict))
+                full_name = full_name.get('longName') or full_name.get('shortName') or str(full_name)
+
+            # S'assurer que full_name est bien une string
+            if not isinstance(full_name, str):
+                continue
+
             full_name_lower = full_name.lower()
 
             # Extraire le short name (première partie avant espace)
@@ -401,13 +410,11 @@ class TracerouteManager:
         """
         Commande /trace [short_id] - Traceroute mesh actif
         VERSION AVEC FIX THREAD
+
+        Note: Pas de vérification d'autorisation - /trace est accessible à tous
         """
         user = update.effective_user
-        if not self.telegram._check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
-            return
-
-        info_print(f"📱 Telegram /trace: {user.username}")
+        info_print(f"📱 Telegram /trace: {user.username or user.first_name}")
 
         # Vérifier si un short_id est fourni
         args = context.args

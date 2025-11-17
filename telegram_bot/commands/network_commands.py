@@ -31,10 +31,6 @@ class NetworkCommands(TelegramCommandBase):
     async def rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /rx [page]"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         page = int(context.args[0]) if context.args else 1
         info_print(f"📱 Telegram /rx {page}: {user.username}")
 
@@ -48,10 +44,6 @@ class NetworkCommands(TelegramCommandBase):
                             context: ContextTypes.DEFAULT_TYPE):
         """Commande /nodes - Affiche tous les nœuds de tigrog2"""
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         info_print(f"📱 Telegram /nodes: {user.username}")
 
         def get_nodes_list():
@@ -170,10 +162,6 @@ class NetworkCommands(TelegramCommandBase):
         AMÉLIORATION: Détecte et affiche tous les nœuds avec le même nom
         """
         user = update.effective_user
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
-
         if not context.args:
             await update.effective_message.reply_text("Usage: /nodeinfo <nom_ou_id> [heures]\\nEx: /nodeinfo tigrobot\\nEx: /nodeinfo !16fad3dc")
             return

@@ -153,18 +153,24 @@ class RemoteNodesClient:
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
         from safe_tcp_connection import SafeTCPConnection
 
-        cache_key = f"{remote_host}:{remote_port}:{days_filter}" 
+        cache_key = f"{remote_host}:{remote_port}:{days_filter}"
+
+        # Vérifier le cache d'abord (TTL: 60 secondes)
+        cached_nodes = self._cache_get(cache_key)
+        if cached_nodes is not None:
+            debug_print(f"💾 Cache hit pour {cache_key}: {len(cached_nodes)} nœuds")
+            return cached_nodes
 
         current_time = time.time()
         cutoff_time = current_time - (days_filter * 24 * 3600)
         debug_print(f"Filtre temporel: derniers {days_filter} jours")
-        
+
         skipped_by_hops = 0
         skipped_by_date = 0
         skipped_by_metrics = 0
-        
+
         try:
-            error_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
+            debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
             
             # Utiliser SafeTCPConnection avec wait_time=2
             with SafeTCPConnection(remote_host, remote_port, wait_time=2) as remote_interface:
