@@ -265,6 +265,7 @@ class TelegramIntegration:
         # Commandes admin
         self.application.add_handler(CommandHandler("channel_stats", self.admin_commands.channel_stats_command))
         self.application.add_handler(CommandHandler("cleartraffic", self.admin_commands.cleartraffic_command))
+        self.application.add_handler(CommandHandler("db", self.admin_commands.db_command))
         self.application.add_handler(CommandHandler("dbstats", self.admin_commands.dbstats_command))
         self.application.add_handler(CommandHandler("cleanup", self.admin_commands.cleanup_command))
 
