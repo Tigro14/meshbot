@@ -359,7 +359,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
               1 = aujourd'hui seulement (défaut)
               3 = aujourd'hui + demain + J+2
         max_hours: Nombre d'heures maximum à afficher (défaut 38)
-                   12 = Mesh compact (24 chars, 3 lines, ~124 chars total)
+                   15 = Mesh compact (30 chars, 3 lines, ~150 chars total)
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
         persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
@@ -371,7 +371,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
     Exemples:
         >>> rain = get_rain_graph("Paris")  # Telegram: 38h depuis minuit, 5 lignes
-        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True, start_at_current_time=True)  # Mesh: 12h depuis maintenant, 3 lignes
+        >>> rain = get_rain_graph("Paris", max_hours=15, compact_mode=True, start_at_current_time=True)  # Mesh: 15h depuis maintenant, 3 lignes
     """
     try:
         # Normaliser la location
@@ -484,7 +484,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             cleaned_lines.append(cleaned)
 
         # Calculer la largeur selon max_hours (2 points par heure)
-        # max_hours=24 → 48 chars (Mesh, compact, "today")
+        # max_hours=15 → 30 chars (Mesh, compact, "today")
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
 
@@ -544,8 +544,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         # Formater le message final avec les lignes du graphe + échelle + marqueur
         result_lines = []
-        # Afficher "today" pour 12h (Mesh compact), sinon afficher les heures
-        time_label = "today" if max_hours == 12 else f"{max_hours}h"
+        # Afficher "today" pour 15h (Mesh compact), sinon afficher les heures
+        time_label = "today" if max_hours == 15 else f"{max_hours}h"
         result_lines.append(f"🌧️ {location_name} {time_label} (max:{max_str})")
 
         # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
