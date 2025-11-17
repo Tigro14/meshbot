@@ -384,13 +384,14 @@ class UtilityCommands:
                 "Ex:\n"
                 "/weather → Météo locale\n"
                 "/weather Paris\n"
-                "/weather rain → Pluie aujourd'hui\n"
-                "/weather rain 3 → Pluie 3j\n"
-                "/weather rain Paris 3\n"
+                "/weather rain → Pluie auj.\n"
+                "/weather rain 2 → Auj+demain\n"
+                "/weather rain 3 → 3 jours\n"
+                "/weather rain Paris 2\n"
                 "/weather astro → Infos astro\n"
                 "/weather astro Paris\n"
-                "/weather blitz → Éclairs détectés\n"
-                "/weather vigi → Info VIGILANCE"
+                "/weather blitz → Éclairs\n"
+                "/weather vigi → VIGILANCE"
             )
 
             # Envoyer selon le mode (broadcast ou direct)

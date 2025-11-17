@@ -442,6 +442,58 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
+def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode):
+    """
+    Formater le graphe pour un seul jour
+
+    Args:
+        truncated_lines: Lignes du graphe déjà tronquées
+        location_name: Nom de la ville
+        date_label: Label de date (ex: "aujourd'hui 17/11")
+        max_str: Valeur max de précipitations (ex: "1.7mm")
+        start_offset: Offset de départ dans le graphe source
+        truncate_width: Largeur du graphe tronqué
+        compact_mode: Si True, seulement 3 lignes
+
+    Returns:
+        str: Graphe formaté pour ce jour
+    """
+    result_lines = []
+    result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+
+    # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
+    # Mode normal (Telegram): toutes les 5 lignes
+    if compact_mode and len(truncated_lines) >= 5:
+        # Garder lignes 0, 2, 4 (top, middle, bottom)
+        result_lines.append(truncated_lines[0])  # Top
+        result_lines.append(truncated_lines[2])  # Middle
+        result_lines.append(truncated_lines[4])  # Bottom
+    else:
+        # Toutes les 5 lignes du graphe vertical (de haut en bas)
+        for line in truncated_lines:
+            result_lines.append(line)
+
+    # Créer l'échelle horaire (marqueurs toutes les 3h)
+    # 2 points par heure
+    hour_scale = []
+    for i in range(truncate_width):
+        # Calculer l'heure réelle affichée (en tenant compte de l'offset)
+        actual_position = start_offset + i
+        hour = (actual_position // 2) % 24
+        point_in_hour = actual_position % 2
+
+        # Afficher l'heure sur le premier point de l'heure, toutes les 3h
+        if point_in_hour == 0 and hour % 3 == 0:
+            hour_scale.append(str(hour))
+        else:
+            hour_scale.append(' ')
+
+    # Ajouter l'échelle horaire
+    result_lines.append(''.join(hour_scale))
+
+    return "\n".join(result_lines)
+
+
 def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
@@ -449,10 +501,11 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London")
                  Si None ou vide, utilise la géolocalisation par IP
-        days: Nombre de jours à afficher (1 ou 3)
-              1 = aujourd'hui seulement (défaut)
-              3 = aujourd'hui + demain + J+2
-        max_hours: Nombre d'heures maximum à afficher (défaut 38)
+        days: Nombre de jours à afficher (1, 2 ou 3)
+              1 = aujourd'hui seulement (défaut) - depuis l'heure actuelle
+              2 = aujourd'hui + demain - 2 graphes séparés
+              3 = aujourd'hui + demain + J+2 - 3 graphes séparés
+        max_hours: Nombre d'heures maximum à afficher par jour (défaut 38)
                    22 = Mesh compact (44 chars, 3 lines, ~207 chars total)
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
@@ -462,10 +515,13 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
     Returns:
         str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
+             Pour days > 1: plusieurs graphes séparés par '\n\n'
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Telegram: 38h depuis minuit, 5 lignes
-        >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True, start_at_current_time=True)  # Mesh: 22h depuis maintenant, 3 lignes
+        >>> rain = get_rain_graph("Paris")  # Aujourd'hui depuis maintenant
+        >>> rain = get_rain_graph("Paris", days=2)  # Aujourd'hui + demain (2 graphes)
+        >>> rain = get_rain_graph("Paris", days=3)  # Aujourd'hui + demain + J+2 (3 graphes)
+        >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True)  # Mesh compact
     """
     try:
         # Normaliser la location
@@ -598,30 +654,13 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
 
-        # Calculer l'offset de départ
-        # Pour "aujourd'hui" (days=1), on commence TOUJOURS à l'heure actuelle
-        # Pour les autres jours, on commence à 0h
-        from datetime import datetime
+        # Importer datetime pour les calculs de temps
+        from datetime import datetime, timedelta
         current_hour = datetime.now().hour
         current_minute = datetime.now().minute
-        start_offset = 0
+        today = datetime.now()
 
-        if days == 1 or start_at_current_time:
-            # Démarrer à l'heure actuelle au lieu de minuit
-            start_offset = current_hour * 2
-            if current_minute >= 30:
-                start_offset += 1
-            debug_print(f"[RAIN DEBUG] Starting at current time: offset={start_offset} (hour={current_hour}, min={current_minute})")
-
-        truncated_lines = []
-        for line in cleaned_lines:
-            # Extraire la portion à afficher (depuis start_offset)
-            truncated = line[start_offset:start_offset + truncate_width]
-            truncated_lines.append(truncated)
-
-        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h) starting at offset {start_offset}")
-
-        # Obtenir le vrai nom de la ville via l'API JSON
+        # Obtenir le vrai nom de la ville via l'API JSON (une seule fois pour tous les jours)
         location_name = location if location else "local"
         try:
             # Faire un appel rapide pour obtenir le nom de la ville
@@ -650,67 +689,91 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         max_str = f"{max_precip:.1f}mm"
 
-        # Calculer le label de date
-        from datetime import datetime, timedelta
-        today = datetime.now()
-        date_label = ""
+        # Si days > 1, on va générer plusieurs graphes séparés
+        if days > 1:
+            result_parts = []
 
-        if days == 1:
-            # Aujourd'hui avec date
-            date_label = today.strftime("aujourd'hui %d/%m")
-        elif days == 2:
-            # Demain avec date
-            tomorrow = today + timedelta(days=1)
-            date_label = tomorrow.strftime("demain %d/%m")
-        elif days == 3:
-            # J+2 avec date
-            day_after = today + timedelta(days=2)
-            date_label = day_after.strftime("J+2 %d/%m")
+            for day_index in range(days):
+                # Calculer les paramètres pour chaque jour
+                if day_index == 0:
+                    # Aujourd'hui: de l'heure actuelle jusqu'à minuit
+                    start_offset = current_hour * 2
+                    if current_minute >= 30:
+                        start_offset += 1
+                    # Heures restantes aujourd'hui
+                    hours_today = 24 - current_hour
+                    day_truncate_width = min(truncate_width, hours_today * 2)
+                    date_label = today.strftime("aujourd'hui %d/%m")
+                elif day_index == 1:
+                    # Demain: 0h-24h (ou moins selon max_hours)
+                    start_offset = 24 * 2  # Début de demain
+                    day_truncate_width = min(truncate_width, 24 * 2)
+                    tomorrow = today + timedelta(days=1)
+                    date_label = tomorrow.strftime("demain %d/%m")
+                else:  # day_index == 2
+                    # J+2: 0h-24h (ou moins selon max_hours)
+                    start_offset = 48 * 2  # Début de J+2
+                    day_truncate_width = min(truncate_width, 24 * 2)
+                    day_after = today + timedelta(days=2)
+                    date_label = day_after.strftime("J+2 %d/%m")
 
-        # Calculer la position du marqueur NOW
-        # Depuis la refonte (days=1 démarre toujours à l'heure actuelle),
-        # le marqueur NOW n'est plus pertinent:
-        # - Pour days=1: on démarre déjà à maintenant, donc NOW est au début
-        # - Pour days=2,3: on affiche le futur, NOW n'a pas de sens
-        # Donc on désactive le marqueur NOW dans tous les cas
-        now_position = -1  # -1 = pas de marqueur NOW
+                # Extraire les lignes pour ce jour
+                day_truncated_lines = []
+                for line in cleaned_lines:
+                    truncated = line[start_offset:start_offset + day_truncate_width]
+                    day_truncated_lines.append(truncated)
 
-        # Créer une échelle horaire (marqueurs toutes les 3h)
-        # 2 points par heure
-        hour_scale = []
-        for i in range(truncate_width):
-            # Calculer l'heure réelle affichée (en tenant compte de l'offset)
-            actual_position = start_offset + i
-            hour = (actual_position // 2) % 24
-            point_in_hour = actual_position % 2
+                # Générer le graphe pour ce jour
+                day_result = _format_single_day_graph(
+                    day_truncated_lines,
+                    location,
+                    date_label,
+                    max_str,
+                    start_offset,
+                    day_truncate_width,
+                    compact_mode
+                )
+                result_parts.append(day_result)
 
-            # Afficher l'heure sur le premier point de l'heure, toutes les 3h
-            if point_in_hour == 0 and hour % 3 == 0:
-                hour_scale.append(str(hour))
-            else:
-                hour_scale.append(' ')
+            # Joindre les graphes avec double saut de ligne
+            result = "\n\n".join(result_parts)
 
-        # Formater le message final avec les lignes du graphe + échelle + marqueur
-        result_lines = []
-        # Utiliser le label de date calculé précédemment
-        result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+            # Sauvegarder en cache SQLite
+            if persistence:
+                persistence.set_weather_cache(cache_key, 'rain', result)
 
-        # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
-        # Mode normal (Telegram): toutes les 5 lignes
-        if compact_mode and len(truncated_lines) >= 5:
-            # Garder lignes 0, 2, 4 (top, middle, bottom)
-            result_lines.append(truncated_lines[0])  # Top
-            result_lines.append(truncated_lines[2])  # Middle
-            result_lines.append(truncated_lines[4])  # Bottom
-        else:
-            # Toutes les 5 lignes du graphe vertical (de haut en bas)
-            for line in truncated_lines:
-                result_lines.append(line)
+            return result
 
-        # Ajouter l'échelle horaire (avec marqueur NOW intégré)
-        result_lines.append(''.join(hour_scale))
+        # Cas simple: un seul jour (days=1)
+        start_offset = 0
+        if days == 1 or start_at_current_time:
+            # Démarrer à l'heure actuelle au lieu de minuit
+            start_offset = current_hour * 2
+            if current_minute >= 30:
+                start_offset += 1
+            debug_print(f"[RAIN DEBUG] Starting at current time: offset={start_offset} (hour={current_hour}, min={current_minute})")
 
-        result = "\n".join(result_lines)
+        truncated_lines = []
+        for line in cleaned_lines:
+            # Extraire la portion à afficher (depuis start_offset)
+            truncated = line[start_offset:start_offset + truncate_width]
+            truncated_lines.append(truncated)
+
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h) starting at offset {start_offset}")
+
+        # Calculer le label de date pour days=1
+        date_label = today.strftime("aujourd'hui %d/%m")
+
+        # Utiliser la fonction helper pour formater le graphe
+        result = _format_single_day_graph(
+            truncated_lines,
+            location_name,
+            date_label,
+            max_str,
+            start_offset,
+            truncate_width,
+            compact_mode
+        )
 
         # Sauvegarder en cache SQLite
         if persistence:
