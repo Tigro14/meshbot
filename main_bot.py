@@ -399,7 +399,8 @@ class MeshBot:
                 self.interface,  # Interface directe
                 self.traffic_monitor,
                 self.start_time,
-                self.blitz_monitor
+                self.blitz_monitor,
+                self.vigilance_monitor
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)

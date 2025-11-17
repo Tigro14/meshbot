@@ -116,7 +116,7 @@ class SystemCommands(TelegramCommandBase):
         self.log_command("cpu", user.username or user.first_name)
 
         # Message initial
-        await update.message.reply_text("📊 Monitoring CPU (10 secondes)...")
+        await update.effective_message.reply_text("📊 Monitoring CPU (10 secondes)...")
 
         def get_cpu_monitoring():
             try:
@@ -162,7 +162,7 @@ class SystemCommands(TelegramCommandBase):
         info_print("=" * 60)
 
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments (mot de passe)
@@ -226,7 +226,7 @@ class SystemCommands(TelegramCommandBase):
         info_print("=" * 60)
 
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments (mot de passe)

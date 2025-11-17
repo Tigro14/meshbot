@@ -71,13 +71,14 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 ```
 
 ### Key Statistics
-- **~18,224 lines** of Python code
-- **62 modules** with clear separation of concerns
+- **~19,306 lines** of Python code
+- **64 modules** with clear separation of concerns
 - **Dual-channel design**: Constrained LoRa (180 chars) vs Rich Telegram (3000 chars)
 - **Multi-platform ready**: Pluggable architecture for Telegram, Discord, Matrix
 - **SQLite persistence**: 48-hour traffic history with automatic cleanup
 - **Unified statistics**: Single `/stats` command with multiple sub-commands
-- **Enhanced weather**: Rain graphs and astronomical data integration
+- **Enhanced weather**: Rain graphs, astronomical data, lightning detection, vigilance alerts
+- **Real-time monitoring**: Blitzortung lightning strikes and Météo-France alerts
 
 ---
 
@@ -237,12 +238,18 @@ The `/weather` command has been significantly enhanced with new subcommands:
 /weather rain Paris 3      → Paris rain graph (3 days)
 /weather astro             → Local astronomical data
 /weather astro London      → London astronomical data
+/weather blitz             → Lightning strikes detected (15min window)
+/weather vigi              → Météo-France VIGILANCE status
 ```
 
 **Implementation:**
 - `utils_weather.py::get_rain_graph()` - Rain graph generation
 - `utils_weather.py::get_weather_astro()` - Astronomical data fetching
-- Integration with wttr.in API for data
+- `blitz_monitor.py::_format_report()` - Lightning strike reporting
+- `vigilance_monitor.py::format_alert_message()` - Vigilance status formatting
+- Integration with wttr.in API for weather data
+- Integration with Blitzortung.org MQTT for lightning
+- Integration with Météo-France vigilancemeteo package
 - Multi-message support for 3-day rain forecasts
 
 ### CLI Improvements (November 2025)
@@ -425,6 +432,8 @@ MeshBot (Orchestrator)
 ├── LlamaClient (AI queries)
 ├── ESPHomeClient (Solar/battery telemetry)
 ├── RemoteNodesClient (TCP queries to tigrog2)
+├── BlitzMonitor (Real-time lightning detection)
+├── VigilanceMonitor (Météo-France alerts)
 └── PlatformManager (Multi-platform orchestrator)
     └── TelegramPlatform (Telegram integration)
         ├── AlertManager (Alert notifications)
@@ -510,6 +519,9 @@ MeshBot (Orchestrator)
 ├── remote_nodes_client.py      # Remote mesh node queries (TCP)
 ├── blitz_monitor.py            # Lightning detection (Blitzortung.org MQTT)
 ├── vigilance_monitor.py        # Weather vigilance (Météo-France)
+│
+├── blitz_monitor.py            # Blitzortung lightning monitoring (NEW)
+├── vigilance_monitor.py        # Météo-France vigilance alerts (NEW)
 │
 ├── telegram_integration.py     # Legacy Telegram bot (deprecated)
 ├── telegram_command_base.py    # Legacy base class (deprecated)
@@ -2387,6 +2399,8 @@ if info and monitor.should_alert(info):
 | `/weather [sub]` | `utility_commands.py` | Weather forecast |
 | `/weather rain` | `utility_commands.py` | Rain precipitation graphs |
 | `/weather astro` | `utility_commands.py` | Astronomical data |
+| `/weather blitz` | `utility_commands.py` | Lightning strikes (NEW) |
+| `/weather vigi` | `utility_commands.py` | VIGILANCE alerts (NEW) |
 | `/db [sub]` | `db_commands.py` | Database operations (NEW) |
 | `/help` | `utility_commands.py` | Help text |
 | `/legend` | `utility_commands.py` | Signal legend |

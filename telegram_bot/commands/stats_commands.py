@@ -35,7 +35,7 @@ class StatsCommands(TelegramCommandBase):
             self.telegram.business_stats.get_traffic_report,
             hours
         )
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def stats_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
@@ -60,7 +60,7 @@ class StatsCommands(TelegramCommandBase):
 
         # Vérifier que unified_stats est disponible
         if not hasattr(self.telegram, 'unified_stats') or not self.telegram.unified_stats:
-            await update.message.reply_text("❌ Système de stats non disponible")
+            await update.effective_message.reply_text("❌ Système de stats non disponible")
             return
 
         def get_unified_stats():
@@ -112,7 +112,7 @@ class StatsCommands(TelegramCommandBase):
         info_print(f"📱 Telegram /top {hours}h top{top_n}: {user.username}")
 
         # Message d'attente
-        await update.message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
+        await update.effective_message.reply_text(f"📊 Calcul des statistiques complètes ({hours}h)...")
 
         # Utiliser la logique métier partagée (business_stats, pas stats_commands)
         def get_detailed_stats():
@@ -140,14 +140,14 @@ class StatsCommands(TelegramCommandBase):
                     current_msg += section
                 else:
                     if current_msg:
-                        await update.message.reply_text(current_msg)
+                        await update.effective_message.reply_text(current_msg)
                         await asyncio.sleep(0.5)
                     current_msg = section
 
             if current_msg:
-                await update.message.reply_text(current_msg)
+                await update.effective_message.reply_text(current_msg)
         else:
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)
 
     async def packets_command(self, update: Update,
                                context: ContextTypes.DEFAULT_TYPE):
@@ -203,7 +203,7 @@ class StatsCommands(TelegramCommandBase):
                 return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_packet_stats)
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def histo_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
@@ -229,7 +229,7 @@ class StatsCommands(TelegramCommandBase):
             packet_type = args[0].strip().upper()
             # Valider le type
             if packet_type not in ['ALL', 'POS', 'TELE', 'NODE', 'TEXT']:
-                await update.message.reply_text(
+                await update.effective_message.reply_text(
                     f"❌ Type inconnu: {args[0]}\n"
                     f"Types disponibles: pos, tele, node, text"
                 )
@@ -277,7 +277,7 @@ class StatsCommands(TelegramCommandBase):
             message = update.edited_message or update.message
             if not message:
                 return
-            await update.message.reply_text(histogram)
+            await update.effective_message.reply_text(histogram)
 
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
@@ -286,4 +286,4 @@ class StatsCommands(TelegramCommandBase):
             message = update.edited_message or update.message
             if not message:
                 return
-            await update.message.reply_text(f"❌ Erreur: {str(e)[:50]}")
+            await update.effective_message.reply_text(f"❌ Erreur: {str(e)[:50]}")

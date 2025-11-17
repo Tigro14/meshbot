@@ -22,14 +22,14 @@ class MeshCommands(TelegramCommandBase):
         """Commande /echo <message> - Diffuser sur le mesh"""
         user = update.effective_user
         if not context.args:
-            await update.message.reply_text("Usage: /echo <message>")
+            await update.effective_message.reply_text("Usage: /echo <message>")
             return
 
         echo_text = ' '.join(context.args)
         info_print(f"📱 Telegram /echo: {user.username} -> '{echo_text}'")
 
         # Message de confirmation immédiat
-        status_msg = await update.message.reply_text("📤 Envoi en cours...")
+        status_msg = await update.effective_message.reply_text("📤 Envoi en cours...")
         info_print(f"✅ Message status créé")
 
         def send_echo():
@@ -114,14 +114,14 @@ class MeshCommands(TelegramCommandBase):
 
         if not self.check_authorization(user.id):
             info_print("❌ Non autorisé")
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"✅ Autorisé - context.args: {context.args}")
 
         if not context.args:
             info_print("⚠️ Pas d'arguments")
-            await update.message.reply_text("Usage: /annonce <message>")
+            await update.effective_message.reply_text("Usage: /annonce <message>")
             return
 
         info_print("✅ Arguments présents, suite du traitement...")
@@ -130,7 +130,7 @@ class MeshCommands(TelegramCommandBase):
 
         try:
             info_print("📤 Tentative envoi message status...")
-            status_msg = await update.message.reply_text("📤 Envoi en cours...")
+            status_msg = await update.effective_message.reply_text("📤 Envoi en cours...")
             info_print("✅ Message status envoyé")
         except Exception as e:
             error_print(f"❌ Erreur envoi status: {e}")

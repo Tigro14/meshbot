@@ -56,7 +56,7 @@ class BasicCommands(TelegramCommandBase):
             f"• /help - Aide\n\n"
             f"Votre ID: {user.id}"
         )
-        await update.message.reply_text(welcome_msg)
+        await update.effective_message.reply_text(welcome_msg)
 
     async def _raw_log_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler pour les messages texte non-commandes"""
@@ -80,7 +80,7 @@ class BasicCommands(TelegramCommandBase):
         info_print(f"DEBUG help_text preview: {help_text[:100] if help_text else 'None'}")
 
         if not help_text or len(help_text.strip()) == 0:
-            await update.message.reply_text("❌ Erreur: texte d'aide vide")
+            await update.effective_message.reply_text("❌ Erreur: texte d'aide vide")
             return
 
         # Envoyer le message (sans Markdown pour éviter les erreurs)
@@ -89,7 +89,7 @@ class BasicCommands(TelegramCommandBase):
             info_print("✅ /help envoyé avec succès")
         except Exception as e:
             error_print(f"Erreur envoi /help: {e}")
-            await update.message.reply_text("❌ Erreur envoi aide")
+            await update.effective_message.reply_text("❌ Erreur envoi aide")
 
     async def legend_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /legend - Légende des indicateurs de signal"""

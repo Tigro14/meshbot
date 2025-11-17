@@ -46,10 +46,10 @@ class AdminCommands(TelegramCommandBase):
         if len(response) > 4000:
             chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
             for chunk in chunks:
-                await update.message.reply_text(chunk)
+                await update.effective_message.reply_text(chunk)
                 await asyncio.sleep(0.5)
         else:
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)
 
     async def cleartraffic_command(self, update: Update,
                                    context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +65,7 @@ class AdminCommands(TelegramCommandBase):
             self.telegram.business_stats.clear_traffic_history
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def dbstats_command(self, update: Update,
                               context: ContextTypes.DEFAULT_TYPE):
@@ -81,7 +81,7 @@ class AdminCommands(TelegramCommandBase):
             self.telegram.business_stats.get_persistence_stats
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def cleanup_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
@@ -109,4 +109,84 @@ class AdminCommands(TelegramCommandBase):
             hours
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
+
+    async def db_command(self, update: Update,
+                        context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /db [subcommand] [args] - Gestion de la base de données
+        Usage:
+          /db - Aide
+          /db stats - Statistiques
+          /db clean [hours] - Nettoyer données > Xh
+          /db vacuum - Optimiser DB
+          /db purgeweather - Purger cache météo
+        """
+        user = update.effective_user
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+
+        # Parser les arguments
+        params = context.args if context.args else []
+
+        info_print(f"📱 Telegram /db {' '.join(params)}: {user.username}")
+
+        # Appeler la logique business depuis le mesh handler
+        try:
+            # Récupérer le handler DB depuis message_handler
+            db_handler = self.telegram.message_handler.router.db_handler
+
+            if not db_handler:
+                await update.effective_message.reply_text("❌ Handler DB non disponible")
+                return
+
+            # Classe pour collecter la réponse au lieu de l'envoyer
+            class ResponseCollector:
+                """Collecte la réponse au lieu de l'envoyer directement"""
+                def __init__(self):
+                    self.response = ""
+
+                def check_throttling(self, sender_id, sender_info):
+                    # Pas de throttling pour Telegram
+                    return True
+
+                def send_chunks(self, message, sender_id, sender_info):
+                    # Stocker la réponse
+                    self.response = message
+
+            # Remplacer temporairement le sender
+            original_sender = db_handler.sender
+            collector = ResponseCollector()
+            db_handler.sender = collector
+
+            # Appeler le handler unifié dans un thread
+            await asyncio.to_thread(
+                db_handler.handle_db,
+                sender_id=user.id,
+                sender_info={'username': user.username},
+                params=params,
+                channel='telegram'
+            )
+
+            # Restaurer le sender original
+            db_handler.sender = original_sender
+
+            # Envoyer la réponse collectée
+            if collector.response:
+                # Split si trop long
+                if len(collector.response) > 4000:
+                    chunks = [collector.response[i:i+4000] for i in range(0, len(collector.response), 4000)]
+                    for chunk in chunks:
+                        await update.effective_message.reply_text(chunk)
+                        await asyncio.sleep(0.5)
+                else:
+                    await update.effective_message.reply_text(collector.response)
+            else:
+                await update.effective_message.reply_text("❌ Aucune réponse du handler")
+
+        except Exception as e:
+            error_print(f"Erreur /db command: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            await update.effective_message.reply_text(f"❌ Erreur: {str(e)[:100]}")

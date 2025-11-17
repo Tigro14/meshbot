@@ -55,6 +55,8 @@ class DBCommands:
                 response = self._vacuum_db(channel)
             elif subcommand in ['info', 'i']:
                 response = self._get_db_info(channel)
+            elif subcommand in ['purgeweather', 'pw']:
+                response = self._purge_weather_cache(channel)
             else:
                 response = self._get_help(channel)
 
@@ -76,7 +78,7 @@ class DBCommands:
                 "🗄️ /db [cmd]\n"
                 "s=stats i=info\n"
                 "clean=nettoyage\n"
-                "v=vacuum"
+                "v=vacuum pw=weather"
             )
         else:  # telegram
             return """🗄️ BASE DE DONNÉES - OPTIONS
@@ -332,4 +334,46 @@ Raccourcis: s, i, v
 
         except Exception as e:
             error_print(f"Erreur DB info: {e}")
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def _purge_weather_cache(self, channel='mesh'):
+        """Purger le cache météo de la base de données"""
+        if not self.persistence:
+            return "❌ DB non disponible"
+
+        try:
+            # Compter les entrées avant suppression
+            cursor = self.persistence.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM weather_cache")
+            count_before = cursor.fetchone()[0]
+
+            if count_before == 0:
+                if channel == 'mesh':
+                    return "✅ Cache météo vide"
+                else:
+                    return "✅ **Cache météo déjà vide**\n\nAucune donnée à purger."
+
+            # Purger tout le cache météo (age=0 supprime tout)
+            deleted = self.persistence.cleanup_weather_cache(max_age_hours=0)
+
+            # Message de confirmation
+            if channel == 'mesh':
+                return f"✅ {deleted} entrées purgées"
+            else:
+                return f"""✅ **Cache météo purgé**
+
+**Résumé:**
+• Entrées supprimées: {deleted}
+• Tables: weather_cache
+• Prochaine requête météo rechargera les données
+
+**Types de cache supprimés:**
+• Prévisions météo
+• Graphiques de pluie
+• Données astronomiques
+"""
+
+        except Exception as e:
+            error_print(f"Erreur purge weather cache: {e}")
+            error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:100]}"
