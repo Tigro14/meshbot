@@ -38,8 +38,12 @@ class DBCommandsTelegram(TelegramCommandBase):
         subcommand = params[0].lower() if params else ''
         args = params[1:] if len(params) > 1 else []
 
-        # Obtenir le handler DB depuis le bot
-        db_handler = self.telegram.meshbot.message_handler.router.db_handler
+        # Obtenir le handler DB depuis le message router
+        try:
+            db_handler = self.telegram.message_handler.router.db_handler
+        except AttributeError:
+            await update.message.reply_text("❌ Gestionnaire DB non disponible")
+            return
 
         if not db_handler:
             await update.message.reply_text("❌ Gestionnaire DB non disponible")
