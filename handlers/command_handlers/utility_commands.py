@@ -16,12 +16,13 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None):
+    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None, vigilance_monitor=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
         self.node_manager = node_manager
         self.blitz_monitor = blitz_monitor
+        self.vigilance_monitor = vigilance_monitor
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -440,21 +441,30 @@ class UtilityCommands:
                 weather_data = "⚡ Surveillance éclairs désactivée"
                 self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'vigi':
-            # Documentation du système VIGILANCE Météo-France
-            vigi_info = """📋 VIGILANCE Météo-France
+            # État actuel de la vigilance Météo-France
+            if self.vigilance_monitor:
+                # Obtenir l'état actuel de la vigilance
+                vigi_state = self.vigilance_monitor.check_vigilance()
 
-Surveillance automatique des alertes:
-• Départements configurés
-• Vérif toutes les 15min
-• Niveaux: Vert, Jaune, Orange, Rouge
-• Alerte auto si Orange/Rouge
-
-Types de risques surveillés:
-Vent, Pluie/Inondation, Orages, Neige/Verglas,
-Canicule, Grand froid, Avalanches, Vagues-submersion
-
-Config: VIGILANCE_* dans config.py
-Status: /sys pour voir alertes actives"""
+                if vigi_state:
+                    # Formater en mode compact pour LoRa
+                    vigi_info = self.vigilance_monitor.format_alert_message(vigi_state, compact=True)
+                else:
+                    # Pas d'info disponible (erreur ou pas encore initialisé)
+                    if self.vigilance_monitor.last_color:
+                        # Utiliser dernière info connue
+                        emoji_map = {
+                            'Vert': '✅',
+                            'Jaune': '⚠️',
+                            'Orange': '🟠',
+                            'Rouge': '🔴'
+                        }
+                        emoji = emoji_map.get(self.vigilance_monitor.last_color, '🌦️')
+                        vigi_info = f"{emoji} VIGILANCE {self.vigilance_monitor.last_color.upper()}\nDept {self.vigilance_monitor.departement}"
+                    else:
+                        vigi_info = f"🌦️ VIGILANCE Dept {self.vigilance_monitor.departement}\nPas encore initialisé"
+            else:
+                vigi_info = "🌦️ Surveillance VIGILANCE désactivée"
 
             self.sender.log_conversation(sender_id, sender_info, "/weather vigi", vigi_info)
             self.sender.send_single(vigi_info, sender_id, sender_info)

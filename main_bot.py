@@ -377,7 +377,8 @@ class MeshBot:
                 self.interface,  # Interface directe
                 self.traffic_monitor,
                 self.start_time,
-                self.blitz_monitor
+                self.blitz_monitor,
+                self.vigilance_monitor
             )
             info_print("✅ MessageHandler créé")
 
