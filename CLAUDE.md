@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Meshtastic-Llama Bot
 
-**Last Updated**: 2025-11-16
+**Last Updated**: 2025-11-17
 **Project**: Meshtastic-Llama Bot with Telegram Integration
 **Language**: Python 3.8+
 **Platform**: Raspberry Pi 5 / Linux
@@ -294,6 +294,80 @@ The `/weather` command has been significantly enhanced with new subcommands:
 - Reduced redundancy
 - Improved maintainability
 
+### Real-Time Monitoring Systems (November 2025)
+
+New automated monitoring capabilities for environmental alerts:
+
+#### Lightning Detection (BlitzMonitor)
+
+**Key Features:**
+- **Real-time Detection**: MQTT connection to Blitzortung.org public server
+- **Geographic Filtering**: Geohash-based filtering for configurable radius (default: 50km)
+- **Auto-positioning**: Automatic GPS detection from Meshtastic node
+- **Deque-based History**: Recent strikes stored with timestamp, distance, polarity
+- **Periodic Reporting**: Configurable check intervals (default: 15 minutes)
+- **Dual Output**: Compact format for LoRa (180 chars), detailed for Telegram
+
+**Architecture:**
+- `blitz_monitor.py` - Standalone lightning monitoring module
+- MQTT client running in background thread
+- Haversine distance calculations for radius filtering
+- Multi-geohash subscription for edge coverage
+
+**Configuration:**
+```python
+BLITZ_ENABLED = True
+BLITZ_LATITUDE = 0.0  # 0.0 = auto-detect from node GPS
+BLITZ_LONGITUDE = 0.0
+BLITZ_RADIUS_KM = 50
+BLITZ_CHECK_INTERVAL = 900  # 15 minutes
+BLITZ_WINDOW_MINUTES = 15
+```
+
+**Use Cases:**
+- Automatic storm warnings to mesh network
+- Lightning proximity alerts for outdoor activities
+- Weather safety monitoring for field operations
+
+#### Weather Vigilance Monitoring (VigilanceMonitor)
+
+**Key Features:**
+- **Météo-France Integration**: Official French weather vigilance API
+- **Department-based**: Monitor specific French departments by number
+- **Alert Levels**: Vert/Jaune/Orange/Rouge color-coded severity
+- **Smart Throttling**: Configurable alert frequency (default: 1 hour minimum)
+- **Automatic Alerts**: Trigger on Orange/Rouge levels only
+- **Bulletin Tracking**: Avoid duplicate alerts for same bulletin
+
+**Architecture:**
+- `vigilance_monitor.py` - Weather vigilance monitoring module
+- Uses `vigilancemeteo` Python package
+- Periodic checks with configurable intervals
+- State tracking for color changes
+
+**Configuration:**
+```python
+VIGILANCE_ENABLED = True
+VIGILANCE_DEPARTEMENT = '25'  # Department number (Doubs)
+VIGILANCE_CHECK_INTERVAL = 900  # 15 minutes
+VIGILANCE_ALERT_THROTTLE = 3600  # 1 hour minimum between alerts
+VIGILANCE_ALERT_LEVELS = ['Orange', 'Rouge']
+```
+
+**Use Cases:**
+- Automatic severe weather warnings
+- Community safety alerts
+- Emergency preparedness notifications
+
+#### Integration into Main Bot
+
+Both monitors are integrated into `main_bot.py`:
+- Initialized during bot startup
+- Periodic checks run in `periodic_cleanup()` method
+- BlitzMonitor runs MQTT client in background thread
+- Automatic alert generation to mesh network
+- Optional integration with Telegram alert system
+
 ---
 
 ## Architecture
@@ -434,6 +508,8 @@ MeshBot (Orchestrator)
 ├── esphome_client.py           # ESPHome telemetry
 ├── esphome_history.py          # ESPHome data storage
 ├── remote_nodes_client.py      # Remote mesh node queries (TCP)
+├── blitz_monitor.py            # Lightning detection (Blitzortung.org MQTT)
+├── vigilance_monitor.py        # Weather vigilance (Météo-France)
 │
 ├── telegram_integration.py     # Legacy Telegram bot (deprecated)
 ├── telegram_command_base.py    # Legacy base class (deprecated)
@@ -1984,9 +2060,9 @@ All Python dependencies are documented in `requirements.txt`.
 **Weather & Alerts:**
 - `vigilancemeteo>=3.0.0` - French weather vigilance alerts (Météo-France)
 
-**Lightning detection (Blitzortung):**
-- `paho-mqtt>=2.1.0` - MQTT client for real-time lightning data
-- `pygeohash>=3.2.0` - Geohash encoding for geographic filtering
+**Environmental monitoring:**
+- `paho-mqtt>=2.1.0` - MQTT client for real-time lightning data (Blitzortung.org)
+- `pygeohash>=3.2.0` - Geohash encoding for geographic filtering (lightning detection)
 
 **Installation:**
 ```bash
@@ -2168,6 +2244,92 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 
 ---
 
+### Blitzortung.org (Lightning Detection)
+
+**Protocol**: MQTT (public server)
+**Server**: `blitzortung.ha.sed.pl:1883`
+**Topic Pattern**: `blitzortung/1.1/{geohash}`
+
+#### Data Format
+
+```json
+{
+  "lat": 47.123,
+  "lon": 6.456,
+  "time": 1234567890.123,
+  "alt": 0,
+  "pol": 1,
+  "mds": 5000
+}
+```
+
+#### Client Code
+
+`blitz_monitor.py::BlitzMonitor`
+- MQTT subscription to geohash-based topics
+- Real-time lightning strike detection
+- Haversine distance calculations
+- Automatic position detection from Meshtastic GPS
+- Background thread for MQTT loop
+
+#### Usage
+
+```python
+from blitz_monitor import BlitzMonitor
+
+# Auto-detect position from interface
+monitor = BlitzMonitor(
+    interface=meshtastic_interface,
+    radius_km=50,
+    check_interval=900
+)
+monitor.start_monitoring()
+
+# Manual position
+monitor = BlitzMonitor(
+    lat=47.123,
+    lon=6.456,
+    radius_km=50
+)
+```
+
+---
+
+### Météo-France Vigilance API
+
+**Protocol**: HTTPS (via vigilancemeteo package)
+**Coverage**: French departments only
+**Update Frequency**: Typically every 6 hours
+
+#### Client Code
+
+`vigilance_monitor.py::VigilanceMonitor`
+- Department-based weather vigilance monitoring
+- Color-coded alert levels (Vert/Jaune/Orange/Rouge)
+- Automatic alert generation for severe weather
+- Smart throttling to avoid alert spam
+
+#### Usage
+
+```python
+from vigilance_monitor import VigilanceMonitor
+
+monitor = VigilanceMonitor(
+    departement='25',  # Doubs
+    check_interval=900,  # 15 minutes
+    alert_throttle=3600,  # 1 hour minimum between alerts
+    alert_levels=['Orange', 'Rouge']
+)
+
+# Check vigilance
+info = monitor.check_vigilance()
+if info and monitor.should_alert(info):
+    message = monitor.format_alert_message(info, compact=True)
+    monitor.record_alert_sent()
+```
+
+---
+
 ## Appendix: Quick Reference
 
 ### Key File Locations
@@ -2192,6 +2354,8 @@ TELEGRAM_AUTHORIZED_USERS = [123456789, ...]
 | Packet analytics | `traffic_monitor.py` | Stats, deduplication |
 | SQLite layer | `traffic_persistence.py` | Persistence |
 | AI client | `llama_client.py` | Llama.cpp integration |
+| Lightning monitor | `blitz_monitor.py` | Real-time lightning detection |
+| Vigilance monitor | `vigilance_monitor.py` | Weather vigilance alerts |
 | Map generation | `map/generate_mesh_map.py` | Network topology maps |
 | Configuration | `config.py.sample` | Main config template |
 | Platform config | `platform_config.py` | Platform-specific configs |
@@ -2272,34 +2436,45 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-11-16
+**Last updated**: 2025-11-17
 **Updated by**: Claude (AI Assistant)
-**Changes in this update (2025-11-16)**:
+**Changes in this update (2025-11-17)**:
+- **NEW: Real-Time Lightning Detection** - BlitzMonitor for automatic storm warnings
+  - Added `blitz_monitor.py` - MQTT-based lightning detection via Blitzortung.org
+  - Real-time strike detection with geohash-based geographic filtering
+  - Auto-positioning from Meshtastic GPS or manual lat/lon
+  - Configurable radius (default: 50km) and check intervals
+  - Background MQTT thread for continuous monitoring
+  - Haversine distance calculations for accurate proximity
+  - Dual output format: compact (LoRa) and detailed (Telegram)
+- **NEW: Weather Vigilance Monitoring** - VigilanceMonitor for Météo-France alerts
+  - Added `vigilance_monitor.py` - Automatic weather vigilance alerts
+  - Department-based monitoring for French regions
+  - Color-coded severity levels (Vert/Jaune/Orange/Rouge)
+  - Smart alert throttling (default: 1 hour minimum between alerts)
+  - Automatic triggering on Orange/Rouge levels only
+  - Bulletin tracking to avoid duplicate alerts
+- **INTEGRATION: Main Bot Enhancement**
+  - Both monitors integrated into `main_bot.py` periodic cleanup cycle
+  - Configurable via `config.py.sample` with enable/disable flags
+  - Automatic alert generation to mesh network
+  - Optional Telegram integration for detailed alerts
+- **DEPENDENCIES: New Python Packages**
+  - `paho-mqtt>=2.1.0` - MQTT client for Blitzortung.org
+  - `pygeohash>=3.2.0` - Geographic filtering for lightning detection
+  - `vigilancemeteo>=3.0.0` - Météo-France vigilance API (already listed)
+- **DOCUMENTATION: Enhanced External Integrations**
+  - Added Blitzortung.org MQTT server documentation
+  - Added Météo-France Vigilance API documentation
+  - Updated directory structure with new monitor files
+  - Updated key file locations table
+
+**Previous changes (2025-11-16)**:
 - **NEW: Database Management** - Unified `/db` command for database operations
-  - Added `handlers/command_handlers/db_commands.py`
-  - Sub-commands: stats, vacuum, cleanup, reset
-  - Channel-adaptive output (Mesh vs Telegram)
-- **ENHANCED: Weather System** - Major weather command improvements
-  - `/weather rain [city] [days]` - Precipitation graphs with sparklines
-  - `/weather astro [city]` - Astronomical data (sunrise, moon phase, etc.)
-  - Custom city support for all weather commands
-  - 72-point hourly resolution for rain graphs
+- **ENHANCED: Weather System** - Major weather command improvements with rain graphs and astronomical data
 - **IMPROVED: CLI Experience** - Command history and UTF-8 fixes
-  - Arrow key navigation (↑/↓) for command history
-  - Persistent history across sessions
-  - UTF-8 encoding fixes for special characters
-  - New `CLI_USAGE.md` documentation
 - **IMPROVED: Statistics** - Better display and usability
-  - `/stats channel` now shows LongName instead of numeric IDs
-  - Sparkline histograms for compact visualization
-  - `/stats` without params shows help (more intuitive)
-- **CLEANUP: Removed obsolete code**
-  - Deleted `debug_interface.py` (578 lines, replaced by CLI)
-  - Deleted `packet_history.py` (superseded by TrafficPersistence)
-  - Reduced debug noise in various commands
-- **Updated statistics**: Line count updated to ~18,224 lines
-- **Updated documentation**: Added CLI_USAGE.md to resources list
-- **Updated command reference**: Added `/db` and `/weather` subcommands
+- **CLEANUP: Removed obsolete code** - debug_interface.py and packet_history.py
 
 **Previous major changes (2025-11-15)**:
 - **NEW: CLI Server Platform** - TCP-based local CLI for development/debug
