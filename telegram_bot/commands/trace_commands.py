@@ -20,5 +20,11 @@ class TraceCommands(TelegramCommandBase):
         Délègue au TracerouteManager
         """
         user = update.effective_user
+        info_print("=" * 60)
+        info_print("🔵 TRACE_COMMAND APPELÉ DANS TRACE_COMMANDS.PY")
+        info_print(f"   User: {user.username or user.first_name}")
+        info_print(f"   Args: {context.args}")
+        info_print("=" * 60)
+
         # Déléguer au TracerouteManager
         await self.telegram.traceroute_manager._trace_command(update, context)

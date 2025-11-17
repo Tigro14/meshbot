@@ -13,6 +13,7 @@ from .mesh_commands import MeshCommands
 from .ai_commands import AICommands
 from .trace_commands import TraceCommands
 from .admin_commands import AdminCommands
+from .db_commands import DBCommandsTelegram
 
 __all__ = [
     'BasicCommands',
@@ -23,5 +24,6 @@ __all__ = [
     'MeshCommands',
     'AICommands',
     'TraceCommands',
-    'AdminCommands'
+    'AdminCommands',
+    'DBCommandsTelegram'
 ]

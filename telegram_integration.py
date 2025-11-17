@@ -31,7 +31,8 @@ from telegram_bot.commands import (
     MeshCommands,
     AICommands,
     TraceCommands,
-    AdminCommands
+    AdminCommands,
+    DBCommandsTelegram
 )
 
 # Import de la logique métier pour les stats (alias pour éviter conflit)
@@ -112,6 +113,7 @@ class TelegramIntegration:
         self.ai_commands = AICommands(self)
         self.trace_commands = TraceCommands(self)
         self.admin_commands = AdminCommands(self)
+        self.db_commands = DBCommandsTelegram(self)
 
         # NetworkCommands doit être créé APRÈS mesh_commands et stats_commands
         # car il en dépend dans son __init__
@@ -267,6 +269,9 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("cleartraffic", self.admin_commands.cleartraffic_command))
         self.application.add_handler(CommandHandler("dbstats", self.admin_commands.dbstats_command))
         self.application.add_handler(CommandHandler("cleanup", self.admin_commands.cleanup_command))
+
+        # Commandes DB
+        self.application.add_handler(CommandHandler("db", self.db_commands.db_command))
 
         info_print(f"✅ {len(self.application.handlers[0])} handlers enregistrés")
 

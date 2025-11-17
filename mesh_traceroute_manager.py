@@ -146,12 +146,13 @@ class MeshTracerouteManager:
 
             info_print(f"✅ Réponse traceroute reçue de 0x{from_id:08x} ({elapsed:.1f}s)")
 
-            # Parser la route depuis le paquet
-            route = self._parse_traceroute_packet(packet)
+            # Parser les routes aller/retour depuis le paquet
+            route_forward, route_back = self._parse_traceroute_packet(packet)
 
             # Formater et envoyer la réponse
             response = self._format_traceroute_response(
-                route=route,
+                route_forward=route_forward,
+                route_back=route_back,
                 target_id=from_id,
                 elapsed_time=elapsed,
                 compact=True  # Format compact pour LoRa
@@ -171,23 +172,26 @@ class MeshTracerouteManager:
             error_print(f"❌ Erreur traitement réponse traceroute: {e}")
             return False
 
-    def _parse_traceroute_packet(self, packet: Dict) -> list:
+    def _parse_traceroute_packet(self, packet: Dict) -> tuple:
         """
-        Parser le paquet TRACEROUTE_APP pour extraire la route
+        Parser le paquet TRACEROUTE_APP pour extraire les routes aller et retour
 
         Args:
             packet: Paquet Meshtastic
 
         Returns:
-            list: Liste de dicts {node_id, name} pour chaque hop
+            tuple: (route_forward, route_back)
+                route_forward: Liste de dicts {node_id, name} pour l'aller
+                route_back: Liste de dicts {node_id, name} pour le retour (ou [] si indispo)
         """
-        route = []
+        route_forward = []
+        route_back = []
 
         try:
             # Le paquet decoded contient la route
             if 'decoded' not in packet:
                 debug_print("⚠️ Paquet sans section 'decoded'")
-                return route
+                return route_forward, route_back
 
             decoded = packet['decoded']
 
@@ -200,20 +204,34 @@ class MeshTracerouteManager:
                     route_discovery = mesh_pb2.RouteDiscovery()
                     route_discovery.ParseFromString(decoded['payload'])
 
-                    # Extraire la route
+                    # Extraire la route aller
                     for node_id in route_discovery.route:
                         node_id_norm = node_id & 0xFFFFFFFF
                         node_name = self.node_manager.get_node_name(node_id_norm)
-                        route.append({
+                        route_forward.append({
                             'node_id': node_id_norm,
                             'name': node_name
                         })
 
-                    debug_print(f"📋 Route parsée: {len(route)} hops")
-                    for i, hop in enumerate(route):
+                    debug_print(f"📋 Route aller parsée: {len(route_forward)} hops")
+                    for i, hop in enumerate(route_forward):
                         debug_print(f"   {i}. {hop['name']} (0x{hop['node_id']:08x})")
 
-                    return route
+                    # Extraire la route retour si disponible
+                    if hasattr(route_discovery, 'route_back') and len(route_discovery.route_back) > 0:
+                        for node_id in route_discovery.route_back:
+                            node_id_norm = node_id & 0xFFFFFFFF
+                            node_name = self.node_manager.get_node_name(node_id_norm)
+                            route_back.append({
+                                'node_id': node_id_norm,
+                                'name': node_name
+                            })
+
+                        debug_print(f"📋 Route retour parsée: {len(route_back)} hops")
+                        for i, hop in enumerate(route_back):
+                            debug_print(f"   {i}. {hop['name']} (0x{hop['node_id']:08x})")
+
+                    return route_forward, route_back
 
                 except ImportError:
                     debug_print("⚠️ mesh_pb2 non disponible")
@@ -221,12 +239,12 @@ class MeshTracerouteManager:
                     debug_print(f"⚠️ Erreur parsing RouteDiscovery: {parse_error}")
 
             # Méthode 2: Fallback - analyser hopStart/hopLimit
-            if not route:
+            if not route_forward:
                 # Si pas de route décodée, au moins indiquer origine → destination
                 from_id = packet.get('from', 0) & 0xFFFFFFFF
                 to_id = packet.get('to', 0) & 0xFFFFFFFF
 
-                route.append({
+                route_forward.append({
                     'node_id': from_id,
                     'name': self.node_manager.get_node_name(from_id)
                 })
@@ -237,30 +255,32 @@ class MeshTracerouteManager:
                 hops_taken = hop_start - hop_limit
 
                 if hops_taken > 0:
-                    route.append({
+                    route_forward.append({
                         'node_id': None,
                         'name': f"[{hops_taken} relay(s)]"
                     })
 
-                route.append({
+                route_forward.append({
                     'node_id': to_id,
                     'name': self.node_manager.get_node_name(to_id)
                 })
 
-                debug_print(f"📋 Route estimée (fallback): {len(route)} hops")
+                debug_print(f"📋 Route estimée (fallback): {len(route_forward)} hops")
 
         except Exception as e:
             error_print(f"Erreur parsing route: {e}")
 
-        return route
+        return route_forward, route_back
 
-    def _format_traceroute_response(self, route: list, target_id: int,
-                                    elapsed_time: float, compact: bool = True) -> str:
+    def _format_traceroute_response(self, route_forward: list, route_back: list,
+                                    target_id: int, elapsed_time: float,
+                                    compact: bool = True) -> str:
         """
         Formater la réponse de traceroute
 
         Args:
-            route: Liste des hops [{node_id, name}, ...]
+            route_forward: Liste des hops aller [{node_id, name}, ...]
+            route_back: Liste des hops retour [{node_id, name}, ...] (ou [] si indispo)
             target_id: ID du nœud cible
             elapsed_time: Temps écoulé en secondes
             compact: True pour format LoRa (<180 chars), False pour détaillé
@@ -275,24 +295,31 @@ class MeshTracerouteManager:
             lines = []
             lines.append(f"🔍 Trace→{target_name}")
 
-            if route:
-                hops = len(route) - 1  # Nombre de sauts (excluant origine)
+            if route_forward:
+                hops = len(route_forward) - 1  # Nombre de sauts (excluant origine)
                 lines.append(f"📏 {hops} hop{'s' if hops != 1 else ''}")
 
-                # Afficher route compacte
-                if len(route) <= 4:
-                    # Route courte: afficher tous les noms
-                    route_str = "→".join([
-                        hop['name'].split()[0][:8]  # Premier mot, max 8 chars
-                        for hop in route
-                    ])
-                    lines.append(route_str)
-                else:
-                    # Route longue: origine → ... → destination
-                    origin = route[0]['name'].split()[0][:8]
-                    dest = route[-1]['name'].split()[0][:8]
-                    middle = len(route) - 2
-                    lines.append(f"{origin}→[{middle}]→{dest}")
+                # Fonction helper pour formater une route
+                def format_compact_route(route, prefix=""):
+                    if len(route) <= 4:
+                        # Route courte: afficher tous les noms
+                        return prefix + "→".join([
+                            hop['name'].split()[0][:8]  # Premier mot, max 8 chars
+                            for hop in route
+                        ])
+                    else:
+                        # Route longue: origine → ... → destination
+                        origin = route[0]['name'].split()[0][:8]
+                        dest = route[-1]['name'].split()[0][:8]
+                        middle = len(route) - 2
+                        return f"{prefix}{origin}→[{middle}]→{dest}"
+
+                # Afficher route aller
+                lines.append(f"➡️ {format_compact_route(route_forward, '')}")
+
+                # Afficher route retour si disponible
+                if route_back and len(route_back) > 0:
+                    lines.append(f"⬅️ {format_compact_route(route_back, '')}")
 
                 # Temps
                 lines.append(f"⏱️ {elapsed_time:.1f}s")
@@ -308,18 +335,19 @@ class MeshTracerouteManager:
             lines.append("━" * 30)
             lines.append("")
 
-            if route:
-                lines.append(f"📏 Distance: {len(route) - 1} hop(s)")
+            if route_forward:
+                lines.append(f"📏 Distance: {len(route_forward) - 1} hop(s)")
                 lines.append("")
-                lines.append("🛣️ Route complète:")
 
-                for i, hop in enumerate(route):
+                # Afficher route ALLER
+                lines.append("➡️ **Route ALLER:**")
+                for i, hop in enumerate(route_forward):
                     hop_name = hop['name']
                     hop_id = hop.get('node_id')
 
                     if i == 0:
                         icon = "🏁"  # Origine
-                    elif i == len(route) - 1:
+                    elif i == len(route_forward) - 1:
                         icon = "🎯"  # Destination
                     else:
                         icon = "🔀"  # Relay
@@ -330,8 +358,32 @@ class MeshTracerouteManager:
                     else:
                         lines.append(f"{icon} {hop_name}")
 
-                    if i < len(route) - 1:
+                    if i < len(route_forward) - 1:
                         lines.append("   ⬇️")
+
+                # Afficher route RETOUR si disponible
+                if route_back and len(route_back) > 0:
+                    lines.append("")
+                    lines.append("⬅️ **Route RETOUR:**")
+                    for i, hop in enumerate(route_back):
+                        hop_name = hop['name']
+                        hop_id = hop.get('node_id')
+
+                        if i == 0:
+                            icon = "🏁"  # Origine (qui était destination)
+                        elif i == len(route_back) - 1:
+                            icon = "🎯"  # Destination (qui était origine)
+                        else:
+                            icon = "🔀"  # Relay
+
+                        if hop_id:
+                            lines.append(f"{icon} Hop {i}: {hop_name}")
+                            lines.append(f"   ID: !{hop_id:08x}")
+                        else:
+                            lines.append(f"{icon} {hop_name}")
+
+                        if i < len(route_back) - 1:
+                            lines.append("   ⬇️")
 
                 lines.append("")
                 lines.append(f"⏱️ Temps: {elapsed_time:.1f}s")
