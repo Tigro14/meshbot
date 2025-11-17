@@ -32,7 +32,7 @@ class NetworkCommands(TelegramCommandBase):
         """Commande /rx [page]"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         page = int(context.args[0]) if context.args else 1
@@ -42,14 +42,14 @@ class NetworkCommands(TelegramCommandBase):
             self.message_handler.remote_nodes_client.get_tigrog2_paginated,
             page
         )
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def nodes_command(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE):
         """Commande /nodes - Affiche tous les nœuds de tigrog2"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /nodes: {user.username}")
@@ -92,14 +92,14 @@ class NetworkCommands(TelegramCommandBase):
                 return f"❌ Erreur: {str(e)[:100]}"
 
         response = await asyncio.to_thread(get_nodes_list)
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def fullnodes_command(
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /fullnodes - Liste complète alphabétique des nœuds"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("Non autorisé")
+            await update.effective_message.reply_text("Non autorisé")
             return
 
         # Extraire le nombre de jours (optionnel, défaut 30)
@@ -111,7 +111,7 @@ class NetworkCommands(TelegramCommandBase):
                 requested_days = int(context.args[0])
                 if requested_days > max_days:
                     # ✅ Informer l'utilisateur si demande excessive
-                    await update.message.reply_text(
+                    await update.effective_message.reply_text(
                         f"⚠️ Maximum {max_days}j autorisé. Utilisation de {max_days}j."
                     )
                     days = max_days
@@ -158,9 +158,9 @@ class NetworkCommands(TelegramCommandBase):
             for i, chunk in enumerate(chunks):
                 if i > 0:
                     await asyncio.sleep(1)  # Éviter rate limiting
-                await update.message.reply_text(chunk)
+                await update.effective_message.reply_text(chunk)
         else:
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)
 
     async def nodeinfo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -171,11 +171,11 @@ class NetworkCommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         if not context.args:
-            await update.message.reply_text("Usage: /nodeinfo <nom_ou_id> [heures]\\nEx: /nodeinfo tigrobot\\nEx: /nodeinfo !16fad3dc")
+            await update.effective_message.reply_text("Usage: /nodeinfo <nom_ou_id> [heures]\\nEx: /nodeinfo tigrobot\\nEx: /nodeinfo !16fad3dc")
             return
 
         node_name_partial = context.args[0].lower()
@@ -202,7 +202,7 @@ class NetworkCommands(TelegramCommandBase):
         if len(response) > 4000:
             chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
             for chunk in chunks:
-                await update.message.reply_text(chunk)
+                await update.effective_message.reply_text(chunk)
                 await asyncio.sleep(0.5)
         else:
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)

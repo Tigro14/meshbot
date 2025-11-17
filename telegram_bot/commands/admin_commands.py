@@ -46,10 +46,10 @@ class AdminCommands(TelegramCommandBase):
         if len(response) > 4000:
             chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
             for chunk in chunks:
-                await update.message.reply_text(chunk)
+                await update.effective_message.reply_text(chunk)
                 await asyncio.sleep(0.5)
         else:
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)
 
     async def cleartraffic_command(self, update: Update,
                                    context: ContextTypes.DEFAULT_TYPE):
@@ -59,7 +59,7 @@ class AdminCommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /cleartraffic: {user.username}")
@@ -69,7 +69,7 @@ class AdminCommands(TelegramCommandBase):
             self.telegram.business_stats.clear_traffic_history
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def dbstats_command(self, update: Update,
                               context: ContextTypes.DEFAULT_TYPE):
@@ -79,7 +79,7 @@ class AdminCommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /dbstats: {user.username}")
@@ -89,7 +89,7 @@ class AdminCommands(TelegramCommandBase):
             self.telegram.business_stats.get_persistence_stats
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def cleanup_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
@@ -100,7 +100,7 @@ class AdminCommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Récupérer le nombre d'heures (par défaut 48)
@@ -120,7 +120,7 @@ class AdminCommands(TelegramCommandBase):
             hours
         )
 
-        await update.message.reply_text(response)
+        await update.effective_message.reply_text(response)
 
     async def db_command(self, update: Update,
                         context: ContextTypes.DEFAULT_TYPE):
@@ -135,7 +135,7 @@ class AdminCommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Parser les arguments
@@ -149,7 +149,7 @@ class AdminCommands(TelegramCommandBase):
             db_handler = self.telegram.message_handler.router.db_handler
 
             if not db_handler:
-                await update.message.reply_text("❌ Handler DB non disponible")
+                await update.effective_message.reply_text("❌ Handler DB non disponible")
                 return
 
             # Classe pour collecter la réponse au lieu de l'envoyer
@@ -189,15 +189,15 @@ class AdminCommands(TelegramCommandBase):
                 if len(collector.response) > 4000:
                     chunks = [collector.response[i:i+4000] for i in range(0, len(collector.response), 4000)]
                     for chunk in chunks:
-                        await update.message.reply_text(chunk)
+                        await update.effective_message.reply_text(chunk)
                         await asyncio.sleep(0.5)
                 else:
-                    await update.message.reply_text(collector.response)
+                    await update.effective_message.reply_text(collector.response)
             else:
-                await update.message.reply_text("❌ Aucune réponse du handler")
+                await update.effective_message.reply_text("❌ Aucune réponse du handler")
 
         except Exception as e:
             error_print(f"Erreur /db command: {e}")
             import traceback
             error_print(traceback.format_exc())
-            await update.message.reply_text(f"❌ Erreur: {str(e)[:100]}")
+            await update.effective_message.reply_text(f"❌ Erreur: {str(e)[:100]}")

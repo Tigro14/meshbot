@@ -21,12 +21,12 @@ class AICommands(TelegramCommandBase):
         """
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         # Vérifier qu'il y a bien une question
         if not context.args or len(context.args) == 0:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Usage: /bot <question>\n"
                 "Exemple: /bot Quelle est la météo ?"
             )
@@ -41,7 +41,7 @@ class AICommands(TelegramCommandBase):
 
         # Message d'attente pour les longues questions
         if len(question) > 100:
-            await update.message.reply_text("🤔 Réflexion en cours...")
+            await update.effective_message.reply_text("🤔 Réflexion en cours...")
 
         def query_ai():
             return self.message_handler.llama_client.query_llama_telegram(
@@ -49,17 +49,17 @@ class AICommands(TelegramCommandBase):
 
         try:
             response = await asyncio.to_thread(query_ai)
-            await update.message.reply_text(response)
+            await update.effective_message.reply_text(response)
         except Exception as e:
             error_print(f"Erreur /bot: {e}")
-            await update.message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
+            await update.effective_message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
 
     async def clearcontext_command(
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /clearcontext - Nettoyer le contexte"""
         user = update.effective_user
         if not self.check_authorization(user.id):
-            await update.message.reply_text("❌ Non autorisé")
+            await update.effective_message.reply_text("❌ Non autorisé")
             return
 
         info_print(f"📱 Telegram /clearcontext: {user.username}")
@@ -73,6 +73,6 @@ class AICommands(TelegramCommandBase):
         if node_id in self.context_manager.conversation_context:
             msg_count = len(self.context_manager.conversation_context[node_id])
             del self.context_manager.conversation_context[node_id]
-            await update.message.reply_text(f"✅ Contexte nettoyé ({msg_count} messages supprimés)")
+            await update.effective_message.reply_text(f"✅ Contexte nettoyé ({msg_count} messages supprimés)")
         else:
-            await update.message.reply_text("ℹ️ Pas de contexte actif")
+            await update.effective_message.reply_text("ℹ️ Pas de contexte actif")
