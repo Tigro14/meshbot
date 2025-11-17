@@ -62,12 +62,15 @@ class MeshTracerouteManager:
             target_node_id = target_node_id & 0xFFFFFFFF
             requester_id = requester_id & 0xFFFFFFFF
 
-            # Enregistrer la requête
+            # Enregistrer la requête avec le sender actuel
+            # IMPORTANT: On stocke le sender actuel car il peut être swappé (CLI)
+            # et la réponse arrivera plusieurs secondes après la restauration
             with self._lock:
                 self.pending_traces[target_node_id] = {
                     'requester_id': requester_id,
                     'requester_info': requester_info,
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'sender': self.message_sender  # Capturer le sender actuel (peut être CLI ou serial)
                 }
 
             target_name = self.node_manager.get_node_name(target_node_id)
@@ -152,11 +155,14 @@ class MeshTracerouteManager:
             requester_id = trace_data['requester_id']
             requester_info = trace_data['requester_info']
             elapsed = time.time() - trace_data['timestamp']
+            # Utiliser le sender stocké lors de la requête (peut être CLI ou serial)
+            trace_sender = trace_data.get('sender', self.message_sender)
 
             # Identifiant unique pour les logs
             trace_id = f"{from_id:08x}"
 
             info_print(f"[TRACE:{trace_id}] ✅ Réponse reçue ({elapsed:.1f}s)")
+            debug_print(f"[TRACE:{trace_id}]    Utilise sender: {type(trace_sender).__name__}")
 
             # Parser les routes aller/retour depuis le paquet
             route_forward, route_back = self._parse_traceroute_packet(packet)
@@ -172,7 +178,9 @@ class MeshTracerouteManager:
                 compact=True  # Format compact pour LoRa
             )
 
-            self.message_sender.send_chunks(
+            # Utiliser le sender stocké au lieu de self.message_sender
+            # Car le sender peut avoir été swappé puis restauré entre temps
+            trace_sender.send_chunks(
                 response,
                 requester_id,
                 requester_info
@@ -432,11 +440,13 @@ class MeshTracerouteManager:
                 target_name = self.node_manager.get_node_name(target_id)
                 requester_id = trace_data['requester_id']
                 requester_info = trace_data['requester_info']
+                # Utiliser le sender stocké (peut être CLI)
+                trace_sender = trace_data.get('sender', self.message_sender)
 
                 info_print(f"⏱️ Traceroute expiré: {target_name}")
 
                 try:
-                    self.message_sender.send_single(
+                    trace_sender.send_single(
                         f"⏱️ Timeout: {target_name}\nPas de réponse",
                         requester_id,
                         requester_info
