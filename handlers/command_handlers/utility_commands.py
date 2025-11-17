@@ -396,10 +396,11 @@ class UtilityCommands:
         # Traiter selon la sous-commande
         if subcommand == 'rain':
             # Graphe de précipitations (Mesh: 12h ultra-compact pour limites LoRa ~180 chars)
-            # 3 lignes seulement (top, middle, bottom) + pas de marqueur NOW
+            # 3 lignes seulement (top, middle, bottom)
+            # Démarrage à l'heure actuelle (au lieu de minuit) pour maximiser l'info future utile
             # Cache SQLite 5min via traffic_monitor.persistence
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
-            weather_data = get_rain_graph(location, days=days, max_hours=12, compact_mode=True, persistence=persistence)
+            weather_data = get_rain_graph(location, days=days, max_hours=12, compact_mode=True, persistence=persistence, start_at_current_time=True)
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Logger

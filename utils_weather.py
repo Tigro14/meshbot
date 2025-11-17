@@ -348,7 +348,7 @@ def get_weather_data(location=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -363,13 +363,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
         persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
+        start_at_current_time: Si True, démarre le graphe à l'heure actuelle au lieu de minuit
+                              (utile pour Mesh: affiche les prochaines heures au lieu du passé)
 
     Returns:
         str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
 
     Exemples:
-        >>> rain = get_rain_graph("Paris")  # Telegram: 38h, 5 lignes
-        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True)  # Mesh: 12h, 3 lignes
+        >>> rain = get_rain_graph("Paris")  # Telegram: 38h depuis minuit, 5 lignes
+        >>> rain = get_rain_graph("Paris", max_hours=12, compact_mode=True, start_at_current_time=True)  # Mesh: 12h depuis maintenant, 3 lignes
     """
     try:
         # Normaliser la location
@@ -377,7 +379,13 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             location = DEFAULT_LOCATION
 
         # Clé de cache (inclut tous les paramètres qui affectent le résultat)
-        cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
+        # Si start_at_current_time=True, inclure l'heure dans la clé pour éviter cache périmé
+        if start_at_current_time:
+            from datetime import datetime
+            current_hour = datetime.now().hour
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_now{current_hour}"
+        else:
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
 
         # Vérifier le cache SQLite (5 minutes)
         if persistence:
@@ -479,37 +487,54 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         # max_hours=24 → 48 chars (Mesh, compact, "today")
         # max_hours=38 → 76 chars (Telegram/CLI, optimal sans line wrap)
         truncate_width = max_hours * 2
+
+        # Calculer l'offset de départ si start_at_current_time=True
+        from datetime import datetime
+        current_hour = datetime.now().hour
+        current_minute = datetime.now().minute
+        start_offset = 0
+
+        if start_at_current_time:
+            # Démarrer à l'heure actuelle au lieu de minuit
+            start_offset = current_hour * 2
+            if current_minute >= 30:
+                start_offset += 1
+            debug_print(f"[RAIN DEBUG] Starting at current time: offset={start_offset} (hour={current_hour}, min={current_minute})")
+
         truncated_lines = []
         for line in cleaned_lines:
-            # Garder seulement les N premiers caractères
-            truncated = line[:truncate_width]
+            # Extraire la portion à afficher (depuis start_offset)
+            truncated = line[start_offset:start_offset + truncate_width]
             truncated_lines.append(truncated)
 
-        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h)")
+        debug_print(f"[RAIN DEBUG] Truncated to {truncate_width} chars ({max_hours}h) starting at offset {start_offset}")
 
         # Formater la sortie
         location_name = location if location else "local"
         max_str = f"{max_precip:.1f}mm"
 
-        # Calculer la position de l'heure actuelle pour le marqueur NOW
-        from datetime import datetime
-        current_hour = datetime.now().hour
-        current_minute = datetime.now().minute
-        # Position sur l'échelle (2 points/heure)
-        now_position = current_hour * 2
-        if current_minute >= 30:
-            now_position += 1
+        # Calculer la position du marqueur NOW (si on démarre à minuit)
+        # Si start_at_current_time=True, NOW est à position 0
+        now_position = -1  # -1 = pas de marqueur NOW
+        if not start_at_current_time:
+            # Position relative à minuit
+            now_position = current_hour * 2
+            if current_minute >= 30:
+                now_position += 1
+            # Ajuster pour l'offset (si on a commencé ailleurs que minuit)
+            now_position -= start_offset
 
         # Créer une échelle horaire (marqueurs toutes les 3h) avec marqueur NOW intégré
         # 2 points par heure
         hour_scale = []
         for i in range(truncate_width):
-            # 2 points par heure
-            hour = (i // 2) % 24
-            point_in_hour = i % 2
+            # Calculer l'heure réelle affichée (en tenant compte de l'offset)
+            actual_position = start_offset + i
+            hour = (actual_position // 2) % 24
+            point_in_hour = actual_position % 2
 
             # Priorité au marqueur NOW si on est à cette position
-            if i == now_position and now_position < truncate_width:
+            if i == now_position and 0 <= now_position < truncate_width:
                 hour_scale.append('↓')  # Marqueur "maintenant"
             # Sinon afficher l'heure sur le premier point de l'heure, toutes les 3h
             elif point_in_hour == 0 and hour % 3 == 0:
