@@ -243,22 +243,59 @@ class NetworkCommands:
                     return
 
                 # Chercher le nœud par nom (partiel) ou ID
-                target_node = None
+                matching_nodes = []
                 target_search = target_node_name.lower()
 
+                # Chercher dans remote_nodes
                 for node in remote_nodes:
                     node_name = node.get('name', '').lower()
                     node_id_hex = f"{node['id']:x}".lower()
 
                     # Correspondance par nom (partiel) ou ID (partiel)
                     if target_search in node_name or target_search in node_id_hex:
-                        target_node = node
-                        break
+                        matching_nodes.append(node)
 
-                if not target_node:
+                # Également chercher dans node_manager.node_names pour couvrir plus de nodes
+                if self.node_manager and hasattr(self.node_manager, 'node_names'):
+                    for node_id, node_data in self.node_manager.node_names.items():
+                        node_name = node_data.get('name', '').lower()
+                        node_id_hex = f"{node_id:x}".lower()
+                        
+                        # Correspondance par nom (partiel) ou ID (partiel)
+                        if target_search in node_name or target_search in node_id_hex:
+                            # Vérifier si pas déjà dans matching_nodes
+                            already_added = any(n['id'] == node_id for n in matching_nodes)
+                            if not already_added:
+                                matching_nodes.append({
+                                    'id': node_id,
+                                    'name': node_data.get('name', f"Node-{node_id:08x}")
+                                })
+
+                # Gérer les cas de correspondances multiples
+                if len(matching_nodes) == 0:
                     self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
                     return
+                elif len(matching_nodes) > 1:
+                    # Plusieurs correspondances: proposer les 5 premières
+                    max_display = min(5, len(matching_nodes))
+                    response_lines = [f"🔍 Plusieurs nœuds trouvés ({len(matching_nodes)}):"]
+                    
+                    for i, node in enumerate(matching_nodes[:max_display]):
+                        node_name = node.get('name', 'Unknown')
+                        node_id = node['id']
+                        response_lines.append(f"{i+1}. {node_name} (!{node_id:08x})")
+                    
+                    if len(matching_nodes) > max_display:
+                        response_lines.append(f"... et {len(matching_nodes) - max_display} autres")
+                    
+                    response_lines.append("Précisez le nom complet ou l'ID")
+                    
+                    response = "\n".join(response_lines)
+                    self.sender.send_chunks(response, sender_id, sender_info)
+                    return
 
+                # Une seule correspondance: continuer
+                target_node = matching_nodes[0]
                 target_node_id = target_node['id']
 
                 # Lancer le traceroute natif
