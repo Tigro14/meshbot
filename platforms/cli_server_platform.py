@@ -57,6 +57,25 @@ class CLIMessageSender:
         """Pas de throttling pour CLI locale"""
         return True
 
+    def get_short_name(self, node_id):
+        """Obtenir le nom court d'un nœud (pour compatibilité avec MessageSender)"""
+        # Pour CLI, on peut essayer de récupérer depuis la plateforme ou utiliser un fallback
+        try:
+            # Accéder au node_manager via la plateforme CLI si disponible
+            if hasattr(self.cli_platform, 'node_manager'):
+                node_manager = self.cli_platform.node_manager
+                if hasattr(node_manager, 'get_node_name'):
+                    name = node_manager.get_node_name(node_id)
+                    if name and name != "unknown":
+                        # Prendre les 4 premiers caractères du nom
+                        return name[:4] if len(name) > 4 else name
+            
+            # Fallback : 4 derniers caractères de l'ID en hex
+            return f"{node_id:08x}"[-4:]
+        except Exception as e:
+            error_print(f"Erreur get_short_name CLI: {e}")
+            return f"{node_id:08x}"[-4:]
+
 
 class CLIInterfaceWrapper:
     """
