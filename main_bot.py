@@ -413,8 +413,14 @@ class MeshBot:
             # ABONNEMENT AUX MESSAGES (CRITIQUE!)
             # ========================================
             # DOIT être fait immédiatement après la création de l'interface
+            # S'abonner aux différents types de messages Meshtastic
+            # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
+            # - meshtastic.receive.data : messages de données
+            # - meshtastic.receive : messages génériques (fallback)
+            pub.subscribe(self.on_message, "meshtastic.receive.text")
+            pub.subscribe(self.on_message, "meshtastic.receive.data")
             pub.subscribe(self.on_message, "meshtastic.receive")
-            info_print("✅ Abonné aux messages Meshtastic")
+            info_print("✅ Abonné aux messages Meshtastic (text, data, all)")
             self.running = True
 
             # ========================================
