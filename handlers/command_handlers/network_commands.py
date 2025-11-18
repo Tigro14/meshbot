@@ -237,49 +237,50 @@ class NetworkCommands:
                     return
 
                 # Chercher le node_id du nœud cible
-                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
-                if not remote_nodes:
-                    self.sender.send_single(f"⚠️ {REMOTE_NODE_NAME} inaccessible", sender_id, sender_info)
-                    return
-
-                # Chercher le nœud par nom (partiel) ou ID
+                # Chercher d'abord dans node_manager (SQLite DB) pour éviter les appels TCP inutiles
                 matching_nodes = []
                 exact_matches = []
                 target_search = target_node_name.lower()
 
-                # Chercher dans remote_nodes
-                for node in remote_nodes:
-                    node_name = node.get('name', '').lower()
-                    node_id_hex = f"{node['id']:x}".lower()
-
-                    # Vérifier correspondance exacte d'abord
-                    if target_search == node_name or target_search == node_id_hex:
-                        exact_matches.append(node)
-                    # Sinon correspondance partielle
-                    elif target_search in node_name or target_search in node_id_hex:
-                        matching_nodes.append(node)
-
-                # Également chercher dans node_manager.node_names pour couvrir plus de nodes
+                # PRIORITÉ 1: Chercher dans node_manager.node_names (SQLite DB - pas de TCP)
                 if self.node_manager and hasattr(self.node_manager, 'node_names'):
                     for node_id, node_data in self.node_manager.node_names.items():
                         node_name = node_data.get('name', '').lower()
                         node_id_hex = f"{node_id:x}".lower()
                         
-                        # Vérifier si pas déjà dans exact_matches ou matching_nodes
-                        already_added = any(n['id'] == node_id for n in exact_matches + matching_nodes)
-                        if not already_added:
-                            # Vérifier correspondance exacte d'abord
-                            if target_search == node_name or target_search == node_id_hex:
-                                exact_matches.append({
-                                    'id': node_id,
-                                    'name': node_data.get('name', f"Node-{node_id:08x}")
-                                })
-                            # Sinon correspondance partielle
-                            elif target_search in node_name or target_search in node_id_hex:
-                                matching_nodes.append({
-                                    'id': node_id,
-                                    'name': node_data.get('name', f"Node-{node_id:08x}")
-                                })
+                        # Vérifier correspondance exacte d'abord
+                        if target_search == node_name or target_search == node_id_hex:
+                            exact_matches.append({
+                                'id': node_id,
+                                'name': node_data.get('name', f"Node-{node_id:08x}")
+                            })
+                        # Sinon correspondance partielle
+                        elif target_search in node_name or target_search in node_id_hex:
+                            matching_nodes.append({
+                                'id': node_id,
+                                'name': node_data.get('name', f"Node-{node_id:08x}")
+                            })
+
+                # PRIORITÉ 2: Si aucun résultat dans node_manager, chercher via TCP (remote_nodes)
+                # Ceci évite les cache miss inutiles quand les nodes sont déjà en DB
+                if len(exact_matches) == 0 and len(matching_nodes) == 0:
+                    debug_print("🔍 Aucun nœud trouvé dans node_manager, recherche via TCP...")
+                    remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                    if not remote_nodes:
+                        self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
+                        return
+
+                    # Chercher dans remote_nodes
+                    for node in remote_nodes:
+                        node_name = node.get('name', '').lower()
+                        node_id_hex = f"{node['id']:x}".lower()
+
+                        # Vérifier correspondance exacte d'abord
+                        if target_search == node_name or target_search == node_id_hex:
+                            exact_matches.append(node)
+                        # Sinon correspondance partielle
+                        elif target_search in node_name or target_search in node_id_hex:
+                            matching_nodes.append(node)
 
                 # Priorité aux correspondances exactes
                 if len(exact_matches) == 1:
