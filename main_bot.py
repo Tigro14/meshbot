@@ -102,13 +102,18 @@ class MeshBot:
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
 
+        # Debug: Tracer TOUS les appels à on_message
+        debug_print(f"🔍 on_message APPELÉ - packet keys: {list(packet.keys()) if packet else 'None'}, interface: {interface is not None}")
+
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
             if interface is None:
                 interface = self.interface
+                debug_print(f"🔍 Interface était None, utilisation de self.interface")
                 
             # ========== VALIDATION BASIQUE ==========
             if not packet or 'from' not in packet:
+                debug_print(f"🔍 Validation échouée: packet={packet is not None}, has_from={'from' in packet if packet else False}")
                 return
 
             from_id = packet.get('from', 0)
@@ -425,7 +430,22 @@ class MeshBot:
             # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
             # - meshtastic.receive.data : messages de données
             # - meshtastic.receive : messages génériques (fallback)
+            
+            # Debug: Créer un callback de débogage pour voir ce qui est reçu
+            def debug_callback(**kwargs):
+                """Callback de debug pour tracer tous les messages pubsub"""
+                debug_print(f"🔍 DEBUG PUBSUB - Reçu avec args: {list(kwargs.keys())}")
+                if 'packet' in kwargs:
+                    pkt = kwargs['packet']
+                    from_id = pkt.get('from', 'N/A')
+                    to_id = pkt.get('to', 'N/A')
+                    decoded = pkt.get('decoded', {})
+                    portnum = decoded.get('portnum', 'N/A')
+                    debug_print(f"🔍 DEBUG PUBSUB - from={from_id}, to={to_id}, portnum={portnum}")
+            
+            # S'abonner avec le callback principal ET le callback de debug
             pub.subscribe(self.on_message, "meshtastic.receive.text")
+            pub.subscribe(debug_callback, "meshtastic.receive.text")
             pub.subscribe(self.on_message, "meshtastic.receive.data")
             pub.subscribe(self.on_message, "meshtastic.receive")
             info_print("✅ Abonné aux messages Meshtastic (text, data, all)")
