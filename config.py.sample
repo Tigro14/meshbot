@@ -3,30 +3,55 @@
 Configuration centralisée pour le bot Meshtastic
 """
 
-# Configuration Meshtastic
+# ========================================
+# CONFIGURATION MODE DE CONNEXION
+# ========================================
+
+# Mode de connexion au réseau Meshtastic
+# Options disponibles:
+#   'serial' - Connexion via port série USB/UART (configuration classique)
+#   'tcp'    - Connexion via réseau TCP/IP à un node distant (WiFi/Ethernet)
+#
+# NOTE: En mode single-node (recommandé pour simplicité):
+#   - Choisir 'serial' pour un node connecté directement au RPi
+#   - Choisir 'tcp' pour un node ROUTER accessible en réseau
+CONNECTION_MODE = 'serial'  # 'serial' ou 'tcp'
+
+# Configuration connexion série (utilisée si CONNECTION_MODE='serial')
 SERIAL_PORT = "/dev/ttyACM0"
 
-# Configuration Llama
-LLAMA_HOST = "127.0.0.1"
-LLAMA_PORT = 8080
+# Configuration connexion TCP (utilisée si CONNECTION_MODE='tcp')
+TCP_HOST = "192.168.1.38"
+TCP_PORT = 4403
 
-# Configuration ESPHome
-ESPHOME_HOST = "192.168.1.27"
-ESPHOME_PORT = 80
+# ========================================
+# CONFIGURATION ARCHITECTURE MULTI-NODES (LEGACY)
+# ========================================
+# NOTE: Configuration legacy pour compatibilité avec l'architecture multi-nodes
+# Cette section sera progressivement dépréciée au profit du mode single-node
 
-# Configuration nœuds distants
+# Configuration nœuds distants (pour requêtes de statistiques uniquement)
 REMOTE_NODE_HOST = "192.168.1.38"
 REMOTE_NODE_NAME = "tigrog2"
 TIGROG2_NODE_ID = 0x16fad3dc
 
-# ========================================
-# CONFIGURATION ARCHITECTURE NŒUDS
-# ========================================
-
-# Traiter les commandes depuis tigrog2 (TCP) en plus du serial
-# True = Accepter commandes de tigrobot (serial) ET tigrog2 (TCP) - Configuration hybride
-# False = Accepter commandes UNIQUEMENT de tigrobot (serial) - Configuration historique
+# Traiter les commandes depuis TCP en mode multi-nodes
+# True = Accepter commandes de SERIAL ET TCP - Configuration hybride (legacy)
+# False = Accepter commandes UNIQUEMENT de SERIAL - Configuration historique
+# NOTE: En mode single-node (CONNECTION_MODE='tcp'), cette option est ignorée
 PROCESS_TCP_COMMANDS = False  # Activer pour tester tigrog2 comme node messageable
+
+# ========================================
+# CONFIGURATION LLAMA.CPP
+# ========================================
+LLAMA_HOST = "127.0.0.1"
+LLAMA_PORT = 8080
+
+# ========================================
+# CONFIGURATION ESPHOME
+# ========================================
+ESPHOME_HOST = "192.168.1.27"
+ESPHOME_PORT = 80
 
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
@@ -165,7 +190,7 @@ CLI_TO_MESH_MAPPING = {
 
 # Utilisateurs Telegram à alerter (IDs Telegram)
 # Si vide, utilise TELEGRAM_AUTHORIZED_USERS
-TELEGRAM_ALERT_USERS = [010000000]  # Ajouter les IDs des utilisateurs à alerter
+TELEGRAM_ALERT_USERS = [123456789]  # Ajouter les IDs des utilisateurs à alerter (remplacer par vos IDs)
 
 # Configuration monitoring température CPU
 TEMP_WARNING_ENABLED = True  # Activer/désactiver les alertes température
