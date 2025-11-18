@@ -85,7 +85,7 @@ class MeshBot:
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
 
-    def on_message(self, packet, interface):
+    def on_message(self, packet, interface=None):
         """
         Gestionnaire des messages reçus
         
@@ -96,9 +96,17 @@ class MeshBot:
         En mode legacy (multi-nodes):
         - Architecture en 3 phases pour distinguer serial/TCP
         - Filtrage selon PROCESS_TCP_COMMANDS
+        
+        Args:
+            packet: Packet Meshtastic reçu
+            interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
 
         try:
+            # Si pas d'interface fournie, utiliser l'interface principale
+            if interface is None:
+                interface = self.interface
+                
             # ========== VALIDATION BASIQUE ==========
             if not packet or 'from' not in packet:
                 return
