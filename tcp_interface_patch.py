@@ -32,7 +32,8 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
         
         # Paramètres d'optimisation
-        self.read_timeout = kwargs.pop('read_timeout', 1.0)  # Timeout select()
+        # Augmenté de 1.0 → 0.1 pour réduire CPU (select() appelé moins souvent)
+        self.read_timeout = kwargs.pop('read_timeout', 0.1)  # Timeout select() - réduit pour latence acceptable
         self.socket_timeout = kwargs.pop('socket_timeout', 5.0)  # Timeout socket général
         
         # Appeler le constructeur parent
@@ -75,24 +76,29 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
             if not ready:
                 # Timeout: aucune donnée disponible (NORMAL, pas d'erreur)
+                # Ne PAS logger ici - appelé des milliers de fois par seconde
                 return b''
             
             # Socket prêt: lire les données de manière bloquante
             data = self.socket.recv(length)
             
             if not data:
-                # Connexion fermée
-                debug_print("Connexion TCP fermée (recv retourne vide)")
+                # Connexion fermée - logger seulement en mode debug
+                # pour éviter spam dans les logs
+                if globals().get('DEBUG_MODE', False):
+                    debug_print("Connexion TCP fermée (recv retourne vide)")
                 return b''
             
             return data
             
         except socket.timeout:
-            # Timeout normal, retourner vide
+            # Timeout normal, retourner vide (ne PAS logger)
             return b''
             
         except socket.error as e:
-            error_print(f"Erreur socket lors de la lecture: {e}")
+            # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
+            if e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
+                error_print(f"Erreur socket lors de la lecture: {e}")
             return b''
             
         except Exception as e:
