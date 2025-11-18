@@ -19,6 +19,15 @@ REMOTE_NODE_HOST = "192.168.1.38"
 REMOTE_NODE_NAME = "tigrog2"
 TIGROG2_NODE_ID = 0x16fad3dc
 
+# ========================================
+# CONFIGURATION ARCHITECTURE NŒUDS
+# ========================================
+
+# Traiter les commandes depuis tigrog2 (TCP) en plus du serial
+# True = Accepter commandes de tigrobot (serial) ET tigrog2 (TCP) - Configuration hybride
+# False = Accepter commandes UNIQUEMENT de tigrobot (serial) - Configuration historique
+PROCESS_TCP_COMMANDS = False  # Activer pour tester tigrog2 comme node messageable
+
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
 NODE_UPDATE_INTERVAL = 300  # 5 minutes

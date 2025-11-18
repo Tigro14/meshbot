@@ -136,12 +136,15 @@ class MeshBot:
             # ========================================
             # PHASE 2: FILTRAGE
             # ========================================
-            # Seuls les messages de l'interface série déclenchent des commandes
-            if not is_from_serial:
-                debug_print(f"📊 Paquet de {source} collecté pour stats")
+            # Filtrage selon la configuration
+            # Si PROCESS_TCP_COMMANDS=False, seuls les messages série déclenchent des commandes
+            # Si PROCESS_TCP_COMMANDS=True, les messages TCP (tigrog2) sont aussi traités
+            if not is_from_serial and not globals().get('PROCESS_TCP_COMMANDS', False):
+                debug_print(f"📊 Paquet de {source} collecté pour stats uniquement")
                 return
             
-            # À partir d'ici, seuls les messages série sont traités
+            # À partir d'ici, les messages sont traités pour les commandes
+            # (serial toujours, TCP si PROCESS_TCP_COMMANDS=True)
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
