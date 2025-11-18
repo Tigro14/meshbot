@@ -107,6 +107,15 @@ pip install meshtastic pypubsub requests python-telegram-bot \
    ```bash
    cp config.py.sample config.py
    ```
+   
+   **OU** utiliser un exemple prêt à l'emploi :
+   ```bash
+   # Pour mode Serial (connexion USB)
+   cp config.serial.example config.py
+   
+   # Pour mode TCP (connexion réseau)
+   cp config.tcp.example config.py
+   ```
 
 2. **Éditer `config.py` avec vos paramètres**
 
@@ -168,6 +177,9 @@ Node Meshtastic ROUTER (extérieur, antenne optimale)
         ↓ LoRa
 Réseau mesh Meshtastic
 ```
+
+**Pour les utilisateurs existants :**
+Si vous migrez depuis l'ancienne architecture multi-nodes, consultez [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md).
 
 ### Installation en tant que service systemd
 
