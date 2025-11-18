@@ -237,29 +237,91 @@ class NetworkCommands:
                     return
 
                 # Chercher le node_id du nœud cible
-                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
-                if not remote_nodes:
-                    self.sender.send_single(f"⚠️ {REMOTE_NODE_NAME} inaccessible", sender_id, sender_info)
-                    return
-
-                # Chercher le nœud par nom (partiel) ou ID
-                target_node = None
+                # Chercher d'abord dans node_manager (SQLite DB) pour éviter les appels TCP inutiles
+                matching_nodes = []
+                exact_matches = []
                 target_search = target_node_name.lower()
 
-                for node in remote_nodes:
-                    node_name = node.get('name', '').lower()
-                    node_id_hex = f"{node['id']:x}".lower()
+                # PRIORITÉ 1: Chercher dans node_manager.node_names (SQLite DB - pas de TCP)
+                if self.node_manager and hasattr(self.node_manager, 'node_names'):
+                    for node_id, node_data in self.node_manager.node_names.items():
+                        node_name = node_data.get('name', '').lower()
+                        node_id_hex = f"{node_id:x}".lower()
+                        
+                        # Vérifier correspondance exacte d'abord
+                        if target_search == node_name or target_search == node_id_hex:
+                            exact_matches.append({
+                                'id': node_id,
+                                'name': node_data.get('name', f"Node-{node_id:08x}")
+                            })
+                        # Sinon correspondance partielle
+                        elif target_search in node_name or target_search in node_id_hex:
+                            matching_nodes.append({
+                                'id': node_id,
+                                'name': node_data.get('name', f"Node-{node_id:08x}")
+                            })
 
-                    # Correspondance par nom (partiel) ou ID (partiel)
-                    if target_search in node_name or target_search in node_id_hex:
-                        target_node = node
-                        break
+                # PRIORITÉ 2: Si aucun résultat dans node_manager, chercher via TCP (remote_nodes)
+                # Ceci évite les cache miss inutiles quand les nodes sont déjà en DB
+                if len(exact_matches) == 0 and len(matching_nodes) == 0:
+                    debug_print("🔍 Aucun nœud trouvé dans node_manager, recherche via TCP...")
+                    remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+                    if not remote_nodes:
+                        self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
+                        return
 
-                if not target_node:
+                    # Chercher dans remote_nodes
+                    for node in remote_nodes:
+                        node_name = node.get('name', '').lower()
+                        node_id_hex = f"{node['id']:x}".lower()
+
+                        # Vérifier correspondance exacte d'abord
+                        if target_search == node_name or target_search == node_id_hex:
+                            exact_matches.append(node)
+                        # Sinon correspondance partielle
+                        elif target_search in node_name or target_search in node_id_hex:
+                            matching_nodes.append(node)
+
+                # Priorité aux correspondances exactes
+                if len(exact_matches) == 1:
+                    # Une seule correspondance exacte: utiliser directement
+                    target_node = exact_matches[0]
+                    target_node_id = target_node['id']
+                elif len(exact_matches) > 1:
+                    # Plusieurs correspondances exactes: afficher la liste
+                    all_matches = exact_matches
+                elif len(exact_matches) == 0 and len(matching_nodes) == 1:
+                    # Une seule correspondance partielle: utiliser directement
+                    target_node = matching_nodes[0]
+                    target_node_id = target_node['id']
+                elif len(exact_matches) == 0 and len(matching_nodes) > 1:
+                    # Plusieurs correspondances partielles: afficher la liste
+                    all_matches = matching_nodes
+                else:
+                    # Aucune correspondance
                     self.sender.send_single(f"❌ Nœud '{target_node_name}' introuvable", sender_id, sender_info)
                     return
 
-                target_node_id = target_node['id']
+                # Si on a défini all_matches, afficher la liste
+                if 'all_matches' in locals():
+                    max_display = min(5, len(all_matches))
+                    response_lines = [f"🔍 Plusieurs nœuds trouvés ({len(all_matches)}):"]
+                    
+                    for i, node in enumerate(all_matches[:max_display]):
+                        node_name = node.get('name', 'Unknown')
+                        node_id = node['id']
+                        response_lines.append(f"{i+1}. {node_name} (!{node_id:08x})")
+                    
+                    if len(all_matches) > max_display:
+                        response_lines.append(f"... et {len(all_matches) - max_display} autres")
+                    
+                    response_lines.append("Précisez le nom complet ou l'ID")
+                    
+                    response = "\n".join(response_lines)
+                    self.sender.send_chunks(response, sender_id, sender_info)
+                    return
+
+                # Si on arrive ici, target_node et target_node_id sont définis (une seule correspondance)
 
                 # Lancer le traceroute natif
                 info_print(f"🚀 Lancement traceroute natif vers 0x{target_node_id:08x}")

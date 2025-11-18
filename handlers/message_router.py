@@ -172,7 +172,7 @@ class MessageRouter:
             self.utility_handler.handle_channel_debug(sender_id, sender_info)
         elif message.startswith('/legend'):
             self.utility_handler.handle_legend(sender_id, sender_info)
-        elif message.startswith('/help'):
+        elif message.startswith('/help') or message.startswith('/?'):
             self.utility_handler.handle_help(sender_id, sender_info)
         
         # Commande inconnue

@@ -190,6 +190,45 @@ CLI_SERVER_PORT = 9999
 - Superseded by `/stats` command
 - ~60 lines of code removed
 
+### Hybrid Node Configuration (November 2025)
+
+New configuration option to enable dual-node command processing:
+
+**Key Features:**
+- **PROCESS_TCP_COMMANDS**: Toggle to accept commands from both serial and TCP nodes
+- **Backward Compatible**: Default to False preserves historical serial-only behavior
+- **Gradual Migration**: Test external node (tigrog2) while keeping serial node (tigrobot) active
+- **Stats Collection**: Both nodes continue to feed traffic statistics regardless of setting
+
+**Configuration:**
+```python
+PROCESS_TCP_COMMANDS = False  # Default: serial-only (historical)
+PROCESS_TCP_COMMANDS = True   # Enable: accept commands from both serial and TCP
+```
+
+**Architecture Change:**
+- **Before**: Only serial interface (tigrobot) could trigger commands, TCP (tigrog2) was stats-only
+- **After**: Both serial (tigrobot) and TCP (tigrog2) can trigger commands when enabled
+- **Phase 2 Filtering**: Modified in `main_bot.py` to respect PROCESS_TCP_COMMANDS setting
+
+**Use Cases:**
+- Test external node (tigrog2) reliability before full migration
+- Compare performance between serial and TCP command processing
+- Gradually transition from indoor antenna (tigrobot) to outdoor antenna (tigrog2)
+- Maintain redundancy during testing period
+
+**Migration Path:**
+1. Set `PROCESS_TCP_COMMANDS = True` in `config.py` - Enable hybrid mode
+2. Test tigrog2 command processing for 24-48h
+3. Monitor logs and performance
+4. If stable, can disable tigrobot or set `PROCESS_TCP_COMMANDS = False` for rollback
+
+**Implementation Details:**
+- Configuration option added to `config.py.sample` after line 20
+- Phase 2 filtering logic in `main_bot.py` uses `globals().get('PROCESS_TCP_COMMANDS', False)`
+- Clear debug messages differentiate stats-only vs command processing modes
+- No impact on statistics collection (both nodes always contribute to traffic analytics)
+
 ### Database Management System (November 2025)
 
 New unified `/db` command for database operations:
