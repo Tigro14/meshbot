@@ -91,21 +91,6 @@ class MeshTracerouteManager:
 
             # Envoyer paquet TRACEROUTE_APP
             # L'API Meshtastic attend un paquet vide ou un RouteDiscovery message
-            
-            # Vérifier si l'interface est disponible pour sendData
-            # (CLI interface wrapper n'implémente que sendText)
-            if hasattr(interface, '__class__') and 'CLIInterfaceWrapper' in interface.__class__.__name__:
-                # Interface CLI - ne peut pas envoyer de paquets TRACEROUTE_APP
-                error_msg = "❌ Traceroute non disponible en mode CLI\n💡 Utilisez le mesh direct pour /trace"
-                self.message_sender.send_single(error_msg, requester_id, requester_info)
-                
-                # Cleanup
-                with self._lock:
-                    if target_node_id in self.pending_traces:
-                        del self.pending_traces[target_node_id]
-                
-                return False
-            
             try:
                 interface.sendData(
                     data=b'',  # Paquet vide pour initier traceroute
@@ -127,10 +112,17 @@ class MeshTracerouteManager:
                 return True
                 
             except BrokenPipeError as e:
-                # Interface fermée/cassée - probablement CLI ou interface temporaire
-                error_print(f"❌ Erreur BrokenPipe lors envoi traceroute: {e}")
-                error_msg = "❌ Interface non disponible\n💡 La commande /trace nécessite une connexion mesh active"
-                self.message_sender.send_single(error_msg, requester_id, requester_info)
+                # Interface cassée - probablement connexion TCP fermée
+                error_print(f"❌ BrokenPipe lors envoi traceroute: {e}")
+                error_print(f"   Interface type: {type(interface).__name__}")
+                error_print(f"   Interface details: {interface if hasattr(interface, '__dict__') else 'N/A'}")
+                
+                # Message d'erreur à l'utilisateur
+                self.message_sender.send_single(
+                    f"❌ Erreur: Interface Meshtastic déconnectée\n💡 Vérifiez la connexion mesh",
+                    requester_id,
+                    requester_info
+                )
                 
                 # Cleanup
                 with self._lock:
