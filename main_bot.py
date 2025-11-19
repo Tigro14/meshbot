@@ -11,6 +11,7 @@ import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
 from pubsub import pub
+from meshtastic.protobuf import portnums_pb2, telemetry_pb2
 
 # Imports des modules
 from config import *
@@ -82,6 +83,9 @@ class MeshBot:
         # Format: {message_hash: timestamp}
         self._recent_broadcasts = {}
         self._broadcast_dedup_window = 60  # Fenêtre de 60 secondes
+        
+        # Timer pour télémétrie ESPHome
+        self._last_telemetry_broadcast = 0
         
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
@@ -433,6 +437,22 @@ class MeshBot:
                 if self.blitz_monitor and self.blitz_monitor.enabled:
                     self.blitz_monitor.check_and_report()
 
+                # ========================================
+                # BROADCAST TÉLÉMÉTRIE ESPHOME
+                # ========================================
+                # Vérifier si il est temps d'envoyer la télémétrie
+                telemetry_enabled = globals().get('ESPHOME_TELEMETRY_ENABLED', True)
+                telemetry_interval = globals().get('ESPHOME_TELEMETRY_INTERVAL', 3600)
+                
+                if telemetry_enabled and self.interface:
+                    current_time = time.time()
+                    time_since_last = current_time - self._last_telemetry_broadcast
+                    
+                    if time_since_last >= telemetry_interval:
+                        debug_print(f"⏰ Broadcast télémétrie ESPHome (intervalle: {telemetry_interval}s)")
+                        self.send_esphome_telemetry()
+                        self._last_telemetry_broadcast = current_time
+
                 debug_print("✅ Mise à jour périodique terminée")
                 
             except Exception as e:
@@ -458,6 +478,77 @@ class MeshBot:
                 debug_print(f"Erreur cleanup traceroutes: {e}")
 
         gc.collect()
+
+    def send_esphome_telemetry(self):
+        """
+        Envoyer les données ESPHome comme télémétrie broadcast sur le mesh
+        
+        Broadcast les capteurs ESPHome (température, pression, humidité, batterie)
+        au réseau mesh via TELEMETRY_APP pour que tous les nodes puissent voir
+        les conditions environnementales du node bot.
+        """
+        try:
+            # Vérifier que la télémétrie est activée
+            if not globals().get('ESPHOME_TELEMETRY_ENABLED', True):
+                return
+            
+            # Récupérer les valeurs des capteurs
+            sensor_values = self.esphome_client.get_sensor_values()
+            
+            if not sensor_values:
+                debug_print("⚠️ Pas de données ESPHome disponibles pour télémétrie")
+                return
+            
+            # Créer le message de télémétrie
+            telemetry_data = telemetry_pb2.Telemetry()
+            telemetry_data.time = int(time.time())
+            
+            # Ajouter les métriques environnementales
+            has_data = False
+            
+            if sensor_values.get('temperature') is not None:
+                telemetry_data.environment_metrics.temperature = sensor_values['temperature']
+                has_data = True
+                info_print(f"📊 Télémétrie - Température: {sensor_values['temperature']:.1f}°C")
+            
+            if sensor_values.get('pressure') is not None:
+                # La pression est déjà en Pascals (converti dans get_sensor_values)
+                telemetry_data.environment_metrics.barometric_pressure = sensor_values['pressure']
+                has_data = True
+                info_print(f"📊 Télémétrie - Pression: {sensor_values['pressure']:.0f} Pa")
+            
+            if sensor_values.get('humidity') is not None:
+                telemetry_data.environment_metrics.relative_humidity = sensor_values['humidity']
+                has_data = True
+                info_print(f"📊 Télémétrie - Humidité: {sensor_values['humidity']:.1f}%")
+            
+            # Pour la tension batterie, utiliser device_metrics
+            if sensor_values.get('battery_voltage') is not None:
+                # Calculer le niveau de batterie en % (11V = 0%, 13.8V = 100%)
+                battery_level = min(100, max(0, int((sensor_values['battery_voltage'] - 11.0) / (13.8 - 11.0) * 100)))
+                telemetry_data.device_metrics.battery_level = battery_level
+                telemetry_data.device_metrics.voltage = sensor_values['battery_voltage']
+                has_data = True
+                info_print(f"📊 Télémétrie - Batterie: {sensor_values['battery_voltage']:.1f}V ({battery_level}%)")
+            
+            if not has_data:
+                debug_print("⚠️ Aucune donnée à envoyer en télémétrie")
+                return
+            
+            # Envoyer en broadcast via TELEMETRY_APP
+            info_print("📡 Envoi télémétrie ESPHome en broadcast...")
+            self.interface.sendData(
+                telemetry_data,
+                destinationId=0xFFFFFFFF,  # Broadcast
+                portNum=portnums_pb2.PortNum.TELEMETRY_APP,
+                wantResponse=False
+            )
+            
+            info_print("✅ Télémétrie ESPHome envoyée avec succès")
+            
+        except Exception as e:
+            error_print(f"Erreur envoi télémétrie ESPHome: {e}")
+            error_print(traceback.format_exc())
     
     def start(self):
         """Démarrage du bot - version simplifiée avec support TCP/Serial"""
