@@ -123,17 +123,31 @@ class MeshBot:
             bool: True si c'est un broadcast récent que nous avons envoyé
         """
         import hashlib
-        msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
-        current_time = time.time()
-        
-        # Vérifier si le hash existe et est récent
-        if msg_hash in self._recent_broadcasts:
-            age = current_time - self._recent_broadcasts[msg_hash]
-            if age < self._broadcast_dedup_window:
-                debug_print(f"🔍 Broadcast reconnu ({age:.1f}s): {msg_hash[:8]}...")
-                return True
-        
-        return False
+        try:
+            msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+            current_time = time.time()
+            
+            # Vérifier si le hash existe et est récent
+            if msg_hash in self._recent_broadcasts:
+                age = current_time - self._recent_broadcasts[msg_hash]
+                if age < self._broadcast_dedup_window:
+                    debug_print(f"🔍 Broadcast reconnu ({age:.1f}s): {msg_hash[:8]}... | msg: '{message[:50]}'")
+                    return True
+                else:
+                    # Hash existe mais est expiré, le nettoyer
+                    debug_print(f"🧹 Broadcast expiré ({age:.1f}s): {msg_hash[:8]}...")
+                    del self._recent_broadcasts[msg_hash]
+            
+            # Debug: afficher l'état des broadcasts trackés
+            if DEBUG_MODE and len(self._recent_broadcasts) > 0:
+                debug_print(f"📊 Broadcasts trackés: {len(self._recent_broadcasts)} actifs")
+            
+            return False
+        except Exception as e:
+            error_print(f"Erreur dans _is_recent_broadcast: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return False  # En cas d'erreur, ne pas filtrer
 
     def on_message(self, packet, interface=None):
         """
@@ -288,16 +302,27 @@ class MeshBot:
                     return
                 
                 # ========================================
-                # DÉDUPLICATION BROADCASTS
+                # DÉDUPLICATION BROADCASTS - TEMPORAIREMENT DÉSACTIVÉE
                 # ========================================
-                # Filtrer les broadcasts que nous venons d'envoyer via tigrog2
-                # pour éviter une boucle de traitement
-                if is_broadcast and self._is_recent_broadcast(message):
-                    debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
-                    # Enregistrer quand même pour les stats
-                    if message and is_broadcast and not is_from_me:
-                        self.traffic_monitor.add_public_message(packet, message, source='local')
-                    return
+                # TODO: Réactiver après investigation du problème "deaf"
+                # La logique de déduplication cause un problème où le bot devient
+                # "sourd" aux commandes. Désactivée temporairement pour diagnostic.
+                #
+                # Code original (désactivé):
+                # if is_broadcast and self._is_recent_broadcast(message):
+                #     debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
+                #     if message and not is_from_me:
+                #         self.traffic_monitor.add_public_message(packet, message, source='local')
+                #     return
+                
+                # Pour le moment, on log juste pour diagnostiquer
+                if is_broadcast and len(self._recent_broadcasts) > 0:
+                    try:
+                        if self._is_recent_broadcast(message):
+                            info_print(f"⚠️ DEDUP: Broadcast qui serait filtré: '{message[:50]}'")
+                            info_print(f"⚠️ DEDUP: Mais on le traite quand même pour diagnostic")
+                    except Exception as e:
+                        error_print(f"Erreur check dedup: {e}")
                 
                 info_print("=" * 60)
                 info_print(f"📨 MESSAGE REÇU")
