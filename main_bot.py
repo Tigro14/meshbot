@@ -543,12 +543,16 @@ class MeshBot:
                     portnum = decoded.get('portnum', 'N/A')
                     debug_print(f"🔍 DEBUG PUBSUB - from={from_id}, to={to_id}, portnum={portnum}")
             
-            # S'abonner avec le callback principal ET le callback de debug
-            pub.subscribe(self.on_message, "meshtastic.receive.text")
-            pub.subscribe(debug_callback, "meshtastic.receive.text")
-            pub.subscribe(self.on_message, "meshtastic.receive.data")
+            # S'abonner avec le callback principal
+            # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
+            # (ce topic catch ALL messages: text, data, position, etc.)
             pub.subscribe(self.on_message, "meshtastic.receive")
-            info_print("✅ Abonné aux messages Meshtastic (text, data, all)")
+            
+            # Debug callback seulement si DEBUG_MODE
+            if globals().get('DEBUG_MODE', False):
+                pub.subscribe(debug_callback, "meshtastic.receive")
+            
+            info_print("✅ Abonné aux messages Meshtastic (receive)")
             self.running = True
 
             # ========================================

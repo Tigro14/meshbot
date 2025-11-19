@@ -9,6 +9,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from utils import info_print, error_print, debug_print
 from config import REMOTE_NODE_HOST
+from safe_tcp_connection import SafeTCPConnection
 import time
 import asyncio
 import traceback
@@ -539,10 +540,7 @@ class TracerouteManager:
             }
 
             # Lancer le traceroute avec timeout plus long
-            # Note: tcp_manager doit être importé depuis le module approprié
-            from tcp_connection_manager import tcp_manager
-
-            with tcp_manager.get_connection(REMOTE_NODE_HOST, timeout=45) as remote_interface:
+            with SafeTCPConnection(REMOTE_NODE_HOST, wait_time=2, timeout=45) as remote_interface:
                 trace_msg = f"/trace !{target_node_id:08x}"
                 remote_interface.sendText(trace_msg)
 
