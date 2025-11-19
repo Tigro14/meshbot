@@ -69,12 +69,19 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         IMPORTANT: Cette méthode DOIT bloquer jusqu'à ce que des données soient disponibles
         pour que le protocole Meshtastic fonctionne correctement. Ne PAS retourner b''
         sauf en cas d'erreur ou de connexion fermée.
+        
+        CRITICAL FIX: Use a longer timeout (1.0s instead of 0.1s) to reduce CPU usage
+        and avoid tight spinning loops when no data is available.
         """
         try:
+            # Use longer timeout to reduce CPU when idle
+            # The original tight loop with 0.1s was burning 88% CPU
+            select_timeout = 1.0  # 1 second is reasonable for message latency
+            
             # Boucler jusqu'à ce que des données soient disponibles
             while True:
                 # Vérifier si des données sont disponibles avec select()
-                ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
+                ready, _, exception = select.select([self.socket], [], [self.socket], select_timeout)
                 
                 if exception:
                     error_print("Erreur socket détectée par select()")
@@ -104,7 +111,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
         except socket.error as e:
             # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
-            if e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
+            if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
                 error_print(f"Erreur socket lors de la lecture: {e}")
             return b''
             
@@ -142,6 +149,87 @@ def create_optimized_interface(hostname, port=4403, **kwargs):
         portNumber=port,
         **kwargs
     )
+
+
+def install_threading_exception_filter():
+    """
+    Installe un filtre pour supprimer les tracebacks des erreurs réseau normales
+    dans les threads Meshtastic.
+    
+    Problème:
+    - Le thread de heartbeat Meshtastic génère des BrokenPipeError périodiques
+    - Ces erreurs sont normales (déconnexions réseau) mais polluent les logs
+    - On ne peut pas modifier le code du thread (bibliothèque externe)
+    
+    Solution:
+    - Utiliser threading.excepthook (Python 3.8+) pour filtrer les tracebacks
+    - Supprimer uniquement les erreurs réseau connues (BrokenPipe, ConnectionReset)
+    - Logger en mode debug pour monitoring sans spam
+    - Laisser passer toutes les autres exceptions (comportement normal)
+    """
+    import threading
+    import sys
+    
+    # Sauvegarder le hook d'exception par défaut
+    original_excepthook = threading.excepthook
+    
+    def custom_threading_excepthook(args):
+        """
+        Hook personnalisé pour filtrer les exceptions des threads
+        
+        Args:
+            args: threading.ExceptHookArgs avec exc_type, exc_value, exc_traceback, thread
+        """
+        exc_type = args.exc_type
+        exc_value = args.exc_value
+        exc_traceback = args.exc_traceback
+        thread = args.thread
+        
+        # Liste des erreurs réseau à filtrer (normales en TCP)
+        network_errors = (
+            BrokenPipeError,           # errno 32 - connexion cassée
+            ConnectionResetError,      # errno 104 - connexion réinitialisée
+            ConnectionRefusedError,    # errno 111 - connexion refusée
+            ConnectionAbortedError,    # errno 103 - connexion abandonnée
+        )
+        
+        # IMPORTANT: Ne filtrer que les threads de la bibliothèque Meshtastic
+        # Les threads de notre bot (Telegram, CLI, etc.) doivent montrer leurs erreurs
+        # pour qu'on puisse les déboguer.
+        #
+        # Threads à filtrer:
+        # - Threads génériques Python (Thread-1, Thread-2, etc.) créés par Meshtastic
+        # - Threads sans nom spécifique
+        #
+        # Threads à NE PAS filtrer:
+        # - Nos threads nommés (TelegramBot, CLIServer, BlitzMQTT, etc.)
+        # - Tout thread avec un nom descriptif
+        
+        thread_name = thread.name if thread else "Unknown"
+        is_meshtastic_thread = (
+            thread_name.startswith("Thread-") or  # Threads génériques Python
+            thread_name == "MainThread" or         # Thread principal (heartbeat)
+            thread_name.startswith("Dummy-")       # Threads dummy
+        )
+        
+        # Ne filtrer que les erreurs réseau des threads Meshtastic
+        if exc_type in network_errors and is_meshtastic_thread:
+            # Logger en mode debug seulement
+            if globals().get('DEBUG_MODE', False):
+                debug_print(f"Thread {thread_name}: {exc_type.__name__} supprimé (thread Meshtastic)")
+            # Ne PAS appeler le hook par défaut (pas de traceback)
+            return
+        
+        # Pour toutes les autres exceptions ET tous les threads nommés, comportement normal
+        original_excepthook(args)
+    
+    # Installer le hook personnalisé
+    threading.excepthook = custom_threading_excepthook
+    info_print("✅ Filtre d'exceptions threading installé (BrokenPipeError, ConnectionReset, etc.)")
+
+
+# Installer automatiquement le filtre à l'import du module
+install_threading_exception_filter()
 
 
 if __name__ == "__main__":
