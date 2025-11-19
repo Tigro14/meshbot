@@ -97,20 +97,25 @@ class MeshBot:
         Args:
             message: Contenu du message diffusé
         """
-        import hashlib
-        # Créer un hash du message pour identification
-        msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
-        current_time = time.time()
-        
-        # Nettoyer les anciens broadcasts (> window)
-        self._recent_broadcasts = {
-            h: t for h, t in self._recent_broadcasts.items()
-            if current_time - t < self._broadcast_dedup_window
-        }
-        
-        # Enregistrer ce broadcast
-        self._recent_broadcasts[msg_hash] = current_time
-        debug_print(f"🔖 Broadcast tracké: {msg_hash[:8]}... ({len(self._recent_broadcasts)} actifs)")
+        try:
+            import hashlib
+            # Créer un hash du message pour identification
+            msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+            current_time = time.time()
+            
+            # Nettoyer les anciens broadcasts (> window)
+            self._recent_broadcasts = {
+                h: t for h, t in self._recent_broadcasts.items()
+                if current_time - t < self._broadcast_dedup_window
+            }
+            
+            # Enregistrer ce broadcast
+            self._recent_broadcasts[msg_hash] = current_time
+            debug_print(f"🔖 Broadcast tracké: {msg_hash[:8]}... | msg: '{message[:50]}' | actifs: {len(self._recent_broadcasts)}")
+        except Exception as e:
+            error_print(f"❌ Erreur dans _track_broadcast: {e}")
+            import traceback
+            error_print(traceback.format_exc())
     
     def _is_recent_broadcast(self, message):
         """
