@@ -126,7 +126,7 @@ class TelegramIntegration:
 
         self.running = True
         self.telegram_thread = threading.Thread(
-            target=self._run_telegram_bot, daemon=True)
+            target=self._run_telegram_bot, daemon=True, name="TelegramBot")
         self.telegram_thread.start()
         info_print("🤖 Bot Telegram démarré en thread séparé")
 

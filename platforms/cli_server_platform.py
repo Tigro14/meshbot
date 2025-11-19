@@ -142,7 +142,7 @@ class CLIServerPlatform(MessagingPlatform):
             self.server_socket.listen(5)
 
             # Démarrer le thread serveur
-            self.server_thread = threading.Thread(target=self._server_loop, daemon=True)
+            self.server_thread = threading.Thread(target=self._server_loop, daemon=True, name="CLIServer")
             self.server_thread.start()
 
             info_print(f"✅ CLI Server started on {self.host}:{self.port}")
@@ -265,7 +265,8 @@ class CLIServerPlatform(MessagingPlatform):
                 client_thread = threading.Thread(
                     target=self._handle_client,
                     args=(client_socket, address),
-                    daemon=True
+                    daemon=True,
+                    name=f"CLIClient-{address[0]}:{address[1]}"
                 )
                 client_thread.start()
                 self.client_threads.append(client_thread)

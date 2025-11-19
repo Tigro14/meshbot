@@ -101,7 +101,7 @@ class MeshCommands(TelegramCommandBase):
 
         # Lancer dans un thread
         import threading
-        thread = threading.Thread(target=execute_and_reply, daemon=True)
+        thread = threading.Thread(target=execute_and_reply, daemon=True, name="TelegramEcho")
         thread.start()
         info_print(f"✅ Thread echo lancé: {thread.name}")
 
@@ -205,6 +205,6 @@ class MeshCommands(TelegramCommandBase):
 
         # Lancer dans un thread
         import threading
-        thread = threading.Thread(target=execute_and_reply, daemon=True)
+        thread = threading.Thread(target=execute_and_reply, daemon=True, name="TelegramAnnonce")
         thread.start()
         info_print(f"✅ Thread annonce lancé: {thread.name}")

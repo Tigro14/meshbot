@@ -601,7 +601,8 @@ class MeshBot:
             # ========================================
             self.update_thread = threading.Thread(
                 target=self.periodic_update_thread, 
-                daemon=True
+                daemon=True,
+                name="PeriodicUpdate"
             )
             self.update_thread.start()
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")

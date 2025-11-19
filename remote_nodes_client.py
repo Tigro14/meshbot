@@ -32,7 +32,7 @@ class RemoteNodesClient:
         pass
 
         # Démarrer un thread de nettoyage
-        self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True)
+        self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True, name="CacheCleanup")
         self._cleanup_thread.start()
 
     def set_node_manager(self, node_manager):
