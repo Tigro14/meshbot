@@ -78,12 +78,62 @@ class MeshBot:
         self.telegram_integration = None  # DEPRECATED: Utiliser platform_manager
         self.platform_manager = None  # Gestionnaire multi-plateforme
 
+        # Déduplication des broadcasts: éviter de traiter nos propres messages diffusés
+        # Format: {message_hash: timestamp}
+        self._recent_broadcasts = {}
+        self._broadcast_dedup_window = 60  # Fenêtre de 60 secondes
+        
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
         #self._packets_analyzed = 0
         #self._channel_debug_active = True
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
+
+    def _track_broadcast(self, message):
+        """
+        Enregistrer un broadcast que nous venons d'envoyer
+        
+        Args:
+            message: Contenu du message diffusé
+        """
+        import hashlib
+        # Créer un hash du message pour identification
+        msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+        current_time = time.time()
+        
+        # Nettoyer les anciens broadcasts (> window)
+        self._recent_broadcasts = {
+            h: t for h, t in self._recent_broadcasts.items()
+            if current_time - t < self._broadcast_dedup_window
+        }
+        
+        # Enregistrer ce broadcast
+        self._recent_broadcasts[msg_hash] = current_time
+        debug_print(f"🔖 Broadcast tracké: {msg_hash[:8]}... ({len(self._recent_broadcasts)} actifs)")
+    
+    def _is_recent_broadcast(self, message):
+        """
+        Vérifier si ce message est un de nos broadcasts récents
+        
+        Args:
+            message: Contenu du message à vérifier
+            
+        Returns:
+            bool: True si c'est un broadcast récent que nous avons envoyé
+        """
+        import hashlib
+        msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+        current_time = time.time()
+        
+        # Vérifier si le hash existe et est récent
+        if msg_hash in self._recent_broadcasts:
+            age = current_time - self._recent_broadcasts[msg_hash]
+            if age < self._broadcast_dedup_window:
+                debug_print(f"🔍 Broadcast reconnu ({age:.1f}s): {msg_hash[:8]}...")
+                return True
+        
+        return False
 
     def on_message(self, packet, interface=None):
         """
@@ -235,6 +285,18 @@ class MeshBot:
                     return
                 
                 if not message:
+                    return
+                
+                # ========================================
+                # DÉDUPLICATION BROADCASTS
+                # ========================================
+                # Filtrer les broadcasts que nous venons d'envoyer via tigrog2
+                # pour éviter une boucle de traitement
+                if is_broadcast and self._is_recent_broadcast(message):
+                    debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
+                    # Enregistrer quand même pour les stats
+                    if message and is_broadcast and not is_from_me:
+                        self.traffic_monitor.add_public_message(packet, message, source='local')
                     return
                 
                 info_print("=" * 60)
@@ -502,7 +564,8 @@ class MeshBot:
                 self.traffic_monitor,
                 self.start_time,
                 self.blitz_monitor,
-                self.vigilance_monitor
+                self.vigilance_monitor,
+                broadcast_tracker=self._track_broadcast  # Callback pour tracker les broadcasts
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)

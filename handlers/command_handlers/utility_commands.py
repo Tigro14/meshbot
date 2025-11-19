@@ -16,13 +16,14 @@ from config import *
 from utils import *
 
 class UtilityCommands:
-    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None, vigilance_monitor=None):
+    def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None, vigilance_monitor=None, broadcast_tracker=None):
         self.esphome_client = esphome_client
         self.traffic_monitor = traffic_monitor
         self.sender = sender
         self.node_manager = node_manager
         self.blitz_monitor = blitz_monitor
         self.vigilance_monitor = vigilance_monitor
+        self.broadcast_tracker = broadcast_tracker  # Callback pour tracker broadcasts
     
     def handle_power(self, sender_id, sender_info):
         """Gérer la commande /power"""
@@ -927,6 +928,10 @@ class UtilityCommands:
         """
         def send_broadcast():
             from safe_tcp_connection import broadcast_message
+
+            # Tracker le broadcast AVANT l'envoi pour éviter boucle
+            if self.broadcast_tracker:
+                self.broadcast_tracker(message)
 
             debug_print(f"📡 Broadcast {command} via {REMOTE_NODE_NAME}...")
             success, msg = broadcast_message(REMOTE_NODE_HOST, message)
