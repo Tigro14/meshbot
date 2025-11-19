@@ -69,12 +69,19 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         IMPORTANT: Cette méthode DOIT bloquer jusqu'à ce que des données soient disponibles
         pour que le protocole Meshtastic fonctionne correctement. Ne PAS retourner b''
         sauf en cas d'erreur ou de connexion fermée.
+        
+        CRITICAL FIX: Use a longer timeout (1.0s instead of 0.1s) to reduce CPU usage
+        and avoid tight spinning loops when no data is available.
         """
         try:
+            # Use longer timeout to reduce CPU when idle
+            # The original tight loop with 0.1s was burning 88% CPU
+            select_timeout = 1.0  # 1 second is reasonable for message latency
+            
             # Boucler jusqu'à ce que des données soient disponibles
             while True:
                 # Vérifier si des données sont disponibles avec select()
-                ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
+                ready, _, exception = select.select([self.socket], [], [self.socket], select_timeout)
                 
                 if exception:
                     error_print("Erreur socket détectée par select()")
@@ -104,7 +111,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
         except socket.error as e:
             # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
-            if e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
+            if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
                 error_print(f"Erreur socket lors de la lecture: {e}")
             return b''
             
