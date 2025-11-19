@@ -423,6 +423,14 @@ class MeshBot:
                 info_print("✅ Connexion série stable")
             
             # ========================================
+            # RÉUTILISATION DE L'INTERFACE PRINCIPALE
+            # ========================================
+            # Partager l'interface avec RemoteNodesClient pour éviter
+            # de créer des connexions TCP supplémentaires
+            self.remote_nodes_client.interface = self.interface
+            info_print("♻️ Interface partagée avec RemoteNodesClient")
+            
+            # ========================================
             # ABONNEMENT AUX MESSAGES (CRITIQUE!)
             # ========================================
             # DOIT être fait immédiatement après la création de l'interface

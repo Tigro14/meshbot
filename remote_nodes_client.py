@@ -18,8 +18,9 @@ from utils import (
 )
 
 class RemoteNodesClient:
-    def __init__(self):
+    def __init__(self, interface=None):
         self.node_manager = None
+        self.interface = interface  # Interface principale à réutiliser (single-node mode)
         # ✅ AJOUT: Système de cache pour éviter connexions répétées
         self._cache = {}           # Stockage des résultats
         self._cache_ttl = 60       # Cache valide 60 secondes
@@ -37,6 +38,10 @@ class RemoteNodesClient:
     def set_node_manager(self, node_manager):
         """Définir le node_manager après l'initialisation"""
         self.node_manager = node_manager
+    
+    def set_interface(self, interface):
+        """Définir l'interface Meshtastic principale à réutiliser"""
+        self.interface = interface
 
     def _cache_cleanup_loop(self):
         """Nettoyer le cache toutes les 5 minutes"""
@@ -170,11 +175,24 @@ class RemoteNodesClient:
         skipped_by_metrics = 0
 
         try:
-            debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
+            # ✅ RÉUTILISER l'interface principale si disponible (single-node mode)
+            if self.interface is not None:
+                # Vérifier que l'interface correspond au host/port demandé
+                interface_host = getattr(self.interface, 'hostname', None)
+                if interface_host == remote_host:
+                    debug_print(f"♻️ Réutilisation interface principale pour {remote_host}")
+                    remote_interface = self.interface
+                    close_interface = False
+                else:
+                    debug_print(f"🔗 Connexion TCP à {remote_host}... (host différent)")
+                    remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
+                    close_interface = True
+            else:
+                debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
+                remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
+                close_interface = True
             
-            # Utiliser SafeTCPConnection avec wait_time=2
-            with SafeTCPConnection(remote_host, remote_port, wait_time=2) as remote_interface:
-                
+            try:
                 # Récupérer les nœuds
                 remote_nodes = remote_interface.nodes
                 
@@ -248,16 +266,24 @@ class RemoteNodesClient:
                     except Exception as node_error:
                         debug_print(f"Erreur parsing nœud {node_id}: {node_error}")
                         continue
-            
-            debug_print(f"   - Nœuds acceptés: {len(node_list)}")
-            debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
-            debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
-            debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}")
+                
+                debug_print(f"   - Nœuds acceptés: {len(node_list)}")
+                debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
+                debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
+                debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}")
 
-            # ✅ ÉTAPE 3: Mettre en cache
-            self._cache_set(cache_key, node_list)
+                # ✅ ÉTAPE 3: Mettre en cache
+                self._cache_set(cache_key, node_list)
+                
+                return node_list
             
-            return node_list
+            finally:
+                # Fermer uniquement si nous avons créé une nouvelle connexion
+                if close_interface:
+                    try:
+                        remote_interface.__exit__(None, None, None)
+                    except:
+                        pass
         
         except Exception as e:
             error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
