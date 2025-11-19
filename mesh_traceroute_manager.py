@@ -91,24 +91,45 @@ class MeshTracerouteManager:
 
             # Envoyer paquet TRACEROUTE_APP
             # L'API Meshtastic attend un paquet vide ou un RouteDiscovery message
-            interface.sendData(
-                data=b'',  # Paquet vide pour initier traceroute
-                destinationId=target_node_id,
-                portNum='TRACEROUTE_APP',
-                wantAck=False,  # Pas besoin d'ACK, on attend la réponse
-                wantResponse=True  # On veut une réponse
-            )
-
-            info_print(f"[TRACE:{trace_id}] ✅ Paquet TRACEROUTE_APP envoyé")
-
-            # Message de confirmation au requester
-            self.message_sender.send_single(
-                f"🔍 Traceroute vers {target_name}\n⏳ Attente (max 60s)...",
-                requester_id,
-                requester_info
-            )
-
-            return True
+            try:
+                interface.sendData(
+                    data=b'',  # Paquet vide pour initier traceroute
+                    destinationId=target_node_id,
+                    portNum='TRACEROUTE_APP',
+                    wantAck=False,  # Pas besoin d'ACK, on attend la réponse
+                    wantResponse=True  # On veut une réponse
+                )
+                
+                info_print(f"[TRACE:{trace_id}] ✅ Paquet TRACEROUTE_APP envoyé")
+                
+                # Message de confirmation au requester
+                self.message_sender.send_single(
+                    f"🔍 Traceroute vers {target_name}\n⏳ Attente (max 60s)...",
+                    requester_id,
+                    requester_info
+                )
+                
+                return True
+                
+            except BrokenPipeError as e:
+                # Interface cassée - probablement connexion TCP fermée
+                error_print(f"❌ BrokenPipe lors envoi traceroute: {e}")
+                error_print(f"   Interface type: {type(interface).__name__}")
+                error_print(f"   Interface details: {interface if hasattr(interface, '__dict__') else 'N/A'}")
+                
+                # Message d'erreur à l'utilisateur
+                self.message_sender.send_single(
+                    f"❌ Erreur: Interface Meshtastic déconnectée\n💡 Vérifiez la connexion mesh",
+                    requester_id,
+                    requester_info
+                )
+                
+                # Cleanup
+                with self._lock:
+                    if target_node_id in self.pending_traces:
+                        del self.pending_traces[target_node_id]
+                
+                return False
 
         except Exception as e:
             error_print(f"❌ Erreur envoi traceroute: {e}")

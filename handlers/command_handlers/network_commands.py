@@ -13,12 +13,13 @@ from utils import *
 from .signal_utils import *
 
 class NetworkCommands:
-    def __init__(self, remote_nodes_client, sender, node_manager, interface=None, mesh_traceroute=None):
+    def __init__(self, remote_nodes_client, sender, node_manager, interface=None, mesh_traceroute=None, broadcast_tracker=None):
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
         self.node_manager = node_manager
         self.interface = interface
         self.mesh_traceroute = mesh_traceroute
+        self.broadcast_tracker = broadcast_tracker  # Callback pour tracker broadcasts
     
     def handle_nodes(self, message, sender_id, sender_info):  
         """Gérer la commande /nodes - Liste des nœuds directs avec pagination"""
@@ -192,6 +193,10 @@ class NetworkCommands:
         """
         def send_broadcast():
             from safe_tcp_connection import broadcast_message
+            
+            # Tracker le broadcast AVANT l'envoi pour éviter boucle
+            if self.broadcast_tracker:
+                self.broadcast_tracker(message)
             
             debug_print(f"📡 Broadcast {command} via {REMOTE_NODE_NAME}...")
             success, msg = broadcast_message(REMOTE_NODE_HOST, message)

@@ -78,12 +78,81 @@ class MeshBot:
         self.telegram_integration = None  # DEPRECATED: Utiliser platform_manager
         self.platform_manager = None  # Gestionnaire multi-plateforme
 
+        # Déduplication des broadcasts: éviter de traiter nos propres messages diffusés
+        # Format: {message_hash: timestamp}
+        self._recent_broadcasts = {}
+        self._broadcast_dedup_window = 60  # Fenêtre de 60 secondes
+        
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
         #self._packets_analyzed = 0
         #self._channel_debug_active = True
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
+
+    def _track_broadcast(self, message):
+        """
+        Enregistrer un broadcast que nous venons d'envoyer
+        
+        Args:
+            message: Contenu du message diffusé
+        """
+        try:
+            import hashlib
+            # Créer un hash du message pour identification
+            msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+            current_time = time.time()
+            
+            # Nettoyer les anciens broadcasts (> window)
+            self._recent_broadcasts = {
+                h: t for h, t in self._recent_broadcasts.items()
+                if current_time - t < self._broadcast_dedup_window
+            }
+            
+            # Enregistrer ce broadcast
+            self._recent_broadcasts[msg_hash] = current_time
+            debug_print(f"🔖 Broadcast tracké: {msg_hash[:8]}... | msg: '{message[:50]}' | actifs: {len(self._recent_broadcasts)}")
+        except Exception as e:
+            error_print(f"❌ Erreur dans _track_broadcast: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+    
+    def _is_recent_broadcast(self, message):
+        """
+        Vérifier si ce message est un de nos broadcasts récents
+        
+        Args:
+            message: Contenu du message à vérifier
+            
+        Returns:
+            bool: True si c'est un broadcast récent que nous avons envoyé
+        """
+        import hashlib
+        try:
+            msg_hash = hashlib.md5(message.encode('utf-8')).hexdigest()
+            current_time = time.time()
+            
+            # Vérifier si le hash existe et est récent
+            if msg_hash in self._recent_broadcasts:
+                age = current_time - self._recent_broadcasts[msg_hash]
+                if age < self._broadcast_dedup_window:
+                    debug_print(f"🔍 Broadcast reconnu ({age:.1f}s): {msg_hash[:8]}... | msg: '{message[:50]}'")
+                    return True
+                else:
+                    # Hash existe mais est expiré, le nettoyer
+                    debug_print(f"🧹 Broadcast expiré ({age:.1f}s): {msg_hash[:8]}...")
+                    del self._recent_broadcasts[msg_hash]
+            
+            # Debug: afficher l'état des broadcasts trackés
+            if DEBUG_MODE and len(self._recent_broadcasts) > 0:
+                debug_print(f"📊 Broadcasts trackés: {len(self._recent_broadcasts)} actifs")
+            
+            return False
+        except Exception as e:
+            error_print(f"Erreur dans _is_recent_broadcast: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return False  # En cas d'erreur, ne pas filtrer
 
     def on_message(self, packet, interface=None):
         """
@@ -236,6 +305,29 @@ class MeshBot:
                 
                 if not message:
                     return
+                
+                # ========================================
+                # DÉDUPLICATION BROADCASTS - TEMPORAIREMENT DÉSACTIVÉE
+                # ========================================
+                # TODO: Réactiver après investigation du problème "deaf"
+                # La logique de déduplication cause un problème où le bot devient
+                # "sourd" aux commandes. Désactivée temporairement pour diagnostic.
+                #
+                # Code original (désactivé):
+                # if is_broadcast and self._is_recent_broadcast(message):
+                #     debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
+                #     if message and not is_from_me:
+                #         self.traffic_monitor.add_public_message(packet, message, source='local')
+                #     return
+                
+                # Pour le moment, on log juste pour diagnostiquer
+                if is_broadcast and len(self._recent_broadcasts) > 0:
+                    try:
+                        if self._is_recent_broadcast(message):
+                            info_print(f"⚠️ DEDUP: Broadcast qui serait filtré: '{message[:50]}'")
+                            info_print(f"⚠️ DEDUP: Mais on le traite quand même pour diagnostic")
+                    except Exception as e:
+                        error_print(f"Erreur check dedup: {e}")
                 
                 info_print("=" * 60)
                 info_print(f"📨 MESSAGE REÇU")
@@ -502,7 +594,8 @@ class MeshBot:
                 self.traffic_monitor,
                 self.start_time,
                 self.blitz_monitor,
-                self.vigilance_monitor
+                self.vigilance_monitor,
+                broadcast_tracker=self._track_broadcast  # Callback pour tracker les broadcasts
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)
