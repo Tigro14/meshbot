@@ -772,19 +772,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         # Obtenir le vrai nom de la ville via l'API JSON (une seule fois pour tous les jours)
         location_name = location if location else "local"
         try:
-            # Faire un appel rapide pour obtenir le nom de la ville
+            # Faire un appel pour obtenir le nom de la ville (avec retry logic)
             if location:
                 location_encoded = location.replace(' ', '+')
                 json_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
             else:
                 json_url = f"{WTTR_BASE_URL}/?format=j1"
 
-            json_result = subprocess.run(
-                ['curl', '-s', json_url],
-                capture_output=True,
-                text=True,
-                timeout=5  # Timeout court
-            )
+            # Use retry wrapper with shorter timeout for location name fetch
+            json_result = _curl_with_retry(json_url, timeout=10, max_retries=2)
 
             if json_result.returncode == 0 and json_result.stdout:
                 weather_json = json.loads(json_result.stdout.strip())
