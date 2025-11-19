@@ -114,6 +114,69 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             error_print(traceback.format_exc())
             return b''
     
+    def _writeBytes(self, data):
+        """
+        Version robuste de _writeBytes avec gestion des erreurs de connexion
+        
+        Override la méthode parent pour gérer proprement:
+        - BrokenPipeError (errno 32) - connexion rompue
+        - ConnectionResetError (errno 104) - connexion réinitialisée
+        - ConnectionRefusedError (errno 111) - connexion refusée
+        - socket.timeout - timeout d'opération
+        - Autres erreurs socket
+        
+        Le problème original:
+        - Le thread de heartbeat Meshtastic appelle cette méthode toutes les ~5 minutes
+        - Si la connexion TCP est perdue, socket.send() lève BrokenPipeError
+        - Sans gestion, cela génère des exceptions non gérées dans les logs
+        
+        Solution:
+        - Capturer toutes les erreurs socket
+        - Logger en mode debug uniquement pour éviter le spam
+        - Retourner silencieusement (le heartbeat échouera mais sans traceback)
+        """
+        try:
+            # Tenter d'envoyer les données
+            self.socket.send(data)
+            
+        except BrokenPipeError as e:
+            # Connexion cassée - typiquement le nœud distant s'est déconnecté
+            # Logger seulement en mode debug pour éviter le spam dans les logs
+            if globals().get('DEBUG_MODE', False):
+                debug_print(f"BrokenPipe lors écriture TCP (errno {e.errno}): connexion perdue")
+            # Ne pas lever l'exception - retourner silencieusement
+            
+        except ConnectionResetError as e:
+            # Connexion réinitialisée par le pair
+            if globals().get('DEBUG_MODE', False):
+                debug_print(f"Connection reset lors écriture TCP (errno {e.errno})")
+            
+        except ConnectionRefusedError as e:
+            # Connexion refusée
+            if globals().get('DEBUG_MODE', False):
+                debug_print(f"Connection refused lors écriture TCP (errno {e.errno})")
+            
+        except socket.timeout:
+            # Timeout d'écriture - peut arriver si le buffer est plein
+            if globals().get('DEBUG_MODE', False):
+                debug_print("Timeout lors écriture TCP")
+            
+        except socket.error as e:
+            # Autres erreurs socket
+            # Logger uniquement les erreurs non communes pour éviter spam
+            if hasattr(e, 'errno') and e.errno not in (32, 104, 110, 111):
+                # 32=BrokenPipe, 104=ConnReset, 110=Timeout, 111=ConnRefused
+                error_print(f"Erreur socket lors écriture TCP (errno {e.errno}): {e}")
+            elif globals().get('DEBUG_MODE', False):
+                debug_print(f"Erreur socket commune lors écriture: {e}")
+            
+        except Exception as e:
+            # Erreur inattendue - toujours logger
+            error_print(f"Erreur inattendue lors écriture TCP: {e}")
+            if globals().get('DEBUG_MODE', False):
+                import traceback
+                error_print(traceback.format_exc())
+    
     def close(self):
         """Fermeture propre avec logs"""
         try:
