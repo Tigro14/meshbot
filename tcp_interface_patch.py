@@ -114,69 +114,6 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             error_print(traceback.format_exc())
             return b''
     
-    def _writeBytes(self, data):
-        """
-        Version robuste de _writeBytes avec gestion des erreurs de connexion
-        
-        Override la méthode parent pour gérer proprement:
-        - BrokenPipeError (errno 32) - connexion rompue
-        - ConnectionResetError (errno 104) - connexion réinitialisée
-        - ConnectionRefusedError (errno 111) - connexion refusée
-        - socket.timeout - timeout d'opération
-        - Autres erreurs socket
-        
-        Le problème original:
-        - Le thread de heartbeat Meshtastic appelle cette méthode toutes les ~5 minutes
-        - Si la connexion TCP est perdue, socket.send() lève BrokenPipeError
-        - Sans gestion, cela génère des exceptions non gérées dans les logs
-        
-        Solution:
-        - Capturer toutes les erreurs socket
-        - Logger en mode debug uniquement pour éviter le spam
-        - Retourner silencieusement (le heartbeat échouera mais sans traceback)
-        """
-        try:
-            # Tenter d'envoyer les données
-            self.socket.send(data)
-            
-        except BrokenPipeError as e:
-            # Connexion cassée - typiquement le nœud distant s'est déconnecté
-            # Logger seulement en mode debug pour éviter le spam dans les logs
-            if globals().get('DEBUG_MODE', False):
-                debug_print(f"BrokenPipe lors écriture TCP (errno {e.errno}): connexion perdue")
-            # Ne pas lever l'exception - retourner silencieusement
-            
-        except ConnectionResetError as e:
-            # Connexion réinitialisée par le pair
-            if globals().get('DEBUG_MODE', False):
-                debug_print(f"Connection reset lors écriture TCP (errno {e.errno})")
-            
-        except ConnectionRefusedError as e:
-            # Connexion refusée
-            if globals().get('DEBUG_MODE', False):
-                debug_print(f"Connection refused lors écriture TCP (errno {e.errno})")
-            
-        except socket.timeout:
-            # Timeout d'écriture - peut arriver si le buffer est plein
-            if globals().get('DEBUG_MODE', False):
-                debug_print("Timeout lors écriture TCP")
-            
-        except socket.error as e:
-            # Autres erreurs socket
-            # Logger uniquement les erreurs non communes pour éviter spam
-            if hasattr(e, 'errno') and e.errno not in (32, 104, 110, 111):
-                # 32=BrokenPipe, 104=ConnReset, 110=Timeout, 111=ConnRefused
-                error_print(f"Erreur socket lors écriture TCP (errno {e.errno}): {e}")
-            elif globals().get('DEBUG_MODE', False):
-                debug_print(f"Erreur socket commune lors écriture: {e}")
-            
-        except Exception as e:
-            # Erreur inattendue - toujours logger
-            error_print(f"Erreur inattendue lors écriture TCP: {e}")
-            if globals().get('DEBUG_MODE', False):
-                import traceback
-                error_print(traceback.format_exc())
-    
     def close(self):
         """Fermeture propre avec logs"""
         try:
@@ -205,6 +142,68 @@ def create_optimized_interface(hostname, port=4403, **kwargs):
         portNumber=port,
         **kwargs
     )
+
+
+def install_threading_exception_filter():
+    """
+    Installe un filtre pour supprimer les tracebacks des erreurs réseau normales
+    dans les threads Meshtastic.
+    
+    Problème:
+    - Le thread de heartbeat Meshtastic génère des BrokenPipeError périodiques
+    - Ces erreurs sont normales (déconnexions réseau) mais polluent les logs
+    - On ne peut pas modifier le code du thread (bibliothèque externe)
+    
+    Solution:
+    - Utiliser threading.excepthook (Python 3.8+) pour filtrer les tracebacks
+    - Supprimer uniquement les erreurs réseau connues (BrokenPipe, ConnectionReset)
+    - Logger en mode debug pour monitoring sans spam
+    - Laisser passer toutes les autres exceptions (comportement normal)
+    """
+    import threading
+    import sys
+    
+    # Sauvegarder le hook d'exception par défaut
+    original_excepthook = threading.excepthook
+    
+    def custom_threading_excepthook(args):
+        """
+        Hook personnalisé pour filtrer les exceptions des threads
+        
+        Args:
+            args: threading.ExceptHookArgs avec exc_type, exc_value, exc_traceback, thread
+        """
+        exc_type = args.exc_type
+        exc_value = args.exc_value
+        exc_traceback = args.exc_traceback
+        thread = args.thread
+        
+        # Liste des erreurs réseau à supprimer (normales en TCP)
+        network_errors = (
+            BrokenPipeError,           # errno 32 - connexion cassée
+            ConnectionResetError,      # errno 104 - connexion réinitialisée
+            ConnectionRefusedError,    # errno 111 - connexion refusée
+            ConnectionAbortedError,    # errno 103 - connexion abandonnée
+        )
+        
+        # Vérifier si c'est une erreur réseau normale
+        if exc_type in network_errors:
+            # Logger en mode debug seulement
+            if globals().get('DEBUG_MODE', False):
+                debug_print(f"Thread {thread.name}: {exc_type.__name__} supprimé (erreur réseau normale)")
+            # Ne PAS appeler le hook par défaut (pas de traceback)
+            return
+        
+        # Pour toutes les autres exceptions, comportement normal
+        original_excepthook(args)
+    
+    # Installer le hook personnalisé
+    threading.excepthook = custom_threading_excepthook
+    info_print("✅ Filtre d'exceptions threading installé (BrokenPipeError, ConnectionReset, etc.)")
+
+
+# Installer automatiquement le filtre à l'import du module
+install_threading_exception_filter()
 
 
 if __name__ == "__main__":
