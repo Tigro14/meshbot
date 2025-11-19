@@ -225,7 +225,6 @@ class TelegramIntegration:
         # Commandes basiques
         self.application.add_handler(CommandHandler("start", self.basic_commands.start_command))
         self.application.add_handler(CommandHandler("help", self.basic_commands.help_command))
-        self.application.add_handler(CommandHandler("?", self.basic_commands.help_command))  # Alias non documenté
         self.application.add_handler(CommandHandler("legend", self.basic_commands.legend_command))
         self.application.add_handler(CommandHandler("health", self.basic_commands.health_command))
 

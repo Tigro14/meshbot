@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""
+Exemple de configuration pour mode SERIAL
+Configuration pour un node Meshtastic connecté directement via USB/UART au Raspberry Pi
+"""
+
+# ========================================
+# MODE DE CONNEXION - SERIAL
+# ========================================
+CONNECTION_MODE = 'serial'
+
+# Port série du node Meshtastic
+# Exemples courants:
+#   - /dev/ttyACM0  (USB, le plus courant)
+#   - /dev/ttyUSB0  (adaptateur USB-série)
+#   - /dev/serial0  (GPIO UART sur Raspberry Pi)
+SERIAL_PORT = "/dev/ttyACM0"
+
+# Pour trouver votre port série:
+# ls -l /dev/tty* | grep -E "ACM|USB"
+# dmesg | grep tty
+
+# ========================================
+# CONFIGURATION LLAMA.CPP
+# ========================================
+LLAMA_HOST = "127.0.0.1"
+LLAMA_PORT = 8080
+
+# ========================================
+# CONFIGURATION TELEGRAM (OPTIONNEL)
+# ========================================
+TELEGRAM_ENABLED = True
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+TELEGRAM_AUTHORIZED_USERS = []  # Vide = tous autorisés
+
+# ========================================
+# AUTRES PARAMÈTRES
+# ========================================
+# Voir config.py.sample pour la liste complète des options
+DEBUG_MODE = False

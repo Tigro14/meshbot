@@ -9,6 +9,7 @@ import gc
 import traceback
 import meshtastic
 import meshtastic.serial_interface
+import meshtastic.tcp_interface
 from pubsub import pub
 
 # Imports des modules
@@ -23,6 +24,8 @@ from message_handler import MessageHandler
 from traffic_monitor import TrafficMonitor
 from system_monitor import SystemMonitor
 from safe_serial_connection import SafeSerialConnection
+from safe_tcp_connection import SafeTCPConnection
+from tcp_interface_patch import OptimizedTCPInterface
 from vigilance_monitor import VigilanceMonitor
 from blitz_monitor import BlitzMonitor
 from mesh_traceroute_manager import MeshTracerouteManager
@@ -82,20 +85,35 @@ class MeshBot:
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
 
-    def on_message(self, packet, interface):
+    def on_message(self, packet, interface=None):
         """
         Gestionnaire des messages reçus
-
-        Architecture en 3 phases:
-        1. Collecte de TOUS les paquets (serial + TCP)
-        2. Filtrage selon la source
-        3. Traitement des commandes (serial uniquement)
+        
+        En mode single-node (CONNECTION_MODE):
+        - Tous les paquets viennent de la même interface (serial OU tcp)
+        - Tous les messages sont traités directement
+        
+        En mode legacy (multi-nodes):
+        - Architecture en 3 phases pour distinguer serial/TCP
+        - Filtrage selon PROCESS_TCP_COMMANDS
+        
+        Args:
+            packet: Packet Meshtastic reçu
+            interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
 
+        # Debug: Tracer TOUS les appels à on_message
+        debug_print(f"🔍 on_message APPELÉ - packet keys: {list(packet.keys()) if packet else 'None'}, interface: {interface is not None}")
+
         try:
-            # ========== TEST DÉTAILLÉ ==========
-            # Validation basique
+            # Si pas d'interface fournie, utiliser l'interface principale
+            if interface is None:
+                interface = self.interface
+                debug_print(f"🔍 Interface était None, utilisation de self.interface")
+                
+            # ========== VALIDATION BASIQUE ==========
             if not packet or 'from' not in packet:
+                debug_print(f"🔍 Validation échouée: packet={packet is not None}, has_from={'from' in packet if packet else False}")
                 return
 
             from_id = packet.get('from', 0)
@@ -109,21 +127,35 @@ class MeshBot:
                     info_print(f"📨 MESSAGE BRUT: '{msg}' | from=0x{from_id:08x} | to=0x{to_id:08x} | broadcast={to_id in [0xFFFFFFFF, 0]}")
                 except:
                     pass
-            # ========== FIN TEST ==========
+            # ========== FIN VALIDATION ==========
 
 
             # ========================================
-            # PHASE 1: COLLECTE (TOUS LES PAQUETS)
+            # DÉTERMINER LE MODE DE FONCTIONNEMENT
             # ========================================
-            # Déterminer la source du paquet
-            is_from_serial = (interface == self.interface)
-            source = 'local' if is_from_serial else 'tigrog2'
+            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
+            
+            # En mode single-node, tous les paquets viennent de notre interface unique
+            # Pas besoin de filtrage par source
+            is_from_our_interface = (interface == self.interface)
+            
+            # Déterminer la source pour les logs et stats
+            if connection_mode == 'tcp':
+                source = 'tcp'
+            elif connection_mode == 'serial':
+                source = 'local'
+            else:
+                # Mode legacy: distinguer serial vs TCP externe
+                source = 'local' if is_from_our_interface else 'tigrog2'
 
             # Obtenir l'ID du nœud local pour filtrage
             my_id = None
             if hasattr(self.interface, 'localNode') and self.interface.localNode:
                 my_id = getattr(self.interface.localNode, 'nodeNum', 0)
 
+            # ========================================
+            # PHASE 1: COLLECTE (TOUS LES PAQUETS)
+            # ========================================
             # Mise à jour de la base de nœuds depuis TOUS les packets
             self.node_manager.update_node_from_packet(packet)
             self.node_manager.update_rx_history(packet)
@@ -134,17 +166,27 @@ class MeshBot:
                 self.traffic_monitor.add_packet(packet, source=source, my_node_id=my_id)
 
             # ========================================
-            # PHASE 2: FILTRAGE
+            # PHASE 2: FILTRAGE (SELON MODE)
             # ========================================
-            # Filtrage selon la configuration
-            # Si PROCESS_TCP_COMMANDS=False, seuls les messages série déclenchent des commandes
-            # Si PROCESS_TCP_COMMANDS=True, les messages TCP (tigrog2) sont aussi traités
-            if not is_from_serial and not globals().get('PROCESS_TCP_COMMANDS', False):
-                debug_print(f"📊 Paquet de {source} collecté pour stats uniquement")
-                return
+            # En mode single-node: tous les paquets de notre interface sont traités
+            # En mode legacy: filtrer selon PROCESS_TCP_COMMANDS
+            
+            if connection_mode in ['serial', 'tcp']:
+                # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
+                if not is_from_our_interface:
+                    debug_print(f"📊 Paquet externe ignoré en mode single-node")
+                    return
+                # Continuer le traitement normalement
+                
+            else:
+                # MODE LEGACY: Appliquer le filtrage historique
+                # Si PROCESS_TCP_COMMANDS=False, seuls les messages série déclenchent des commandes
+                # Si PROCESS_TCP_COMMANDS=True, les messages TCP (tigrog2) sont aussi traités
+                if not is_from_our_interface and not globals().get('PROCESS_TCP_COMMANDS', False):
+                    debug_print(f"📊 Paquet de {source} collecté pour stats uniquement")
+                    return
             
             # À partir d'ici, les messages sont traités pour les commandes
-            # (serial toujours, TCP si PROCESS_TCP_COMMANDS=True)
             
             # Vérifier le type de message
             to_id = packet.get('to', 0)
@@ -326,7 +368,7 @@ class MeshBot:
         gc.collect()
     
     def start(self):
-        """Démarrage du bot - version simplifiée"""
+        """Démarrage du bot - version simplifiée avec support TCP/Serial"""
         info_print("🤖 Bot Meshtastic-Llama avec architecture modulaire")
         
         # Charger la base de nœuds
@@ -342,22 +384,79 @@ class MeshBot:
        
         try:
             # ========================================
-            # CONNEXION SÉRIE DIRECTE
+            # DÉTECTION DU MODE DE CONNEXION
             # ========================================
-            info_print(f"🔌 Connexion série: {SERIAL_PORT}")
-            self.interface = meshtastic.serial_interface.SerialInterface(SERIAL_PORT)
-            info_print("✅ Interface série créée")
+            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
-            # Stabilisation
-            time.sleep(3)
-            info_print("✅ Connexion stable")
+            if connection_mode == 'tcp':
+                # ========================================
+                # MODE TCP - Connexion réseau
+                # ========================================
+                tcp_host = globals().get('TCP_HOST', '192.168.1.38')
+                tcp_port = globals().get('TCP_PORT', 4403)
+                
+                info_print(f"🌐 Mode TCP: Connexion à {tcp_host}:{tcp_port}")
+                
+                # Utiliser OptimizedTCPInterface pour économiser CPU
+                self.interface = OptimizedTCPInterface(
+                    hostname=tcp_host,
+                    portNumber=tcp_port
+                )
+                info_print("✅ Interface TCP créée")
+                
+                # Stabilisation plus longue pour TCP
+                time.sleep(5)
+                info_print("✅ Connexion TCP stable")
+                
+            else:
+                # ========================================
+                # MODE SERIAL - Connexion série (défaut)
+                # ========================================
+                serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
+                
+                info_print(f"🔌 Mode Serial: Connexion série {serial_port}")
+                self.interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                info_print("✅ Interface série créée")
+                
+                # Stabilisation
+                time.sleep(3)
+                info_print("✅ Connexion série stable")
+            
+            # ========================================
+            # RÉUTILISATION DE L'INTERFACE PRINCIPALE
+            # ========================================
+            # Partager l'interface avec RemoteNodesClient pour éviter
+            # de créer des connexions TCP supplémentaires
+            self.remote_nodes_client.interface = self.interface
+            info_print("♻️ Interface partagée avec RemoteNodesClient")
             
             # ========================================
             # ABONNEMENT AUX MESSAGES (CRITIQUE!)
             # ========================================
             # DOIT être fait immédiatement après la création de l'interface
+            # S'abonner aux différents types de messages Meshtastic
+            # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
+            # - meshtastic.receive.data : messages de données
+            # - meshtastic.receive : messages génériques (fallback)
+            
+            # Debug: Créer un callback de débogage pour voir ce qui est reçu
+            def debug_callback(**kwargs):
+                """Callback de debug pour tracer tous les messages pubsub"""
+                debug_print(f"🔍 DEBUG PUBSUB - Reçu avec args: {list(kwargs.keys())}")
+                if 'packet' in kwargs:
+                    pkt = kwargs['packet']
+                    from_id = pkt.get('from', 'N/A')
+                    to_id = pkt.get('to', 'N/A')
+                    decoded = pkt.get('decoded', {})
+                    portnum = decoded.get('portnum', 'N/A')
+                    debug_print(f"🔍 DEBUG PUBSUB - from={from_id}, to={to_id}, portnum={portnum}")
+            
+            # S'abonner avec le callback principal ET le callback de debug
+            pub.subscribe(self.on_message, "meshtastic.receive.text")
+            pub.subscribe(debug_callback, "meshtastic.receive.text")
+            pub.subscribe(self.on_message, "meshtastic.receive.data")
             pub.subscribe(self.on_message, "meshtastic.receive")
-            info_print("✅ Abonné aux messages Meshtastic")
+            info_print("✅ Abonné aux messages Meshtastic (text, data, all)")
             self.running = True
 
             # ========================================

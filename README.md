@@ -1,10 +1,13 @@
 # Bot Meshtastic-Llama
 
-Bot pour réseau Meshtastic (+ Telegram, optionel)  avec intégration Llama et fonctionnalités avancées.
+Bot pour réseau Meshtastic (+ Telegram, optionnel) avec intégration Llama et fonctionnalités avancées.
 
-Mon cas d'usage
-- Un node Mesh ROUTER(_LATE) accessible en Wifi
-- Un node Mesh bot connecté en série sur le RPi5
+## Architectures supportées
+
+Le bot supporte deux modes de connexion au réseau Meshtastic :
+
+### Mode Serial (défaut)
+Connexion directe via USB/UART - Configuration simple et stable
 
 ```mermaid
 graph TD
@@ -14,13 +17,33 @@ graph TD
     classDef connection stroke:#333,color:#000
 
     %% Nodes
-    RPi5["Raspberry Pi 5 (Host)"]:::rpi
-    Meshtastic-bot["Meshtastic BOT Node (Port Série)"]:::node
-    Meshtastic-router["Meshtastic ROUTER(_LATE) Node  (TCP/IP)"]:::node
+    RPi5["Raspberry Pi 5<br/>(Bot + Llama.cpp)"]:::rpi
+    MeshNode["Meshtastic Node<br/>(Serial USB/UART)"]:::node
+    MeshNetwork["Réseau Mesh<br/>LoRa"]:::node
 
     %% Connections
-    RPi5 -- "/dev/ttyXXX (UART/USB)" --> Meshtastic-bot:::connection
-    RPi5 -- "192.168.1.38:PORT (WiFi/Ethernet)" --> Meshtastic-router:::connection
+    RPi5 -- "/dev/ttyACM0<br/>(USB)" --> MeshNode
+    MeshNode -- "LoRa" --> MeshNetwork
+```
+
+### Mode TCP (avancé)
+Connexion réseau - Permet le placement optimal du node
+
+```mermaid
+graph TD
+    %% Styles
+    classDef node fill:#f9f,color:#000
+    classDef rpi fill:#bbf,color:#000
+    classDef connection stroke:#333,color:#000
+
+    %% Nodes
+    RPi5["Raspberry Pi 5<br/>(Bot + Llama.cpp)"]:::rpi
+    MeshRouter["Meshtastic ROUTER<br/>(TCP/IP)"]:::node
+    MeshNetwork["Réseau Mesh<br/>LoRa"]:::node
+
+    %% Connections
+    RPi5 -- "192.168.x.x:4403<br/>(WiFi/Ethernet)" --> MeshRouter
+    MeshRouter -- "LoRa" --> MeshNetwork
 ```
 
 ```markdown
@@ -84,9 +107,36 @@ pip install meshtastic pypubsub requests python-telegram-bot \
    ```bash
    cp config.py.sample config.py
    ```
+   
+   **OU** utiliser un exemple prêt à l'emploi :
+   ```bash
+   # Pour mode Serial (connexion USB)
+   cp config.serial.example config.py
+   
+   # Pour mode TCP (connexion réseau)
+   cp config.tcp.example config.py
+   ```
 
 2. **Éditer `config.py` avec vos paramètres**
-   - Port série du node Meshtastic (`SERIAL_PORT`)
+
+   **Mode de connexion (CONNECTION_MODE)**
+   
+   Le bot supporte maintenant deux modes de connexion au réseau Meshtastic :
+   
+   - **Mode Serial (défaut)** : Connexion via port série USB/UART
+     ```python
+     CONNECTION_MODE = 'serial'
+     SERIAL_PORT = "/dev/ttyACM0"  # Adapter selon votre port
+     ```
+   
+   - **Mode TCP** : Connexion réseau à un node ROUTER accessible en WiFi/Ethernet
+     ```python
+     CONNECTION_MODE = 'tcp'
+     TCP_HOST = "192.168.1.38"  # IP du node Meshtastic
+     TCP_PORT = 4403            # Port TCP (défaut: 4403)
+     ```
+   
+   **Autres paramètres importants :**
    - Token Telegram (`TELEGRAM_BOT_TOKEN`) si intégration Telegram
    - Département pour vigilance météo (`VIGILANCE_DEPARTEMENT`)
    - Configuration AI Llama (host, port, prompts)
@@ -101,6 +151,35 @@ pip install meshtastic pypubsub requests python-telegram-bot \
    ```bash
    python main_script.py --debug
    ```
+
+### Choix du mode de connexion
+
+**Mode Serial (recommandé pour débutants)**
+- ✅ Connexion directe et stable
+- ✅ Pas de configuration réseau nécessaire
+- ✅ Latence minimale
+- ❌ Nécessite un câble USB
+- ❌ Node doit être proche du Raspberry Pi
+
+**Mode TCP (pour déploiements avancés)**
+- ✅ Node peut être placé à distance (meilleure position pour antenne)
+- ✅ Pas de câble USB nécessaire
+- ✅ Permet l'utilisation d'un node ROUTER existant
+- ❌ Nécessite configuration WiFi/Ethernet du node
+- ❌ Dépend de la stabilité du réseau local
+- ❌ Latence légèrement supérieure
+
+**Exemple de cas d'usage TCP :**
+```
+Raspberry Pi 5 (intérieur, serveur)
+        ↓ WiFi/Ethernet
+Node Meshtastic ROUTER (extérieur, antenne optimale)
+        ↓ LoRa
+Réseau mesh Meshtastic
+```
+
+**Pour les utilisateurs existants :**
+Si vous migrez depuis l'ancienne architecture multi-nodes, consultez [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md).
 
 ### Installation en tant que service systemd
 
