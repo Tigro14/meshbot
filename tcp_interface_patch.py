@@ -178,7 +178,7 @@ def install_threading_exception_filter():
         exc_traceback = args.exc_traceback
         thread = args.thread
         
-        # Liste des erreurs réseau à supprimer (normales en TCP)
+        # Liste des erreurs réseau à filtrer (normales en TCP)
         network_errors = (
             BrokenPipeError,           # errno 32 - connexion cassée
             ConnectionResetError,      # errno 104 - connexion réinitialisée
@@ -186,15 +186,34 @@ def install_threading_exception_filter():
             ConnectionAbortedError,    # errno 103 - connexion abandonnée
         )
         
-        # Vérifier si c'est une erreur réseau normale
-        if exc_type in network_errors:
+        # IMPORTANT: Ne filtrer que les threads de la bibliothèque Meshtastic
+        # Les threads de notre bot (Telegram, CLI, etc.) doivent montrer leurs erreurs
+        # pour qu'on puisse les déboguer.
+        #
+        # Threads à filtrer:
+        # - Threads génériques Python (Thread-1, Thread-2, etc.) créés par Meshtastic
+        # - Threads sans nom spécifique
+        #
+        # Threads à NE PAS filtrer:
+        # - Nos threads nommés (TelegramBot, CLIServer, BlitzMQTT, etc.)
+        # - Tout thread avec un nom descriptif
+        
+        thread_name = thread.name if thread else "Unknown"
+        is_meshtastic_thread = (
+            thread_name.startswith("Thread-") or  # Threads génériques Python
+            thread_name == "MainThread" or         # Thread principal (heartbeat)
+            thread_name.startswith("Dummy-")       # Threads dummy
+        )
+        
+        # Ne filtrer que les erreurs réseau des threads Meshtastic
+        if exc_type in network_errors and is_meshtastic_thread:
             # Logger en mode debug seulement
             if globals().get('DEBUG_MODE', False):
-                debug_print(f"Thread {thread.name}: {exc_type.__name__} supprimé (erreur réseau normale)")
+                debug_print(f"Thread {thread_name}: {exc_type.__name__} supprimé (thread Meshtastic)")
             # Ne PAS appeler le hook par défaut (pas de traceback)
             return
         
-        # Pour toutes les autres exceptions, comportement normal
+        # Pour toutes les autres exceptions ET tous les threads nommés, comportement normal
         original_excepthook(args)
     
     # Installer le hook personnalisé
