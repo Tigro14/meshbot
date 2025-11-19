@@ -470,7 +470,8 @@ class TracerouteManager:
                     target_short_name,
                     update.effective_chat.id,
                     user.username),
-                daemon=True
+                daemon=True,
+                name=f"Traceroute-{target_short_name}"
             )
 
             info_print("▶️  Lancement du thread...")

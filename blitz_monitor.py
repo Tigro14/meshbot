@@ -321,7 +321,8 @@ class BlitzMonitor:
             # Démarrer la boucle MQTT dans un thread
             self.mqtt_thread = threading.Thread(
                 target=self.mqtt_client.loop_forever,
-                daemon=True
+                daemon=True,
+                name="BlitzMQTT"
             )
             self.mqtt_thread.start()
 

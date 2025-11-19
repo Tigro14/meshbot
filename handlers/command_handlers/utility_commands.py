@@ -291,7 +291,7 @@ class UtilityCommands:
                         error_print(f"Erreur fermeture: {e}")
         
         # Lancer le thread
-        thread = threading.Thread(target=send_echo_via_tigrog2, daemon=True)
+        thread = threading.Thread(target=send_echo_via_tigrog2, daemon=True, name="EchoTigrog2")
         thread.start()
         info_print(f"✅ Thread lancé: {thread.name}")
         info_print("=" * 60)
@@ -934,4 +934,4 @@ class UtilityCommands:
             else:
                 error_print(f"❌ Échec broadcast {command}: {msg}")
 
-        threading.Thread(target=send_broadcast, daemon=True).start()            
+        threading.Thread(target=send_broadcast, daemon=True, name="BroadcastAnnonce").start()            

@@ -3,6 +3,7 @@ __pycache__/
 *.db
 map/*.json
 config.py
+test_thread_names.py
 
 # Map system generated files and logs
 map/info.json

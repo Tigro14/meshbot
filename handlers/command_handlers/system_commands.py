@@ -123,7 +123,7 @@ class SystemCommands:
                 error_print(f"Erreur sys: {e}")
                 current_sender.send_single(error_msg, sender_id, sender_info)
         
-        threading.Thread(target=get_system_info, daemon=True).start()
+        threading.Thread(target=get_system_info, daemon=True, name="SystemInfo").start()
     
     def _check_reboot_authorization_mesh(self, from_id, command_name, message_parts):
         """

@@ -100,7 +100,7 @@ class NetworkCommands:
                 except:
                     pass
         
-        threading.Thread(target=get_remote_signal_info, daemon=True).start()
+        threading.Thread(target=get_remote_signal_info, daemon=True, name="RemoteSignalInfo").start()
     
     def _format_my_response(self, node_data):
         """Formater la réponse /my pour un nœud trouvé"""
@@ -205,7 +205,7 @@ class NetworkCommands:
                 # self.sender.send_error_notification(sender_id, f"Échec broadcast: {msg}")
         
         # Lancer en arrière-plan
-        threading.Thread(target=send_broadcast, daemon=True).start()
+        threading.Thread(target=send_broadcast, daemon=True, name="BroadcastEcho").start()
 
     def handle_trace(self, message, sender_id, sender_info, packet):
         """

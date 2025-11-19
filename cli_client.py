@@ -45,7 +45,7 @@ class CLIClient:
             self.running = True
 
             # Démarrer le thread de réception
-            self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
+            self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True, name="CLIReceive")
             self.receive_thread.start()
 
             return True
