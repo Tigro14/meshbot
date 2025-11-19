@@ -429,6 +429,9 @@ class UtilityCommands:
                 # Réponse privée: découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
                 day_messages = weather_data.split('\n\n')
                 for i, day_msg in enumerate(day_messages):
+                    # Skip empty messages (safety check)
+                    if not day_msg.strip():
+                        continue
                     self.sender.send_single(day_msg, sender_id, sender_info)
                     # Petit délai entre les messages
                     if i < len(day_messages) - 1:

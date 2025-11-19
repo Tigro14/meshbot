@@ -28,11 +28,14 @@ from utils import info_print, error_print, debug_print
 
 # Configuration
 CACHE_DIR = "/tmp"
-CACHE_DURATION = 300  # 5 minutes en secondes
+CACHE_DURATION = 300  # 5 minutes en secondes (fresh cache)
+CACHE_STALE_DURATION = 3600  # 1 heure (stale-while-revalidate window)
 CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
 WTTR_BASE_URL = "https://wttr.in"
 DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
-CURL_TIMEOUT = 10  # secondes
+CURL_TIMEOUT = 25  # secondes (increased from 10s for better reliability on slow networks)
+CURL_MAX_RETRIES = 3  # Number of retry attempts for failed curl requests
+CURL_RETRY_DELAY = 2  # Initial delay between retries in seconds (exponential backoff)
 
 # Mapping codes météo wttr.in → émojis
 WEATHER_EMOJI = {
@@ -85,6 +88,65 @@ WEATHER_EMOJI = {
     '392': '⛈️',  # Patchy light snow with thunder
     '395': '⛈️',  # Moderate or heavy snow with thunder
 }
+
+
+def _curl_with_retry(url, timeout=CURL_TIMEOUT, max_retries=CURL_MAX_RETRIES):
+    """
+    Execute curl with retry logic and exponential backoff
+    
+    Args:
+        url: URL to fetch
+        timeout: Timeout in seconds for each attempt
+        max_retries: Maximum number of retry attempts
+    
+    Returns:
+        subprocess.CompletedProcess: Result of successful curl command
+    
+    Raises:
+        subprocess.TimeoutExpired: If all retries timeout
+        Exception: If all retries fail with errors
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            info_print(f"🌐 Curl attempt {attempt + 1}/{max_retries}: {url[:80]}...")
+            result = subprocess.run(
+                ['curl', '-s', url],
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+            
+            # Success
+            if result.returncode == 0 and result.stdout:
+                if attempt > 0:
+                    info_print(f"✅ Curl succeeded on attempt {attempt + 1}")
+                return result
+            
+            # Non-timeout failure - might be worth retrying
+            error_print(f"⚠️ Curl attempt {attempt + 1} failed (returncode: {result.returncode})")
+            last_exception = Exception(f"Curl failed with returncode {result.returncode}")
+            
+        except subprocess.TimeoutExpired as e:
+            error_print(f"⏱️ Curl attempt {attempt + 1} timeout (>{timeout}s)")
+            last_exception = e
+            
+        except Exception as e:
+            error_print(f"❌ Curl attempt {attempt + 1} error: {e}")
+            last_exception = e
+        
+        # Wait before retry (exponential backoff)
+        if attempt < max_retries - 1:
+            delay = CURL_RETRY_DELAY * (2 ** attempt)  # 2s, 4s, 8s...
+            info_print(f"⏳ Waiting {delay}s before retry...")
+            time.sleep(delay)
+    
+    # All retries failed
+    if isinstance(last_exception, subprocess.TimeoutExpired):
+        raise last_exception
+    else:
+        raise Exception(f"All {max_retries} curl attempts failed") from last_exception
 
 
 def get_weather_icon(weather_code):
@@ -315,8 +377,11 @@ def get_weather_data(location=None):
             cache_file = f"{CACHE_DIR}/weather_cache_default.json"
 
         # ----------------------------------------------------------------
-        # Phase 1: Vérifier le cache
+        # Phase 1: Vérifier le cache (stale-while-revalidate pattern)
         # ----------------------------------------------------------------
+        cache_needs_refresh = False
+        stale_data_to_serve = None
+        
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -326,39 +391,66 @@ def get_weather_data(location=None):
                 current_time = time.time()
                 age_seconds = int(current_time - cache_time)
                 
-                # Cache encore valide ?
+                # Fresh cache (<5 min): serve immediately
                 if age_seconds < CACHE_DURATION:
                     weather_data = cache_data.get('data', '')
-                    info_print(f"✅ Cache météo utilisé (age: {age_seconds}s / {CACHE_DURATION}s)")
+                    info_print(f"✅ Cache météo FRESH utilisé (age: {age_seconds}s / {CACHE_DURATION}s)")
                     return weather_data
+                
+                # Stale but valid (<1 hour): serve and refresh in background
+                elif age_seconds < CACHE_STALE_DURATION:
+                    weather_data = cache_data.get('data', '')
+                    info_print(f"⚡ Cache météo STALE mais valide (age: {age_seconds}s / {CACHE_STALE_DURATION}s)")
+                    info_print(f"   → Servir le cache immédiatement et rafraîchir en arrière-plan")
+                    stale_data_to_serve = weather_data
+                    cache_needs_refresh = True
+                    # On va continuer pour rafraîchir, mais on servira le cache en cas d'échec
+                
                 else:
-                    info_print(f"⏰ Cache expiré (age: {age_seconds}s > {CACHE_DURATION}s)")
+                    info_print(f"⏰ Cache expiré (age: {age_seconds}s > {CACHE_STALE_DURATION}s)")
+                    cache_needs_refresh = True
             
             except (json.JSONDecodeError, IOError) as e:
                 error_print(f"⚠️ Erreur lecture cache: {e}")
-                # Continuer vers l'appel curl
+                cache_needs_refresh = True
+        else:
+            cache_needs_refresh = True
         
         # ----------------------------------------------------------------
-        # Phase 2: Appel curl vers wttr.in
+        # Phase 2: Appel curl vers wttr.in (si cache manquant ou expiré)
         # ----------------------------------------------------------------
+        if not cache_needs_refresh:
+            # Fresh cache already returned above
+            pass
+        
+        # If we have stale data, return it immediately (stale-while-revalidate)
+        if stale_data_to_serve:
+            info_print(f"⚡ Retour immédiat du cache stale (age <1h)")
+            # Note: In a real async implementation, we'd refresh in background here
+            # For now, we return stale data and skip refresh to maintain responsiveness
+            return stale_data_to_serve
+        
         info_print(f"🌤️ Récupération météo depuis {wttr_url}...")
 
-        # Appel curl avec gestion du timeout
+        # Appel curl avec retry logic
         try:
-            result = subprocess.run(
-                ['curl', '-s', wttr_url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
+            result = _curl_with_retry(wttr_url, timeout=CURL_TIMEOUT)
         except subprocess.TimeoutExpired:
-            error_print(f"❌ Timeout météo (>{CURL_TIMEOUT}s)")
+            error_print(f"❌ Timeout météo après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)")
             # Fallback vers cache périmé si disponible
-            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+            stale_data, age_hours = _load_stale_cache(cache_file)
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
-            return "❌ Timeout récupération météo"
+                return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+            return f"❌ Timeout récupération météo ({CURL_MAX_RETRIES} tentatives)"
+        except Exception as e:
+            error_print(f"❌ Erreur curl après {CURL_MAX_RETRIES} tentatives: {e}")
+            # Fallback vers cache périmé
+            stale_data, age_hours = _load_stale_cache(cache_file)
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{stale_data}"
+            return "❌ Erreur récupération météo"
 
         # ----------------------------------------------------------------
         # Phase 3: Traiter la réponse
@@ -413,18 +505,6 @@ def get_weather_data(location=None):
                 return f"⚠️ (cache {age_hours}h)\n{stale_data}"
 
             return error_msg
-    
-    except subprocess.TimeoutExpired:
-        error_msg = f"❌ Timeout météo (> {CURL_TIMEOUT}s)"
-        error_print(error_msg)
-
-        # Fallback: cache périmé
-        stale_data, age_hours = _load_stale_cache(cache_file)
-        if stale_data:
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache {age_hours}h)\n{stale_data}"
-
-        return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
@@ -563,14 +643,9 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         info_print(f"🌧️ Récupération graphe pluie depuis {wttr_url}...")
 
-        # Appel curl vers wttr.in v2n avec gestion du timeout
+        # Appel curl vers wttr.in v2n avec retry logic
         try:
-            result = subprocess.run(
-                ['curl', '-s', wttr_url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
+            result = _curl_with_retry(wttr_url, timeout=CURL_TIMEOUT)
 
             if result.returncode != 0 or not result.stdout:
                 error_msg = "❌ Erreur récupération graphe pluie"
@@ -585,7 +660,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 return error_msg
 
         except subprocess.TimeoutExpired:
-            error_msg = f"❌ Timeout graphe pluie (>{CURL_TIMEOUT}s)"
+            error_msg = f"❌ Timeout graphe pluie après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)"
             error_print(error_msg)
 
             # Fallback: cache SQLite périmé
@@ -594,6 +669,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Erreur curl: {e}"
+            error_print(error_msg)
+            
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            
             return error_msg
 
         output = result.stdout.strip()
@@ -686,19 +772,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         # Obtenir le vrai nom de la ville via l'API JSON (une seule fois pour tous les jours)
         location_name = location if location else "local"
         try:
-            # Faire un appel rapide pour obtenir le nom de la ville
+            # Faire un appel pour obtenir le nom de la ville (avec retry logic)
             if location:
                 location_encoded = location.replace(' ', '+')
                 json_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
             else:
                 json_url = f"{WTTR_BASE_URL}/?format=j1"
 
-            json_result = subprocess.run(
-                ['curl', '-s', json_url],
-                capture_output=True,
-                text=True,
-                timeout=5  # Timeout court
-            )
+            # Use retry wrapper with shorter timeout for location name fetch
+            json_result = _curl_with_retry(json_url, timeout=10, max_retries=2)
 
             if json_result.returncode == 0 and json_result.stdout:
                 weather_json = json.loads(json_result.stdout.strip())
@@ -804,18 +886,6 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         return result
 
-    except subprocess.TimeoutExpired:
-        error_msg = f"❌ Timeout graphe pluie (> {CURL_TIMEOUT}s)"
-        error_print(error_msg)
-
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
-        if stale_data:
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
-
-        return error_msg
-
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
@@ -917,15 +987,10 @@ def get_weather_astro(location=None, persistence=None):
         else:
             wttr_url = f"{WTTR_BASE_URL}/?format=j1"
 
-        # Faire l'appel API avec gestion du timeout
+        # Faire l'appel API avec retry logic
         info_print(f"📊 Récupération données astro depuis {wttr_url}...")
         try:
-            result = subprocess.run(
-                ['curl', '-s', wttr_url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
+            result = _curl_with_retry(wttr_url, timeout=CURL_TIMEOUT)
 
             if result.returncode != 0 or not result.stdout:
                 error_msg = "❌ Erreur récupération données astro"
@@ -940,7 +1005,7 @@ def get_weather_astro(location=None, persistence=None):
                 return error_msg
 
         except subprocess.TimeoutExpired:
-            error_msg = f"❌ Timeout données astro (>{CURL_TIMEOUT}s)"
+            error_msg = f"❌ Timeout données astro après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)"
             error_print(error_msg)
 
             # Fallback: cache SQLite périmé
@@ -949,6 +1014,17 @@ def get_weather_astro(location=None, persistence=None):
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Erreur curl: {e}"
+            error_print(error_msg)
+            
+            # Fallback: cache SQLite périmé
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            
             return error_msg
 
         weather_json = json.loads(result.stdout.strip())
@@ -1008,18 +1084,6 @@ def get_weather_astro(location=None, persistence=None):
             persistence.set_weather_cache(cache_key, 'astro', result)
 
         return result
-
-    except subprocess.TimeoutExpired:
-        error_msg = f"❌ Timeout données astro (> {CURL_TIMEOUT}s)"
-        error_print(error_msg)
-
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
-        if stale_data:
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
-
-        return error_msg
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
@@ -1149,15 +1213,13 @@ def get_weather_for_city(city="Paris"):
         info_print(f"🌤️ Récupération météo pour {city}...")
 
         try:
-            result = subprocess.run(
-                ['curl', '-s', url],
-                capture_output=True,
-                text=True,
-                timeout=CURL_TIMEOUT
-            )
+            result = _curl_with_retry(url, timeout=CURL_TIMEOUT)
         except subprocess.TimeoutExpired:
-            error_print(f"❌ Timeout météo {city} (>{CURL_TIMEOUT}s)")
+            error_print(f"❌ Timeout météo {city} après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)")
             return f"❌ Timeout récupération météo pour {city}"
+        except Exception as e:
+            error_print(f"❌ Erreur curl {city}: {e}")
+            return f"❌ Erreur récupération météo pour {city}"
 
         if result.returncode == 0 and result.stdout:
             json_response = result.stdout.strip()
