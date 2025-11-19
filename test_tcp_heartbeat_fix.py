@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 """
+OBSOLETE TEST - DO NOT USE
+
+This test was for v1 approach (_writeBytes() override) which was INCORRECT
+and caused the bot to become "deaf" (unable to receive messages).
+
+The v1 approach was reverted in commit 26d4f9b.
+
+For the current v2 approach (threading.excepthook), see:
+    test_threading_filter.py
+
+---
+
+OLD DESCRIPTION (for reference only):
 Test simple pour vérifier la logique de gestion d'erreur dans _writeBytes
 
 Ce test valide que la logique de gestion d'erreur fonctionne correctement
@@ -8,6 +21,30 @@ sans dépendre de la hiérarchie de classes Meshtastic.
 Usage:
     python test_tcp_heartbeat_fix.py
 """
+
+print("=" * 70)
+print("WARNING: This test is OBSOLETE")
+print("=" * 70)
+print()
+print("This test was for the v1 approach (_writeBytes override)")
+print("which was INCORRECT and caused a critical regression.")
+print()
+print("The bot became 'deaf' because the override silently swallowed")
+print("ALL socket errors, preventing the Meshtastic library from")
+print("detecting connection failures and reconnecting.")
+print()
+print("v1 was reverted in commit 26d4f9b.")
+print()
+print("For the CORRECT v2 approach, see:")
+print("    test_threading_filter.py")
+print()
+print("=" * 70)
+
+import sys
+sys.exit(0)
+
+# OLD CODE BELOW - KEPT FOR REFERENCE ONLY
+# -----------------------------------------
 
 import socket
 import sys
