@@ -148,3 +148,82 @@ class ESPHomeClient:
     def get_history_graphs_compact(self, hours=12):
         """Obtenir les graphiques compacts pour Meshtastic"""
         return self.history.format_graphs_compact(hours)
+    
+    def get_sensor_values(self):
+        """
+        Récupérer les valeurs brutes des capteurs ESPHome pour télémétrie
+        
+        Returns:
+            dict: Dictionnaire avec les clés:
+                - temperature: Température en °C (ou None)
+                - pressure: Pression en Pa (ou None)
+                - humidity: Humidité relative en % (ou None)
+                - battery_voltage: Tension batterie en V (ou None)
+        """
+        try:
+            requests_module = lazy_import_requests()
+            debug_print("Récupération capteurs ESPHome pour télémétrie...")
+            
+            # Test connectivité
+            response = requests_module.get(f"http://{ESPHOME_HOST}/", timeout=5)
+            if response.status_code != 200:
+                del response
+                return None
+            del response
+            
+            result = {
+                'temperature': None,
+                'pressure': None,
+                'humidity': None,
+                'battery_voltage': None
+            }
+            
+            # Mapping des endpoints vers les clés du résultat
+            endpoints_map = {
+                '/sensor/bme280_temperature': 'temperature',
+                '/sensor/bme280_pressure': 'pressure',
+                '/sensor/bme280_relative_humidity': 'humidity',
+                '/sensor/bme280_humidity': 'humidity',  # Fallback
+                '/sensor/battery_voltage': 'battery_voltage'
+            }
+            
+            # Récupérer chaque capteur
+            for endpoint, key in endpoints_map.items():
+                # Skip humidity si déjà trouvé
+                if key == 'humidity' and result['humidity'] is not None:
+                    continue
+                    
+                try:
+                    url = f"http://{ESPHOME_HOST}{endpoint}"
+                    resp = requests_module.get(url, timeout=2)
+                    
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if isinstance(data, dict) and 'value' in data:
+                            value = data['value']
+                            
+                            # Conversion de pression de hPa vers Pa si nécessaire
+                            if key == 'pressure' and value is not None:
+                                # ESPHome retourne généralement en hPa (millibar)
+                                # Meshtastic attend des Pascals (1 hPa = 100 Pa)
+                                if value < 2000:  # Probablement en hPa
+                                    value = value * 100
+                            
+                            result[key] = value
+                            debug_print(f"📊 {key}: {value}")
+                    
+                    resp.close()
+                except Exception as e:
+                    debug_print(f"Erreur lecture {endpoint}: {e}")
+                    continue
+            
+            # Vérifier qu'on a au moins une valeur
+            if all(v is None for v in result.values()):
+                debug_print("⚠️ Aucune valeur ESPHome trouvée")
+                return None
+            
+            return result
+            
+        except Exception as e:
+            error_print(f"Erreur récupération capteurs ESPHome: {e}")
+            return None
