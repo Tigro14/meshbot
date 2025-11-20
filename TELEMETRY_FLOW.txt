@@ -59,25 +59,43 @@
     │               'battery_voltage': 12.8
     │           }
     │
-    ├── 2️⃣ Create Telemetry Message
+    ├── 2️⃣ Create PACKET 1: Environment Metrics
+    │   │   ⚠️  Meshtastic telemetry uses 'oneof' - only ONE metric type per packet!
     │   │
-    │   └── telemetry_pb2.Telemetry()
+    │   └── env_telemetry = telemetry_pb2.Telemetry()
     │       │
     │       ├── time = 1700000000
     │       │
-    │       ├── environment_metrics
-    │       │   ├── temperature = 21.5
-    │       │   ├── barometric_pressure = 101325.0
-    │       │   └── relative_humidity = 56.4
+    │       └── environment_metrics
+    │           ├── temperature = 21.5
+    │           ├── barometric_pressure = 101325.0
+    │           └── relative_humidity = 56.4
+    │
+    ├── 3️⃣ Broadcast PACKET 1 to Mesh
+    │   │
+    │   └── interface.sendData(
+    │           env_telemetry,
+    │           destinationId = 0xFFFFFFFF,  # All nodes
+    │           portNum = TELEMETRY_APP,
+    │           wantResponse = False
+    │       )
+    │
+    ├── 🕐 Small delay (0.5s) between packets
+    │
+    ├── 4️⃣ Create PACKET 2: Device Metrics
+    │   │
+    │   └── device_telemetry = telemetry_pb2.Telemetry()
+    │       │
+    │       ├── time = 1700000000
     │       │
     │       └── device_metrics
     │           ├── voltage = 12.8
     │           └── battery_level = 64  # Calculated from voltage
     │
-    └── 3️⃣ Broadcast to Mesh
+    └── 5️⃣ Broadcast PACKET 2 to Mesh
         │
         └── interface.sendData(
-                telemetry_data,
+                device_telemetry,
                 destinationId = 0xFFFFFFFF,  # All nodes
                 portNum = TELEMETRY_APP,
                 wantResponse = False
@@ -89,7 +107,7 @@
 
     Bot Node (tigrobot)
          │
-         │ 📡 TELEMETRY_APP broadcast
+         │ 📡 TELEMETRY_APP broadcast (PACKET 1: environment)
          │
          ├──────────────┬──────────────┬──────────────┐
          │              │              │              │
@@ -97,9 +115,21 @@
     Node A         Node B         Node C         Node D
     (tigrog2)     (User 1)       (User 2)      (Router)
          │              │              │              │
-         │              │              │              └── Repeats broadcast
-         │              │              │
-         └── All nodes receive and can display telemetry
+         └── All nodes receive environment_metrics
+    
+    (0.5s delay)
+    
+    Bot Node (tigrobot)
+         │
+         │ 📡 TELEMETRY_APP broadcast (PACKET 2: device)
+         │
+         ├──────────────┬──────────────┬──────────────┐
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+    Node A         Node B         Node C         Node D
+    (tigrog2)     (User 1)       (User 2)      (Router)
+         │              │              │              │
+         └── All nodes receive device_metrics and can display complete telemetry
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         RECEIVING NODES                                  │
@@ -144,7 +174,9 @@
         │                          'humidity': None,
         │                          'battery_voltage': 12.8}
         │
-        └── send_esphome_telemetry() ──→ Broadcasts available data only
+        └── send_esphome_telemetry() ──→ Broadcasts 2 packets (env + device)
+                                          Packet 1: temperature only
+                                          Packet 2: battery voltage + level
 
     Scenario 3: All Sensors Missing (but ESPHome online)
     │
@@ -172,18 +204,19 @@
 └─────────────────────────────────────────────────────────────────────────┘
 
     Network Impact:
-        • 1 packet per hour (default)
-        • ~100-200 bytes per packet
-        • Broadcast (single transmission)
+        • 2 packets per hour (default) - ONE for env, ONE for device
+        • ~50-100 bytes per packet
+        • Broadcast (single transmission each)
+        • 0.5s delay between packets to avoid mesh congestion
 
     Memory Impact:
-        • Temporary allocation: ~1KB
+        • Temporary allocation: ~1KB total
         • Immediately garbage collected
         • No persistent storage
 
     CPU Impact:
         • HTTP requests: ~100ms total
-        • Protobuf creation: <1ms
+        • Protobuf creation: <1ms per packet
         • Runs in existing thread
 
     Total Overhead:

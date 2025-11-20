@@ -97,8 +97,8 @@ def test_esphome_sensor_values():
 
 
 def test_telemetry_broadcast():
-    """Test du broadcast de télémétrie"""
-    print("\n🧪 Test 2: Broadcast télémétrie\n")
+    """Test du broadcast de télémétrie - DOIT envoyer 2 paquets séparés"""
+    print("\n🧪 Test 2: Broadcast télémétrie (2 paquets séparés)\n")
     print("=" * 60)
     
     with patch.dict('sys.modules', {
@@ -139,12 +139,15 @@ def test_telemetry_broadcast():
         # Import après mock
         from meshtastic.protobuf import portnums_pb2, telemetry_pb2
         
-        # Mock telemetry structures
-        mock_telemetry = MagicMock()
-        mock_telemetry.time = 0
-        mock_telemetry.environment_metrics = MagicMock()
-        mock_telemetry.device_metrics = MagicMock()
-        telemetry_pb2.Telemetry = Mock(return_value=mock_telemetry)
+        # Mock telemetry structures - return new instance each time
+        def create_mock_telemetry():
+            mock = MagicMock()
+            mock.time = 0
+            mock.environment_metrics = MagicMock()
+            mock.device_metrics = MagicMock()
+            return mock
+        
+        telemetry_pb2.Telemetry = Mock(side_effect=create_mock_telemetry)
         
         # Mock portnums
         portnums_pb2.PortNum.TELEMETRY_APP = 67
@@ -171,27 +174,50 @@ def test_telemetry_broadcast():
         print("Appel de send_esphome_telemetry()...")
         bot.send_esphome_telemetry()
         
-        # Vérifications
+        # Vérifications - doit être appelé 2 fois (env + device)
         assert bot.interface.sendData.called, "❌ sendData() n'a pas été appelé"
+        call_count = bot.interface.sendData.call_count
+        print(f"\nsendData() appelé {call_count} fois")
+        assert call_count == 2, f"❌ sendData() devrait être appelé 2 fois (env + device), mais appelé {call_count} fois"
         
-        call_args = bot.interface.sendData.call_args
-        print(f"\nsendData() appelé avec:")
-        print(f"  destinationId: {call_args[1].get('destinationId', 'N/A')}")
-        print(f"  portNum: {call_args[1].get('portNum', 'N/A')}")
-        print(f"  wantResponse: {call_args[1].get('wantResponse', 'N/A')}")
+        # Vérifier premier appel (environment_metrics)
+        env_call = bot.interface.sendData.call_args_list[0]
+        print(f"\nPaquet 1 (environment_metrics):")
+        print(f"  destinationId: {env_call[1].get('destinationId', 'N/A')}")
+        print(f"  portNum: {env_call[1].get('portNum', 'N/A')}")
+        print(f"  wantResponse: {env_call[1].get('wantResponse', 'N/A')}")
         
-        assert call_args[1]['destinationId'] == 0xFFFFFFFF, "❌ destinationId devrait être broadcast"
-        assert call_args[1]['portNum'] == 67, "❌ portNum devrait être TELEMETRY_APP"
-        assert call_args[1]['wantResponse'] == False, "❌ wantResponse devrait être False"
+        assert env_call[1]['destinationId'] == 0xFFFFFFFF, "❌ destinationId devrait être broadcast"
+        assert env_call[1]['portNum'] == 67, "❌ portNum devrait être TELEMETRY_APP"
+        assert env_call[1]['wantResponse'] == False, "❌ wantResponse devrait être False"
         
-        # Vérifier que les valeurs ont été assignées
-        telemetry_data = call_args[0][0]
-        assert telemetry_data.environment_metrics.temperature == 22.3
-        assert telemetry_data.environment_metrics.barometric_pressure == 101325.0
-        assert telemetry_data.environment_metrics.relative_humidity == 58.2
-        assert telemetry_data.device_metrics.voltage == 13.1
+        # Vérifier les valeurs environment_metrics
+        env_data = env_call[0][0]
+        assert env_data.environment_metrics.temperature == 22.3, "❌ Température incorrecte"
+        assert env_data.environment_metrics.barometric_pressure == 101325.0, "❌ Pression incorrecte"
+        assert env_data.environment_metrics.relative_humidity == 58.2, "❌ Humidité incorrecte"
+        print("  ✓ environment_metrics correctes")
         
-        print("\n✅ Test 2 réussi: Broadcast télémétrie fonctionne")
+        # Vérifier second appel (device_metrics)
+        device_call = bot.interface.sendData.call_args_list[1]
+        print(f"\nPaquet 2 (device_metrics):")
+        print(f"  destinationId: {device_call[1].get('destinationId', 'N/A')}")
+        print(f"  portNum: {device_call[1].get('portNum', 'N/A')}")
+        print(f"  wantResponse: {device_call[1].get('wantResponse', 'N/A')}")
+        
+        assert device_call[1]['destinationId'] == 0xFFFFFFFF, "❌ destinationId devrait être broadcast"
+        assert device_call[1]['portNum'] == 67, "❌ portNum devrait être TELEMETRY_APP"
+        assert device_call[1]['wantResponse'] == False, "❌ wantResponse devrait être False"
+        
+        # Vérifier les valeurs device_metrics
+        device_data = device_call[0][0]
+        assert device_data.device_metrics.voltage == 13.1, "❌ Voltage incorrecte"
+        # Battery level should be calculated from voltage
+        expected_battery_level = int((13.1 - 11.0) / (13.8 - 11.0) * 100)
+        assert device_data.device_metrics.battery_level == expected_battery_level, "❌ Battery level incorrecte"
+        print("  ✓ device_metrics correctes")
+        
+        print("\n✅ Test 2 réussi: 2 paquets télémétrie envoyés séparément (conforme au standard)")
 
 
 def test_missing_sensors():
@@ -263,6 +289,110 @@ def test_missing_sensors():
             print(f"   Valeurs: {values}")
 
 
+def test_partial_telemetry_broadcast():
+    """Test du broadcast avec données partielles (seulement env OU device)"""
+    print("\n🧪 Test 4: Broadcast télémétrie partielle\n")
+    print("=" * 60)
+    
+    with patch.dict('sys.modules', {
+        'meshtastic': MagicMock(),
+        'meshtastic.serial_interface': MagicMock(),
+        'meshtastic.tcp_interface': MagicMock(),
+        'meshtastic.protobuf': MagicMock(),
+        'pubsub': MagicMock(),
+        'utils': MagicMock(),
+        'node_manager': MagicMock(),
+        'context_manager': MagicMock(),
+        'llama_client': MagicMock(),
+        'esphome_client': MagicMock(),
+        'esphome_history': MagicMock(),
+        'remote_nodes_client': MagicMock(),
+        'message_handler': MagicMock(),
+        'traffic_monitor': MagicMock(),
+        'system_monitor': MagicMock(),
+        'safe_serial_connection': MagicMock(),
+        'safe_tcp_connection': MagicMock(),
+        'tcp_interface_patch': MagicMock(),
+        'vigilance_monitor': MagicMock(),
+        'blitz_monitor': MagicMock(),
+        'mesh_traceroute_manager': MagicMock(),
+        'platforms': MagicMock(),
+        'platforms.telegram_platform': MagicMock(),
+        'platforms.cli_server_platform': MagicMock(),
+        'platform_config': MagicMock(),
+    }):
+        # Mock utils functions
+        sys.modules['utils'].debug_print = Mock()
+        sys.modules['utils'].error_print = Mock()
+        sys.modules['utils'].info_print = Mock()
+        
+        # Mock platform_config
+        sys.modules['platform_config'].get_enabled_platforms = Mock(return_value=[])
+        
+        # Import après mock
+        from meshtastic.protobuf import portnums_pb2, telemetry_pb2
+        
+        # Mock telemetry structures - return new instance each time
+        def create_mock_telemetry():
+            mock = MagicMock()
+            mock.time = 0
+            mock.environment_metrics = MagicMock()
+            mock.device_metrics = MagicMock()
+            return mock
+        
+        telemetry_pb2.Telemetry = Mock(side_effect=create_mock_telemetry)
+        
+        # Mock portnums
+        portnums_pb2.PortNum.TELEMETRY_APP = 67
+        
+        # Importer MeshBot après les mocks
+        from main_bot import MeshBot
+        
+        # Test Case A: Seulement environment_metrics (pas de batterie)
+        print("\nTest Case A: Seulement environment_metrics")
+        print("-" * 60)
+        bot = MeshBot()
+        bot.interface = Mock()
+        bot.interface.sendData = Mock()
+        bot.esphome_client.get_sensor_values = Mock(return_value={
+            'temperature': 21.0,
+            'pressure': 101325.0,
+            'humidity': 55.0,
+            'battery_voltage': None  # Pas de batterie
+        })
+        
+        bot.send_esphome_telemetry()
+        
+        # Devrait envoyer 1 seul paquet (environment)
+        call_count = bot.interface.sendData.call_count
+        print(f"sendData() appelé {call_count} fois")
+        assert call_count == 1, f"❌ Devrait envoyer 1 paquet (env seulement), pas {call_count}"
+        print("✅ 1 paquet envoyé (environment_metrics seulement)")
+        
+        # Test Case B: Seulement device_metrics (pas d'environnement)
+        print("\nTest Case B: Seulement device_metrics")
+        print("-" * 60)
+        bot2 = MeshBot()
+        bot2.interface = Mock()
+        bot2.interface.sendData = Mock()
+        bot2.esphome_client.get_sensor_values = Mock(return_value={
+            'temperature': None,
+            'pressure': None,
+            'humidity': None,
+            'battery_voltage': 12.5  # Seulement batterie
+        })
+        
+        bot2.send_esphome_telemetry()
+        
+        # Devrait envoyer 1 seul paquet (device)
+        call_count = bot2.interface.sendData.call_count
+        print(f"sendData() appelé {call_count} fois")
+        assert call_count == 1, f"❌ Devrait envoyer 1 paquet (device seulement), pas {call_count}"
+        print("✅ 1 paquet envoyé (device_metrics seulement)")
+        
+        print("\n✅ Test 4 réussi: Gère correctement les données partielles")
+
+
 def main():
     """Lancer tous les tests"""
     print("\n" + "=" * 60)
@@ -273,6 +403,7 @@ def main():
         test_esphome_sensor_values()
         test_telemetry_broadcast()
         test_missing_sensors()
+        test_partial_telemetry_broadcast()
         
         print("\n" + "=" * 60)
         print("✅ TOUS LES TESTS RÉUSSIS")

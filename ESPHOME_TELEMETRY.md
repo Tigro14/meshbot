@@ -45,42 +45,61 @@ The following ESPHome sensors are automatically broadcast when available:
 
 1. **Periodic Check**: Every `ESPHOME_TELEMETRY_INTERVAL` seconds (runs in `periodic_update_thread`)
 2. **Data Fetch**: Queries ESPHome device for sensor values via HTTP
-3. **Data Preparation**: Creates Meshtastic telemetry protobuf message
-4. **Broadcast**: Sends TELEMETRY_APP packet to all mesh nodes (0xFFFFFFFF)
+3. **Data Preparation**: Creates Meshtastic telemetry protobuf messages (see note below)
+4. **Broadcast**: Sends up to 2 TELEMETRY_APP packets to all mesh nodes (0xFFFFFFFF)
+
+**IMPORTANT**: The Meshtastic telemetry protobuf uses a `oneof` field, which means **only ONE metric type can be sent per packet**. Therefore, the bot sends **TWO separate packets**:
+- **Packet 1**: `environment_metrics` (temperature, pressure, humidity)
+- **Packet 2**: `device_metrics` (battery voltage, battery level)
+
+This ensures all telemetry data appears correctly in node details on receiving devices.
 
 ## Telemetry Packet Structure
 
-The bot sends standard Meshtastic telemetry packets using:
+The bot sends standard Meshtastic telemetry packets in **two separate broadcasts**:
 
 ```python
 from meshtastic.protobuf import portnums_pb2, telemetry_pb2
 
-telemetry_data = telemetry_pb2.Telemetry()
-telemetry_data.time = int(time.time())
-
-# Environmental metrics
-telemetry_data.environment_metrics.temperature = 21.5  # °C
-telemetry_data.environment_metrics.barometric_pressure = 101325.0  # Pa
-telemetry_data.environment_metrics.relative_humidity = 56.4  # %
-
-# Device metrics
-telemetry_data.device_metrics.voltage = 12.8  # V
-telemetry_data.device_metrics.battery_level = 64  # %
+# PACKET 1: Environment metrics only
+env_telemetry = telemetry_pb2.Telemetry()
+env_telemetry.time = int(time.time())
+env_telemetry.environment_metrics.temperature = 21.5  # °C
+env_telemetry.environment_metrics.barometric_pressure = 101325.0  # Pa
+env_telemetry.environment_metrics.relative_humidity = 56.4  # %
 
 interface.sendData(
-    telemetry_data,
+    env_telemetry,
+    destinationId=0xFFFFFFFF,  # Broadcast to all
+    portNum=portnums_pb2.PortNum.TELEMETRY_APP,
+    wantResponse=False
+)
+
+# Small delay between packets
+time.sleep(0.5)
+
+# PACKET 2: Device metrics only
+device_telemetry = telemetry_pb2.Telemetry()
+device_telemetry.time = int(time.time())
+device_telemetry.device_metrics.voltage = 12.8  # V
+device_telemetry.device_metrics.battery_level = 64  # %
+
+interface.sendData(
+    device_telemetry,
     destinationId=0xFFFFFFFF,  # Broadcast to all
     portNum=portnums_pb2.PortNum.TELEMETRY_APP,
     wantResponse=False
 )
 ```
 
+**Why two packets?** The Meshtastic `Telemetry` protobuf has a `oneof variant` field that restricts each packet to containing only one metric type (environment_metrics OR device_metrics OR air_quality_metrics, etc). Attempting to set multiple types in one packet will result in only the last-set type being transmitted.
+
 ## Missing Sensors
 
 The implementation handles missing or faulty sensors gracefully:
 
 - **ESPHome Offline**: No telemetry broadcast, logs warning
-- **Partial Sensors**: Broadcasts available data only
+- **Partial Sensors**: Broadcasts available data only (1 or 2 packets depending on what's available)
 - **All Sensors Missing**: No telemetry broadcast
 - **Bad Values**: Individual sensors that fail are skipped
 
@@ -91,7 +110,9 @@ Pressure: N/A (sensor offline)
 Humidity: N/A (sensor offline)  
 Battery: 12.8V ✓
 
-→ Broadcasts: Temperature + Battery only
+→ Broadcasts: 
+  Packet 1: Temperature only (in environment_metrics)
+  Packet 2: Battery voltage + level (in device_metrics)
 ```
 
 ## Viewing Telemetry Data
@@ -173,11 +194,14 @@ python3 test_esphome_telemetry.py
 🧪 Test 1: Récupération valeurs capteurs ESPHome
 ✅ Test 1 réussi: Valeurs correctes et pression convertie en Pa
 
-🧪 Test 2: Broadcast télémétrie
-✅ Test 2 réussi: Broadcast télémétrie fonctionne
+🧪 Test 2: Broadcast télémétrie (2 paquets séparés)
+✅ Test 2 réussi: 2 paquets télémétrie envoyés séparément (conforme au standard)
 
 🧪 Test 3: Gestion capteurs manquants
 ✅ Test 3 réussi: Gère correctement les capteurs manquants
+
+🧪 Test 4: Broadcast télémétrie partielle
+✅ Test 4 réussi: Gère correctement les données partielles
 
 ============================================================
 ✅ TOUS LES TESTS RÉUSSIS
@@ -189,12 +213,15 @@ python3 test_esphome_telemetry.py
 When telemetry is broadcast, you'll see logs like:
 
 ```
-📊 Télémétrie - Température: 21.5°C
-📊 Télémétrie - Pression: 101325 Pa
-📊 Télémétrie - Humidité: 56.4%
-📊 Télémétrie - Batterie: 12.8V (64%)
-📡 Envoi télémétrie ESPHome en broadcast...
-✅ Télémétrie ESPHome envoyée avec succès
+📊 Télémétrie Env - Température: 21.5°C
+📊 Télémétrie Env - Pression: 101325 Pa
+📊 Télémétrie Env - Humidité: 56.4%
+📡 Envoi télémétrie ESPHome (environment_metrics)...
+✅ Télémétrie environment_metrics envoyée
+📊 Télémétrie Device - Batterie: 12.8V (64%)
+📡 Envoi télémétrie ESPHome (device_metrics)...
+✅ Télémétrie device_metrics envoyée
+✅ Télémétrie ESPHome complète: 2 paquet(s) envoyé(s)
 ```
 
 ## Troubleshooting
