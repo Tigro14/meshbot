@@ -11,7 +11,7 @@ import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
 from pubsub import pub
-from meshtastic.protobuf import portnums_pb2, telemetry_pb2
+from meshtastic.protobuf import portnums_pb2, telemetry_pb2, admin_pb2
 
 # Imports des modules
 from config import *
@@ -678,6 +678,47 @@ class MeshBot:
             
             info_print("✅ Abonné aux messages Meshtastic (receive)")
             self.running = True
+
+            # ========================================
+            # CONFIGURATION TÉLÉMÉTRIE EMBARQUÉE
+            # ========================================
+            # Désactiver la télémétrie embarquée du device si ESPHome est activé
+            # pour éviter le bruit mesh avec des paquets redondants
+            if globals().get('ESPHOME_TELEMETRY_ENABLED', False):
+                try:
+                    info_print("📊 ESPHome télémétrie activée - désactivation télémétrie embarquée...")
+                    
+                    # Attendre que le node local soit prêt
+                    time.sleep(2)
+                    
+                    if hasattr(self.interface, 'localNode') and self.interface.localNode:
+                        local_node = self.interface.localNode
+                        
+                        # Vérifier que moduleConfig est disponible
+                        if hasattr(local_node, 'moduleConfig') and local_node.moduleConfig:
+                            # Configurer device_update_interval à 0 pour désactiver
+                            current_interval = local_node.moduleConfig.telemetry.device_update_interval
+                            info_print(f"   Intervalle actuel: {current_interval}s")
+                            
+                            if current_interval != 0:
+                                local_node.moduleConfig.telemetry.device_update_interval = 0
+                                
+                                # Écrire la configuration
+                                local_node.writeConfig('telemetry')
+                                info_print("✅ Télémétrie embarquée désactivée (device_update_interval = 0)")
+                            else:
+                                info_print("✅ Télémétrie embarquée déjà désactivée")
+                        else:
+                            info_print("⚠️ moduleConfig non disponible - télémétrie embarquée non modifiée")
+                    else:
+                        info_print("⚠️ localNode non disponible - télémétrie embarquée non modifiée")
+                        
+                except Exception as e:
+                    error_print(f"⚠️ Erreur lors de la désactivation télémétrie embarquée: {e}")
+                    error_print(traceback.format_exc())
+                    info_print("   → Continuer avec configuration actuelle")
+            else:
+                info_print("📊 ESPHome télémétrie désactivée - télémétrie embarquée inchangée")
 
             # ========================================
             # MONITORING ÉCLAIRS BLITZORTUNG
