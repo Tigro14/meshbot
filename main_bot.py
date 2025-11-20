@@ -7,6 +7,8 @@ import time
 import threading
 import gc
 import traceback
+import signal
+import sys
 import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -619,9 +621,28 @@ class MeshBot:
             error_print(f"❌ Erreur préparation télémétrie ESPHome: {e}")
             error_print(traceback.format_exc())
     
+    def _signal_handler(self, signum, frame):
+        """
+        Gestionnaire de signaux pour arrêt propre
+        
+        Gère SIGTERM (systemd stop) et SIGINT (Ctrl+C) pour arrêter proprement le bot
+        au lieu de l'interrompre brutalement.
+        """
+        signal_name = signal.Signals(signum).name
+        info_print(f"🛑 Signal {signal_name} reçu - arrêt propre du bot...")
+        self.running = False
+    
     def start(self):
         """Démarrage du bot - version simplifiée avec support TCP/Serial"""
         info_print("🤖 Bot Meshtastic-Llama avec architecture modulaire")
+        
+        # ========================================
+        # INSTALLATION GESTIONNAIRES DE SIGNAUX
+        # ========================================
+        # Configurer les gestionnaires pour arrêt propre
+        signal.signal(signal.SIGTERM, self._signal_handler)  # systemd stop
+        signal.signal(signal.SIGINT, self._signal_handler)   # Ctrl+C
+        info_print("✅ Gestionnaires de signaux installés (SIGTERM, SIGINT)")
         
         # Charger la base de nœuds
         self.node_manager.load_node_names()
@@ -921,6 +942,11 @@ class MeshBot:
                 cleanup_counter += 1
                 if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
                     self.cleanup_cache()
+            
+            # Si nous sortons de la boucle normalement (self.running = False)
+            # c'est un arrêt intentionnel, retourner True
+            info_print("🛑 Sortie de la boucle principale (arrêt intentionnel)")
+            return True
                 
         except Exception as e:
             error_print(f"Erreur: {e}")
