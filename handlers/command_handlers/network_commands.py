@@ -83,9 +83,7 @@ class NetworkCommands:
                     response = self._format_my_not_found(remote_nodes)
 
                 if is_broadcast:
-                    # Réponse publique avec préfixe
-                    author_short = current_sender.get_short_name(sender_id)
-                    response = f"{author_short}: {response}"
+                    # Réponse publique sans préfixe (utilisateur sait déjà qui il est)
                     self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
                 else:
                     # Réponse privée

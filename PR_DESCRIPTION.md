@@ -44,7 +44,7 @@ telegram_bot/
     ├── network_commands.py      # nodes, fullnodes, nodeinfo, rx
     ├── stats_commands.py        # stats, top, packets, histo, trafic
     ├── utility_commands.py      # power, weather, graphs
-    ├── mesh_commands.py         # echo, annonce
+    ├── mesh_commands.py         # echo
     ├── ai_commands.py           # bot, clearcontext
     ├── trace_commands.py        # trace
     └── admin_commands.py        # cleartraffic, dbstats, cleanup

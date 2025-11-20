@@ -397,9 +397,7 @@ class UtilityCommands:
 
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                author_short = self.sender.get_short_name(sender_id)
-                response = f"{author_short}: {help_text}"
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather help")
+                self._send_broadcast_via_tigrog2(help_text, sender_id, sender_info, "/weather help")
             else:
                 self.sender.send_single(help_text, sender_id, sender_info)
             return
@@ -419,13 +417,11 @@ class UtilityCommands:
 
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                # Broadcast public avec préfixe du nom court
-                author_short = self.sender.get_short_name(sender_id)
+                # Broadcast public sans préfixe (utilisateur sait déjà qui il est)
                 # Pour rain, envoyer seulement le premier jour en broadcast (sinon trop long)
                 day_messages = weather_data.split('\n\n')
                 first_day = day_messages[0] if day_messages else weather_data
-                response = f"{author_short}: {first_day}"
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+                self._send_broadcast_via_tigrog2(first_day, sender_id, sender_info, cmd)
             else:
                 # Réponse privée: découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
                 day_messages = weather_data.split('\n\n')
@@ -448,9 +444,7 @@ class UtilityCommands:
 
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                author_short = self.sender.get_short_name(sender_id)
-                response = f"{author_short}: {weather_data}"
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+                self._send_broadcast_via_tigrog2(weather_data, sender_id, sender_info, cmd)
             else:
                 self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'blitz':
@@ -470,17 +464,13 @@ class UtilityCommands:
 
                 # Envoyer selon le mode (broadcast ou direct)
                 if is_broadcast:
-                    author_short = self.sender.get_short_name(sender_id)
-                    response = f"{author_short}: {weather_data}"
-                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+                    self._send_broadcast_via_tigrog2(weather_data, sender_id, sender_info, cmd)
                 else:
                     self.sender.send_single(weather_data, sender_id, sender_info)
             else:
                 weather_data = "⚡ Surveillance éclairs désactivée"
                 if is_broadcast:
-                    author_short = self.sender.get_short_name(sender_id)
-                    response = f"{author_short}: {weather_data}"
-                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather blitz")
+                    self._send_broadcast_via_tigrog2(weather_data, sender_id, sender_info, "/weather blitz")
                 else:
                     self.sender.send_single(weather_data, sender_id, sender_info)
         elif subcommand == 'vigi':
@@ -513,9 +503,7 @@ class UtilityCommands:
 
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                author_short = self.sender.get_short_name(sender_id)
-                response = f"{author_short}: {vigi_info}"
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/weather vigi")
+                self._send_broadcast_via_tigrog2(vigi_info, sender_id, sender_info, "/weather vigi")
             else:
                 self.sender.send_single(vigi_info, sender_id, sender_info)
         else:
@@ -526,9 +514,7 @@ class UtilityCommands:
 
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                author_short = self.sender.get_short_name(sender_id)
-                response = f"{author_short}: {weather_data}"
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, cmd)
+                self._send_broadcast_via_tigrog2(weather_data, sender_id, sender_info, cmd)
             else:
                 self.sender.send_single(weather_data, sender_id, sender_info)
 
@@ -556,7 +542,6 @@ class UtilityCommands:
             "/power",
             "/sys",
             "/echo",
-            "/annonce",
             "/nodes",
             "/stats [cmd]",
             "/db [cmd]",
@@ -636,7 +621,6 @@ class UtilityCommands:
         • /echo <message> - Diffuser sur le réseau
           Préfixe auto, broadcast via votre node
           Ex: /echo Bonjour à tous!
-        • /annonce <message> - Diffuser depuis le bot
 
         ℹ️ UTILITAIRES
         • /legend - Légende indicateurs signal
@@ -800,83 +784,6 @@ class UtilityCommands:
             
             error_msg = f"❌ Erreur: {str(e)[:30]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
-
-    def handle_annonce(self, message, sender_id, sender_info, packet):
-        """Gérer la commande /annonce - diffuse depuis le bot local (serial)"""
-        
-        info_print("=" * 60)
-        info_print("📢 HANDLE_ANNONCE APPELÉ")
-        info_print("=" * 60)
-        info_print(f"Message brut: '{message}'")
-        info_print(f"Sender ID: 0x{sender_id:08x}")
-        info_print(f"Sender info: {sender_info}")
-        
-        # Anti-doublon
-        message_id = f"{sender_id}_{message}_{int(time.time())}"
-        info_print(f"Message ID: {message_id}")
-        
-        if hasattr(self.sender, '_last_annonce_id'):
-            info_print(f"Last annonce ID: {self.sender._last_annonce_id}")
-            if self.sender._last_annonce_id == message_id:
-                info_print("⚠️ Annonce déjà traitée, ignorée")
-                return
-        
-        self.sender._last_annonce_id = message_id
-        info_print("✅ Anti-doublon OK")
-        
-        annonce_text = message[9:].strip()  # Longueur de "/annonce "
-        info_print(f"Texte extrait: '{annonce_text}'")
-        info_print(f"Longueur: {len(annonce_text)} caractères")
-        
-        if not annonce_text:
-            info_print("❌ Texte vide")
-            self.sender.send_single("Usage: /annonce <texte>", sender_id, sender_info)
-            return
-    
-        info_print(f"✅ Texte valide: '{annonce_text}'")
-        
-        # Envoyer directement via l'interface série locale
-        try:
-            author_short = self.sender.get_short_name(sender_id)
-            annonce_response = f"{author_short}: {annonce_text}"
-            
-            info_print(f"📝 Message final: '{annonce_response}'")
-            info_print(f"   Auteur short: {author_short}")
-            info_print(f"   Longueur finale: {len(annonce_response)} caractères")
-            
-            # Récupérer l'interface locale
-            interface = self.sender._get_interface()
-            
-            if not interface:
-                error_print("❌ Interface locale non disponible")
-                self.sender.send_single("Erreur: Interface non disponible", sender_id, sender_info)
-                return
-            
-            info_print("📤 Envoi du message en broadcast...")
-            
-            # Envoyer en broadcast sur le mesh local
-            interface.sendText(annonce_response, destinationId='^all')
-            
-            info_print("✅ Annonce diffusée depuis le bot local")
-            info_print("=" * 60)
-            
-            # Logger la conversation
-            self.sender.log_conversation(sender_id, sender_info, message, annonce_response)
-            
-        except Exception as e:
-            error_print("")
-            error_print("=" * 60)
-            error_print("❌ ERREUR DANS ANNONCE")
-            error_print("=" * 60)
-            error_print(f"Exception: {e}")
-            error_print(traceback.format_exc())
-            error_print("=" * 60)
-            
-            try:
-                error_response = f"Erreur annonce: {str(e)[:30]}"
-                self.sender.send_single(error_response, sender_id, sender_info)
-            except:
-                pass            
 
     def handle_channel_debug(self, sender_id, sender_info):
         """Afficher le rapport de diagnostic des canaux"""

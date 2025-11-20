@@ -255,7 +255,6 @@ class TelegramIntegration:
 
         # Commandes mesh
         self.application.add_handler(CommandHandler("echo", self.mesh_commands.echo_command))
-        self.application.add_handler(CommandHandler("annonce", self.mesh_commands.annonce_command))
 
         # Commandes IA
         self.application.add_handler(CommandHandler("bot", self.ai_commands.bot_command))

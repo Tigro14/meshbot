@@ -461,7 +461,7 @@ MeshBot (Orchestrator)
 │       ├── SystemCommands (/sys, /rebootpi)
 │       ├── UnifiedStatsCommands (/stats with sub-commands)
 │       ├── StatsCommands (Legacy: /top, /histo, /packets)
-│       ├── MeshCommands (/echo, /annonce)
+│       ├── MeshCommands (/echo)
 │       └── UtilityCommands (/help, /power, /weather, etc.)
 ├── MessageSender (Throttling + chunking)
 ├── NodeManager (Node database + GPS)
@@ -482,7 +482,7 @@ MeshBot (Orchestrator)
             ├── NetworkCommands (/nodes, /my)
             ├── StatsCommands (/top, /histo, /stats)
             ├── SystemCommands (/sys, /reboot)
-            ├── MeshCommands (/echo, /annonce)
+            ├── MeshCommands (/echo)
             ├── AdminCommands (Admin operations)
             ├── TraceCommands (/trace)
             └── UtilityCommands (Misc utilities)
@@ -510,7 +510,7 @@ MeshBot (Orchestrator)
 │       ├── system_commands.py  # /sys, /rebootpi
 │       ├── stats_commands.py   # Legacy stats commands
 │       ├── unified_stats.py    # Unified /stats command (NEW)
-│       ├── mesh_commands.py    # /echo, /annonce
+│       ├── mesh_commands.py    # /echo
 │       ├── utility_commands.py # /help, /power, /weather, etc.
 │       ├── db_commands.py      # /db database operations (NEW)
 │       └── signal_utils.py     # Signal formatting utilities
@@ -533,7 +533,7 @@ MeshBot (Orchestrator)
 │       ├── network_commands.py # /nodes, /my
 │       ├── stats_commands.py   # /top, /histo, /stats
 │       ├── system_commands.py  # /sys, /reboot
-│       ├── mesh_commands.py    # /echo, /annonce
+│       ├── mesh_commands.py    # /echo
 │       ├── admin_commands.py   # Admin operations
 │       ├── trace_commands.py   # /trace
 │       └── utility_commands.py # Misc utilities
@@ -1978,7 +1978,7 @@ The Telegram platform has been refactored into a modular command structure:
 ├── network_commands.py    # /nodes, /my, /signal
 ├── stats_commands.py      # /top, /histo, /stats, /packets
 ├── system_commands.py     # /sys, /reboot, /uptime
-├── mesh_commands.py       # /echo, /annonce
+├── mesh_commands.py       # /echo
 ├── admin_commands.py      # Admin-only commands
 ├── trace_commands.py      # /trace <node>
 └── utility_commands.py    # /power, /weather, etc.
@@ -2432,8 +2432,7 @@ if info and monitor.should_alert(info):
 | `/top [hours]` | `stats_commands.py` | Top talkers (legacy alias) |
 | `/histo [type]` | `stats_commands.py` | Packet histogram (legacy) |
 | `/packets` | `stats_commands.py` | Packet stats (legacy) |
-| `/echo <msg>` | `mesh_commands.py` | Broadcast via router |
-| `/annonce <msg>` | `mesh_commands.py` | Broadcast via bot |
+| `/echo <msg>` | `mesh_commands.py` | Broadcast on mesh |
 | `/power` | `utility_commands.py` | ESPHome data |
 | `/weather [sub]` | `utility_commands.py` | Weather forecast |
 | `/weather rain` | `utility_commands.py` | Rain precipitation graphs |
