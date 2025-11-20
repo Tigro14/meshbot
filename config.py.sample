@@ -30,9 +30,10 @@ TCP_PORT = 4403
 # Nom du node connecté (utilisé pour affichage dans les messages et logs)
 # En mode single-node, c'est le node auquel le bot est connecté
 # En mode legacy multi-nodes, c'est le node distant pour requêtes de stats
+# NOTE: L'ID du node (nodeNum) est automatiquement détecté depuis la connexion
+#       via interface.localNode.nodeNum - pas besoin de le configurer manuellement
 REMOTE_NODE_HOST = "192.168.1.38"  # IP du node (utilisé si CONNECTION_MODE='tcp')
 REMOTE_NODE_NAME = "MyNode"        # Nom d'affichage de votre node
-TIGROG2_NODE_ID = 0x12345678       # ID du node (optionnel, pour identification)
 
 # ========================================
 # CONFIGURATION LEGACY MULTI-NODES (AVANCÉ)
