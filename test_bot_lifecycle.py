@@ -94,8 +94,11 @@ class TestSystemdService(unittest.TestCase):
                      "Service should have StartLimitIntervalSec")
         
         # Should NOT have Restart=always
-        lines_with_restart_always = [line for line in content.split('\n') 
-                                     if 'Restart=always' in line and not line.strip().startswith('#')]
+        lines = content.split('\n')
+        lines_with_restart_always = [
+            line for line in lines
+            if 'Restart=always' in line and not line.strip().startswith('#')
+        ]
         self.assertEqual(len(lines_with_restart_always), 0,
                         "Service should not use Restart=always (except in comments)")
 
