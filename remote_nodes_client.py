@@ -173,121 +173,159 @@ class RemoteNodesClient:
         skipped_by_hops = 0
         skipped_by_date = 0
         skipped_by_metrics = 0
+        
+        # Retry logic pour connexion TCP
+        max_retries = 2
+        retry_delay = 3
 
-        try:
-            # ✅ RÉUTILISER l'interface principale si disponible (single-node mode)
-            if self.interface is not None:
-                # Vérifier que l'interface correspond au host/port demandé
-                interface_host = getattr(self.interface, 'hostname', None)
-                if interface_host == remote_host:
-                    debug_print(f"♻️ Réutilisation interface principale pour {remote_host}")
-                    remote_interface = self.interface
-                    close_interface = False
+        for attempt in range(max_retries):
+            try:
+                # ✅ RÉUTILISER l'interface principale si disponible (single-node mode)
+                if self.interface is not None:
+                    # Vérifier que l'interface correspond au host/port demandé
+                    interface_host = getattr(self.interface, 'hostname', None)
+                    if interface_host == remote_host:
+                        debug_print(f"♻️ Réutilisation interface principale pour {remote_host}")
+                        remote_interface = self.interface
+                        close_interface = False
+                    else:
+                        if attempt > 0:
+                            debug_print(f"🔗 Connexion TCP à {remote_host} (tentative {attempt + 1}/{max_retries})...")
+                        else:
+                            debug_print(f"🔗 Connexion TCP à {remote_host}... (host différent)")
+                        remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
+                        close_interface = True
                 else:
-                    debug_print(f"🔗 Connexion TCP à {remote_host}... (host différent)")
+                    if attempt > 0:
+                        debug_print(f"🔗 Connexion TCP à {remote_host} (tentative {attempt + 1}/{max_retries})...")
+                    else:
+                        debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
                     remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
                     close_interface = True
-            else:
-                debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
-                remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
-                close_interface = True
-            
-            try:
-                # Récupérer les nœuds
-                remote_nodes = remote_interface.nodes
                 
-                # Formater les résultats - FILTRER SEULEMENT LES NŒUDS DIRECTS
-                node_list = []
-                for node_id, node_info in remote_nodes.items():
-                    try:
-                        if isinstance(node_info, dict):
-                            # VÉRIFIER SI LE NŒUD A ÉTÉ REÇU DIRECTEMENT
-                            hops_away = node_info.get('hopsAway', None)
-                            
-                            if hops_away is not None:
-                                if hops_away > 0:
-                                    skipped_by_hops += 1
-                                    continue
-                                else:
-                                    debug_print(f"Nœud direct accepté: {node_id}")
-                            
-                            # Vérifier la date
-                            last_heard = node_info.get('lastHeard', 0)
-                            if last_heard < cutoff_time:
-                                skipped_by_date += 1
-                                continue
-                            
-                            # Convertir node_id
-                            if isinstance(node_id, str):
-                                if node_id.startswith('!'):
-                                    clean_id = node_id[1:]
-                                    id_int = int(clean_id, 16)
-                                elif node_id.isdigit():
-                                    id_int = int(node_id)
-                                else:
-                                    id_int = int(node_id, 16)
-                            else:
-                                id_int = int(node_id)
-                            
-                            # Récupérer le nom
-                            name = "Unknown"
-                            if 'user' in node_info and isinstance(node_info['user'], dict):
-                                user = node_info['user']
-                                short_name = user.get('shortName', '')
-                                long_name = user.get('longName', '')
+                try:
+                    # Récupérer les nœuds
+                    remote_nodes = remote_interface.nodes
+                    
+                    # Formater les résultats - FILTRER SEULEMENT LES NŒUDS DIRECTS
+                    node_list = []
+                    for node_id, node_info in remote_nodes.items():
+                        try:
+                            if isinstance(node_info, dict):
+                                # VÉRIFIER SI LE NŒUD A ÉTÉ REÇU DIRECTEMENT
+                                hops_away = node_info.get('hopsAway', None)
                                 
-                                if short_name and long_name:
-                                    if short_name.lower() != long_name.lower():
-                                        name = f"{short_name} {long_name}"
+                                if hops_away is not None:
+                                    if hops_away > 0:
+                                        skipped_by_hops += 1
+                                        continue
                                     else:
-                                        name = long_name
-                                elif long_name:
-                                    name = long_name
-                                elif short_name:
-                                    name = short_name
+                                        debug_print(f"Nœud direct accepté: {node_id}")
+                                
+                                # Vérifier la date
+                                last_heard = node_info.get('lastHeard', 0)
+                                if last_heard < cutoff_time:
+                                    skipped_by_date += 1
+                                    continue
+                                
+                                # Convertir node_id
+                                if isinstance(node_id, str):
+                                    if node_id.startswith('!'):
+                                        clean_id = node_id[1:]
+                                        id_int = int(clean_id, 16)
+                                    elif node_id.isdigit():
+                                        id_int = int(node_id)
+                                    else:
+                                        id_int = int(node_id, 16)
                                 else:
-                                    name = f"Node-{id_int:04x}"
-                            
-                            hops_away = node_info.get('hopsAway', 0)
-                            
-                            node_data = {
-                                'id': id_int,
-                                'name': name,
-                                'last_heard': last_heard,
-                                'hops_away': hops_away
-                            }
-                            
-                            if COLLECT_SIGNAL_METRICS:
-                                node_data['rssi'] = node_info.get('rssi', 0)
-                                node_data['snr'] = node_info.get('snr', 0.0)
-                            
-                            node_list.append(node_data)
-                            
-                    except Exception as node_error:
-                        debug_print(f"Erreur parsing nœud {node_id}: {node_error}")
-                        continue
-                
-                debug_print(f"   - Nœuds acceptés: {len(node_list)}")
-                debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
-                debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
-                debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}")
+                                    id_int = int(node_id)
+                                
+                                # Récupérer le nom
+                                name = "Unknown"
+                                if 'user' in node_info and isinstance(node_info['user'], dict):
+                                    user = node_info['user']
+                                    short_name = user.get('shortName', '')
+                                    long_name = user.get('longName', '')
+                                    
+                                    if short_name and long_name:
+                                        if short_name.lower() != long_name.lower():
+                                            name = f"{short_name} {long_name}"
+                                        else:
+                                            name = long_name
+                                    elif long_name:
+                                        name = long_name
+                                    elif short_name:
+                                        name = short_name
+                                    else:
+                                        name = f"Node-{id_int:04x}"
+                                
+                                hops_away = node_info.get('hopsAway', 0)
+                                
+                                node_data = {
+                                    'id': id_int,
+                                    'name': name,
+                                    'last_heard': last_heard,
+                                    'hops_away': hops_away
+                                }
+                                
+                                if COLLECT_SIGNAL_METRICS:
+                                    node_data['rssi'] = node_info.get('rssi', 0)
+                                    node_data['snr'] = node_info.get('snr', 0.0)
+                                
+                                node_list.append(node_data)
+                                
+                        except Exception as node_error:
+                            debug_print(f"Erreur parsing nœud {node_id}: {node_error}")
+                            continue
+                    
+                    debug_print(f"   - Nœuds acceptés: {len(node_list)}")
+                    debug_print(f"   - Ignorés (relayés): {skipped_by_hops}")
+                    debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
+                    debug_print(f"   - Ignorés (pas de métriques): {skipped_by_metrics}")
 
-                # ✅ ÉTAPE 3: Mettre en cache
-                self._cache_set(cache_key, node_list)
+                    # ✅ ÉTAPE 3: Mettre en cache
+                    self._cache_set(cache_key, node_list)
+                    
+                    return node_list
                 
-                return node_list
-            
-            finally:
-                # Fermer uniquement si nous avons créé une nouvelle connexion
-                if close_interface:
-                    try:
-                        remote_interface.__exit__(None, None, None)
-                    except:
-                        pass
+                finally:
+                    # Fermer uniquement si nous avons créé une nouvelle connexion
+                    if close_interface:
+                        try:
+                            remote_interface.__exit__(None, None, None)
+                        except:
+                            pass
+                
+                # Si on arrive ici, la connexion a réussi - sortir de la boucle
+                break
+                
+            except OSError as e:
+                # Erreurs réseau (connexion refusée, timeout, etc.)
+                if attempt < max_retries - 1:
+                    error_print(f"⚠️ Erreur connexion TCP {remote_host} (tentative {attempt + 1}/{max_retries}): {e}")
+                    error_print(f"   Nouvelle tentative dans {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    error_print(f"❌ Erreur récupération nœuds distants {remote_host} après {max_retries} tentatives:")
+                    error_print(f"   Type: {type(e).__name__}")
+                    error_print(f"   Message: {e}")
+                    return []
+                    
+            except Exception as e:
+                # Autres erreurs
+                if attempt < max_retries - 1:
+                    error_print(f"⚠️ Erreur nœuds distants {remote_host}: {e}")
+                    error_print(f"   Nouvelle tentative dans {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    error_print(f"❌ Erreur récupération nœuds distants {remote_host} après {max_retries} tentatives: {e}")
+                    import traceback
+                    debug_print(traceback.format_exc())
+                    return []
         
-        except Exception as e:
-            error_print(f"Erreur récupération nœuds distants {remote_host}: {e}")
-            return []
+        return []
 
     def get_all_remote_nodes(self, remote_host, remote_port=4403, days_filter=30):
         """Récupérer TOUS les nœuds (directs + relayés) d'un nœud distant"""
