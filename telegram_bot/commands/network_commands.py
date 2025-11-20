@@ -42,7 +42,7 @@ class NetworkCommands(TelegramCommandBase):
 
     async def nodes_command(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE):
-        """Commande /nodes - Affiche tous les nœuds de tigrog2"""
+        """Commande /nodes - Affiche tous les nœuds directs de votre node"""
         user = update.effective_user
         info_print(f"📱 Telegram /nodes: {user.username}")
 
