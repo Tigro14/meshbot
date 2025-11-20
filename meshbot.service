@@ -10,8 +10,15 @@ User=dietpi
 Group=dialout
 WorkingDirectory=/home/dietpi/bot
 ExecStart=/usr/bin/python3 /home/dietpi/bot/main_script.py
-Restart=always
+
+# Politique de redémarrage
+# - Redémarrer uniquement en cas d'échec (pas pour arrêts intentionnels)
+# - Délai de 10 secondes entre les redémarrages
+# - Maximum 5 redémarrages en 5 minutes (prévention boucle infinie)
+Restart=on-failure
 RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
 
 # Variables d'environnement
 Environment=PATH=/usr/local/bin:/usr/bin:/bin

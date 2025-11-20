@@ -938,10 +938,17 @@ class MeshBot:
             # ========================================
             cleanup_counter = 0
             while self.running:
-                time.sleep(30)
-                cleanup_counter += 1
-                if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
-                    self.cleanup_cache()
+                try:
+                    time.sleep(30)
+                    cleanup_counter += 1
+                    if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
+                        self.cleanup_cache()
+                except Exception as loop_error:
+                    # Erreur dans la boucle principale - logger mais continuer
+                    error_print(f"⚠️ Erreur dans la boucle principale: {loop_error}")
+                    error_print(traceback.format_exc())
+                    # Continuer le fonctionnement malgré l'erreur
+                    time.sleep(5)  # Pause courte avant de continuer
             
             # Si nous sortons de la boucle normalement (self.running = False)
             # c'est un arrêt intentionnel, retourner True
