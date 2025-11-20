@@ -63,6 +63,12 @@ ESPHOME_PORT = 80
 ESPHOME_TELEMETRY_ENABLED = True  # Activer/désactiver broadcast automatique de télémétrie
 ESPHOME_TELEMETRY_INTERVAL = 3600  # Intervalle en secondes (3600s = 1h)
 
+# NOTE: Lorsque ESPHOME_TELEMETRY_ENABLED = True, le bot désactive automatiquement
+# la télémétrie embarquée du device Meshtastic (device_update_interval = 0) pour
+# éviter le bruit mesh avec des paquets redondants. Si vous désactivez ESPHome
+# plus tard, vous pouvez réactiver la télémétrie embarquée avec:
+#   meshtastic --set telemetry.device_update_interval 900
+
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
 NODE_UPDATE_INTERVAL = 300  # 5 minutes

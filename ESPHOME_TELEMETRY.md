@@ -4,10 +4,13 @@
 
 The MeshBot can now automatically broadcast environmental sensor data from an ESPHome device to the Meshtastic network as TELEMETRY packets. This allows all nodes on the mesh to receive and display environmental conditions (temperature, pressure, humidity) and battery status from the bot's location.
 
+**NEW:** When ESPHome telemetry broadcasting is enabled (`ESPHOME_TELEMETRY_ENABLED = True`), the bot automatically disables the Meshtastic device's embedded telemetry by setting `device_update_interval = 0`. This prevents duplicate telemetry packets on the mesh network and reduces mesh noise.
+
 ## Features
 
 - **Automatic periodic broadcasts** of ESPHome sensor data
 - **Configurable interval** (default: 3600 seconds / 1 hour)
+- **Automatic disabling of embedded device telemetry** to avoid mesh noise
 - **Graceful handling** of missing or faulty sensors
 - **Standard Meshtastic TELEMETRY_APP** format for compatibility
 - **Battery monitoring** with voltage and calculated percentage
@@ -40,6 +43,25 @@ The following ESPHome sensors are automatically broadcast when available:
 ### Device Metrics
 - **Battery Voltage** (`battery_voltage`): Volts
 - **Battery Level**: Automatically calculated percentage (11.0V = 0%, 13.8V = 100%)
+
+## Embedded Device Telemetry
+
+When ESPHome telemetry is enabled (`ESPHOME_TELEMETRY_ENABLED = True`), the bot automatically disables the Meshtastic device's built-in telemetry to avoid duplicate packets on the mesh network:
+
+- **Automatic Configuration**: On bot startup, sets `device_update_interval = 0` in the telemetry module config
+- **Reduces Mesh Noise**: Prevents redundant device telemetry broadcasts
+- **Reversible**: If you later disable ESPHome telemetry, you can manually re-enable device telemetry with:
+  ```bash
+  meshtastic --set telemetry.device_update_interval 900  # Re-enable with 15-minute interval
+  ```
+- **Preserved When Disabled**: If `ESPHOME_TELEMETRY_ENABLED = False`, the device's embedded telemetry settings remain unchanged
+
+**Logs during startup:**
+```
+📊 ESPHome télémétrie activée - désactivation télémétrie embarquée...
+   Intervalle actuel: 900s
+✅ Télémétrie embarquée désactivée (device_update_interval = 0)
+```
 
 ## How It Works
 
