@@ -491,9 +491,13 @@ class MeshBot:
         """
         Envoyer les données ESPHome comme télémétrie broadcast sur le mesh
         
-        Broadcast les capteurs ESPHome (température, pression, humidité, batterie)
-        au réseau mesh via TELEMETRY_APP pour que tous les nodes puissent voir
-        les conditions environnementales du node bot.
+        IMPORTANT: Meshtastic telemetry uses a 'oneof' field, so environment_metrics
+        and device_metrics must be sent in SEPARATE packets to comply with the
+        TELEMETRY standard. This ensures all data is visible in node details.
+        
+        Sends up to 2 packets:
+        1. Environment metrics (temperature, pressure, humidity)
+        2. Device metrics (battery voltage, battery level)
         """
         try:
             # Vérifier que la télémétrie est activée
@@ -507,52 +511,73 @@ class MeshBot:
                 debug_print("⚠️ Pas de données ESPHome disponibles pour télémétrie")
                 return
             
-            # Créer le message de télémétrie
-            telemetry_data = telemetry_pb2.Telemetry()
-            telemetry_data.time = int(time.time())
+            current_time = int(time.time())
+            packets_sent = 0
             
-            # Ajouter les métriques environnementales
-            has_data = False
+            # ===== PACKET 1: Environment Metrics =====
+            # Send environment data (temperature, pressure, humidity) in first packet
+            has_env_data = False
+            env_telemetry = telemetry_pb2.Telemetry()
+            env_telemetry.time = current_time
             
             if sensor_values.get('temperature') is not None:
-                telemetry_data.environment_metrics.temperature = sensor_values['temperature']
-                has_data = True
-                info_print(f"📊 Télémétrie - Température: {sensor_values['temperature']:.1f}°C")
+                env_telemetry.environment_metrics.temperature = sensor_values['temperature']
+                has_env_data = True
+                info_print(f"📊 Télémétrie Env - Température: {sensor_values['temperature']:.1f}°C")
             
             if sensor_values.get('pressure') is not None:
                 # La pression est déjà en Pascals (converti dans get_sensor_values)
-                telemetry_data.environment_metrics.barometric_pressure = sensor_values['pressure']
-                has_data = True
-                info_print(f"📊 Télémétrie - Pression: {sensor_values['pressure']:.0f} Pa")
+                env_telemetry.environment_metrics.barometric_pressure = sensor_values['pressure']
+                has_env_data = True
+                info_print(f"📊 Télémétrie Env - Pression: {sensor_values['pressure']:.0f} Pa")
             
             if sensor_values.get('humidity') is not None:
-                telemetry_data.environment_metrics.relative_humidity = sensor_values['humidity']
-                has_data = True
-                info_print(f"📊 Télémétrie - Humidité: {sensor_values['humidity']:.1f}%")
+                env_telemetry.environment_metrics.relative_humidity = sensor_values['humidity']
+                has_env_data = True
+                info_print(f"📊 Télémétrie Env - Humidité: {sensor_values['humidity']:.1f}%")
             
-            # Pour la tension batterie, utiliser device_metrics
+            if has_env_data:
+                info_print("📡 Envoi télémétrie ESPHome (environment_metrics)...")
+                self.interface.sendData(
+                    env_telemetry,
+                    destinationId=0xFFFFFFFF,  # Broadcast
+                    portNum=portnums_pb2.PortNum.TELEMETRY_APP,
+                    wantResponse=False
+                )
+                packets_sent += 1
+                info_print("✅ Télémétrie environment_metrics envoyée")
+                # Small delay between packets to avoid overwhelming the mesh
+                time.sleep(0.5)
+            
+            # ===== PACKET 2: Device Metrics =====
+            # Send battery data in separate packet (required by Meshtastic protobuf 'oneof')
+            has_device_data = False
+            device_telemetry = telemetry_pb2.Telemetry()
+            device_telemetry.time = current_time
+            
             if sensor_values.get('battery_voltage') is not None:
                 # Calculer le niveau de batterie en % (11V = 0%, 13.8V = 100%)
                 battery_level = min(100, max(0, int((sensor_values['battery_voltage'] - 11.0) / (13.8 - 11.0) * 100)))
-                telemetry_data.device_metrics.battery_level = battery_level
-                telemetry_data.device_metrics.voltage = sensor_values['battery_voltage']
-                has_data = True
-                info_print(f"📊 Télémétrie - Batterie: {sensor_values['battery_voltage']:.1f}V ({battery_level}%)")
+                device_telemetry.device_metrics.battery_level = battery_level
+                device_telemetry.device_metrics.voltage = sensor_values['battery_voltage']
+                has_device_data = True
+                info_print(f"📊 Télémétrie Device - Batterie: {sensor_values['battery_voltage']:.1f}V ({battery_level}%)")
             
-            if not has_data:
+            if has_device_data:
+                info_print("📡 Envoi télémétrie ESPHome (device_metrics)...")
+                self.interface.sendData(
+                    device_telemetry,
+                    destinationId=0xFFFFFFFF,  # Broadcast
+                    portNum=portnums_pb2.PortNum.TELEMETRY_APP,
+                    wantResponse=False
+                )
+                packets_sent += 1
+                info_print("✅ Télémétrie device_metrics envoyée")
+            
+            if packets_sent == 0:
                 debug_print("⚠️ Aucune donnée à envoyer en télémétrie")
-                return
-            
-            # Envoyer en broadcast via TELEMETRY_APP
-            info_print("📡 Envoi télémétrie ESPHome en broadcast...")
-            self.interface.sendData(
-                telemetry_data,
-                destinationId=0xFFFFFFFF,  # Broadcast
-                portNum=portnums_pb2.PortNum.TELEMETRY_APP,
-                wantResponse=False
-            )
-            
-            info_print("✅ Télémétrie ESPHome envoyée avec succès")
+            else:
+                info_print(f"✅ Télémétrie ESPHome complète: {packets_sent} paquet(s) envoyé(s)")
             
         except Exception as e:
             error_print(f"Erreur envoi télémétrie ESPHome: {e}")
