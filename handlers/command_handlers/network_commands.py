@@ -51,7 +51,7 @@ class NetworkCommands:
             self.sender.send_single(error_msg, sender_id, sender_info)
 
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
-        """Gérer la commande /my - infos signal vues par tigrog2"""
+        """Gérer la commande /my - Afficher vos signaux vus par votre node"""
         info_print(f"My: {sender_info}")
 
         # Capturer le sender actuel pour le thread (important pour CLI!)

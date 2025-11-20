@@ -408,7 +408,11 @@ class RemoteNodesClient:
             return []
 
     def get_tigrog2_paginated(self, page=1, days_filter=3):
-        """Récupérer et formater les nœuds tigrog2 avec pagination simple"""
+        """
+        Récupérer et formater les nœuds directs avec pagination
+        
+        Note: Nom de fonction legacy, utilise REMOTE_NODE_NAME/HOST du config
+        """
         try:
             remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST, days_filter=days_filter)
             

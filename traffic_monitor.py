@@ -167,7 +167,7 @@ class TrafficMonitor:
 
         Args:
             packet: Paquet Meshtastic à enregistrer
-            source: Source du paquet ('local', 'tigrog2', etc.)
+            source: Source du paquet ('local', 'tcp', ou 'tigrog2' en mode legacy)
             my_node_id: ID du nœud local (pour filtrer auto-génération)
         """
         # Log périodique pour suivre l'activité (tous les 10 paquets)
@@ -202,7 +202,7 @@ class TrafficMonitor:
 
             # Vérifier si c'est un doublon
             if dedup_key in self._recent_packets:
-                # Paquet déjà vu récemment, probablement doublon local/tigrog2
+                # Paquet déjà vu récemment, probablement doublon serial/TCP
                 logger.debug(f"Paquet dupliqué ignoré: {dedup_key} (source={source})")
                 return
 
@@ -584,7 +584,7 @@ class TrafficMonitor:
             })
                    # ✅ AJOUT : Compter par source
             local_count = 0
-            tigrog2_count = 0
+            remote_count = 0  # TCP ou legacy tigrog2
 
             for msg in self.public_messages:
                 current_time = time.time()
@@ -598,8 +598,9 @@ class TrafficMonitor:
                     period_stats[from_id]['name'] = msg['sender_name']
 
                     # Compter par source
-                    if msg.get('source') == 'tigrog2':
-                        tigrog2_count += 1
+                    msg_source = msg.get('source', 'local')
+                    if msg_source in ['tigrog2', 'tcp']:
+                        remote_count += 1
                     else:
                         local_count += 1
 
@@ -622,8 +623,8 @@ class TrafficMonitor:
 
             # ✅ AJOUT : Afficher les sources
             lines.append(f"Total: {total_messages} messages")
-            lines.append(f"  📻 Local: {local_count}")
-            lines.append(f"  📡 TigroG2: {tigrog2_count}")
+            lines.append(f"  📻 Serial: {local_count}")
+            lines.append(f"  📡 TCP: {remote_count}")
             lines.append("")
 
             # Parcourir tous les paquets
@@ -965,14 +966,14 @@ class TrafficMonitor:
             
             # Compter par source
             local_count = sum(1 for m in recent_messages if m.get('source') == 'local')
-            tigrog2_count = sum(1 for m in recent_messages if m.get('source') == 'tigrog2')
+            remote_count = sum(1 for m in recent_messages if m.get('source') in ['tigrog2', 'tcp'])
 
             lines = []
             lines.append(f"📊 TRAFIC PUBLIC ({hours}h)")
             lines.append(f"{'='*30}")
             lines.append(f"Total: {len(recent_messages)} messages")
-            lines.append(f"  📻 Local: {local_count}")
-            lines.append(f"  📡 TigroG2: {tigrog2_count}")
+            lines.append(f"  📻 Serial: {local_count}")
+            lines.append(f"  📡 TCP: {remote_count}")
             lines.append("")
 
             # Trier par timestamp (chronologique)
@@ -1404,7 +1405,7 @@ class TrafficMonitor:
         Args:
             packet: Packet Meshtastic
             message_text: Texte du message
-            source: 'local' (série) ou 'tigrog2' (TCP)
+            source: 'local' (Serial), 'tcp' (TCP), ou 'tigrog2' (legacy)
         """
         try:
             from_id = packet.get('from', 0)
@@ -1444,7 +1445,7 @@ class TrafficMonitor:
                     self.node_stats[from_id]['echo_sent'] += 1
             
             # Log avec icône source
-            source_icon = "📡" if source == 'tigrog2' else "📻"
+            source_icon = "📡" if source in ['tigrog2', 'tcp'] else "📻"
             debug_print(f"{source_icon} Stats mises à jour pour {sender_name}: {self.node_stats[from_id]['total_messages']} msgs")
             
         except Exception as e:
@@ -1543,8 +1544,8 @@ class TrafficMonitor:
             node_channel_util = defaultdict(list)
 
             for packet in all_packets:
-                    # ✅ FILTRER: Uniquement les paquets tigrog2 (bonne antenne)
-                    if packet.get('source') != 'tigrog2':
+                    # ✅ FILTRER: En mode legacy, utiliser uniquement paquets TCP (meilleure antenne)
+                    if packet.get('source') not in ['tigrog2', 'tcp']:
                         continue
 
                     from_id = packet['from_id']
@@ -1707,20 +1708,20 @@ class TrafficMonitor:
             lines.append("=" * 50)
 
             # Collecter les paquets de CE nœud uniquement (par from_id)
-            # ✅ FILTRER: Utiliser uniquement les paquets tigrog2 (bonne antenne)
+            # Note: En mode single-node, tous les paquets viennent de la même source
             node_packets = [p for p in self.all_packets 
                             if p['from_id'] == node_id 
                             and p['timestamp'] >= cutoff_time]
             
             """if not node_packets:
-                # Vérifier s'il y a des paquets serial ignorés
+                # Vérifier s'il y a des paquets serial ignorés (mode legacy uniquement)
                 serial_packets = [p for p in self.all_packets 
                                  if p['from_id'] == node_id 
                                  and p['timestamp'] >= cutoff_time
                                  and p.get('source') == 'local']
                 
                 if serial_packets:
-                    return f"⚠️ Aucun paquet tigrog2 pour {name} (!{node_id:08x})\n" \
+                    return f"⚠️ Aucun paquet TCP pour {name} (!{node_id:08x})\n" \
                            f"({len(serial_packets)} paquets serial ignorés - antenne faible)"
                 
                 return f"Aucun paquet de {name} (!{node_id:08x}) dans les {hours}h"""

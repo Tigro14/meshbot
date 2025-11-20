@@ -151,7 +151,7 @@ class SystemCommands(TelegramCommandBase):
         await self.send_message(update, response)
 
     async def rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /rebootg2 - Redémarrage tigrog2"""
+        """Commande /rebootg2 - Redémarrage du node distant (legacy)"""
         user = update.effective_user
 
         info_print("=" * 60)
