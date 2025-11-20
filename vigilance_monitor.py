@@ -50,7 +50,7 @@ class VigilanceMonitor:
 
     def check_vigilance(self) -> Optional[Dict[str, Any]]:
         """
-        Vérifier l'état de vigilance actuel
+        Vérifier l'état de vigilance actuel avec retry logic
 
         Returns:
             dict: Informations de vigilance ou None si erreur
@@ -67,43 +67,81 @@ class VigilanceMonitor:
         if current_time - self.last_check_time < self.check_interval:
             return None
 
-        try:
-            import vigilancemeteo
+        # Retry logic avec exponential backoff
+        max_retries = 3
+        retry_delay = 2  # secondes
+        
+        for attempt in range(max_retries):
+            try:
+                import vigilancemeteo
+                
+                if attempt > 0:
+                    info_print(f"🌦️ Vigilance tentative {attempt + 1}/{max_retries}...")
 
-            # Créer l'objet de vigilance pour le département
-            zone = vigilancemeteo.DepartmentWeatherAlert(self.departement)
+                # Créer l'objet de vigilance pour le département
+                # Cette opération peut échouer avec RemoteDisconnected
+                zone = vigilancemeteo.DepartmentWeatherAlert(self.departement)
 
-            # Récupérer les informations
-            color = zone.department_color
-            summary = zone.summary_message('text')
-            bulletin_date = zone.bulletin_date
-            url = zone.additional_info_URL
+                # Récupérer les informations
+                color = zone.department_color
+                summary = zone.summary_message('text')
+                bulletin_date = zone.bulletin_date
+                url = zone.additional_info_URL
 
-            # Log de vérification
-            info_print(f"✅ Vigilance check département {self.departement}: {color}")
+                # Log de vérification
+                if attempt > 0:
+                    info_print(f"✅ Vigilance récupérée après {attempt + 1} tentative(s)")
+                else:
+                    info_print(f"✅ Vigilance check département {self.departement}: {color}")
 
-            # Debug détaillé si changement
-            if color != self.last_color:
-                debug_print(f"   Changement de niveau: {self.last_color} → {color}")
-                if color in self.alert_levels:
-                    debug_print(f"   Summary: {summary}")
+                # Debug détaillé si changement
+                if color != self.last_color:
+                    debug_print(f"   Changement de niveau: {self.last_color} → {color}")
+                    if color in self.alert_levels:
+                        debug_print(f"   Summary: {summary}")
 
-            # Mettre à jour l'état
-            self.last_check_time = current_time
-            self.last_color = color
-            self.last_bulletin_date = bulletin_date
+                # Mettre à jour l'état
+                self.last_check_time = current_time
+                self.last_color = color
+                self.last_bulletin_date = bulletin_date
 
-            return {
-                'color': color,
-                'summary': summary,
-                'bulletin_date': bulletin_date,
-                'url': url
-            }
+                return {
+                    'color': color,
+                    'summary': summary,
+                    'bulletin_date': bulletin_date,
+                    'url': url
+                }
 
-        except Exception as e:
-            error_print(f"❌ Erreur vérification vigilance: {e}")
-            self.last_check_time = current_time  # Éviter spam en cas d'erreur
-            return None
+            except ImportError as e:
+                # Module vigilancemeteo non disponible - erreur fatale
+                error_print(f"❌ Module vigilancemeteo non disponible: {e}")
+                self.last_check_time = current_time
+                return None
+                
+            except Exception as e:
+                # Erreurs réseau ou autres - retry possible
+                error_type = type(e).__name__
+                error_msg = str(e)
+                
+                # Log l'erreur avec plus de détails
+                if attempt < max_retries - 1:
+                    error_print(f"⚠️ Erreur vigilance ({error_type}): {error_msg}")
+                    error_print(f"   Tentative {attempt + 1}/{max_retries} échouée, nouvelle tentative dans {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Dernière tentative échouée
+                    error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
+                    error_print(f"   Type: {error_type}")
+                    error_print(f"   Message: {error_msg}")
+                    
+                    # Log traceback complet uniquement en mode debug
+                    import traceback
+                    debug_print("Traceback complet:")
+                    debug_print(traceback.format_exc())
+                    
+                    self.last_check_time = current_time  # Éviter spam en cas d'erreur
+                    return None
 
     def should_alert(self, vigilance_info: Dict[str, Any]) -> bool:
         """

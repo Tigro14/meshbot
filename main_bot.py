@@ -431,11 +431,19 @@ class MeshBot:
 
                 # Vérification vigilance météo (si activée)
                 if self.vigilance_monitor:
-                    self.vigilance_monitor.check_vigilance()
+                    try:
+                        self.vigilance_monitor.check_vigilance()
+                    except Exception as e:
+                        error_print(f"⚠️ Erreur check vigilance (non-bloquante): {e}")
+                        # Continuer avec les autres tâches
 
                 # Vérification éclairs (si activée)
                 if self.blitz_monitor and self.blitz_monitor.enabled:
-                    self.blitz_monitor.check_and_report()
+                    try:
+                        self.blitz_monitor.check_and_report()
+                    except Exception as e:
+                        error_print(f"⚠️ Erreur check blitz (non-bloquante): {e}")
+                        # Continuer avec les autres tâches
 
                 # ========================================
                 # BROADCAST TÉLÉMÉTRIE ESPHOME

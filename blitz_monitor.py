@@ -295,42 +295,102 @@ class BlitzMonitor:
             error_print(f"⚡ Erreur traitement message: {e}")
 
     def start_monitoring(self):
-        """Démarrer la surveillance MQTT en arrière-plan"""
+        """Démarrer la surveillance MQTT en arrière-plan avec retry logic"""
         if not self.enabled:
             return
 
-        try:
-            # Créer le client MQTT
-            self.mqtt_client = mqtt.Client(
-                callback_api_version=mqtt.CallbackAPIVersion.VERSION2
-            )
+        max_retries = 3
+        retry_delay = 5  # secondes
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    info_print(f"⚡ Tentative de connexion MQTT {attempt + 1}/{max_retries}...")
+                
+                # Créer le client MQTT
+                self.mqtt_client = mqtt.Client(
+                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+                )
 
-            # Configurer les callbacks
-            self.mqtt_client.on_connect = self._on_mqtt_connect
-            self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
-            self.mqtt_client.on_message = self._on_mqtt_message
+                # Configurer les callbacks
+                self.mqtt_client.on_connect = self._on_mqtt_connect
+                self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
+                self.mqtt_client.on_message = self._on_mqtt_message
 
-            # Se connecter au serveur
-            info_print(f"⚡ Connexion à {self.MQTT_HOST}:{self.MQTT_PORT}...")
-            self.mqtt_client.connect(
-                self.MQTT_HOST,
-                self.MQTT_PORT,
-                self.MQTT_KEEPALIVE
-            )
+                # Configurer automatic reconnection
+                self.mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)
 
-            # Démarrer la boucle MQTT dans un thread
-            self.mqtt_thread = threading.Thread(
-                target=self.mqtt_client.loop_forever,
-                daemon=True,
-                name="BlitzMQTT"
-            )
-            self.mqtt_thread.start()
+                # Se connecter au serveur avec timeout
+                info_print(f"⚡ Connexion à {self.MQTT_HOST}:{self.MQTT_PORT}...")
+                self.mqtt_client.connect(
+                    self.MQTT_HOST,
+                    self.MQTT_PORT,
+                    self.MQTT_KEEPALIVE
+                )
 
-            info_print("⚡ Thread MQTT démarré")
+                # Démarrer la boucle MQTT dans un thread avec auto-reconnect
+                self.mqtt_thread = threading.Thread(
+                    target=self._mqtt_loop_with_reconnect,
+                    daemon=True,
+                    name="BlitzMQTT"
+                )
+                self.mqtt_thread.start()
 
-        except Exception as e:
-            error_print(f"⚡ Erreur démarrage MQTT: {e}")
-            self.enabled = False
+                info_print("⚡ Thread MQTT démarré avec auto-reconnect")
+                
+                # Succès - sortir de la boucle de retry
+                return
+
+            except OSError as e:
+                # Erreurs réseau (connexion refusée, timeout, etc.)
+                error_type = type(e).__name__
+                if attempt < max_retries - 1:
+                    error_print(f"⚠️ Erreur connexion MQTT ({error_type}): {e}")
+                    error_print(f"   Nouvelle tentative dans {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    error_print(f"❌ Échec connexion MQTT après {max_retries} tentatives:")
+                    error_print(f"   Serveur: {self.MQTT_HOST}:{self.MQTT_PORT}")
+                    error_print(f"   Erreur: {e}")
+                    self.enabled = False
+                    
+            except Exception as e:
+                # Autres erreurs
+                error_print(f"❌ Erreur démarrage MQTT: {e}")
+                import traceback
+                debug_print(traceback.format_exc())
+                
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    self.enabled = False
+    
+    def _mqtt_loop_with_reconnect(self):
+        """
+        Boucle MQTT avec gestion automatique des reconnexions
+        
+        Cette méthode est exécutée dans un thread séparé et maintient
+        la connexion MQTT active avec reconnexion automatique en cas de perte.
+        """
+        while True:
+            try:
+                # loop_forever gère automatiquement les reconnexions
+                # grâce à reconnect_delay_set configuré précédemment
+                self.mqtt_client.loop_forever()
+                
+            except Exception as e:
+                error_print(f"⚡ Erreur boucle MQTT: {e}")
+                error_print(f"   Tentative de reconnexion dans 30s...")
+                time.sleep(30)
+                
+                # Tenter de se reconnecter
+                try:
+                    self.mqtt_client.reconnect()
+                except Exception as reconnect_error:
+                    error_print(f"⚡ Échec reconnexion: {reconnect_error}")
+                    time.sleep(60)  # Attendre plus longtemps avant de réessayer
 
     def stop_monitoring(self):
         """Arrêter la surveillance MQTT"""
