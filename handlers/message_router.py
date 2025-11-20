@@ -160,8 +160,6 @@ class MessageRouter:
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
             self.utility_handler.handle_trafic(message, sender_id, sender_info)
-        elif message.startswith('/annonce'):
-            self.utility_handler.handle_annonce(message, sender_id, sender_info, packet)
         elif message.startswith('/top'):
             self.utility_handler.handle_top(message, sender_id, sender_info)
         elif message.startswith('/histo'):  

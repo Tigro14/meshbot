@@ -423,8 +423,7 @@ Le serveur CLI fonctionne en parallèle du bot principal :
 - `/histo [type]` - Alias pour `/stats histo` (legacy)
 - `/packets` - Alias pour `/stats packets` (legacy)
 - `/trafic` - Trafic du mesh local sur les dernières heures
-- `/echo <message>` - Diffuser un message via le node ROUTER
-- `/annonce <message>` - Diffuser un message via le bot
+- `/echo <message>` - Diffuser un message sur le réseau mesh
 - `/legend` - Légende des indicateurs de signal
 - `/help` - Aide des commandes
 

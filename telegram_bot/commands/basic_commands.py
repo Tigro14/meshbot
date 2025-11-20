@@ -42,7 +42,6 @@ class BasicCommands(TelegramCommandBase):
             f"• /rx [page]\n"
             f"• /sys\n"
             f"• /echo <msg>\n"
-            f"• /annonce <msg>\n"
             f"• /nodes\n"
             f"• /health\n"
             f"• /nodeinfo\n"
