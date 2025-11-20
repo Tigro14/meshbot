@@ -276,7 +276,8 @@ class MeshBot:
 
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
-            is_broadcast = (to_id == 0xFFFFFFFF)
+            # Broadcast can be to 0xFFFFFFFF or to 0 (both are broadcast addresses)
+            is_broadcast = (to_id in [0xFFFFFFFF, 0])
 
             # Filtrer les messages auto-générés
             if is_from_me:
@@ -311,27 +312,27 @@ class MeshBot:
                     return
                 
                 # ========================================
-                # DÉDUPLICATION BROADCASTS - TEMPORAIREMENT DÉSACTIVÉE
+                # DÉDUPLICATION BROADCASTS - Prévenir boucles infinies
                 # ========================================
-                # TODO: Réactiver après investigation du problème "deaf"
-                # La logique de déduplication cause un problème où le bot devient
-                # "sourd" aux commandes. Désactivée temporairement pour diagnostic.
-                #
-                # Code original (désactivé):
-                # if is_broadcast and self._is_recent_broadcast(message):
-                #     debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
-                #     if message and not is_from_me:
-                #         self.traffic_monitor.add_public_message(packet, message, source='local')
-                #     return
+                # Filtrer nos propres broadcasts pour éviter de les retraiter
+                # Vérifie: is_broadcast ET hash du contenu correspond à un envoi récent
+                # Note: Ne filtre PAS les DMs (is_broadcast doit être True)
                 
-                # Pour le moment, on log juste pour diagnostiquer
-                if is_broadcast and len(self._recent_broadcasts) > 0:
+                if is_broadcast:
                     try:
                         if self._is_recent_broadcast(message):
-                            info_print(f"⚠️ DEDUP: Broadcast qui serait filtré: '{message[:50]}'")
-                            info_print(f"⚠️ DEDUP: Mais on le traite quand même pour diagnostic")
+                            debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
+                            # Comptabiliser quand même dans les stats
+                            if message and not is_from_me:
+                                self.traffic_monitor.add_public_message(packet, message, source='local')
+                            return  # Ne pas traiter ce broadcast
                     except Exception as e:
-                        error_print(f"Erreur check dedup: {e}")
+                        # En cas d'erreur dans la déduplication, continuer quand même
+                        # pour ne pas bloquer le traitement des messages
+                        error_print(f"❌ Erreur déduplication broadcast: {e}")
+                        import traceback
+                        error_print(traceback.format_exc())
+                        # Continuer avec le traitement normal
                 
                 info_print("=" * 60)
                 info_print(f"📨 MESSAGE REÇU")

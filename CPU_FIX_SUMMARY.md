@@ -2,52 +2,52 @@
 
 ## Problem Statement
 
-**Issue**: `_readBytes` in `tcp_interface_patch.py` was consuming 92% CPU according to py-spy profiling:
+**Issue**: `_readBytes` in `tcp_interface_patch.py` was consuming 91-92% CPU according to py-spy profiling:
 
 ```
   %Own   %Total  OwnTime  TotalTime  Function (filename)
- 92.00%  92.00%    7.15s     7.15s   _readBytes (tcp_interface_patch.py)
-  8.00% 100.00%   0.790s     8.00s   __reader (meshtastic/stream_interface.py)
+ 91.00%  91.00%    9.70s     9.70s   _readBytes (tcp_interface_patch.py)
+  8.00% 100.00%    1.23s    11.00s   __reader (meshtastic/stream_interface.py)
 ```
 
 ## Root Cause Analysis
 
-### The Problematic Code
+### The Problematic Code (After First Fix Attempt)
 
-The `_readBytes()` method was using a `while True` loop with a **1.0 second** timeout:
+The `_readBytes()` method had a `while True` loop with a 30-second timeout, but used `continue` when timing out:
 
 ```python
 def _readBytes(self, length):
     while True:
-        ready, _, exception = select.select([self.socket], [], [self.socket], 1.0)  # 1s timeout
+        ready, _, exception = select.select([self.socket], [], [self.socket], 30.0)  # 30s timeout
         
         if not ready:
-            continue  # ← Loops again immediately after timeout!
+            continue  # ← PROBLEM: Immediately loops again, defeating the timeout!
         
         data = self.socket.recv(length)
         return data
 ```
 
-### Why This Caused High CPU Usage
+### Why This STILL Caused High CPU Usage
 
-1. **Tight Polling Loop**: Every 1 second, `select()` times out and the loop continues
-2. **Constant Activity**: Even when idle (no mesh traffic), the loop runs once per second
-3. **Accumulated CPU**: Over time, this constant polling adds up to significant CPU usage (92%)
-4. **No Rest**: The thread never truly rests for long periods when idle
+1. **Tight Loop Despite Long Timeout**: The `continue` statement immediately calls `select()` again
+2. **No Actual Blocking**: The thread never rests - it's constantly calling `select()` in a loop
+3. **Misunderstanding of Protocol**: The comment claimed the method "MUST block", but this created a busy-wait
+4. **Caller Handles Retries**: The Meshtastic `__reader` thread already retries when `_readBytes` returns empty
 
 ## The Fix
 
-### Solution: Increase Timeout to 30 Seconds
+### Solution: Remove while True Loop and Return Empty Bytes on Timeout
 
-Changed the `select()` timeout from **1.0s to 30.0s**:
+Changed from looping to returning empty bytes:
 
 ```python
 def _readBytes(self, length):
-    while True:
-        ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)  # 30s
-        
-        if not ready:
-            continue  # ← Now only loops every 30s when idle!
+    # Wait for data with select() - blocks for up to 30 seconds
+    ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)  # 30s
+    
+    if not ready:
+        return b''  # ← FIX: Let caller (__reader thread) handle retry!
         
         data = self.socket.recv(length)
         return data

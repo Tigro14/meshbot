@@ -66,10 +66,10 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             ready, _, _ = select.select([socket], [], [], timeout)
             if ready:
                 data = socket.recv(length)  # ← BLOQUANT EFFICACE <5% CPU
-                
-        IMPORTANT: Cette méthode DOIT bloquer jusqu'à ce que des données soient disponibles
-        pour que le protocole Meshtastic fonctionne correctement. Ne PAS retourner b''
-        sauf en cas d'erreur ou de connexion fermée.
+        
+        FIX: Return empty bytes on timeout instead of looping.
+        The Meshtastic library's __reader thread will call this method again,
+        providing the necessary retry mechanism without a tight CPU-consuming loop.
         
         CRITICAL FIX: Use self.read_timeout (default 30.0s) to drastically reduce CPU usage.
         select() wakes up immediately when data arrives, so latency is not affected.
@@ -81,32 +81,30 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             # The timeout only matters when there's truly no traffic for 30 seconds
             # This reduces CPU from 92% to <1% by avoiding tight polling loops
             
-            # Boucler jusqu'à ce que des données soient disponibles
-            while True:
-                # Vérifier si des données sont disponibles avec select()
-                ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
-                
-                if exception:
-                    error_print("Erreur socket détectée par select()")
-                    return b''
-                
-                if not ready:
-                    # Timeout: aucune donnée disponible pour l'instant
-                    # CONTINUER LA BOUCLE au lieu de retourner vide
-                    continue
-                
-                # Socket prêt: lire les données de manière bloquante
-                data = self.socket.recv(length)
-                
-                if not data:
-                    # Connexion fermée - logger seulement en mode debug
-                    # pour éviter spam dans les logs
-                    if globals().get('DEBUG_MODE', False):
-                        debug_print("Connexion TCP fermée (recv retourne vide)")
-                    return b''
-                
-                # Données lues avec succès
-                return data
+            # Wait for data with select() - blocks for up to self.read_timeout seconds
+            ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
+            
+            if exception:
+                error_print("Erreur socket détectée par select()")
+                return b''
+            
+            if not ready:
+                # Timeout: no data available
+                # Return empty bytes - caller (__reader thread) will retry
+                # This avoids tight polling loop that consumed 91% CPU
+                return b''
+            
+            # Socket ready: read data in blocking mode
+            data = self.socket.recv(length)
+            
+            if not data:
+                # Connection closed - log only in debug mode to avoid spam
+                if globals().get('DEBUG_MODE', False):
+                    debug_print("Connexion TCP fermée (recv retourne vide)")
+                return b''
+            
+            # Data read successfully
+            return data
             
         except socket.timeout:
             # Timeout normal, retourner vide (ne PAS logger)
