@@ -4,9 +4,9 @@ Bot pour réseau Meshtastic (+ Telegram, optionnel) avec intégration Llama et f
 
 ## Architectures supportées
 
-Le bot supporte deux modes de connexion au réseau Meshtastic :
+Le bot fonctionne en **mode single-node** : une seule connexion au réseau Meshtastic, soit via USB/UART (Serial), soit via TCP/IP (WiFi/Ethernet).
 
-### Mode Serial (défaut)
+### Mode Serial (recommandé pour la plupart des utilisateurs)
 Connexion directe via USB/UART - Configuration simple et stable
 
 ```mermaid
@@ -26,8 +26,11 @@ graph TD
     MeshNode -- "LoRa" --> MeshNetwork
 ```
 
-### Mode TCP (avancé)
-Connexion réseau - Permet le placement optimal du node
+**Avantages** : Simple, stable, latence minimale  
+**Inconvénient** : Node doit être proche du Raspberry Pi
+
+### Mode TCP (pour placement optimal du node)
+Connexion réseau - Le node peut être placé à distance (extérieur, meilleure antenne)
 
 ```mermaid
 graph TD
@@ -45,6 +48,9 @@ graph TD
     RPi5 -- "192.168.x.x:4403<br/>(WiFi/Ethernet)" --> MeshRouter
     MeshRouter -- "LoRa" --> MeshNetwork
 ```
+
+**Avantages** : Node peut être à distance, meilleur placement d'antenne  
+**Inconvénients** : Configuration réseau requise, dépend de la stabilité WiFi/Ethernet
 
 ```markdown
 ## Fonctionnalités
@@ -178,8 +184,9 @@ Node Meshtastic ROUTER (extérieur, antenne optimale)
 Réseau mesh Meshtastic
 ```
 
-**Pour les utilisateurs existants :**
-Si vous migrez depuis l'ancienne architecture multi-nodes, consultez [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md).
+**Note pour utilisateurs avancés :**
+L'architecture legacy multi-nodes (connexions Serial + TCP simultanées) reste supportée pour compatibilité. 
+Consultez [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) pour plus de détails.
 
 ### Installation en tant que service systemd
 
@@ -375,7 +382,7 @@ Une fois connecté, vous pouvez envoyer toutes les commandes du bot :
 ### Architecture
 
 Le serveur CLI fonctionne en parallèle du bot principal :
-- **Bot principal** : Écoute sur `/dev/ttyACM0` (serial) et TCP tigrog2
+- **Bot principal** : Écoute sur l'interface configurée (Serial ou TCP)
 - **Serveur CLI** : Écoute sur `127.0.0.1:9999` (TCP local)
 - **Aucune interférence** : Les deux systèmes sont indépendants
 
@@ -400,8 +407,8 @@ Le serveur CLI fonctionne en parallèle du bot principal :
   - `/weather astro` - Infos astronomiques (sunrise, sunset, moon 🌑🌕)
   - `/weather astro Paris` - Infos astronomiques Paris
   - `/weather help` - Afficher l'aide
-- `/nodes [page]` - Nœuds directs vus par tigrog2 avec niveau SNR (paginé)
-- `/my` - Vos signaux vus par tigrog2 (lookinglass)
+- `/nodes [page]` - Liste des nœuds directs vus par votre node (paginé, trié par SNR)
+- `/my` - Vos signaux vus par votre node (lookinglass)
 - `/trace` - Traceroute de votre message vers le bot (hops, RSSI, SNR)
 - `/trace <node>` - Afficher les infos signal d'un nœud spécifique (nom ou ID partiel)
 - `/sys` - Informations système (CPU, RAM, uptime bot et OS)

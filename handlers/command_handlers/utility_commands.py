@@ -144,7 +144,7 @@ class UtilityCommands:
         self.sender.send_message(sender_id, help_text)
 
     def handle_echo(self, message, sender_id, sender_info, packet):
-        """Gérer la commande /echo - tigrog2 diffuse dans le mesh"""
+        """Gérer la commande /echo - Diffuser un message sur le réseau mesh"""
 
         # Capturer le sender actuel pour le thread (important pour CLI!)
         current_sender = self.sender
@@ -597,7 +597,7 @@ class UtilityCommands:
           CPU, RAM, load average, uptime
 
         📡 RÉSEAU MESHTASTIC
-        • /nodes - Liste nœuds directs tigrog2
+        • /nodes - Liste nœuds directs de votre node
         • /fullnodes [jours] - Liste alphabétique complète
           Défaut: 30j, max 365j, tri par longName
 
@@ -633,17 +633,16 @@ class UtilityCommands:
           Ex: /db stats, /db clean 72, /db vacuum
 
         📢 DIFFUSION
-        •echo <message> - Diffuser sur le réseau
-          Préfixe auto, broadcast via tigrog2
+        • /echo <message> - Diffuser sur le réseau
+          Préfixe auto, broadcast via votre node
           Ex: /echo Bonjour à tous!
-        •annonce <message> - Diffuser sur le réseaudepuis le bot au lieu du node router
+        • /annonce <message> - Diffuser depuis le bot
 
         ℹ️ UTILITAIRES
         • /legend - Légende indicateurs signal
         • /help - Cette aide complète
 
         🔧 ADMINISTRATION (si autorisé)
-        • /rebootg2 [mdp] - Redémarrage tigrog2
         • /rebootpi [mdp] - Redémarrage Pi5
         • /cpu - Monitoring CPU temps réel (10s)
 

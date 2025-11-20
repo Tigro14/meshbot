@@ -25,21 +25,26 @@ TCP_HOST = "192.168.1.38"
 TCP_PORT = 4403
 
 # ========================================
-# CONFIGURATION ARCHITECTURE MULTI-NODES (LEGACY)
+# CONFIGURATION NŒUD CONNECTÉ
 # ========================================
-# NOTE: Configuration legacy pour compatibilité avec l'architecture multi-nodes
-# Cette section sera progressivement dépréciée au profit du mode single-node
+# Nom du node connecté (utilisé pour affichage dans les messages et logs)
+# En mode single-node, c'est le node auquel le bot est connecté
+# En mode legacy multi-nodes, c'est le node distant pour requêtes de stats
+REMOTE_NODE_HOST = "192.168.1.38"  # IP du node (utilisé si CONNECTION_MODE='tcp')
+REMOTE_NODE_NAME = "MyNode"        # Nom d'affichage de votre node
+TIGROG2_NODE_ID = 0x12345678       # ID du node (optionnel, pour identification)
 
-# Configuration nœuds distants (pour requêtes de statistiques uniquement)
-REMOTE_NODE_HOST = "192.168.1.38"
-REMOTE_NODE_NAME = "tigrog2"
-TIGROG2_NODE_ID = 0x16fad3dc
-
-# Traiter les commandes depuis TCP en mode multi-nodes
+# ========================================
+# CONFIGURATION LEGACY MULTI-NODES (AVANCÉ)
+# ========================================
+# NOTE: Configuration avancée pour l'architecture legacy multi-nodes
+# La plupart des utilisateurs n'ont pas besoin de modifier ceci
+# 
+# Traiter les commandes depuis TCP en mode multi-nodes legacy
 # True = Accepter commandes de SERIAL ET TCP - Configuration hybride (legacy)
 # False = Accepter commandes UNIQUEMENT de SERIAL - Configuration historique
-# NOTE: En mode single-node (CONNECTION_MODE='tcp'), cette option est ignorée
-PROCESS_TCP_COMMANDS = False  # Activer pour tester tigrog2 comme node messageable
+# NOTE: En mode single-node (CONNECTION_MODE défini), cette option est ignorée
+PROCESS_TCP_COMMANDS = False  # Laisser à False sauf usage avancé
 
 # ========================================
 # CONFIGURATION LLAMA.CPP
