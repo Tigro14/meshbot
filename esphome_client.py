@@ -298,8 +298,9 @@ class ESPHomeClient:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                error_print(f"❌ Erreur récupération capteurs ESPHome après {max_retries} tentatives: {type(e).__name__}")
-                error_print(f"   Message: {e}")
-                return None
+                else:
+                    error_print(f"❌ Erreur récupération capteurs ESPHome après {max_retries} tentatives: {type(e).__name__}")
+                    error_print(f"   Message: {e}")
+                    return None
         
         return None

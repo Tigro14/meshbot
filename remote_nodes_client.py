@@ -302,7 +302,7 @@ class RemoteNodesClient:
             except OSError as e:
                 # Erreurs réseau (connexion refusée, timeout, etc.)
                 if attempt < max_retries - 1:
-                    info_print(f"⚠️ Erreur connexion TCP {remote_host}, tentative {attempt + 1}/{max_retries}")
+                    info_print(f"⚠️ Erreur récupération nœuds distants {remote_host}, tentative {attempt + 1}/{max_retries}")
                     debug_print(f"   Type: {type(e).__name__}")
                     debug_print(f"   Message: {e}")
                     debug_print(f"   Nouvelle tentative dans {retry_delay}s...")
