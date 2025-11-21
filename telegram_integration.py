@@ -9,6 +9,7 @@ import time
 import threading
 import traceback
 import asyncio
+import concurrent.futures
 from config import *
 from utils import *
 
@@ -131,15 +132,21 @@ class TelegramIntegration:
         info_print("🤖 Bot Telegram démarré en thread séparé")
 
     def stop(self):
-        """Arrêter le bot Telegram"""
+        """
+        Arrêter le bot Telegram avec timeout réduit
+        
+        Timeout réduit à 2s pour éviter de bloquer le shutdown global
+        """
         self.running = False
         if self.loop and self.application:
             try:
                 asyncio.run_coroutine_threadsafe(
                     self._shutdown(),
-                    self.loop).result(timeout=5)
+                    self.loop).result(timeout=2)  # Réduit de 5s à 2s
+            except concurrent.futures.TimeoutError:
+                error_print("⚠️ Timeout arrêt Telegram asyncio (2s) - abandon")
             except Exception as e:
-                error_print(f"Erreur arrêt Telegram: {e}")
+                error_print(f"⚠️ Erreur arrêt Telegram: {e}")
         info_print("🛑 Bot Telegram arrêté")
 
     def _get_mesh_identity(self, telegram_user_id):

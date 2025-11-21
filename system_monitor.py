@@ -52,11 +52,20 @@ class SystemMonitor:
         info_print("📊 Monitoring système démarré (optimisé)")
     
     def stop(self):
-        """Arrêter le monitoring"""
+        """
+        Arrêter le monitoring avec meilleure détection de timeout
+        
+        Timeout de 3 secondes pour éviter de bloquer le shutdown global
+        """
         self.running = False
-        if self.monitor_thread:
-            self.monitor_thread.join(timeout=5)
-        info_print("🛑 Monitoring système arrêté")
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=3)  # Réduit de 5s à 3s
+            if self.monitor_thread.is_alive():
+                error_print("⚠️ Thread monitoring système n'a pas terminé (timeout 3s)")
+            else:
+                info_print("🛑 Monitoring système arrêté")
+        else:
+            info_print("🛑 Monitoring système arrêté")
     
     def _monitor_loop(self):
         """

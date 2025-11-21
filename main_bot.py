@@ -961,41 +961,85 @@ class MeshBot:
             return False
 
     def stop(self):
-        """Arrêt du bot"""
+        """
+        Arrêt du bot avec timeout global
+        
+        Version améliorée avec protection contre les blocages:
+        - Timeout global de 8 secondes pour tout le shutdown
+        - Exception handling sur chaque composant
+        - Continue même si un composant bloque
+        """
         info_print("Arrêt...")
         self.running = False
         
-        # Sauvegarder avant fermeture
-        if self.node_manager:
-            self.node_manager.save_node_names(force=True)
+        # Timeout global pour éviter les blocages infinis
+        import concurrent.futures
+        shutdown_timeout = 8  # secondes (systemd DefaultTimeoutStopSec est souvent 90s)
+        
+        def _perform_shutdown():
+            """Shutdown complet avec gestion d'erreurs par composant"""
+            # 1. Sauvegarder avant fermeture (critique, mais rapide)
+            try:
+                if self.node_manager:
+                    self.node_manager.save_node_names(force=True)
+            except Exception as e:
+                error_print(f"⚠️ Erreur sauvegarde node_manager: {e}")
 
-        # ✅ Arrêter le monitoring système
-        if hasattr(self, 'system_monitor') and self.system_monitor:
-            self.system_monitor.stop()
+            # 2. Arrêter le monitoring système (peut prendre jusqu'à 3s)
+            try:
+                if hasattr(self, 'system_monitor') and self.system_monitor:
+                    self.system_monitor.stop()
+            except Exception as e:
+                error_print(f"⚠️ Erreur arrêt system_monitor: {e}")
 
-        # Arrêter le monitoring éclairs
-        if self.blitz_monitor and self.blitz_monitor.enabled:
-            self.blitz_monitor.stop_monitoring()
+            # 3. Arrêter le monitoring éclairs
+            try:
+                if self.blitz_monitor and self.blitz_monitor.enabled:
+                    self.blitz_monitor.stop_monitoring()
+            except Exception as e:
+                error_print(f"⚠️ Erreur arrêt blitz_monitor: {e}")
 
-        # Arrêter l'intégration Telegram
-        # Arrêter toutes les plateformes
-        if self.platform_manager:
-            self.platform_manager.stop_all()
+            # 4. Arrêter toutes les plateformes (peut bloquer sur Telegram asyncio)
+            try:
+                if self.platform_manager:
+                    self.platform_manager.stop_all()
+            except Exception as e:
+                error_print(f"⚠️ Erreur arrêt platform_manager: {e}")
 
-        # Compatibilité ancienne méthode (DEPRECATED)
-        if self.telegram_integration and not self.platform_manager:
-            self.telegram_integration.stop()
+            # 5. Compatibilité ancienne méthode (DEPRECATED)
+            try:
+                if self.telegram_integration and not self.platform_manager:
+                    self.telegram_integration.stop()
+            except Exception as e:
+                error_print(f"⚠️ Erreur arrêt telegram_integration: {e}")
 
-        # ✅ NOUVEAU: Utiliser le gestionnaire pour fermer proprement
-#        if self.serial_manager:
-#            self.serial_manager.close()
-#            self.serial_manager = None
-        if hasattr(self, 'safe_serial') and self.safe_serial:
-            self.safe_serial.close()
+            # 6. Fermer connexions série/TCP
+            try:
+                if hasattr(self, 'safe_serial') and self.safe_serial:
+                    self.safe_serial.close()
+            except Exception as e:
+                error_print(f"⚠️ Erreur fermeture safe_serial: {e}")
 
-        self.interface = None
-
-        gc.collect()
-        info_print("Bot arrêté")
-
+            # 7. Nettoyage final
+            try:
+                self.interface = None
+                gc.collect()
+            except Exception as e:
+                error_print(f"⚠️ Erreur nettoyage final: {e}")
+        
+        # Exécuter le shutdown avec timeout
+        # Note: On ne peut pas vraiment tuer les threads en Python,
+        # mais on peut limiter le temps d'attente du processus principal
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(_perform_shutdown)
+            future.result(timeout=shutdown_timeout)
+            info_print("✅ Bot arrêté proprement")
+        except concurrent.futures.TimeoutError:
+            error_print(f"⚠️ Timeout shutdown ({shutdown_timeout}s) - forçage arrêt")
+            # Ne pas attendre l'executor - laisser les threads mourir avec le processus
+            info_print("⚠️ Bot arrêté (timeout)")
+        finally:
+            # Forcer la fermeture sans attendre les threads
+            executor.shutdown(wait=False)
 
