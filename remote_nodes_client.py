@@ -302,8 +302,10 @@ class RemoteNodesClient:
             except OSError as e:
                 # Erreurs réseau (connexion refusée, timeout, etc.)
                 if attempt < max_retries - 1:
-                    error_print(f"⚠️ Erreur connexion TCP {remote_host} (tentative {attempt + 1}/{max_retries}): {e}")
-                    error_print(f"   Nouvelle tentative dans {retry_delay}s...")
+                    info_print(f"⚠️ Erreur connexion TCP {remote_host}, tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Type: {type(e).__name__}")
+                    debug_print(f"   Message: {e}")
+                    debug_print(f"   Nouvelle tentative dans {retry_delay}s...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
@@ -315,12 +317,16 @@ class RemoteNodesClient:
             except Exception as e:
                 # Autres erreurs
                 if attempt < max_retries - 1:
-                    error_print(f"⚠️ Erreur nœuds distants {remote_host}: {e}")
-                    error_print(f"   Nouvelle tentative dans {retry_delay}s...")
+                    info_print(f"⚠️ Erreur nœuds distants {remote_host}, tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Type: {type(e).__name__}")
+                    debug_print(f"   Message: {e}")
+                    debug_print(f"   Nouvelle tentative dans {retry_delay}s...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    error_print(f"❌ Erreur récupération nœuds distants {remote_host} après {max_retries} tentatives: {e}")
+                    error_print(f"❌ Erreur récupération nœuds distants {remote_host} après {max_retries} tentatives:")
+                    error_print(f"   Type: {type(e).__name__}")
+                    error_print(f"   Message: {e}")
                     import traceback
                     debug_print(traceback.format_exc())
                     return []

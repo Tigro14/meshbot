@@ -41,14 +41,14 @@ class ESPHomeClient:
                     if response.status_code != 200:
                         del response
                         if attempt < max_retries - 1:
-                            error_print(f"⚠️ ESPHome status {response.status_code}, retry...")
+                            info_print(f"⚠️ ESPHome status {response.status_code}, tentative {attempt + 1}/{max_retries}")
                             time.sleep(retry_delay)
                             continue
                         return "ESPHome inaccessible"
                     del response
                 except requests_module.exceptions.Timeout:
                     if attempt < max_retries - 1:
-                        error_print(f"⚠️ ESPHome timeout, retry dans {retry_delay}s...")
+                        info_print(f"⚠️ ESPHome timeout, tentative {attempt + 1}/{max_retries}, retry dans {retry_delay}s...")
                         time.sleep(retry_delay)
                         retry_delay *= 2
                         continue
@@ -56,7 +56,7 @@ class ESPHomeClient:
                     return "ESPHome timeout"
                 except requests_module.exceptions.ConnectionError as e:
                     if attempt < max_retries - 1:
-                        error_print(f"⚠️ ESPHome connexion error, retry...")
+                        info_print(f"⚠️ ESPHome connexion error, tentative {attempt + 1}/{max_retries}")
                         time.sleep(retry_delay)
                         retry_delay *= 2
                         continue
@@ -169,12 +169,14 @@ class ESPHomeClient:
                     
             except Exception as e:
                 if attempt < max_retries - 1:
-                    error_print(f"⚠️ Erreur ESPHome: {e}, retry...")
+                    info_print(f"⚠️ Erreur ESPHome: {type(e).__name__}, tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Message: {e}")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
                 else:
-                    error_print(f"❌ Erreur ESPHome après {max_retries} tentatives: {e}")
+                    error_print(f"❌ Erreur ESPHome après {max_retries} tentatives: {type(e).__name__}")
+                    error_print(f"   Message: {e}")
                     return f"ESPHome Error: {str(e)[:30]}"
         
         # Fallback si toutes les tentatives échouent
@@ -223,11 +225,13 @@ class ESPHomeClient:
                     del response
                 except (requests_module.exceptions.Timeout, requests_module.exceptions.ConnectionError) as e:
                     if attempt < max_retries - 1:
-                        error_print(f"⚠️ ESPHome télémétrie timeout/error, retry...")
+                        info_print(f"⚠️ ESPHome télémétrie timeout/error, tentative {attempt + 1}/{max_retries}")
+                        debug_print(f"   Message: {e}")
                         time.sleep(retry_delay)
                         retry_delay *= 2
                         continue
-                    error_print(f"❌ ESPHome télémétrie inaccessible: {e}")
+                    error_print(f"❌ ESPHome télémétrie inaccessible après {max_retries} tentatives: {type(e).__name__}")
+                    debug_print(f"   Message: {e}")
                     return None
                 
                 result = {
@@ -289,11 +293,13 @@ class ESPHomeClient:
                 
             except Exception as e:
                 if attempt < max_retries - 1:
-                    error_print(f"⚠️ Erreur récupération capteurs ESPHome: {e}, retry...")
+                    info_print(f"⚠️ Erreur récupération capteurs ESPHome: {type(e).__name__}, tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Message: {e}")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                error_print(f"❌ Erreur récupération capteurs ESPHome après {max_retries} tentatives: {e}")
+                error_print(f"❌ Erreur récupération capteurs ESPHome après {max_retries} tentatives: {type(e).__name__}")
+                error_print(f"   Message: {e}")
                 return None
         
         return None
