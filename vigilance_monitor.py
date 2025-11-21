@@ -9,6 +9,10 @@ Utilise le package 'vigilancemeteo' pour récupérer les données de Météo-Fra
 """
 
 import time
+import random
+import socket
+import http.client
+import traceback
 from typing import Optional, Dict, Any
 from utils import info_print, error_print, debug_print
 
@@ -48,9 +52,26 @@ class VigilanceMonitor:
         info_print(f"   Check interval: {check_interval}s, Alert throttle: {alert_throttle}s")
         info_print(f"   Alert levels: {', '.join(self.alert_levels)}")
 
+    def _log_final_error(self, error_type: str, error_msg: str, max_retries: int):
+        """
+        Log final error after all retries exhausted
+        
+        Args:
+            error_type: Type of exception
+            error_msg: Error message
+            max_retries: Number of retries attempted
+        """
+        error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
+        error_print(f"   Type: {error_type}")
+        error_print(f"   Message: {error_msg}")
+        
+        # Log traceback complet uniquement en mode debug
+        debug_print("Traceback complet:")
+        debug_print(traceback.format_exc())
+
     def check_vigilance(self) -> Optional[Dict[str, Any]]:
         """
-        Vérifier l'état de vigilance actuel avec retry logic
+        Vérifier l'état de vigilance actuel avec retry logic amélioré
 
         Returns:
             dict: Informations de vigilance ou None si erreur
@@ -67,20 +88,27 @@ class VigilanceMonitor:
         if current_time - self.last_check_time < self.check_interval:
             return None
 
-        # Retry logic avec exponential backoff
+        # Retry logic avec exponential backoff + jitter
         max_retries = 3
-        retry_delay = 2  # secondes
+        base_retry_delay = 2  # secondes de base
+        timeout = 10  # timeout pour les requêtes HTTP
         
         for attempt in range(max_retries):
             try:
                 import vigilancemeteo
                 
                 if attempt > 0:
-                    info_print(f"🌦️ Vigilance tentative {attempt + 1}/{max_retries}...")
+                    debug_print(f"🌦️ Vigilance tentative {attempt + 1}/{max_retries}...")
 
                 # Créer l'objet de vigilance pour le département
-                # Cette opération peut échouer avec RemoteDisconnected
-                zone = vigilancemeteo.DepartmentWeatherAlert(self.departement)
+                # Note: vigilancemeteo n'expose pas de paramètre timeout,
+                # mais on va configurer un timeout socket global temporairement
+                old_timeout = socket.getdefaulttimeout()
+                try:
+                    socket.setdefaulttimeout(timeout)
+                    zone = vigilancemeteo.DepartmentWeatherAlert(self.departement)
+                finally:
+                    socket.setdefaulttimeout(old_timeout)
 
                 # Récupérer les informations
                 color = zone.department_color
@@ -92,11 +120,11 @@ class VigilanceMonitor:
                 if attempt > 0:
                     info_print(f"✅ Vigilance récupérée après {attempt + 1} tentative(s)")
                 else:
-                    info_print(f"✅ Vigilance check département {self.departement}: {color}")
+                    debug_print(f"✅ Vigilance check département {self.departement}: {color}")
 
                 # Debug détaillé si changement
                 if color != self.last_color:
-                    debug_print(f"   Changement de niveau: {self.last_color} → {color}")
+                    info_print(f"🌦️ Changement de niveau: {self.last_color} → {color}")
                     if color in self.alert_levels:
                         debug_print(f"   Summary: {summary}")
 
@@ -118,28 +146,49 @@ class VigilanceMonitor:
                 self.last_check_time = current_time
                 return None
                 
-            except Exception as e:
-                # Erreurs réseau ou autres - retry possible
+            except (http.client.RemoteDisconnected, 
+                    socket.timeout,
+                    ConnectionResetError,
+                    ConnectionRefusedError,
+                    OSError) as e:
+                # Erreurs réseau spécifiques - retry avec backoff
                 error_type = type(e).__name__
                 error_msg = str(e)
                 
-                # Log l'erreur avec plus de détails
                 if attempt < max_retries - 1:
-                    error_print(f"⚠️ Erreur vigilance ({error_type}): {error_msg}")
-                    error_print(f"   Tentative {attempt + 1}/{max_retries} échouée, nouvelle tentative dans {retry_delay}s...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+                    # Tentative intermédiaire - log en INFO (pas ERROR)
+                    info_print(f"⚠️ Erreur réseau vigilance ({error_type}), tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Message: {error_msg}")
+                    
+                    # Exponential backoff avec jitter pour éviter thundering herd
+                    jitter = random.uniform(0, 1)
+                    sleep_time = (base_retry_delay * (2 ** attempt)) + jitter
+                    debug_print(f"   Nouvelle tentative dans {sleep_time:.1f}s...")
+                    time.sleep(sleep_time)
+                else:
+                    # Dernière tentative échouée - log en ERROR
+                    self._log_final_error(error_type, error_msg, max_retries)
+                    self.last_check_time = current_time  # Éviter spam en cas d'erreur
+                    return None
+                    
+            except Exception as e:
+                # Autres erreurs inattendues - retry quand même
+                error_type = type(e).__name__
+                error_msg = str(e)
+                
+                if attempt < max_retries - 1:
+                    # Tentative intermédiaire - log en INFO
+                    info_print(f"⚠️ Erreur inattendue vigilance ({error_type}), tentative {attempt + 1}/{max_retries}")
+                    debug_print(f"   Message: {error_msg}")
+                    
+                    # Exponential backoff avec jitter
+                    jitter = random.uniform(0, 1)
+                    sleep_time = (base_retry_delay * (2 ** attempt)) + jitter
+                    debug_print(f"   Nouvelle tentative dans {sleep_time:.1f}s...")
+                    time.sleep(sleep_time)
                 else:
                     # Dernière tentative échouée
-                    error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
-                    error_print(f"   Type: {error_type}")
-                    error_print(f"   Message: {error_msg}")
-                    
-                    # Log traceback complet uniquement en mode debug
-                    import traceback
-                    debug_print("Traceback complet:")
-                    debug_print(traceback.format_exc())
-                    
+                    self._log_final_error(error_type, error_msg, max_retries)
                     self.last_check_time = current_time  # Éviter spam en cas d'erreur
                     return None
 
