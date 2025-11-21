@@ -74,6 +74,10 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         CRITICAL FIX: Use self.read_timeout (default 30.0s) to drastically reduce CPU usage.
         select() wakes up immediately when data arrives, so latency is not affected.
         The long timeout only matters when truly idle (no mesh traffic).
+        
+        EMERGENCY FIX (2024-11-21): Add small sleep when returning empty to prevent
+        tight loop in __reader thread. The Meshtastic __reader immediately calls
+        _readBytes again when it returns empty, creating 89% CPU usage.
         """
         try:
             # Use configured timeout (default 30s) to reduce CPU when idle
@@ -82,16 +86,15 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             # This reduces CPU from 92% to <1% by avoiding tight polling loops
             
             # Wait for data with select() - blocks for up to self.read_timeout seconds
-            ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
-            
-            if exception:
-                error_print("Erreur socket détectée par select()")
-                return b''
+            # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
+            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
             
             if not ready:
                 # Timeout: no data available
-                # Return empty bytes - caller (__reader thread) will retry
-                # This avoids tight polling loop that consumed 91% CPU
+                # CRITICAL: Add small sleep to prevent tight loop in __reader thread
+                # The __reader thread will immediately call _readBytes again if we return empty,
+                # creating 89% CPU usage even with long select() timeout!
+                time.sleep(0.01)  # 10ms sleep prevents tight loop while keeping latency low
                 return b''
             
             # Socket ready: read data in blocking mode
@@ -101,6 +104,8 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 # Connection closed - log only in debug mode to avoid spam
                 if globals().get('DEBUG_MODE', False):
                     debug_print("Connexion TCP fermée (recv retourne vide)")
+                # Add sleep here too to prevent tight loop on closed connection
+                time.sleep(0.01)
                 return b''
             
             # Data read successfully
@@ -108,18 +113,24 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
         except socket.timeout:
             # Timeout normal, retourner vide (ne PAS logger)
+            # Add sleep to prevent tight loop
+            time.sleep(0.01)
             return b''
             
         except socket.error as e:
             # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
             if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
                 error_print(f"Erreur socket lors de la lecture: {e}")
+            # Add sleep to prevent tight loop on socket errors
+            time.sleep(0.01)
             return b''
             
         except Exception as e:
             error_print(f"Erreur _readBytes: {e}")
             import traceback
             error_print(traceback.format_exc())
+            # Add sleep to prevent tight loop on exceptions
+            time.sleep(0.01)
             return b''
     
     def close(self):
