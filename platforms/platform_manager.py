@@ -79,15 +79,35 @@ class PlatformManager:
                 error_print(f"❌ Erreur démarrage {platform_name}: {e}")
 
     def stop_all(self):
-        """Arrêter toutes les plateformes"""
+        """
+        Arrêter toutes les plateformes avec timeout par plateforme
+        
+        Protection contre blocages: timeout de 3 secondes par plateforme
+        """
+        import concurrent.futures
+        
         info_print(f"🛑 Arrêt de {len(self.platforms)} plateforme(s)...")
 
         for platform_name, platform in self.platforms.items():
+            executor = None
             try:
                 info_print(f"  Arrêt {platform_name}...")
-                platform.stop()
+                
+                # Timeout de 3 secondes par plateforme
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(platform.stop)
+                try:
+                    future.result(timeout=3)
+                except concurrent.futures.TimeoutError:
+                    error_print(f"⚠️ Timeout arrêt {platform_name} (3s) - abandon")
             except Exception as e:
                 error_print(f"❌ Erreur arrêt {platform_name}: {e}")
+            finally:
+                # Ne pas attendre les threads qui bloquent
+                if executor:
+                    executor.shutdown(wait=False)
+
+
 
     def send_alert_to_all(self, message: str):
         """
