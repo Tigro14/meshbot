@@ -107,8 +107,6 @@ class PlatformManager:
                 if executor:
                     executor.shutdown(wait=False)
 
-
-
     def send_alert_to_all(self, message: str):
         """
         Envoyer une alerte sur toutes les plateformes

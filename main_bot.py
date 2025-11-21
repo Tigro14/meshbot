@@ -1043,5 +1043,3 @@ class MeshBot:
             # Forcer la fermeture sans attendre les threads
             executor.shutdown(wait=False)
 
-
-

@@ -55,8 +55,6 @@ def test_shutdown_timeout():
     print("  ℹ️ Note: executor.shutdown(wait=False) évite d'attendre les threads bloqués")
 
 
-
-
 # Test 2: Vérifier le timeout par plateforme
 def test_platform_timeout():
     """Test que chaque plateforme a un timeout de 3 secondes"""
