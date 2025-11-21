@@ -12,6 +12,7 @@ import time
 import random
 import socket
 import http.client
+import traceback
 from typing import Optional, Dict, Any
 from utils import info_print, error_print, debug_print
 
@@ -50,6 +51,23 @@ class VigilanceMonitor:
         info_print(f"🌦️ Vigilance monitor initialisé pour département {departement}")
         info_print(f"   Check interval: {check_interval}s, Alert throttle: {alert_throttle}s")
         info_print(f"   Alert levels: {', '.join(self.alert_levels)}")
+
+    def _log_final_error(self, error_type: str, error_msg: str, max_retries: int):
+        """
+        Log final error after all retries exhausted
+        
+        Args:
+            error_type: Type of exception
+            error_msg: Error message
+            max_retries: Number of retries attempted
+        """
+        error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
+        error_print(f"   Type: {error_type}")
+        error_print(f"   Message: {error_msg}")
+        
+        # Log traceback complet uniquement en mode debug
+        debug_print("Traceback complet:")
+        debug_print(traceback.format_exc())
 
     def check_vigilance(self) -> Optional[Dict[str, Any]]:
         """
@@ -149,15 +167,7 @@ class VigilanceMonitor:
                     time.sleep(sleep_time)
                 else:
                     # Dernière tentative échouée - log en ERROR
-                    error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
-                    error_print(f"   Type: {error_type}")
-                    error_print(f"   Message: {error_msg}")
-                    
-                    # Log traceback complet uniquement en mode debug
-                    import traceback
-                    debug_print("Traceback complet:")
-                    debug_print(traceback.format_exc())
-                    
+                    self._log_final_error(error_type, error_msg, max_retries)
                     self.last_check_time = current_time  # Éviter spam en cas d'erreur
                     return None
                     
@@ -178,15 +188,7 @@ class VigilanceMonitor:
                     time.sleep(sleep_time)
                 else:
                     # Dernière tentative échouée
-                    error_print(f"❌ Erreur vérification vigilance après {max_retries} tentatives:")
-                    error_print(f"   Type: {error_type}")
-                    error_print(f"   Message: {error_msg}")
-                    
-                    # Log traceback complet uniquement en mode debug
-                    import traceback
-                    debug_print("Traceback complet:")
-                    debug_print(traceback.format_exc())
-                    
+                    self._log_final_error(error_type, error_msg, max_retries)
                     self.last_check_time = current_time  # Éviter spam en cas d'erreur
                     return None
 

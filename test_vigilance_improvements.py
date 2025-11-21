@@ -11,12 +11,14 @@ This test specifically validates:
 
 import sys
 import time
+import os
 from unittest.mock import Mock, patch, MagicMock
 import socket
 import http.client
 
-# Mock config before imports
-sys.path.insert(0, '/home/runner/work/meshbot/meshbot')
+# Add the repository root to path (works from any location)
+repo_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, repo_root)
 
 # Create minimal config
 class MockConfig:
