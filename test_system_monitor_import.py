@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test pour vérifier que system_monitor.py importe correctement OptimizedTCPInterface
-Fix pour: https://github.com/Tigro14/meshbot/issues/XXX
+Fix pour le bug: "tigrog2 inaccessible: name 'OptimizedTCPInterface' is not defined"
 """
 
 import sys
