@@ -403,6 +403,81 @@ class MeshBot:
         
         return message
     
+    def _check_and_reconnect_interface(self):
+        """
+        Vérifie la santé de l'interface TCP et reconnecte si nécessaire
+        
+        Retourne True si l'interface est opérationnelle, False sinon
+        """
+        # Seulement pour le mode TCP
+        connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
+        if connection_mode != 'tcp':
+            return True
+        
+        try:
+            # Vérifier si l'interface existe et si le socket est vivant
+            if not self.interface or not hasattr(self.interface, 'socket'):
+                info_print("⚠️ Interface manquante, tentative de reconnexion...")
+                return self._reconnect_tcp_interface()
+            
+            # Vérifier si le socket est fermé
+            if not self.interface.socket or self.interface.socket.fileno() == -1:
+                info_print("⚠️ Socket TCP fermé, tentative de reconnexion...")
+                return self._reconnect_tcp_interface()
+            
+            return True
+            
+        except Exception as e:
+            debug_print(f"Erreur vérification interface: {e}")
+            return False
+    
+    def _reconnect_tcp_interface(self):
+        """
+        Reconnecte l'interface TCP après une déconnexion
+        
+        Retourne True en cas de succès, False sinon
+        """
+        try:
+            tcp_host = globals().get('TCP_HOST', '192.168.1.38')
+            tcp_port = globals().get('TCP_PORT', 4403)
+            
+            info_print(f"🔄 Reconnexion TCP à {tcp_host}:{tcp_port}...")
+            
+            # Fermer l'ancienne interface si elle existe
+            if self.interface:
+                try:
+                    self.interface.close()
+                except:
+                    pass
+            
+            # Créer une nouvelle interface
+            self.interface = OptimizedTCPInterface(
+                hostname=tcp_host,
+                portNumber=tcp_port
+            )
+            
+            # Attendre la stabilisation
+            time.sleep(5)
+            
+            # Mettre à jour les références
+            self.node_manager.interface = self.interface
+            self.remote_nodes_client.interface = self.interface
+            if self.mesh_traceroute_manager:
+                self.mesh_traceroute_manager.interface = self.interface
+            
+            # Se réabonner aux messages
+            pub.subscribe(
+                self.on_message,
+                "meshtastic.receive"
+            )
+            
+            info_print("✅ Reconnexion TCP réussie")
+            return True
+            
+        except Exception as e:
+            error_print(f"❌ Échec reconnexion TCP: {e}")
+            return False
+    
     def periodic_update_thread(self):
         """Thread de mise à jour périodique"""
         # ✅ Délai initial pour laisser le système démarrer
@@ -415,6 +490,9 @@ class MeshBot:
                 
                 if not self.running:
                     break
+                
+                # Vérifier la santé de l'interface TCP et reconnexion si nécessaire
+                self._check_and_reconnect_interface()
                 
                 # Mise à jour de la base de nœuds
                 debug_print("🔄 Mise à jour périodique...")
@@ -514,15 +592,15 @@ class MeshBot:
             
         except BrokenPipeError as e:
             # Erreur réseau normale - connexion TCP temporairement cassée
-            # L'interface se reconnectera automatiquement au prochain usage
+            # Le bot vérifie périodiquement la connexion et reconnectera si nécessaire
             debug_print(f"⚠️ Connexion réseau perdue lors de l'envoi télémétrie ({packet_type}): {e}")
-            debug_print("L'interface se reconnectera automatiquement au prochain usage")
+            debug_print("Le bot reconnectera automatiquement lors de la prochaine vérification périodique")
             return False
             
         except (ConnectionResetError, ConnectionRefusedError, ConnectionAbortedError) as e:
             # Autres erreurs réseau normales
             debug_print(f"⚠️ Erreur réseau lors de l'envoi télémétrie ({packet_type}): {e}")
-            debug_print("L'interface se reconnectera automatiquement au prochain usage")
+            debug_print("Le bot reconnectera automatiquement lors de la prochaine vérification périodique")
             return False
             
         except Exception as e:
