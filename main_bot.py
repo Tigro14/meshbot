@@ -58,6 +58,7 @@ class MeshBot:
         self.vigilance_monitor = None
         if globals().get('VIGILANCE_ENABLED', False):
             try:
+                info_print("🌦️ Initialisation du moniteur de vigilance météo...")
                 self.vigilance_monitor = VigilanceMonitor(
                     departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
                     check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 28800),
@@ -66,7 +67,10 @@ class MeshBot:
                 )
             except Exception as e:
                 error_print(f"Erreur initialisation vigilance monitor: {e}")
+                error_print(traceback.format_exc())
                 self.vigilance_monitor = None
+        else:
+            debug_print("ℹ️ Moniteur de vigilance météo désactivé (VIGILANCE_ENABLED=False)")
 
         # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
         self.blitz_monitor = None
@@ -435,9 +439,11 @@ class MeshBot:
                 # Vérification vigilance météo (si activée)
                 if self.vigilance_monitor:
                     try:
+                        debug_print("🌦️ Vérification vigilance météo...")
                         self.vigilance_monitor.check_vigilance()
                     except Exception as e:
                         error_print(f"⚠️ Erreur check vigilance (non-bloquante): {e}")
+                        error_print(traceback.format_exc())
                         # Continuer avec les autres tâches
 
                 # Vérification éclairs (si activée)

@@ -5,7 +5,9 @@ Ce module vérifie périodiquement les alertes de vigilance météorologique
 pour un département français et peut déclencher des alertes automatiques
 sur le réseau Meshtastic.
 
-Utilise le package 'vigilancemeteo' pour récupérer les données de Météo-France.
+Utilise le scraper personnalisé 'vigilance_scraper' pour récupérer les données
+de Météo-France via web scraping (remplace l'ancien package 'vigilancemeteo' qui
+est cassé/non maintenu).
 """
 
 import time
@@ -95,20 +97,17 @@ class VigilanceMonitor:
         
         for attempt in range(max_retries):
             try:
-                import vigilancemeteo
+                import vigilance_scraper
                 
                 if attempt > 0:
                     debug_print(f"🌦️ Vigilance tentative {attempt + 1}/{max_retries}...")
 
                 # Créer l'objet de vigilance pour le département
-                # Note: vigilancemeteo n'expose pas de paramètre timeout,
-                # mais on va configurer un timeout socket global temporairement
-                old_timeout = socket.getdefaulttimeout()
-                try:
-                    socket.setdefaulttimeout(timeout)
-                    zone = vigilancemeteo.DepartmentWeatherAlert(self.departement)
-                finally:
-                    socket.setdefaulttimeout(old_timeout)
+                # Le scraper utilise requests avec timeout intégré
+                zone = vigilance_scraper.DepartmentWeatherAlert(
+                    self.departement,
+                    timeout=timeout
+                )
 
                 # Récupérer les informations
                 color = zone.department_color
@@ -141,8 +140,8 @@ class VigilanceMonitor:
                 }
 
             except ImportError as e:
-                # Module vigilancemeteo non disponible - erreur fatale
-                error_print(f"❌ Module vigilancemeteo non disponible: {e}")
+                # Module vigilance_scraper non disponible - erreur fatale
+                error_print(f"❌ Module vigilance_scraper non disponible: {e}")
                 self.last_check_time = current_time
                 return None
                 
