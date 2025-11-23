@@ -288,7 +288,7 @@ The `/weather` command has been significantly enhanced with new subcommands:
 - `vigilance_monitor.py::format_alert_message()` - Vigilance status formatting
 - Integration with wttr.in API for weather data
 - Integration with Blitzortung.org MQTT for lightning
-- Integration with Météo-France vigilancemeteo package
+- Integration with Météo-France vigilance website via web scraping
 - Multi-message support for 3-day rain forecasts
 
 ### CLI Improvements (November 2025)
@@ -387,7 +387,7 @@ BLITZ_WINDOW_MINUTES = 15
 
 **Architecture:**
 - `vigilance_monitor.py` - Weather vigilance monitoring module
-- Uses `vigilancemeteo` Python package
+- `vigilance_scraper.py` - Web scraper for Météo-France vigilance data
 - Periodic checks with configurable intervals
 - State tracking for color changes
 
@@ -2109,7 +2109,8 @@ All Python dependencies are documented in `requirements.txt`.
 - `python-telegram-bot>=21.0` - Telegram Bot API
 
 **Weather & Alerts:**
-- `vigilancemeteo>=3.0.0` - French weather vigilance alerts (Météo-France)
+- `beautifulsoup4>=4.12.0` - HTML parsing for weather vigilance scraping
+- `lxml>=4.9.0` - XML/HTML parser (used by BeautifulSoup)
 
 **Environmental monitoring:**
 - `paho-mqtt>=2.1.0` - MQTT client for real-time lightning data (Blitzortung.org)
@@ -2122,7 +2123,7 @@ pip install -r requirements.txt --break-system-packages
 
 # Manual installation
 pip install meshtastic pyserial bleak pyyaml tabulate pypubsub requests \
-    python-telegram-bot vigilancemeteo paho-mqtt pygeohash --break-system-packages
+    python-telegram-bot beautifulsoup4 lxml paho-mqtt pygeohash --break-system-packages
 ```
 
 **Note on `--break-system-packages`:**
@@ -2348,14 +2349,15 @@ monitor = BlitzMonitor(
 
 ### Météo-France Vigilance API
 
-**Protocol**: HTTPS (via vigilancemeteo package)
+**Protocol**: HTTPS (web scraping via BeautifulSoup4)
 **Coverage**: French departments only
 **Update Frequency**: Typically every 6 hours
 
 #### Client Code
 
-`vigilance_monitor.py::VigilanceMonitor`
+`vigilance_monitor.py::VigilanceMonitor` + `vigilance_scraper.py::DepartmentWeatherAlert`
 - Department-based weather vigilance monitoring
+- Web scraping of https://vigilance.meteofrance.fr
 - Color-coded alert levels (Vert/Jaune/Orange/Rouge)
 - Automatic alert generation for severe weather
 - Smart throttling to avoid alert spam
@@ -2407,6 +2409,7 @@ if info and monitor.should_alert(info):
 | AI client | `llama_client.py` | Llama.cpp integration |
 | Lightning monitor | `blitz_monitor.py` | Real-time lightning detection |
 | Vigilance monitor | `vigilance_monitor.py` | Weather vigilance alerts |
+| Vigilance scraper | `vigilance_scraper.py` | Météo-France web scraper |
 | Map generation | `map/generate_mesh_map.py` | Network topology maps |
 | Configuration | `config.py.sample` | Main config template |
 | Platform config | `platform_config.py` | Platform-specific configs |
@@ -2488,9 +2491,20 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-11-17
+**Last updated**: 2025-11-23
 **Updated by**: Claude (AI Assistant)
-**Changes in this update (2025-11-17)**:
+**Changes in this update (2025-11-23)**:
+- **BREAKING: Vigilance Module Replacement** - Replaced broken vigilancemeteo package with web scraping
+  - Created `vigilance_scraper.py` - BeautifulSoup4-based web scraper for Météo-France
+  - Scrapes https://vigilance.meteofrance.fr/fr/{departement} directly
+  - Drop-in replacement with same interface as vigilancemeteo
+  - Supports all department mappings (75=Paris, 25=Besançon, etc.)
+  - Multi-strategy HTML parsing for robustness
+  - Updated `vigilance_monitor.py` to use new scraper
+  - Replaced `vigilancemeteo>=3.0.0` with `beautifulsoup4>=4.12.0` and `lxml>=4.9.0` in requirements
+  - All existing tests updated and passing
+
+**Previous changes (2025-11-17)**:
 - **NEW: Real-Time Lightning Detection** - BlitzMonitor for automatic storm warnings
   - Added `blitz_monitor.py` - MQTT-based lightning detection via Blitzortung.org
   - Real-time strike detection with geohash-based geographic filtering
@@ -2514,7 +2528,8 @@ This document should be updated when:
 - **DEPENDENCIES: New Python Packages**
   - `paho-mqtt>=2.1.0` - MQTT client for Blitzortung.org
   - `pygeohash>=3.2.0` - Geographic filtering for lightning detection
-  - `vigilancemeteo>=3.0.0` - Météo-France vigilance API (already listed)
+  - `beautifulsoup4>=4.12.0` - HTML parsing for vigilance scraping
+  - `lxml>=4.9.0` - XML/HTML parser
 - **DOCUMENTATION: Enhanced External Integrations**
   - Added Blitzortung.org MQTT server documentation
   - Added Météo-France Vigilance API documentation

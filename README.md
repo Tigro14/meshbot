@@ -104,7 +104,7 @@ pip install -r requirements.txt --break-system-packages
 **Méthode 2 : Installation manuelle**
 ```bash
 pip install meshtastic pypubsub requests python-telegram-bot \
-    vigilancemeteo paho-mqtt pygeohash --break-system-packages
+    beautifulsoup4 lxml paho-mqtt pygeohash --break-system-packages
 ```
 
 ### Configuration
