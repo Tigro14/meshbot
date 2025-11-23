@@ -2367,7 +2367,7 @@ from vigilance_monitor import VigilanceMonitor
 
 monitor = VigilanceMonitor(
     departement='25',  # Doubs
-    check_interval=900,  # 15 minutes
+    check_interval=28800,  # 8 hours
     alert_throttle=3600,  # 1 hour minimum between alerts
     alert_levels=['Orange', 'Rouge']
 )

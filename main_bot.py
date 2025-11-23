@@ -60,7 +60,7 @@ class MeshBot:
             try:
                 self.vigilance_monitor = VigilanceMonitor(
                     departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
-                    check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 900),
+                    check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 28800),
                     alert_throttle=globals().get('VIGILANCE_ALERT_THROTTLE', 3600),
                     alert_levels=globals().get('VIGILANCE_ALERT_LEVELS', ['Orange', 'Rouge'])
                 )
