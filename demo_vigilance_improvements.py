@@ -32,7 +32,7 @@ def demo_successful_check():
     
     monitor = VigilanceMonitor('75', check_interval=0)
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         mock_alert.return_value = MagicMock(
             department_color='Vert',
             summary_message=lambda x: 'Pas de vigilance particulière',
@@ -55,7 +55,7 @@ def demo_retry_with_recovery():
     monitor = VigilanceMonitor('75', check_interval=0)
     
     # First attempt fails, second succeeds
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         mock_alert.side_effect = [
             http.client.RemoteDisconnected("Connection lost"),
             MagicMock(
@@ -82,7 +82,7 @@ def demo_complete_failure():
     
     monitor = VigilanceMonitor('75', check_interval=0)
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         mock_alert.side_effect = http.client.RemoteDisconnected("Connection lost")
         
         # Patch sleep to speed up demo
@@ -107,7 +107,7 @@ def demo_timeout():
         """Simulate slow API that would timeout"""
         raise socket.timeout("Request timed out after 10 seconds")
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert', side_effect=slow_api):
+    with patch('vigilance_scraper.DepartmentWeatherAlert', side_effect=slow_api):
         # Patch sleep to speed up demo
         with patch('time.sleep'):
             result = monitor.check_vigilance()
@@ -135,7 +135,7 @@ def demo_jitter_comparison():
             sleep_times.append(seconds)
         
         with patch('time.sleep', side_effect=track_sleep):
-            with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+            with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
                 mock_alert.side_effect = ConnectionError("Network error")
                 
                 result = monitor.check_vigilance()

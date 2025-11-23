@@ -44,9 +44,9 @@ sys.modules['utils'] = MockUtils
 
 
 def test_timeout_handling():
-    """Test that socket timeout is properly set and restored"""
+    """Test that timeout is properly passed to the scraper"""
     print("\n" + "="*70)
-    print("TEST 1: Socket Timeout Handling")
+    print("TEST 1: Timeout Handling")
     print("="*70)
     
     from vigilance_monitor import VigilanceMonitor
@@ -57,37 +57,42 @@ def test_timeout_handling():
         alert_throttle=3600
     )
     
-    # Track timeout changes
-    timeout_values = []
+    # Track constructor calls to verify timeout is passed
+    constructor_calls = []
     
-    original_setdefaulttimeout = socket.setdefaulttimeout
-    def track_timeout(value):
-        timeout_values.append(value)
-        return original_setdefaulttimeout(value)
-    
-    print("\n1.1: Testing timeout set/restore on success...")
-    with patch('socket.setdefaulttimeout', side_effect=track_timeout):
-        with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
-            mock_alert.return_value = MagicMock(
+    print("\n1.1: Testing timeout passed to DepartmentWeatherAlert...")
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
+        # Track constructor arguments
+        def track_constructor(*args, **kwargs):
+            constructor_calls.append((args, kwargs))
+            mock_obj = MagicMock(
                 department_color='Vert',
                 summary_message=lambda x: 'Pas de vigilance',
                 bulletin_date='2024-11-20',
                 additional_info_URL='http://example.com'
             )
+            return mock_obj
+        
+        mock_alert.side_effect = track_constructor
+        
+        result = monitor.check_vigilance()
+        
+        # Should have been called with department and timeout
+        if len(constructor_calls) >= 1:
+            args, kwargs = constructor_calls[0]
+            print(f"✅ PASS: DepartmentWeatherAlert called with args={args}, kwargs={kwargs}")
             
-            result = monitor.check_vigilance()
-            
-            # Should have set timeout to 10, then restored to None
-            if len(timeout_values) >= 2:
-                print(f"✅ PASS: Timeout set to {timeout_values[0]} and restored to {timeout_values[1]}")
-                if timeout_values[0] == 10:
-                    print("✅ PASS: Correct timeout value (10 seconds)")
-                else:
-                    print(f"❌ FAIL: Expected timeout 10, got {timeout_values[0]}")
-                    return False
+            # Check timeout was passed
+            if 'timeout' in kwargs and kwargs['timeout'] == 10:
+                print("✅ PASS: Correct timeout value (10 seconds)")
+            elif len(args) >= 2 and args[1] == 10:
+                print("✅ PASS: Correct timeout value (10 seconds) as positional arg")
             else:
-                print(f"❌ FAIL: Expected 2 timeout calls, got {len(timeout_values)}")
+                print(f"❌ FAIL: Expected timeout=10, got args={args}, kwargs={kwargs}")
                 return False
+        else:
+            print(f"❌ FAIL: Expected at least 1 constructor call, got {len(constructor_calls)}")
+            return False
     
     print("\n✅ TEST 1 PASSED: Timeout handling works correctly")
     return True
@@ -112,7 +117,7 @@ def test_remote_disconnected_handling():
     # Reset check time
     monitor.last_check_time = 0
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         # Simulate RemoteDisconnected error
         mock_alert.side_effect = http.client.RemoteDisconnected("Remote end closed connection")
         
@@ -156,7 +161,7 @@ def test_jitter_in_backoff():
         pass
     
     with patch('time.sleep', side_effect=track_sleep):
-        with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+        with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
             # All attempts fail
             mock_alert.side_effect = ConnectionResetError("Connection reset")
             
@@ -245,7 +250,7 @@ def test_logging_levels():
     
     # Don't sleep in test
     with patch('time.sleep'):
-        with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+        with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
             # All attempts fail
             mock_alert.side_effect = ConnectionResetError("Connection reset")
             
