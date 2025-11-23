@@ -420,16 +420,38 @@ class MeshBot:
                 info_print("⚠️ Interface manquante, tentative de reconnexion...")
                 return self._reconnect_tcp_interface()
             
-            # Vérifier si le socket est fermé
-            if not self.interface.socket or self.interface.socket.fileno() == -1:
-                info_print("⚠️ Socket TCP fermé, tentative de reconnexion...")
+            # Vérifier si le socket existe
+            if not self.interface.socket:
+                info_print("⚠️ Socket TCP manquant, tentative de reconnexion...")
                 return self._reconnect_tcp_interface()
             
+            # Vérifier si le socket est fermé (méthode 1: fileno)
+            try:
+                fd = self.interface.socket.fileno()
+                if fd == -1:
+                    info_print("⚠️ Socket TCP fermé (fileno=-1), tentative de reconnexion...")
+                    return self._reconnect_tcp_interface()
+            except Exception as e:
+                # Si fileno() lève une exception, le socket est invalide
+                info_print(f"⚠️ Socket TCP invalide ({e}), tentative de reconnexion...")
+                return self._reconnect_tcp_interface()
+            
+            # Vérifier si le socket est réellement connecté (méthode 2: getpeername)
+            # getpeername() échoue si le socket n'est pas connecté
+            try:
+                self.interface.socket.getpeername()
+            except (OSError, AttributeError) as e:
+                info_print(f"⚠️ Socket TCP déconnecté ({e}), tentative de reconnexion...")
+                return self._reconnect_tcp_interface()
+            
+            # Socket semble OK
+            debug_print("✅ Vérification interface TCP: OK")
             return True
             
         except Exception as e:
-            debug_print(f"Erreur vérification interface: {e}")
-            return False
+            error_print(f"⚠️ Erreur vérification interface: {e}")
+            # En cas d'erreur, tenter quand même une reconnexion
+            return self._reconnect_tcp_interface()
     
     def _reconnect_tcp_interface(self):
         """
@@ -492,7 +514,9 @@ class MeshBot:
                     break
                 
                 # Vérifier la santé de l'interface TCP et reconnexion si nécessaire
-                self._check_and_reconnect_interface()
+                if globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp':
+                    debug_print("🔍 Vérification santé interface TCP...")
+                    self._check_and_reconnect_interface()
                 
                 # Mise à jour de la base de nœuds
                 debug_print("🔄 Mise à jour périodique...")
