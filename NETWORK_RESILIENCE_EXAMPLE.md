@@ -13,7 +13,7 @@ This document shows a real-world example of how the network resilience improveme
 1. Bot periodic thread attempts to check vigilance status
 2. Météo-France API fails with `RemoteDisconnected`
 3. Error is logged with full traceback
-4. Bot continues but vigilance check is skipped until next interval (15 minutes)
+4. Bot continues but vigilance check is skipped until next interval (8 hours)
 
 ### Log Output
 
@@ -31,7 +31,7 @@ Nov 20 06:01:30 DietPi meshtastic-bot[1140517]: http.client.RemoteDisconnected: 
 
 ### Problems
 
-- ❌ No automatic retry - single failure means 15 minutes without vigilance data
+- ❌ No automatic retry - single failure means 8 hours without vigilance data
 - ❌ Verbose traceback pollutes logs
 - ❌ No distinction between temporary and permanent failures
 - ❌ User not aware of retry attempts
@@ -96,7 +96,7 @@ Nov 20 06:01:36 DietPi meshtastic-bot[1140517]: [INFO] 06:01:36 - ✅ Mise à jo
 | Aspect | Before | After |
 |--------|--------|-------|
 | **Retry Attempts** | 0 (single try) | 3 (with exponential backoff) |
-| **Recovery Time** | 15 minutes (next check) | 2-6 seconds (immediate) |
+| **Recovery Time** | 8 hours (next check) | 2-6 seconds (immediate) |
 | **Log Verbosity** | Full traceback (40+ lines) | Concise messages (3-4 lines) |
 | **Success Rate** | ~70% (no retry) | ~95% (with retry) |
 | **Thread Crash** | Possible | Never (isolated try-except) |
@@ -224,7 +224,7 @@ Based on typical network conditions:
 
 The network resilience improvements transform the bot from fragile to robust:
 
-- **Before**: Single network hiccup = 15 minutes of missing data
+- **Before**: Single network hiccup = 8 hours of missing data
 - **After**: Single network hiccup = 2-6 seconds of automatic recovery
 
 This makes the bot suitable for production use in real-world conditions with unreliable networks.

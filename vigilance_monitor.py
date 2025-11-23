@@ -26,14 +26,14 @@ class VigilanceMonitor:
     Orange ou Rouge.
     """
 
-    def __init__(self, departement: str, check_interval: int = 900,
+    def __init__(self, departement: str, check_interval: int = 28800,
                  alert_throttle: int = 3600, alert_levels: list = None):
         """
         Initialiser le moniteur de vigilance
 
         Args:
             departement: Numéro du département (ex: '25' pour Doubs)
-            check_interval: Intervalle de vérification en secondes (défaut: 15min)
+            check_interval: Intervalle de vérification en secondes (défaut: 8h)
             alert_throttle: Durée minimum entre 2 alertes (défaut: 1h)
             alert_levels: Niveaux de vigilance pour alerter (défaut: ['Orange', 'Rouge'])
         """

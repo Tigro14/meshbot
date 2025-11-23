@@ -395,7 +395,7 @@ BLITZ_WINDOW_MINUTES = 15
 ```python
 VIGILANCE_ENABLED = True
 VIGILANCE_DEPARTEMENT = '25'  # Department number (Doubs)
-VIGILANCE_CHECK_INTERVAL = 900  # 15 minutes
+VIGILANCE_CHECK_INTERVAL = 28800  # 8 hours
 VIGILANCE_ALERT_THROTTLE = 3600  # 1 hour minimum between alerts
 VIGILANCE_ALERT_LEVELS = ['Orange', 'Rouge']
 ```
@@ -2367,7 +2367,7 @@ from vigilance_monitor import VigilanceMonitor
 
 monitor = VigilanceMonitor(
     departement='25',  # Doubs
-    check_interval=900,  # 15 minutes
+    check_interval=28800,  # 8 hours
     alert_throttle=3600,  # 1 hour minimum between alerts
     alert_levels=['Orange', 'Rouge']
 )
