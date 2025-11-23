@@ -440,9 +440,24 @@ class MeshBot:
             # getpeername() échoue si le socket n'est pas connecté
             try:
                 self.interface.socket.getpeername()
-            except (OSError, AttributeError) as e:
-                info_print(f"⚠️ Socket TCP déconnecté ({e}), tentative de reconnexion...")
+            except AttributeError as e:
+                # Pas d'attribut getpeername - socket invalide
+                info_print(f"⚠️ Socket TCP invalide (pas de getpeername), tentative de reconnexion...")
                 return self._reconnect_tcp_interface()
+            except OSError as e:
+                # Seulement reconnexion pour les erreurs qui indiquent vraiment une déconnexion
+                # errno 107 (ENOTCONN): Transport endpoint is not connected
+                # errno 9 (EBADF): Bad file descriptor
+                # errno 57 (ENOTCONN sur macOS)
+                import errno
+                if e.errno in (errno.ENOTCONN, errno.EBADF, 57):
+                    info_print(f"⚠️ Socket TCP déconnecté (errno {e.errno}: {e}), tentative de reconnexion...")
+                    return self._reconnect_tcp_interface()
+                else:
+                    # Autre erreur OSError - ne pas reconnexion, juste logger
+                    debug_print(f"⚠️ Erreur getpeername non-fatale (errno {e.errno}): {e}")
+                    # Considérer le socket comme OK pour cette erreur
+                    return True
             
             # Socket semble OK
             debug_print("✅ Vérification interface TCP: OK")
