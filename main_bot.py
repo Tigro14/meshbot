@@ -45,6 +45,7 @@ class MeshBot:
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface
     TCP_HEALTH_CHECK_INTERVAL = 60  # Secondes entre chaque vérification santé TCP (1 minute)
     TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (2 minutes)
+    TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     
     def __init__(self):
         self.interface = None
@@ -113,6 +114,15 @@ class MeshBot:
         #self._channel_debug_active = True
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
+
+    def _is_tcp_mode(self):
+        """
+        Vérifie si le bot est en mode TCP
+        
+        Returns:
+            bool: True si CONNECTION_MODE == 'tcp', False sinon
+        """
+        return globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp'
 
     def _track_broadcast(self, message):
         """
@@ -236,16 +246,14 @@ class MeshBot:
             # ========================================
             # DÉTERMINER LE MODE DE FONCTIONNEMENT
             # ========================================
-            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-            
             # En mode single-node, tous les paquets viennent de notre interface unique
             # Pas besoin de filtrage par source
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            if connection_mode == 'tcp':
+            if self._is_tcp_mode():
                 source = 'tcp'
-            elif connection_mode == 'serial':
+            elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
             else:
                 # Mode legacy: distinguer serial vs TCP externe
@@ -440,8 +448,7 @@ class MeshBot:
         IMPORTANT: Version non-bloquante - ne bloque pas le thread périodique
         """
         # Seulement pour le mode TCP
-        connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-        if connection_mode != 'tcp':
+        if not self._is_tcp_mode():
             return True
         
         # Vérifier si une reconnexion est déjà en cours
@@ -610,7 +617,7 @@ class MeshBot:
                     break
                 
                 # Vérifier la santé de l'interface TCP et reconnexion si nécessaire
-                if globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp':
+                if self._is_tcp_mode():
                     debug_print("🔍 Vérification santé interface TCP...")
                     self._check_and_reconnect_interface()
                 
@@ -687,7 +694,7 @@ class MeshBot:
         - Le nœud distant a redémarré sans fermer proprement
         """
         # Délai initial pour laisser le système démarrer
-        time.sleep(30)
+        time.sleep(self.TCP_HEALTH_MONITOR_INITIAL_DELAY)
         
         info_print(f"🔍 Moniteur santé TCP démarré (intervalle: {self.TCP_HEALTH_CHECK_INTERVAL}s, silence max: {self.TCP_SILENT_TIMEOUT}s)")
         
@@ -698,9 +705,8 @@ class MeshBot:
                 if not self.running:
                     break
                 
-                # Ne vérifier qu'en mode TCP
-                connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-                if connection_mode != 'tcp':
+                # Ne vérifier qu'en mode TCP (utiliser helper method)
+                if not self._is_tcp_mode():
                     continue
                 
                 # Ne pas vérifier si reconnexion en cours
@@ -1193,8 +1199,7 @@ class MeshBot:
             # ========================================
             # Ce thread vérifie fréquemment si l'interface TCP reçoit des paquets
             # Si silence > 2 min, force une reconnexion (plus rapide que le health check normal)
-            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-            if connection_mode == 'tcp':
+            if self._is_tcp_mode():
                 self._tcp_health_thread = threading.Thread(
                     target=self.tcp_health_monitor_thread,
                     daemon=True,
