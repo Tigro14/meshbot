@@ -532,11 +532,9 @@ class MeshBot:
                     if self.mesh_traceroute:
                         self.mesh_traceroute.interface = self.interface
                     
-                    # Se réabonner aux messages
-                    pub.subscribe(
-                        self.on_message,
-                        "meshtastic.receive"
-                    )
+                    # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
+                    # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
+                    # Réabonner causerait des duplications de messages et des freezes.
                     
                     info_print("✅ Reconnexion TCP réussie (background)")
                     self._tcp_reconnection_in_progress = False
