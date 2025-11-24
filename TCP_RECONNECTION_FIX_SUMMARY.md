@@ -99,3 +99,7 @@ The fix has been verified through:
 2. Syntax validation of `main_bot.py`
 3. Existing tests still pass (`test_traceroute_brokenpipe.py`)
 4. New test passes (`test_tcp_reconnection_fix.py`)
+
+## Branch History
+
+This branch has been rebased onto the latest `main` branch to incorporate recent changes and maintain a clean commit history.
