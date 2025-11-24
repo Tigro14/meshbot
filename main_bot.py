@@ -40,13 +40,13 @@ from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
 class MeshBot:
+    # Configuration pour la reconnexion TCP
+    TCP_INTERFACE_CLEANUP_DELAY = 3  # Secondes à attendre après fermeture ancienne interface
+    TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface
+    
     def __init__(self):
         self.interface = None
         self.running = False
-        
-        # Lock pour éviter les traitements de messages concurrents
-        # Important lors de la reconnexion TCP pour éviter les race conditions
-        self._message_processing_lock = threading.Lock()
         
         self.start_time = time.time()
         # Initialisation des gestionnaires
@@ -531,8 +531,8 @@ class MeshBot:
                         # IMPORTANT: Attendre que les threads de l'ancienne interface
                         # aient le temps de se terminer avant de créer la nouvelle
                         # Ceci évite les conflits de ressources et les doublons de messages
-                        debug_print("⏳ Attente nettoyage threads ancienne interface...")
-                        time.sleep(3)  # Laisser 3 secondes pour la fermeture complète
+                        debug_print(f"⏳ Attente nettoyage threads ancienne interface ({self.TCP_INTERFACE_CLEANUP_DELAY}s)...")
+                        time.sleep(self.TCP_INTERFACE_CLEANUP_DELAY)
                     
                     # Créer une nouvelle interface
                     # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
@@ -543,8 +543,8 @@ class MeshBot:
                     )
                     
                     # Attendre la stabilisation de la nouvelle interface
-                    debug_print("⏳ Stabilisation nouvelle interface...")
-                    time.sleep(3)
+                    debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
+                    time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
                     
                     # Mettre à jour les références
                     debug_print("🔄 Mise à jour références interface...")
