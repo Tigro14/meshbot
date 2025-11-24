@@ -43,6 +43,8 @@ class MeshBot:
     # Configuration pour la reconnexion TCP
     TCP_INTERFACE_CLEANUP_DELAY = 3  # Secondes à attendre après fermeture ancienne interface
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface
+    TCP_HEALTH_CHECK_INTERVAL = 60  # Secondes entre chaque vérification santé TCP (1 minute)
+    TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (2 minutes)
     
     def __init__(self):
         self.interface = None
@@ -100,6 +102,10 @@ class MeshBot:
         # État de reconnexion TCP (pour éviter reconnexions multiples)
         self._tcp_reconnection_thread = None
         self._tcp_reconnection_in_progress = False
+        
+        # Détection silence TCP - si pas de paquet reçu depuis trop longtemps, forcer reconnexion
+        self._last_packet_time = time.time()
+        self._tcp_health_thread = None  # Thread de vérification santé TCP rapide
         
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
@@ -197,6 +203,10 @@ class MeshBot:
         if self._tcp_reconnection_in_progress:
             debug_print("⏸️ Message ignoré: reconnexion TCP en cours")
             return
+        
+        # ✅ IMPORTANT: Enregistrer le timestamp de réception du paquet
+        # Utilisé pour détecter les silences TCP et forcer la reconnexion
+        self._last_packet_time = time.time()
 
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
@@ -659,6 +669,68 @@ class MeshBot:
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
 
+    def tcp_health_monitor_thread(self):
+        """
+        Thread de surveillance santé TCP (RAPIDE)
+        
+        Ce thread vérifie fréquemment (toutes les 60s) si:
+        1. L'interface TCP est toujours connectée
+        2. Des paquets sont reçus régulièrement
+        
+        Si aucun paquet n'est reçu depuis TCP_SILENT_TIMEOUT (2 min),
+        on force une reconnexion car l'interface est probablement morte
+        même si le socket semble "vivant".
+        
+        C'est une protection contre les cas où:
+        - Le thread __reader de meshtastic a crashé silencieusement
+        - Le socket est half-open (TCP keepalive ne suffit pas)
+        - Le nœud distant a redémarré sans fermer proprement
+        """
+        # Délai initial pour laisser le système démarrer
+        time.sleep(30)
+        
+        info_print(f"🔍 Moniteur santé TCP démarré (intervalle: {self.TCP_HEALTH_CHECK_INTERVAL}s, silence max: {self.TCP_SILENT_TIMEOUT}s)")
+        
+        while self.running:
+            try:
+                time.sleep(self.TCP_HEALTH_CHECK_INTERVAL)
+                
+                if not self.running:
+                    break
+                
+                # Ne vérifier qu'en mode TCP
+                connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
+                if connection_mode != 'tcp':
+                    continue
+                
+                # Ne pas vérifier si reconnexion en cours
+                if self._tcp_reconnection_in_progress:
+                    debug_print("🔍 Health check: reconnexion en cours, skip")
+                    continue
+                
+                # Vérifier le temps depuis le dernier paquet
+                silence_duration = time.time() - self._last_packet_time
+                
+                if silence_duration > self.TCP_SILENT_TIMEOUT:
+                    # Aucun paquet reçu depuis trop longtemps!
+                    # L'interface est probablement morte
+                    info_print(f"⚠️ SILENCE TCP: {silence_duration:.0f}s sans paquet (max: {self.TCP_SILENT_TIMEOUT}s)")
+                    info_print("🔄 Forçage reconnexion TCP (silence détecté)...")
+                    
+                    # Forcer la reconnexion
+                    self._reconnect_tcp_interface()
+                    
+                    # Réinitialiser le timer pour éviter les reconnexions en boucle
+                    self._last_packet_time = time.time()
+                else:
+                    # Tout va bien
+                    debug_print(f"✅ Health TCP OK: dernier paquet il y a {silence_duration:.0f}s")
+                
+            except Exception as e:
+                error_print(f"Erreur thread health TCP: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+
     def cleanup_cache(self):
         """Nettoyage périodique général"""
         if self.llama_client:
@@ -1115,6 +1187,21 @@ class MeshBot:
             )
             self.update_thread.start()
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
+            
+            # ========================================
+            # THREAD MONITEUR SANTÉ TCP (RAPIDE)
+            # ========================================
+            # Ce thread vérifie fréquemment si l'interface TCP reçoit des paquets
+            # Si silence > 2 min, force une reconnexion (plus rapide que le health check normal)
+            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
+            if connection_mode == 'tcp':
+                self._tcp_health_thread = threading.Thread(
+                    target=self.tcp_health_monitor_thread,
+                    daemon=True,
+                    name="TCPHealthMonitor"
+                )
+                self._tcp_health_thread.start()
+                info_print(f"🔍 Moniteur santé TCP démarré (check: {self.TCP_HEALTH_CHECK_INTERVAL}s, silence max: {self.TCP_SILENT_TIMEOUT}s)")
             
             if DEBUG_MODE:
                 info_print("🔧 MODE DEBUG activé")

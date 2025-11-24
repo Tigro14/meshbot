@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Test pour vérifier que le timeout de reconnexion TCP fonctionne correctement
+Test pour vérifier que la reconnexion TCP fonctionne correctement
 
 Ce test vérifie:
-1. La reconnexion TCP utilise un thread avec timeout
-2. Le code a un timeout de 30 secondes explicite
-3. Des messages d'erreur appropriés en cas de timeout
+1. La reconnexion TCP est NON-BLOQUANTE (pas de join())
+2. Utilise un thread daemon en arrière-plan
+3. Ne re-souscrit pas à pubsub (évite les duplications)
+4. Un moniteur de santé TCP séparé détecte les silences
 """
 
 import sys
@@ -14,11 +15,11 @@ import os
 # Ajouter le répertoire courant au path
 sys.path.insert(0, os.path.dirname(__file__))
 
-def test_reconnection_has_timeout():
+def test_reconnection_is_non_blocking():
     """
-    Test que le code de reconnexion TCP contient un timeout explicite
+    Test que la reconnexion TCP est complètement non-bloquante
     """
-    print("\n🧪 Test: Code de reconnexion contient un timeout")
+    print("\n🧪 Test: Reconnexion TCP non-bloquante")
     
     # Lire le fichier main_bot.py
     with open('/home/runner/work/meshbot/meshbot/main_bot.py', 'r') as f:
@@ -31,80 +32,75 @@ def test_reconnection_has_timeout():
     
     # Vérifier que la fonction utilise threading
     assert 'threading.Thread' in reconnect_code, \
-        "❌ La fonction devrait utiliser threading.Thread pour timeout"
+        "❌ La fonction devrait utiliser threading.Thread"
     print("✅ Utilise threading.Thread")
     
-    # Vérifier que join() est appelé avec un timeout
-    assert '.join(timeout=' in reconnect_code, \
-        "❌ La fonction devrait appeler join(timeout=...)"
-    print("✅ Appelle join(timeout=...)")
+    # Vérifier que c'est un thread daemon (ne bloque pas l'arrêt)
+    assert 'daemon=True' in reconnect_code, \
+        "❌ Le thread devrait être daemon"
+    print("✅ Thread daemon (ne bloque pas l'arrêt)")
     
-    # Vérifier le timeout de 30 secondes
-    assert 'join(timeout=30)' in reconnect_code, \
-        "❌ Le timeout devrait être de 30 secondes"
-    print("✅ Timeout de 30 secondes configuré")
+    # Vérifier qu'on n'appelle PAS join() (reconnexion non-bloquante)
+    assert '.join(' not in reconnect_code, \
+        "❌ La fonction ne devrait PAS appeler join() (doit être non-bloquante)"
+    print("✅ Pas de join() - reconnexion non-bloquante")
     
-    # Vérifier la détection de timeout avec is_alive()
-    assert 'is_alive()' in reconnect_code, \
-        "❌ La fonction devrait vérifier is_alive() pour détecter le timeout"
-    print("✅ Détection de timeout avec is_alive()")
+    # Vérifier que return False immédiatement
+    assert 'return False' in reconnect_code, \
+        "❌ Devrait retourner False immédiatement"
+    print("✅ Retourne False immédiatement")
     
-    # Vérifier qu'un message d'erreur est affiché en cas de timeout
-    assert 'Timeout' in reconnect_code or 'timeout' in reconnect_code, \
-        "❌ Un message de timeout devrait être présent"
-    print("✅ Message de timeout présent")
-    
-    # Vérifier que return False en cas de timeout
-    timeout_section = reconnect_code[reconnect_code.find('is_alive()'):]
-    timeout_section = timeout_section[:timeout_section.find('\n            #')]
-    assert 'return False' in timeout_section, \
-        "❌ Devrait retourner False en cas de timeout"
-    print("✅ Retourne False en cas de timeout")
+    # Vérifier qu'il n'y a pas de pub.subscribe() CALL dans la reconnexion (évite duplications)
+    # (le mot peut apparaître dans les commentaires, on cherche l'appel réel)
+    import re
+    # Chercher "pub.subscribe(" qui est un appel réel, pas juste la mention dans un commentaire
+    actual_subscribe_call = re.search(r'^\s+pub\.subscribe\(', reconnect_code, re.MULTILINE)
+    assert actual_subscribe_call is None, \
+        "❌ Ne devrait PAS appeler pub.subscribe() (cause des duplications)"
+    print("✅ Pas d'appel pub.subscribe()")
     
     print("\n✅ TOUS LES TESTS RÉUSSIS")
     return True
 
-def test_timeout_documentation():
+def test_tcp_health_monitor_exists():
     """
-    Test que la fonction est bien documentée
+    Test que le moniteur de santé TCP rapide existe
     """
-    print("\n🧪 Test: Documentation du timeout")
+    print("\n🧪 Test: Moniteur santé TCP existe")
     
     with open('/home/runner/work/meshbot/meshbot/main_bot.py', 'r') as f:
         content = f.read()
     
-    reconnect_start = content.find('def _reconnect_tcp_interface')
-    reconnect_end = content.find('\n    def ', reconnect_start + 1)
-    reconnect_code = content[reconnect_start:reconnect_end]
+    # Vérifier que la fonction tcp_health_monitor_thread existe
+    assert 'def tcp_health_monitor_thread' in content, \
+        "❌ La fonction tcp_health_monitor_thread devrait exister"
+    print("✅ tcp_health_monitor_thread existe")
     
-    # Vérifier la docstring
-    assert '"""' in reconnect_code, "❌ Fonction devrait avoir une docstring"
+    # Vérifier les constantes de configuration
+    assert 'TCP_HEALTH_CHECK_INTERVAL' in content, \
+        "❌ TCP_HEALTH_CHECK_INTERVAL devrait exister"
+    print("✅ TCP_HEALTH_CHECK_INTERVAL configuré")
     
-    docstring_start = reconnect_code.find('"""')
-    docstring_end = reconnect_code.find('"""', docstring_start + 3)
-    docstring = reconnect_code[docstring_start:docstring_end]
+    assert 'TCP_SILENT_TIMEOUT' in content, \
+        "❌ TCP_SILENT_TIMEOUT devrait exister"
+    print("✅ TCP_SILENT_TIMEOUT configuré")
     
-    # Vérifier que la docstring mentionne le timeout
-    assert 'timeout' in docstring.lower() or '30' in docstring, \
-        "❌ Docstring devrait mentionner le timeout"
-    print("✅ Docstring mentionne le timeout")
-    
-    # Vérifier que freeze est mentionné
-    assert 'freeze' in docstring.lower(), \
-        "❌ Docstring devrait expliquer pourquoi le timeout est nécessaire (éviter freeze)"
-    print("✅ Docstring explique le freeze")
+    # Vérifier que _last_packet_time est utilisé
+    assert '_last_packet_time' in content, \
+        "❌ _last_packet_time devrait être utilisé"
+    print("✅ _last_packet_time pour tracking")
     
     print("✅ Test réussi")
     return True
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("TEST FIX TCP TIMEOUT - Éviter freeze lors de reconnexion")
+    print("TEST FIX TCP NON-BLOCKING - Éviter freeze lors de reconnexion")
     print("=" * 70)
     
     results = [
-        test_reconnection_has_timeout(),
-        test_timeout_documentation(),
+        test_reconnection_is_non_blocking(),
+        test_tcp_health_monitor_exists(),
     ]
     
     print("\n" + "=" * 70)
@@ -119,10 +115,10 @@ if __name__ == "__main__":
     if all(results):
         print("\n✅ TOUS LES TESTS RÉUSSIS")
         print("\nFix appliqué avec succès:")
-        print("- Timeout de 30 secondes sur la reconnexion TCP")
-        print("- Le bot ne freeze plus si le nœud distant est inaccessible")
-        print("- Messages d'erreur clairs en cas de timeout")
-        print("- Bien documenté dans le code")
+        print("- Reconnexion TCP complètement non-bloquante")
+        print("- Thread daemon en arrière-plan")
+        print("- Pas de re-souscription pubsub (évite duplications)")
+        print("- Moniteur santé TCP séparé (détecte silences)")
         sys.exit(0)
     else:
         print("\n❌ CERTAINS TESTS ONT ÉCHOUÉ")
