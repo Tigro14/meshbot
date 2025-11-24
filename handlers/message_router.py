@@ -66,8 +66,8 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer commandes broadcast-friendly (echo, my, weather, rain)
-        broadcast_commands = ['/echo ', '/my', '/weather', '/rain']
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain, vigi)
+        broadcast_commands = ['/echo ', '/my', '/weather', '/rain', '/vigi']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
