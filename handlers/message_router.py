@@ -83,6 +83,9 @@ class MessageRouter:
             elif message.startswith('/rain'):
                 info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/vigi'):
+                info_print(f"VIGI PUBLIC de {sender_info}")
+                self.utility_handler.handle_vigi(sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
         # Log messages pour nous
@@ -156,6 +159,8 @@ class MessageRouter:
             self.utility_handler.handle_weather(message, sender_id, sender_info)
         elif message.startswith('/rain'):
             self.utility_handler.handle_rain(message, sender_id, sender_info)
+        elif message.startswith('/vigi'):
+            self.utility_handler.handle_vigi(sender_id, sender_info)
         elif message.startswith('/graphs'):
             self.utility_handler.handle_graphs(message, sender_id, sender_info)
         elif message.startswith('/trafic'):
