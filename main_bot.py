@@ -503,8 +503,8 @@ class MeshBot:
             # Mettre à jour les références
             self.node_manager.interface = self.interface
             self.remote_nodes_client.interface = self.interface
-            if self.mesh_traceroute_manager:
-                self.mesh_traceroute_manager.interface = self.interface
+            if self.mesh_traceroute:
+                self.mesh_traceroute.interface = self.interface
             
             # Se réabonner aux messages
             pub.subscribe(
