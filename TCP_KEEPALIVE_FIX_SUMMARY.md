@@ -56,21 +56,27 @@ self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
 
 Total: **~2 minutes** to detect dead connection (vs hours without keepalive)
 
-### 3. Monitor Socket Exceptions in select()
+### 3. Exception Monitoring - REMOVED (Caused Packet Loss)
+
+**IMPORTANT**: Initial implementation tried to monitor socket exceptions in `select()`:
 
 ```python
-# OLD: Only monitor readability
-ready, _, _ = select.select([self.socket], [], [], timeout)
-
-# NEW: Also monitor exceptions
+# BROKEN - This caused packet loss!
 ready, _, exception = select.select([self.socket], [], [self.socket], timeout)
-
 if exception:
-    # Socket has error - connection probably dead
-    return b''
+    return b''  # Socket appeared to have exceptions constantly
 ```
 
-This allows `select()` to wake up immediately when the socket enters error state (triggered by keepalive failure).
+This caused **spurious wakeups** - the socket was constantly flagged as having exceptions even when working fine, preventing ALL packet reception.
+
+**Solution**: Revert to original approach (no exception list):
+
+```python
+# CORRECT - No spurious exceptions
+ready, _, exception = select.select([self.socket], [], [], timeout)
+```
+
+Keepalive still works because it operates at the **TCP layer**. When keepalive fails, the socket enters an error state that will be detected on the next read/write operation, not via select() exceptions.
 
 ## How It Works
 
@@ -82,20 +88,20 @@ This allows `select()` to wake up immediately when the socket enters error state
 2. **Connection Dies**:
    - Remote stops responding to keepalive probes
    - After 6 failed probes (60 seconds), TCP stack marks connection as dead
-   - Socket enters error state
-   - `select()` detects exception and returns
-   - Next health check detects dead socket
+   - Socket enters error state at TCP layer
+   - Next `recv()` or `send()` operation fails with error
+   - Health check detects dead socket
    - Reconnection triggered
 
 3. **Recovery**:
    - Health check runs every 5 minutes
-   - Dead connection detected in 2 minutes by keepalive
+   - Dead connection detected in 2 minutes by keepalive (at TCP layer)
    - Next health check (within 3 minutes) triggers reconnection
    - **Total recovery time: 2-7 minutes** (much better than hours!)
 
 ## Behavior Comparison
 
-### Without Keepalive (Before)
+### Without Keepalive (Original Problem)
 ```
 T+0:00  Remote node crashes
 T+0:01  Bot continues thinking it's connected
@@ -106,7 +112,15 @@ T+2:00  Bot still frozen
 T+24:00 Still frozen (OS TCP timeout not reached)
 ```
 
-### With Keepalive (After)
+### With Keepalive + Exception Monitoring (BROKEN - Commit 5b2f795)
+```
+T+0:00  Bot starts
+T+0:00  select() immediately reports exceptions (spurious)
+T+0:00  _readBytes() returns empty continuously
+T+0:00  NO PACKETS RECEIVED - bot completely broken
+```
+
+### With Keepalive Only (WORKING - Commit 8342487)
 ```
 T+0:00  Remote node crashes
 T+0:01  Bot continues thinking it's connected
@@ -117,8 +131,7 @@ T+1:30  Fourth probe (no response)
 T+1:40  Fifth probe (no response)
 T+1:50  Sixth probe (no response)
 T+2:00  Connection declared DEAD by TCP stack
-T+2:00  select() wakes up with exception
-T+2:00  _readBytes returns empty
+T+2:00  Socket in error state (detected on next recv/send)
 T+5:00  Next health check detects dead socket
 T+5:00  Reconnection triggered
 T+5:05  Bot back online!
@@ -141,7 +154,7 @@ Created `test_tcp_keepalive.py` to verify:
 2. TCP_KEEPIDLE configured (60s)
 3. TCP_KEEPINTVL configured (10s)
 4. TCP_KEEPCNT configured (6 probes)
-5. select() monitors exception list
+5. **select() does NOT monitor exception list** (to avoid spurious wakeups)
 6. Exception handling in _readBytes
 
 All tests pass ✅
@@ -153,22 +166,28 @@ All tests pass ✅
 - Bot appears frozen/unresponsive
 - Manual restart required
 
-**After:**
-- Dead connections detected in ~2 minutes
+**With Broken Exception Monitoring (Commit 5b2f795):**
+- Bot completely broken
+- No packets received at all
+- Spurious exceptions prevented data reception
+
+**After Fix (Commit 8342487):**
+- Dead connections detected in ~2 minutes (via TCP keepalive layer)
 - Automatic recovery in 2-7 minutes
 - No manual intervention needed
 - Bot stays responsive
+- **Packets received normally**
 
 ## Related Fixes
 
 This fix works together with:
 1. **AttributeError fix**: Correct attribute name usage
 2. **Timeout fix**: 30s timeout on reconnection attempts
-3. **Keepalive fix**: Fast detection of dead connections
+3. **Keepalive fix**: Fast detection of dead connections (TCP layer only, not select exceptions)
 
-All three combined provide robust TCP connection management.
+All three combined provide robust TCP connection management without breaking packet reception.
 
 ## Files Modified
 
-- `tcp_interface_patch.py` - Added keepalive configuration + select() improvement
-- `test_tcp_keepalive.py` - Test suite for keepalive functionality
+- `tcp_interface_patch.py` - Added keepalive configuration + **reverted exception monitoring**
+- `test_tcp_keepalive.py` - Test suite updated to verify exception list NOT used
