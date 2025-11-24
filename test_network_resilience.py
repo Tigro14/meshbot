@@ -83,7 +83,7 @@ def test_vigilance_retry():
     # Test 1: Simulate network failure with retry
     print("\n1.1: Simulating network failure (RemoteDisconnected)...")
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         # First 2 attempts fail, 3rd succeeds
         mock_alert.side_effect = [
             ConnectionResetError("Remote end closed connection"),
@@ -110,7 +110,7 @@ def test_vigilance_retry():
     # Reset check time to allow immediate check
     monitor.last_check_time = 0
     
-    with patch('vigilancemeteo.DepartmentWeatherAlert') as mock_alert:
+    with patch('vigilance_scraper.DepartmentWeatherAlert') as mock_alert:
         mock_alert.side_effect = ConnectionResetError("Remote end closed connection")
         
         result = monitor.check_vigilance()

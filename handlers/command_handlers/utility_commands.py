@@ -535,6 +535,58 @@ class UtilityCommands:
         # Appeler handle_weather avec le message reformaté
         self.handle_weather(weather_message, sender_id, sender_info, is_broadcast=is_broadcast)
 
+    def handle_vigi(self, sender_id, sender_info):
+        """
+        Afficher l'état actuel de la vigilance Météo-France (DM uniquement)
+        
+        Montre:
+        - Couleur de vigilance actuelle (Vert/Jaune/Orange/Rouge)
+        - Dernière synchronisation (timestamp)
+        - Numéro de département
+
+        Args:
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+        """
+        info_print(f"Vigi: {sender_info}")
+        
+        if not self.vigilance_monitor:
+            vigi_info = "🌦️ Surveillance VIGILANCE désactivée"
+        else:
+            # Emoji selon la couleur
+            emoji_map = {
+                'Vert': '✅',
+                'Jaune': '⚠️',
+                'Orange': '🟠',
+                'Rouge': '🔴'
+            }
+            
+            if self.vigilance_monitor.last_color:
+                emoji = emoji_map.get(self.vigilance_monitor.last_color, '🌦️')
+                color = self.vigilance_monitor.last_color
+                dept = self.vigilance_monitor.departement
+                
+                # Calculer le temps depuis la dernière vérification
+                if self.vigilance_monitor.last_check_time > 0:
+                    elapsed = int(time.time() - self.vigilance_monitor.last_check_time)
+                    
+                    # Formater le temps écoulé
+                    if elapsed < 60:
+                        time_str = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        time_str = f"{elapsed // 60}min"
+                    else:
+                        time_str = f"{elapsed // 3600}h"
+                    
+                    vigi_info = f"{emoji} VIGILANCE {color.upper()}\nDept {dept}\nSync: {time_str} ago"
+                else:
+                    vigi_info = f"{emoji} VIGILANCE {color.upper()}\nDept {dept}\nPas encore synchronisé"
+            else:
+                vigi_info = f"🌦️ VIGILANCE Dept {self.vigilance_monitor.departement}\nPas encore initialisé"
+        
+        self.sender.log_conversation(sender_id, sender_info, "/vigi", vigi_info)
+        self.sender.send_single(vigi_info, sender_id, sender_info)
+
     def _format_help(self):
         """Formater l'aide des commandes"""
         help_lines = [
@@ -549,6 +601,7 @@ class UtilityCommands:
             "/legend",
             "/weather",
             "/rain",
+            "/vigi",
             "/help"
         ]
         return "\n".join(help_lines)
@@ -576,6 +629,8 @@ class UtilityCommands:
           /weather astro → Infos astronomiques
           /weather blitz → Éclairs détectés
           /weather vigi → Info VIGILANCE Météo-France
+        • /rain [ville] [days] - Graphe précipitations (alias)
+        • /vigi - État VIGILANCE (couleur + dernière sync)
         • /graphs [heures] - Graphiques historiques
           Défaut: 24h, max 48h
         • /sys - Informations système Pi5
