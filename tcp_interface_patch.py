@@ -112,13 +112,9 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
             # Wait for data with select() - blocks for up to self.read_timeout seconds
             # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-            ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
-            
-            # Vérifier si une exception est survenue sur le socket
-            if exception:
-                # Socket en état d'exception = connexion probablement morte
-                debug_print("⚠️ Socket en état d'exception (connexion morte?)")
-                return b''
+            # Exception monitoring causes false positives - socket appears to have exceptions
+            # when it's actually fine, preventing normal data reception
+            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
             
             if not ready:
                 # Timeout: no data available

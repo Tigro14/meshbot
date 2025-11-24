@@ -57,11 +57,11 @@ def test_keepalive_configuration():
     print("\n✅ TOUS LES TESTS RÉUSSIS")
     return True
 
-def test_select_exception_list():
+def test_select_no_exception_list():
     """
-    Test que select() utilise la liste d'exceptions pour détecter les sockets morts
+    Test that select() does NOT use exception list to avoid spurious wakeups
     """
-    print("\n🧪 Test: select() avec liste d'exceptions")
+    print("\n🧪 Test: select() sans liste d'exceptions (évite faux positifs)")
     
     with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
         content = f.read()
@@ -73,15 +73,16 @@ def test_select_exception_list():
         readbytes_end = len(content)
     readbytes_code = content[readbytes_start:readbytes_end]
     
-    # Vérifier que select() inclut la liste d'exceptions
-    assert 'select.select([self.socket], [], [self.socket]' in readbytes_code, \
-        "❌ select() devrait inclure [self.socket] dans la liste d'exceptions"
-    print("✅ select() inclut la liste d'exceptions")
+    # Vérifier que select() N'INCLUT PAS la liste d'exceptions
+    # (le troisième paramètre doit être vide [])
+    assert 'select.select([self.socket], [], [], self.read_timeout)' in readbytes_code, \
+        "❌ select() ne devrait PAS inclure [self.socket] dans la liste d'exceptions (cause faux positifs)"
+    print("✅ select() n'inclut pas la liste d'exceptions (évite faux positifs)")
     
-    # Vérifier que les exceptions sont gérées
-    assert 'if exception:' in readbytes_code, \
-        "❌ Les exceptions de select() devraient être vérifiées"
-    print("✅ Les exceptions de select() sont vérifiées")
+    # Vérifier le commentaire explicatif
+    assert 'avoid spurious wakeups' in readbytes_code or 'faux positifs' in readbytes_code, \
+        "❌ Devrait expliquer pourquoi on n'utilise pas la liste d'exceptions"
+    print("✅ Documentation explique pourquoi pas de liste d'exceptions")
     
     print("✅ Test réussi")
     return True
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     
     results = [
         test_keepalive_configuration(),
-        test_select_exception_list(),
+        test_select_no_exception_list(),
     ]
     
     print("\n" + "=" * 70)
@@ -112,7 +113,7 @@ if __name__ == "__main__":
         print("- Keepalive démarre après 60s d'inactivité")
         print("- Probe toutes les 10s")
         print("- Connexion déclarée morte après 6 échecs (~2 minutes)")
-        print("- select() détecte les sockets en état d'exception")
+        print("- select() n'utilise PAS la liste d'exceptions (évite faux positifs)")
         sys.exit(0)
     else:
         print("\n❌ CERTAINS TESTS ONT ÉCHOUÉ")
