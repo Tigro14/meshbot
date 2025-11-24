@@ -50,6 +50,31 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 # Options TCP pour réduire latence
                 self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 
+                # ========================================
+                # TCP KEEPALIVE - Détection connexions mortes
+                # ========================================
+                # Active TCP keepalive pour détecter les connexions mortes rapidement
+                # Sans keepalive, une connexion morte peut rester "connectée" pendant des heures
+                # Avec keepalive, elle sera détectée en ~2 minutes maximum
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                
+                # Configuration keepalive (Linux)
+                # TCP_KEEPIDLE: Temps avant le premier keepalive (secondes)
+                # TCP_KEEPINTVL: Intervalle entre keepalives (secondes)
+                # TCP_KEEPCNT: Nombre de keepalives avant de déclarer mort
+                try:
+                    # Démarrer keepalive après 60 secondes d'inactivité
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+                    # Envoyer un keepalive toutes les 10 secondes
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+                    # Après 6 échecs (60s), déclarer la connexion morte
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
+                    info_print("✅ TCP Keepalive activé (détection connexion morte: ~2min)")
+                except (AttributeError, OSError) as e:
+                    # TCP_KEEPIDLE, etc. ne sont pas disponibles sur tous les systèmes
+                    debug_print(f"⚠️ Impossible de configurer keepalive avancé: {e}")
+                    # Le keepalive de base (SO_KEEPALIVE) est quand même actif
+                
                 info_print(f"✅ Socket configuré: blocking={True}, timeout={self.socket_timeout}s")
             except Exception as e:
                 error_print(f"Erreur configuration socket: {e}")
@@ -87,7 +112,13 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
             # Wait for data with select() - blocks for up to self.read_timeout seconds
             # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
+            ready, _, exception = select.select([self.socket], [], [self.socket], self.read_timeout)
+            
+            # Vérifier si une exception est survenue sur le socket
+            if exception:
+                # Socket en état d'exception = connexion probablement morte
+                debug_print("⚠️ Socket en état d'exception (connexion morte?)")
+                return b''
             
             if not ready:
                 # Timeout: no data available
