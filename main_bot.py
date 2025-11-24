@@ -44,6 +44,10 @@ class MeshBot:
         self.interface = None
         self.running = False
         
+        # Lock pour éviter les traitements de messages concurrents
+        # Important lors de la reconnexion TCP pour éviter les race conditions
+        self._message_processing_lock = threading.Lock()
+        
         self.start_time = time.time()
         # Initialisation des gestionnaires
         self.node_manager = NodeManager(self.interface)
@@ -187,6 +191,12 @@ class MeshBot:
 
         # Debug: Tracer TOUS les appels à on_message
         debug_print(f"🔍 on_message APPELÉ - packet keys: {list(packet.keys()) if packet else 'None'}, interface: {interface is not None}")
+
+        # Protection contre les traitements pendant la reconnexion TCP
+        # Évite les race conditions et les messages provenant de l'ancienne interface
+        if self._tcp_reconnection_in_progress:
+            debug_print("⏸️ Message ignoré: reconnexion TCP en cours")
+            return
 
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
@@ -509,23 +519,35 @@ class MeshBot:
                 """Fonction de reconnexion exécutée dans un thread séparé"""
                 try:
                     # Fermer l'ancienne interface si elle existe
-                    if self.interface:
+                    old_interface = self.interface
+                    if old_interface:
                         try:
-                            self.interface.close()
-                        except:
-                            pass
+                            debug_print("🔄 Fermeture ancienne interface TCP...")
+                            old_interface.close()
+                            debug_print("✅ Ancienne interface fermée")
+                        except Exception as close_error:
+                            debug_print(f"⚠️ Erreur fermeture ancienne interface: {close_error}")
+                        
+                        # IMPORTANT: Attendre que les threads de l'ancienne interface
+                        # aient le temps de se terminer avant de créer la nouvelle
+                        # Ceci évite les conflits de ressources et les doublons de messages
+                        debug_print("⏳ Attente nettoyage threads ancienne interface...")
+                        time.sleep(3)  # Laisser 3 secondes pour la fermeture complète
                     
                     # Créer une nouvelle interface
                     # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
+                    debug_print("🔧 Création nouvelle interface TCP...")
                     new_interface = OptimizedTCPInterface(
                         hostname=tcp_host,
                         portNumber=tcp_port
                     )
                     
-                    # Attendre la stabilisation
-                    time.sleep(5)
+                    # Attendre la stabilisation de la nouvelle interface
+                    debug_print("⏳ Stabilisation nouvelle interface...")
+                    time.sleep(3)
                     
                     # Mettre à jour les références
+                    debug_print("🔄 Mise à jour références interface...")
                     self.interface = new_interface
                     self.node_manager.interface = self.interface
                     self.remote_nodes_client.interface = self.interface
@@ -535,6 +557,9 @@ class MeshBot:
                     # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
                     # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
                     # Réabonner causerait des duplications de messages et des freezes.
+                    # Le système pubsub de Meshtastic route les messages de TOUTES les interfaces
+                    # vers les callbacks enregistrés - pas besoin de re-subscribe.
+                    debug_print("ℹ️ Pas de réabonnement nécessaire (pubsub global)")
                     
                     info_print("✅ Reconnexion TCP réussie (background)")
                     self._tcp_reconnection_in_progress = False
