@@ -16,6 +16,7 @@ import threading
 import subprocess
 from config import *
 from utils import *
+from tcp_interface_patch import OptimizedTCPInterface
 
 class SystemMonitor:
     def __init__(self, telegram_integration=None):

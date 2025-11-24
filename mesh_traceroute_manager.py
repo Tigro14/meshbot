@@ -112,10 +112,10 @@ class MeshTracerouteManager:
                 return True
                 
             except BrokenPipeError as e:
-                # Interface cassée - probablement connexion TCP fermée
-                error_print(f"❌ BrokenPipe lors envoi traceroute: {e}")
-                error_print(f"   Interface type: {type(interface).__name__}")
-                error_print(f"   Interface details: {interface if hasattr(interface, '__dict__') else 'N/A'}")
+                # Erreur réseau normale - connexion TCP temporairement cassée
+                # Le bot vérifie périodiquement la connexion et reconnectera si nécessaire
+                debug_print(f"⚠️ Connexion réseau perdue lors de l'envoi traceroute: {e}")
+                debug_print("Le bot reconnectera automatiquement lors de la prochaine vérification périodique")
                 
                 # Message d'erreur à l'utilisateur
                 self.message_sender.send_single(
