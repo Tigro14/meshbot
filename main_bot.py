@@ -93,6 +93,10 @@ class MeshBot:
         # Timer pour télémétrie ESPHome
         self._last_telemetry_broadcast = 0
         
+        # État de reconnexion TCP (pour éviter reconnexions multiples)
+        self._tcp_reconnection_thread = None
+        self._tcp_reconnection_in_progress = False
+        
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
         #self._packets_analyzed = 0
@@ -412,11 +416,18 @@ class MeshBot:
         Vérifie la santé de l'interface TCP et reconnecte si nécessaire
         
         Retourne True si l'interface est opérationnelle, False sinon
+        
+        IMPORTANT: Version non-bloquante - ne bloque pas le thread périodique
         """
         # Seulement pour le mode TCP
         connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
         if connection_mode != 'tcp':
             return True
+        
+        # Vérifier si une reconnexion est déjà en cours
+        if self._tcp_reconnection_in_progress:
+            debug_print("⏳ Reconnexion TCP déjà en cours, skip health check")
+            return False  # Pas OK mais reconnexion en cours
         
         try:
             # Vérifier si l'interface existe et si le socket est vivant
@@ -476,82 +487,80 @@ class MeshBot:
         """
         Reconnecte l'interface TCP après une déconnexion
         
-        Retourne True en cas de succès, False sinon
+        Retourne False immédiatement et lance la reconnexion en arrière-plan
         
-        IMPORTANT: Utilise un timeout de 30 secondes pour éviter un freeze
-        si la connexion TCP ne peut pas être établie (ex: nœud distant éteint)
+        IMPORTANT: Version NON-BLOQUANTE - ne bloque pas le thread appelant
+        La reconnexion se fait dans un thread séparé pour ne pas freezer le bot
         """
         try:
+            # Marquer la reconnexion comme en cours
+            if self._tcp_reconnection_in_progress:
+                debug_print("⏳ Reconnexion déjà en cours, ignorer")
+                return False
+            
+            self._tcp_reconnection_in_progress = True
+            
             tcp_host = globals().get('TCP_HOST', '192.168.1.38')
             tcp_port = globals().get('TCP_PORT', 4403)
             
-            info_print(f"🔄 Reconnexion TCP à {tcp_host}:{tcp_port}...")
+            info_print(f"🔄 Lancement reconnexion TCP à {tcp_host}:{tcp_port} (en arrière-plan)...")
             
-            # Fermer l'ancienne interface si elle existe
-            if self.interface:
+            def reconnect_background():
+                """Fonction de reconnexion exécutée dans un thread séparé"""
                 try:
-                    self.interface.close()
-                except:
-                    pass
-            
-            # Créer une nouvelle interface avec timeout pour éviter freeze
-            # Utiliser un thread avec timeout pour éviter que la connexion TCP bloque indéfiniment
-            new_interface = [None]  # Liste pour pouvoir modifier dans le thread
-            exception_holder = [None]
-            
-            def create_interface():
-                try:
-                    new_interface[0] = OptimizedTCPInterface(
+                    # Fermer l'ancienne interface si elle existe
+                    if self.interface:
+                        try:
+                            self.interface.close()
+                        except:
+                            pass
+                    
+                    # Créer une nouvelle interface
+                    # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
+                    new_interface = OptimizedTCPInterface(
                         hostname=tcp_host,
                         portNumber=tcp_port
                     )
+                    
+                    # Attendre la stabilisation
+                    time.sleep(5)
+                    
+                    # Mettre à jour les références
+                    self.interface = new_interface
+                    self.node_manager.interface = self.interface
+                    self.remote_nodes_client.interface = self.interface
+                    if self.mesh_traceroute:
+                        self.mesh_traceroute.interface = self.interface
+                    
+                    # Se réabonner aux messages
+                    pub.subscribe(
+                        self.on_message,
+                        "meshtastic.receive"
+                    )
+                    
+                    info_print("✅ Reconnexion TCP réussie (background)")
+                    self._tcp_reconnection_in_progress = False
+                    
                 except Exception as e:
-                    exception_holder[0] = e
+                    error_print(f"❌ Échec reconnexion TCP (background): {e}")
+                    error_print(traceback.format_exc())
+                    self._tcp_reconnection_in_progress = False
             
-            # Lancer la création dans un thread séparé
-            creation_thread = threading.Thread(target=create_interface, daemon=True)
-            creation_thread.start()
-            
-            # Attendre maximum 30 secondes pour la connexion
-            creation_thread.join(timeout=30)
-            
-            if creation_thread.is_alive():
-                # Le thread est toujours en cours = timeout
-                error_print(f"⏱️ Timeout (30s) lors de la connexion TCP à {tcp_host}:{tcp_port}")
-                error_print("Le nœud distant est peut-être éteint ou inaccessible")
-                return False
-            
-            # Vérifier si une exception s'est produite
-            if exception_holder[0]:
-                raise exception_holder[0]
-            
-            # Vérifier que l'interface a bien été créée
-            if not new_interface[0]:
-                error_print("❌ Échec création interface TCP (raison inconnue)")
-                return False
-            
-            self.interface = new_interface[0]
-            
-            # Attendre la stabilisation
-            time.sleep(5)
-            
-            # Mettre à jour les références
-            self.node_manager.interface = self.interface
-            self.remote_nodes_client.interface = self.interface
-            if self.mesh_traceroute:
-                self.mesh_traceroute.interface = self.interface
-            
-            # Se réabonner aux messages
-            pub.subscribe(
-                self.on_message,
-                "meshtastic.receive"
+            # Lancer la reconnexion dans un thread daemon (ne bloque pas l'arrêt du bot)
+            self._tcp_reconnection_thread = threading.Thread(
+                target=reconnect_background,
+                daemon=True,
+                name="TCP-Reconnect"
             )
+            self._tcp_reconnection_thread.start()
             
-            info_print("✅ Reconnexion TCP réussie")
-            return True
+            # Retourner False immédiatement (reconnexion en cours)
+            return False
             
         except Exception as e:
-            error_print(f"❌ Échec reconnexion TCP: {e}")
+            error_print(f"❌ Erreur lancement reconnexion: {e}")
+            error_print(traceback.format_exc())
+            self._tcp_reconnection_in_progress = False
             return False
     
     def periodic_update_thread(self):
