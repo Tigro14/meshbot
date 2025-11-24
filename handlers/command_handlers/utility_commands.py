@@ -535,9 +535,9 @@ class UtilityCommands:
         # Appeler handle_weather avec le message reformaté
         self.handle_weather(weather_message, sender_id, sender_info, is_broadcast=is_broadcast)
 
-    def handle_vigi(self, sender_id, sender_info, is_broadcast=False):
+    def handle_vigi(self, sender_id, sender_info):
         """
-        Afficher l'état actuel de la vigilance Météo-France
+        Afficher l'état actuel de la vigilance Météo-France (DM uniquement)
         
         Montre:
         - Couleur de vigilance actuelle (Vert/Jaune/Orange/Rouge)
@@ -547,9 +547,8 @@ class UtilityCommands:
         Args:
             sender_id: ID de l'expéditeur
             sender_info: Infos sur l'expéditeur
-            is_broadcast: Si True, répondre en broadcast public
         """
-        info_print(f"Vigi: {sender_info} (broadcast={is_broadcast})")
+        info_print(f"Vigi: {sender_info}")
         
         if not self.vigilance_monitor:
             vigi_info = "🌦️ Surveillance VIGILANCE désactivée"
@@ -586,12 +585,7 @@ class UtilityCommands:
                 vigi_info = f"🌦️ VIGILANCE Dept {self.vigilance_monitor.departement}\nPas encore initialisé"
         
         self.sender.log_conversation(sender_id, sender_info, "/vigi", vigi_info)
-        
-        # Envoyer selon le mode (broadcast ou direct)
-        if is_broadcast:
-            self._send_broadcast_via_tigrog2(vigi_info, sender_id, sender_info, "/vigi")
-        else:
-            self.sender.send_single(vigi_info, sender_id, sender_info)
+        self.sender.send_single(vigi_info, sender_id, sender_info)
 
     def _format_help(self):
         """Formater l'aide des commandes"""
