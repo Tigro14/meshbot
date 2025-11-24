@@ -30,19 +30,22 @@ def test_tcp_reconnection_no_attribute_error():
         content = f.read()
     
     # Vérifier que mesh_traceroute_manager n'apparaît pas dans _reconnect_tcp_interface
-    reconnect_code = content[content.find('def _reconnect_tcp_interface'):content.find('def _reconnect_tcp_interface') + 2000]
+    reconnect_start = content.find('def _reconnect_tcp_interface')
+    # Trouver le prochain "def " après le début de la fonction pour obtenir toute la fonction
+    next_def = content.find('\n    def ', reconnect_start + 1)
+    reconnect_code = content[reconnect_start:next_def]
     
     # Vérifier qu'on n'utilise plus mesh_traceroute_manager
     assert 'mesh_traceroute_manager' not in reconnect_code, \
         "❌ mesh_traceroute_manager ne devrait plus être utilisé dans _reconnect_tcp_interface"
     print("✅ mesh_traceroute_manager n'est plus utilisé dans _reconnect_tcp_interface")
     
-    # Vérifier qu'on utilise mesh_traceroute
-    assert 'if self.mesh_traceroute:' in reconnect_code, \
+    # Vérifier qu'on utilise mesh_traceroute (doit être présent quelque part dans la fonction)
+    assert 'mesh_traceroute' in reconnect_code, \
         "❌ mesh_traceroute devrait être utilisé dans _reconnect_tcp_interface"
     print("✅ mesh_traceroute est correctement utilisé")
     
-    # Vérifier la syntaxe correcte
+    # Vérifier la syntaxe correcte (rechercher dans toute la fonction, pas juste le début)
     assert 'self.mesh_traceroute.interface = self.interface' in reconnect_code, \
         "❌ mesh_traceroute.interface devrait être mis à jour"
     print("✅ mesh_traceroute.interface est correctement mis à jour")

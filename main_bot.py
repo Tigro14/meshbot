@@ -477,6 +477,9 @@ class MeshBot:
         Reconnecte l'interface TCP après une déconnexion
         
         Retourne True en cas de succès, False sinon
+        
+        IMPORTANT: Utilise un timeout de 30 secondes pour éviter un freeze
+        si la connexion TCP ne peut pas être établie (ex: nœud distant éteint)
         """
         try:
             tcp_host = globals().get('TCP_HOST', '192.168.1.38')
@@ -491,11 +494,43 @@ class MeshBot:
                 except:
                     pass
             
-            # Créer une nouvelle interface
-            self.interface = OptimizedTCPInterface(
-                hostname=tcp_host,
-                portNumber=tcp_port
-            )
+            # Créer une nouvelle interface avec timeout pour éviter freeze
+            # Utiliser un thread avec timeout pour éviter que la connexion TCP bloque indéfiniment
+            new_interface = [None]  # Liste pour pouvoir modifier dans le thread
+            exception_holder = [None]
+            
+            def create_interface():
+                try:
+                    new_interface[0] = OptimizedTCPInterface(
+                        hostname=tcp_host,
+                        portNumber=tcp_port
+                    )
+                except Exception as e:
+                    exception_holder[0] = e
+            
+            # Lancer la création dans un thread séparé
+            creation_thread = threading.Thread(target=create_interface, daemon=True)
+            creation_thread.start()
+            
+            # Attendre maximum 30 secondes pour la connexion
+            creation_thread.join(timeout=30)
+            
+            if creation_thread.is_alive():
+                # Le thread est toujours en cours = timeout
+                error_print(f"⏱️ Timeout (30s) lors de la connexion TCP à {tcp_host}:{tcp_port}")
+                error_print("Le nœud distant est peut-être éteint ou inaccessible")
+                return False
+            
+            # Vérifier si une exception s'est produite
+            if exception_holder[0]:
+                raise exception_holder[0]
+            
+            # Vérifier que l'interface a bien été créée
+            if not new_interface[0]:
+                error_print("❌ Échec création interface TCP (raison inconnue)")
+                return False
+            
+            self.interface = new_interface[0]
             
             # Attendre la stabilisation
             time.sleep(5)
