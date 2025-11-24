@@ -2,6 +2,11 @@
 """
 CLI Test Script for Vigilance Météo-France API
 
+⚠️  DEPRECATED: This script tests the OLD vigilancemeteo module which is
+    broken and has been replaced by vigilance_scraper.py
+
+    For testing the NEW scraper, use: test_vigilance_scraper.py
+
 This script tests the vigilancemeteo module to verify:
 1. Module installation and import
 2. API connectivity and data retrieval
@@ -15,6 +20,9 @@ Usage:
     Example: python3 test_vigilance_cli.py 25
     
     If no department is specified, defaults to '75' (Paris)
+
+NOTE: This test is kept for historical/diagnostic purposes only.
+      Production code uses vigilance_scraper.py instead.
 """
 
 import sys
@@ -295,11 +303,25 @@ def display_summary(zone):
 
 def main():
     """Main test runner"""
+    # Print deprecation warning
+    print("\n" + "🔔" * 40)
+    print("⚠️  DEPRECATION WARNING")
+    print("🔔" * 40)
+    print()
+    print("This test script is for the OLD 'vigilancemeteo' module which is")
+    print("BROKEN and has been REPLACED in production code.")
+    print()
+    print("✅ For testing the NEW scraper, use: test_vigilance_scraper.py")
+    print()
+    print("This test is kept for historical/diagnostic purposes only.")
+    print("Production code uses vigilance_scraper.py")
+    print("🔔" * 40 + "\n")
+    
     # Parse command line arguments
     departement = sys.argv[1] if len(sys.argv) > 1 else '75'
     
     print("=" * 80)
-    print("  VIGILANCE MÉTÉO-FRANCE CLI TEST")
+    print("  VIGILANCE MÉTÉO-FRANCE CLI TEST (DEPRECATED)")
     print("=" * 80)
     print(f"Department: {departement}")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
