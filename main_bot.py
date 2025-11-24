@@ -282,6 +282,9 @@ class MeshBot:
             # En mode single-node: tous les paquets de notre interface sont traités
             # En mode legacy: filtrer selon PROCESS_TCP_COMMANDS
             
+            # Get connection mode from globals (set in run() method)
+            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
+            
             if connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
                 if not is_from_our_interface:
