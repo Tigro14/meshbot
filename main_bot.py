@@ -562,22 +562,34 @@ class MeshBot:
                         portNumber=tcp_port
                     )
                     
+                    # CRITIQUE: Configurer le callback IMMÉDIATEMENT après création
+                    # Si le socket meurt pendant la stabilisation, on sera notifié
+                    # (avant, le callback n'était configuré qu'après stabilisation,
+                    # donc les morts pendant stabilisation passaient inaperçues)
+                    debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
+                    new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                    
                     # Attendre la stabilisation de la nouvelle interface
                     debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
                     time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
                     
-                    # Vérifier que le socket est bien connecté
+                    # CRITIQUE: Vérifier que le socket est TOUJOURS connecté après stabilisation
+                    # Le socket peut mourir pendant la stabilisation
+                    socket_ok = False
                     if hasattr(new_interface, 'socket') and new_interface.socket:
                         try:
                             peer = new_interface.socket.getpeername()
                             debug_print(f"✅ Socket connecté à {peer}")
+                            socket_ok = True
                         except Exception as e:
-                            error_print(f"⚠️ Socket non connecté après création: {e}")
+                            error_print(f"⚠️ Socket mort pendant stabilisation: {e}")
                     
-                    # Configurer le callback pour reconnexion immédiate sur la NOUVELLE interface
-                    # CRITIQUE: Sans cela, le socket mort ne déclenchera pas de reconnexion immédiate
-                    debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
-                    new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                    # Si le socket est mort, abandonner cette tentative
+                    # Le callback a déjà été appelé, une nouvelle reconnexion sera lancée
+                    if not socket_ok:
+                        error_print("❌ Reconnexion abandonnée (socket mort pendant stabilisation)")
+                        self._tcp_reconnection_in_progress = False
+                        return  # Ne pas mettre à jour les références avec une interface morte
                     
                     # Mettre à jour les références
                     debug_print("🔄 Mise à jour références interface...")
