@@ -574,6 +574,11 @@ class MeshBot:
                         except Exception as e:
                             error_print(f"⚠️ Socket non connecté après création: {e}")
                     
+                    # Configurer le callback pour reconnexion immédiate sur la NOUVELLE interface
+                    # CRITIQUE: Sans cela, le socket mort ne déclenchera pas de reconnexion immédiate
+                    debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
+                    new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                    
                     # Mettre à jour les références
                     debug_print("🔄 Mise à jour références interface...")
                     self.interface = new_interface
