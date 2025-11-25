@@ -88,6 +88,41 @@ def test_select_no_exception_list():
     print("✅ Documentation explique pourquoi pas de liste d'exceptions")
     
     print("✅ Test réussi")
+    return True
+
+def test_dead_socket_stops_loop():
+    """
+    Test that when recv() returns empty (dead socket), we set _wantExit to stop tight loop
+    """
+    print("\n🧪 Test: Socket mort arrête la boucle (pas de tight loop)")
+    
+    with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
+        content = f.read()
+    
+    # Trouver _readBytes
+    readbytes_start = content.find('def _readBytes')
+    readbytes_end = content.find('\n    def ', readbytes_start + 1)
+    if readbytes_end == -1:
+        readbytes_end = len(content)
+    readbytes_code = content[readbytes_start:readbytes_end]
+    
+    # Vérifier qu'on détecte les données vides (socket mort)
+    assert 'not data' in readbytes_code or 'if not data' in readbytes_code, \
+        "❌ Devrait détecter quand recv() retourne vide (socket mort)"
+    print("✅ Détection socket mort (recv() vide)")
+    
+    # Vérifier qu'on set _wantExit pour arrêter la boucle
+    assert '_wantExit = True' in readbytes_code, \
+        "❌ Devrait set _wantExit = True pour arrêter les appels répétés"
+    print("✅ _wantExit = True pour stopper la boucle")
+    
+    # Vérifier le log (une seule fois)
+    assert 'if not getattr' in readbytes_code or 'not getattr(self, \'_wantExit\'' in readbytes_code, \
+        "❌ Devrait logger une seule fois (pas de spam)"
+    print("✅ Log une seule fois (pas de spam)")
+    
+    print("✅ Test réussi")
+    return True
 
 if __name__ == "__main__":
     print("=" * 70)
@@ -97,6 +132,7 @@ if __name__ == "__main__":
     results = [
         test_keepalive_configuration(),
         test_select_no_exception_list(),
+        test_dead_socket_stops_loop(),
     ]
     
     print("\n" + "=" * 70)
@@ -118,6 +154,7 @@ if __name__ == "__main__":
         print("- Probe toutes les 10s")
         print("- Connexion déclarée morte après 6 échecs (~2 minutes)")
         print("- select() n'utilise PAS la liste d'exceptions (évite faux positifs)")
+        print("- Socket mort: set _wantExit pour stopper tight loop")
         sys.exit(0)
     else:
         print("\n❌ CERTAINS TESTS ONT ÉCHOUÉ")

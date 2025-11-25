@@ -127,9 +127,11 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 if not data:
                     # Empty bytes = dead socket (TCP FIN received)
                     # This is a CRITICAL condition - socket is permanently dead
-                    # Return None to signal reader thread to stop completely
+                    # Set _wantExit to stop ALL subsequent calls immediately
                     # The health monitor will trigger reconnection
-                    info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
+                    if not getattr(self, '_wantExit', False):
+                        info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
+                        self._wantExit = True  # Stop all future reads
                     return None  # Signal reader thread to exit
                 
                 # Data read successfully
