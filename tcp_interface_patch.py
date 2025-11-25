@@ -10,12 +10,22 @@ Usage:
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
 """
 
+import errno
 import socket
 import select
 import time
 import meshtastic.tcp_interface
 from meshtastic.stream_interface import StreamInterface
 from utils import info_print, error_print, debug_print
+
+# Socket error codes to ignore (normal connection errors)
+SOCKET_ERROR_CODES = (
+    errno.ECONNRESET,   # 104 - Connection reset
+    errno.ETIMEDOUT,    # 110 - Connection timed out  
+    errno.ECONNREFUSED, # 111 - Connection refused
+    errno.ENOTCONN,     # 107 - Not connected
+    errno.EPIPE,        # 32 - Broken pipe
+)
 
 
 class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
@@ -89,12 +99,17 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         - CPU faible car select() est bloquant et efficace
         - Répond rapidement à _wantExit pour fermeture propre
         
+        Returns:
+        - bytes: Data read from socket
+        - b'': No data yet (timeout) - reader thread will retry
+        - None: Exit signal or no socket - reader thread should stop
+        
         Cette version est plus proche de l'original Meshtastic mais avec select()
         pour éviter le busy-waiting du socket.recv() non-bloquant.
         """
         # Check if we should exit (interface being closed)
         if getattr(self, '_wantExit', False):
-            return None  # Return None to signal exit, not empty bytes
+            return None  # Signal exit to reader thread
         
         # Check socket validity
         if not self.socket:
@@ -112,8 +127,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 if not data:
                     # Empty bytes = dead socket (per original Meshtastic behavior)
                     # Let the health monitor handle reconnection
-                    if globals().get('DEBUG_MODE', False):
-                        debug_print("🔌 Socket TCP: recv() retourne vide (connexion morte)")
+                    debug_print("🔌 Socket TCP: recv() retourne vide (connexion morte)")
                     # Small sleep to avoid tight loop
                     time.sleep(0.1)
                     return b''
@@ -132,7 +146,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         except socket.error as e:
             # Socket error - log only unexpected errors
             errno_val = getattr(e, 'errno', None)
-            if errno_val not in (104, 110, 111, 107, 32):  # Connection errors, broken pipe
+            if errno_val not in SOCKET_ERROR_CODES:
                 error_print(f"Erreur socket lecture: {e}")
             # Return empty bytes, let health monitor handle reconnection
             time.sleep(0.1)
