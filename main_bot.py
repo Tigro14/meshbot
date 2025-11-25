@@ -41,8 +41,8 @@ from platform_config import get_enabled_platforms
 
 class MeshBot:
     # Configuration pour la reconnexion TCP
-    TCP_INTERFACE_CLEANUP_DELAY = 3  # Secondes à attendre après fermeture ancienne interface
-    TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface
+    TCP_INTERFACE_CLEANUP_DELAY = 5  # Secondes à attendre après fermeture ancienne interface (augmenté de 3 à 5)
+    TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface (augmenté de 3 à 5)
     TCP_HEALTH_CHECK_INTERVAL = 60  # Secondes entre chaque vérification santé TCP (1 minute)
     TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (2 minutes)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
@@ -566,6 +566,14 @@ class MeshBot:
                     debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
                     time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
                     
+                    # Vérifier que le socket est bien connecté
+                    if hasattr(new_interface, 'socket') and new_interface.socket:
+                        try:
+                            peer = new_interface.socket.getpeername()
+                            debug_print(f"✅ Socket connecté à {peer}")
+                        except Exception as e:
+                            error_print(f"⚠️ Socket non connecté après création: {e}")
+                    
                     # Mettre à jour les références
                     debug_print("🔄 Mise à jour références interface...")
                     self.interface = new_interface
@@ -580,6 +588,11 @@ class MeshBot:
                     # Le système pubsub de Meshtastic route les messages de TOUTES les interfaces
                     # vers les callbacks enregistrés - pas besoin de re-subscribe.
                     debug_print("ℹ️ Pas de réabonnement nécessaire (pubsub global)")
+                    
+                    # Réinitialiser le timer de dernière réception pour permettre 
+                    # au health monitor de détecter si la nouvelle interface fonctionne
+                    self._last_packet_time = time.time()
+                    debug_print("⏱️ Timer dernier paquet réinitialisé")
                     
                     info_print("✅ Reconnexion TCP réussie (background)")
                     self._tcp_reconnection_in_progress = False

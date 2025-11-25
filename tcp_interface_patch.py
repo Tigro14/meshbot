@@ -96,47 +96,51 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         The Meshtastic library's __reader thread will call this method again,
         providing the necessary retry mechanism without a tight CPU-consuming loop.
         
-        CRITICAL FIX: Use self.read_timeout (default 30.0s) to drastically reduce CPU usage.
-        select() wakes up immediately when data arrives, so latency is not affected.
-        The long timeout only matters when truly idle (no mesh traffic).
+        CRITICAL FIX: Use short select() timeout with loop to:
+        1. Reduce CPU usage when idle
+        2. Allow quick response to _wantExit flag during close()
         
-        EMERGENCY FIX (2024-11-21): Add small sleep when returning empty to prevent
-        tight loop in __reader thread. The Meshtastic __reader immediately calls
-        _readBytes again when it returns empty, creating 89% CPU usage.
+        The total wait time can be up to read_timeout, but we check _wantExit
+        every 1 second to allow faster shutdown during reconnection.
         """
         try:
-            # Use configured timeout (default 30s) to reduce CPU when idle
-            # select() will wake up immediately when data arrives, so message latency is unaffected
-            # The timeout only matters when there's truly no traffic for 30 seconds
-            # This reduces CPU from 92% to <1% by avoiding tight polling loops
+            # Use short intervals with a loop to allow quick response to _wantExit
+            # Total timeout is still self.read_timeout, but broken into 1-second chunks
+            # This allows the reader thread to exit quickly when close() is called
+            select_interval = 1.0  # Check _wantExit every 1 second
+            total_waited = 0.0
             
-            # Wait for data with select() - blocks for up to self.read_timeout seconds
-            # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-            # Exception monitoring causes false positives - socket appears to have exceptions
-            # when it's actually fine, preventing normal data reception
-            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
+            while total_waited < self.read_timeout:
+                # Check if we should exit (interface being closed)
+                if hasattr(self, '_wantExit') and self._wantExit:
+                    return b''
+                
+                # Wait for data with select() - blocks for up to select_interval seconds
+                # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
+                ready, _, exception = select.select([self.socket], [], [], select_interval)
+                
+                if ready:
+                    # Socket ready: read data in blocking mode
+                    data = self.socket.recv(length)
+                    
+                    if not data:
+                        # Connection closed - log only in debug mode to avoid spam
+                        if globals().get('DEBUG_MODE', False):
+                            debug_print("Connexion TCP fermée (recv retourne vide)")
+                        # Add sleep here too to prevent tight loop on closed connection
+                        time.sleep(0.01)
+                        return b''
+                    
+                    # Data read successfully
+                    return data
+                
+                # No data yet, continue waiting
+                total_waited += select_interval
             
-            if not ready:
-                # Timeout: no data available
-                # CRITICAL: Add small sleep to prevent tight loop in __reader thread
-                # The __reader thread will immediately call _readBytes again if we return empty,
-                # creating 89% CPU usage even with long select() timeout!
-                time.sleep(0.01)  # 10ms sleep prevents tight loop while keeping latency low
-                return b''
-            
-            # Socket ready: read data in blocking mode
-            data = self.socket.recv(length)
-            
-            if not data:
-                # Connection closed - log only in debug mode to avoid spam
-                if globals().get('DEBUG_MODE', False):
-                    debug_print("Connexion TCP fermée (recv retourne vide)")
-                # Add sleep here too to prevent tight loop on closed connection
-                time.sleep(0.01)
-                return b''
-            
-            # Data read successfully
-            return data
+            # Timeout: no data available after full wait
+            # CRITICAL: Add small sleep to prevent tight loop in __reader thread
+            time.sleep(0.01)
+            return b''
             
         except socket.timeout:
             # Timeout normal, retourner vide (ne PAS logger)

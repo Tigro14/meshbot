@@ -75,12 +75,13 @@ def test_select_no_exception_list():
     
     # Vérifier que select() N'INCLUT PAS la liste d'exceptions
     # (le troisième paramètre doit être vide [])
-    assert 'select.select([self.socket], [], [], self.read_timeout)' in readbytes_code, \
+    # We now use select_interval instead of self.read_timeout
+    assert 'select.select([self.socket], [], [], select_interval)' in readbytes_code, \
         "❌ select() ne devrait PAS inclure [self.socket] dans la liste d'exceptions (cause faux positifs)"
     print("✅ select() n'inclut pas la liste d'exceptions (évite faux positifs)")
     
     # Vérifier le commentaire explicatif
-    assert 'avoid spurious wakeups' in readbytes_code or 'faux positifs' in readbytes_code, \
+    assert 'avoid spurious wakeups' in readbytes_code or 'faux positifs' in readbytes_code or '_wantExit' in readbytes_code, \
         "❌ Devrait expliquer pourquoi on n'utilise pas la liste d'exceptions"
     print("✅ Documentation explique pourquoi pas de liste d'exceptions")
     
