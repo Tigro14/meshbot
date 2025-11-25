@@ -81,88 +81,68 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     
     def _readBytes(self, length):
         """
-        Version optimisée de _readBytes avec select()
+        Version optimisée de _readBytes avec select() pour réduire CPU
         
-        Au lieu de:
-            while True:
-                data = socket.recv(1)  # ← BUSY WAITING 78% CPU!
-                
-        On fait:
-            ready, _, _ = select.select([socket], [], [], timeout)
-            if ready:
-                data = socket.recv(length)  # ← BLOQUANT EFFICACE <5% CPU
+        APPROCHE SIMPLIFIÉE (v3):
+        - Un seul appel select() avec timeout court (1 seconde)
+        - Pas de boucle interne - laisse le reader thread de Meshtastic gérer les retries
+        - CPU faible car select() est bloquant et efficace
+        - Répond rapidement à _wantExit pour fermeture propre
         
-        FIX: Return empty bytes on timeout instead of looping.
-        The Meshtastic library's __reader thread will call this method again,
-        providing the necessary retry mechanism without a tight CPU-consuming loop.
-        
-        CRITICAL FIX: Use short select() timeout with loop to:
-        1. Reduce CPU usage when idle
-        2. Allow quick response to _wantExit flag during close()
-        
-        The total wait time can be up to read_timeout, but we check _wantExit
-        every 1 second to allow faster shutdown during reconnection.
+        Cette version est plus proche de l'original Meshtastic mais avec select()
+        pour éviter le busy-waiting du socket.recv() non-bloquant.
         """
+        # Check if we should exit (interface being closed)
+        if getattr(self, '_wantExit', False):
+            return None  # Return None to signal exit, not empty bytes
+        
+        # Check socket validity
+        if not self.socket:
+            return None  # No socket, signal exit
+        
         try:
-            # Use short intervals with a loop to allow quick response to _wantExit
-            # Total timeout is still self.read_timeout, but broken into 1-second chunks
-            # This allows the reader thread to exit quickly when close() is called
-            select_interval = 1.0  # Check _wantExit every 1 second
-            total_waited = 0.0
+            # Use select() with SHORT timeout (1 second) for CPU efficiency
+            # The reader thread will call us again if we return empty bytes
+            ready, _, _ = select.select([self.socket], [], [], 1.0)
             
-            while total_waited < self.read_timeout:
-                # Check if we should exit (interface being closed)
-                # The _wantExit attribute is set by the parent StreamInterface.close() method
-                if getattr(self, '_wantExit', False):
+            if ready:
+                # Socket ready: read data
+                data = self.socket.recv(length)
+                
+                if not data:
+                    # Empty bytes = dead socket (per original Meshtastic behavior)
+                    # Let the health monitor handle reconnection
+                    if globals().get('DEBUG_MODE', False):
+                        debug_print("🔌 Socket TCP: recv() retourne vide (connexion morte)")
+                    # Small sleep to avoid tight loop
+                    time.sleep(0.1)
                     return b''
                 
-                # Wait for data with select() - blocks for up to select_interval seconds
-                # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-                ready, _, _ = select.select([self.socket], [], [], select_interval)
-                
-                if ready:
-                    # Socket ready: read data in blocking mode
-                    data = self.socket.recv(length)
-                    
-                    if not data:
-                        # Connection closed - log only in debug mode to avoid spam
-                        if globals().get('DEBUG_MODE', False):
-                            debug_print("Connexion TCP fermée (recv retourne vide)")
-                        # Add sleep here too to prevent tight loop on closed connection
-                        time.sleep(0.01)
-                        return b''
-                    
-                    # Data read successfully
-                    return data
-                
-                # No data yet, continue waiting
-                total_waited += select_interval
+                # Data read successfully
+                return data
             
-            # Timeout: no data available after full wait
-            # CRITICAL: Add small sleep to prevent tight loop in __reader thread
-            time.sleep(0.01)
+            # Timeout: no data yet, return empty bytes
+            # The reader thread will call us again
             return b''
             
         except socket.timeout:
-            # Timeout normal, retourner vide (ne PAS logger)
-            # Add sleep to prevent tight loop
-            time.sleep(0.01)
+            # Timeout normal - return empty bytes
             return b''
             
         except socket.error as e:
-            # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
-            if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
-                error_print(f"Erreur socket lors de la lecture: {e}")
-            # Add sleep to prevent tight loop on socket errors
-            time.sleep(0.01)
+            # Socket error - log only unexpected errors
+            errno_val = getattr(e, 'errno', None)
+            if errno_val not in (104, 110, 111, 107, 32):  # Connection errors, broken pipe
+                error_print(f"Erreur socket lecture: {e}")
+            # Return empty bytes, let health monitor handle reconnection
+            time.sleep(0.1)
             return b''
             
         except Exception as e:
-            error_print(f"Erreur _readBytes: {e}")
+            error_print(f"Erreur _readBytes inattendue: {e}")
             import traceback
             error_print(traceback.format_exc())
-            # Add sleep to prevent tight loop on exceptions
-            time.sleep(0.01)
+            time.sleep(0.1)
             return b''
     
     def close(self):
