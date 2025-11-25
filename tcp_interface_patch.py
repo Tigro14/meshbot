@@ -112,12 +112,13 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             
             while total_waited < self.read_timeout:
                 # Check if we should exit (interface being closed)
-                if hasattr(self, '_wantExit') and self._wantExit:
+                # The _wantExit attribute is set by the parent StreamInterface.close() method
+                if getattr(self, '_wantExit', False):
                     return b''
                 
                 # Wait for data with select() - blocks for up to select_interval seconds
                 # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-                ready, _, exception = select.select([self.socket], [], [], select_interval)
+                ready, _, _ = select.select([self.socket], [], [], select_interval)
                 
                 if ready:
                     # Socket ready: read data in blocking mode
