@@ -36,7 +36,23 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     - Utilise select() au lieu de polling continu
     - Timeout configurables (non-blocking → blocking intelligent)
     - Réduction CPU: 78% → <5%
+    - Callback on_dead_socket pour reconnexion immédiate
     """
+    
+    # Class variable to store callback for dead socket notification
+    # Set by main_bot to trigger immediate reconnection
+    _on_dead_socket_callback = None
+    
+    @classmethod
+    def set_dead_socket_callback(cls, callback):
+        """
+        Set callback to be called when a dead socket is detected
+        
+        Args:
+            callback: Function to call (no args) when socket dies
+        """
+        cls._on_dead_socket_callback = callback
+        debug_print("🔌 Callback socket mort configuré")
     
     def __init__(self, hostname, portNumber=4403, **kwargs):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
@@ -128,10 +144,18 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                     # Empty bytes = dead socket (TCP FIN received)
                     # This is a CRITICAL condition - socket is permanently dead
                     # Set _wantExit to stop ALL subsequent calls immediately
-                    # The health monitor will trigger reconnection
                     if not getattr(self, '_wantExit', False):
                         info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
                         self._wantExit = True  # Stop all future reads
+                        
+                        # Trigger immediate reconnection via callback
+                        # This bypasses the 2-minute health monitor delay
+                        if OptimizedTCPInterface._on_dead_socket_callback:
+                            info_print("🔄 Déclenchement reconnexion immédiate...")
+                            try:
+                                OptimizedTCPInterface._on_dead_socket_callback()
+                            except Exception as e:
+                                error_print(f"Erreur callback reconnexion: {e}")
                     return None  # Signal reader thread to exit
                 
                 # Data read successfully

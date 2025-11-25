@@ -124,6 +124,39 @@ def test_dead_socket_stops_loop():
     print("✅ Test réussi")
     return True
 
+def test_dead_socket_callback():
+    """
+    Test that dead socket detection triggers immediate reconnection callback
+    """
+    print("\n🧪 Test: Callback reconnexion immédiate sur socket mort")
+    
+    with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
+        content = f.read()
+    
+    # Vérifier que la classe a un callback configurable
+    assert 'set_dead_socket_callback' in content, \
+        "❌ Devrait avoir une méthode set_dead_socket_callback"
+    print("✅ Méthode set_dead_socket_callback existe")
+    
+    # Vérifier que le callback est appelé quand le socket meurt
+    assert '_on_dead_socket_callback' in content, \
+        "❌ Devrait avoir un attribut _on_dead_socket_callback"
+    print("✅ Attribut _on_dead_socket_callback existe")
+    
+    # Trouver _readBytes et vérifier l'appel du callback
+    readbytes_start = content.find('def _readBytes')
+    readbytes_end = content.find('\n    def ', readbytes_start + 1)
+    if readbytes_end == -1:
+        readbytes_end = len(content)
+    readbytes_code = content[readbytes_start:readbytes_end]
+    
+    assert '_on_dead_socket_callback()' in readbytes_code, \
+        "❌ Devrait appeler le callback quand le socket meurt"
+    print("✅ Callback appelé sur socket mort")
+    
+    print("✅ Test réussi")
+    return True
+
 if __name__ == "__main__":
     print("=" * 70)
     print("TEST TCP KEEPALIVE - Détection connexions mortes")
@@ -133,6 +166,7 @@ if __name__ == "__main__":
         test_keepalive_configuration(),
         test_select_no_exception_list(),
         test_dead_socket_stops_loop(),
+        test_dead_socket_callback(),
     ]
     
     print("\n" + "=" * 70)
