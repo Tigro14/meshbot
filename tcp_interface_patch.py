@@ -36,23 +36,22 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     - Utilise select() au lieu de polling continu
     - Timeout configurables (non-blocking → blocking intelligent)
     - Réduction CPU: 78% → <5%
-    - Callback on_dead_socket pour reconnexion immédiate
+    - Callback on_dead_socket pour reconnexion immédiate (instance-specific)
     """
     
-    # Class variable to store callback for dead socket notification
-    # Set by main_bot to trigger immediate reconnection
-    _on_dead_socket_callback = None
-    
-    @classmethod
-    def set_dead_socket_callback(cls, callback):
+    def set_dead_socket_callback(self, callback):
         """
-        Set callback to be called when a dead socket is detected
+        Set callback to be called when THIS instance's socket dies
+        
+        IMPORTANT: This is an INSTANCE method, not a class method!
+        This ensures that only the main interface triggers reconnection,
+        not temporary connections created by SafeTCPConnection/RemoteNodesClient.
         
         Args:
             callback: Function to call (no args) when socket dies
         """
-        cls._on_dead_socket_callback = callback
-        debug_print("🔌 Callback socket mort configuré")
+        self._on_dead_socket_callback = callback
+        debug_print(f"🔌 Callback socket mort configuré pour instance {id(self)}")
     
     def __init__(self, hostname, portNumber=4403, **kwargs):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
@@ -148,14 +147,19 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                         info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
                         self._wantExit = True  # Stop all future reads
                         
-                        # Trigger immediate reconnection via callback
+                        # Trigger immediate reconnection via INSTANCE callback
                         # This bypasses the 2-minute health monitor delay
-                        if OptimizedTCPInterface._on_dead_socket_callback:
+                        # IMPORTANT: Only trigger if THIS instance has a callback set
+                        # Temporary connections (SafeTCPConnection) won't have one
+                        instance_callback = getattr(self, '_on_dead_socket_callback', None)
+                        if instance_callback:
                             info_print("🔄 Déclenchement reconnexion immédiate...")
                             try:
-                                OptimizedTCPInterface._on_dead_socket_callback()
+                                instance_callback()
                             except Exception as e:
                                 error_print(f"Erreur callback reconnexion: {e}")
+                        else:
+                            debug_print("🔌 Pas de callback reconnexion (connexion temporaire)")
                     return None  # Signal reader thread to exit
                 
                 # Data read successfully

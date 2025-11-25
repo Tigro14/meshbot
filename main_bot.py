@@ -963,7 +963,10 @@ class MeshBot:
                 
                 # Configurer le callback pour reconnexion immédiate quand le socket meurt
                 # Cela permet de ne pas attendre le health monitor (2 minutes)
-                OptimizedTCPInterface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                # IMPORTANT: Utilise la méthode d'instance, pas de classe!
+                # Ceci garantit que seule l'interface principale déclenche la reconnexion,
+                # pas les connexions temporaires (SafeTCPConnection/RemoteNodesClient)
+                self.interface.set_dead_socket_callback(self._reconnect_tcp_interface)
                 
                 # Stabilisation plus longue pour TCP
                 time.sleep(5)

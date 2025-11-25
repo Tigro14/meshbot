@@ -127,8 +127,12 @@ def test_dead_socket_stops_loop():
 def test_dead_socket_callback():
     """
     Test that dead socket detection triggers immediate reconnection callback
+    
+    IMPORTANT: The callback must be INSTANCE-based, not CLASS-based!
+    This ensures that only the main interface triggers reconnection,
+    not temporary connections (SafeTCPConnection/RemoteNodesClient).
     """
-    print("\n🧪 Test: Callback reconnexion immédiate sur socket mort")
+    print("\n🧪 Test: Callback reconnexion immédiate sur socket mort (INSTANCE)")
     
     with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
         content = f.read()
@@ -138,10 +142,25 @@ def test_dead_socket_callback():
         "❌ Devrait avoir une méthode set_dead_socket_callback"
     print("✅ Méthode set_dead_socket_callback existe")
     
-    # Vérifier que le callback est appelé quand le socket meurt
-    assert '_on_dead_socket_callback' in content, \
-        "❌ Devrait avoir un attribut _on_dead_socket_callback"
-    print("✅ Attribut _on_dead_socket_callback existe")
+    # Vérifier que c'est une méthode d'INSTANCE (pas @classmethod)
+    # Trouver la méthode set_dead_socket_callback
+    set_callback_start = content.find('def set_dead_socket_callback')
+    assert set_callback_start != -1, "❌ Méthode set_dead_socket_callback non trouvée"
+    
+    # Vérifier que ce n'est pas une classmethod
+    set_callback_context = content[max(0, set_callback_start - 50):set_callback_start]
+    assert '@classmethod' not in set_callback_context, \
+        "❌ set_dead_socket_callback ne devrait PAS être @classmethod (doit être instance)"
+    print("✅ set_dead_socket_callback est une méthode d'instance (pas @classmethod)")
+    
+    # Vérifier que la méthode utilise self, pas cls
+    set_callback_end = content.find('\n    def ', set_callback_start + 1)
+    if set_callback_end == -1:
+        set_callback_end = len(content)
+    set_callback_code = content[set_callback_start:set_callback_end]
+    assert 'self._on_dead_socket_callback' in set_callback_code, \
+        "❌ Devrait stocker le callback dans self._on_dead_socket_callback"
+    print("✅ Callback stocké dans self._on_dead_socket_callback (instance)")
     
     # Trouver _readBytes et vérifier l'appel du callback
     readbytes_start = content.find('def _readBytes')
@@ -150,9 +169,16 @@ def test_dead_socket_callback():
         readbytes_end = len(content)
     readbytes_code = content[readbytes_start:readbytes_end]
     
-    assert '_on_dead_socket_callback()' in readbytes_code, \
-        "❌ Devrait appeler le callback quand le socket meurt"
-    print("✅ Callback appelé sur socket mort")
+    # Vérifier qu'on utilise getattr pour récupérer le callback d'instance
+    assert 'getattr(self, \'_on_dead_socket_callback\'' in readbytes_code or \
+           "getattr(self, '_on_dead_socket_callback'" in readbytes_code, \
+        "❌ Devrait utiliser getattr(self, '_on_dead_socket_callback') pour récupérer le callback d'instance"
+    print("✅ Utilise getattr pour récupérer le callback d'instance")
+    
+    # Vérifier le log pour connexion temporaire
+    assert 'connexion temporaire' in readbytes_code.lower() or 'temporary' in readbytes_code.lower() or 'Pas de callback' in readbytes_code, \
+        "❌ Devrait mentionner les connexions temporaires (sans callback)"
+    print("✅ Gère les connexions temporaires (sans callback)")
     
     print("✅ Test réussi")
     return True
