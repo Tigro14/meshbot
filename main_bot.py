@@ -562,12 +562,11 @@ class MeshBot:
                         portNumber=tcp_port
                     )
                     
-                    # CRITIQUE: Configurer le callback IMMÉDIATEMENT après création
-                    # Si le socket meurt pendant la stabilisation, on sera notifié
-                    # (avant, le callback n'était configuré qu'après stabilisation,
-                    # donc les morts pendant stabilisation passaient inaperçues)
-                    debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
-                    new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                    # Configurer le callback (si disponible) pour reconnexion immédiate
+                    # Ceci est optionnel - le health monitor détectera aussi les morts
+                    if hasattr(new_interface, 'set_dead_socket_callback'):
+                        debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
+                        new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
                     
                     # Attendre la stabilisation de la nouvelle interface
                     debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
@@ -983,7 +982,9 @@ class MeshBot:
                 # IMPORTANT: Utilise la méthode d'instance, pas de classe!
                 # Ceci garantit que seule l'interface principale déclenche la reconnexion,
                 # pas les connexions temporaires (SafeTCPConnection/RemoteNodesClient)
-                self.interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                # Note: Cette méthode est optionnelle, le health monitor gère aussi les morts
+                if hasattr(self.interface, 'set_dead_socket_callback'):
+                    self.interface.set_dead_socket_callback(self._reconnect_tcp_interface)
                 
                 # Stabilisation plus longue pour TCP
                 time.sleep(5)

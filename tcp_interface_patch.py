@@ -10,22 +10,12 @@ Usage:
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
 """
 
-import errno
 import socket
 import select
 import time
 import meshtastic.tcp_interface
 from meshtastic.stream_interface import StreamInterface
 from utils import info_print, error_print, debug_print
-
-# Socket error codes to ignore (normal connection errors)
-SOCKET_ERROR_CODES = (
-    errno.ECONNRESET,   # 104 - Connection reset
-    errno.ETIMEDOUT,    # 110 - Connection timed out  
-    errno.ECONNREFUSED, # 111 - Connection refused
-    errno.ENOTCONN,     # 107 - Not connected
-    errno.EPIPE,        # 32 - Broken pipe
-)
 
 
 class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
@@ -36,22 +26,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     - Utilise select() au lieu de polling continu
     - Timeout configurables (non-blocking → blocking intelligent)
     - Réduction CPU: 78% → <5%
-    - Callback on_dead_socket pour reconnexion immédiate (instance-specific)
     """
-    
-    def set_dead_socket_callback(self, callback):
-        """
-        Set callback to be called when THIS instance's socket dies
-        
-        IMPORTANT: This is an INSTANCE method, not a class method!
-        This ensures that only the main interface triggers reconnection,
-        not temporary connections created by SafeTCPConnection/RemoteNodesClient.
-        
-        Args:
-            callback: Function to call (no args) when socket dies
-        """
-        self._on_dead_socket_callback = callback
-        debug_print(f"🔌 Callback socket mort configuré pour instance {id(self)}")
     
     def __init__(self, hostname, portNumber=4403, **kwargs):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
@@ -75,118 +50,87 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 # Options TCP pour réduire latence
                 self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 
-                # ========================================
-                # TCP KEEPALIVE - Détection connexions mortes
-                # ========================================
-                # Active TCP keepalive pour détecter les connexions mortes rapidement
-                # Sans keepalive, une connexion morte peut rester "connectée" pendant des heures
-                # Avec keepalive, elle sera détectée en ~2 minutes maximum
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                
-                # Configuration keepalive (Linux)
-                # TCP_KEEPIDLE: Temps avant le premier keepalive (secondes)
-                # TCP_KEEPINTVL: Intervalle entre keepalives (secondes)
-                # TCP_KEEPCNT: Nombre de keepalives avant de déclarer mort
-                try:
-                    # Démarrer keepalive après 60 secondes d'inactivité
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
-                    # Envoyer un keepalive toutes les 10 secondes
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
-                    # Après 6 échecs (60s), déclarer la connexion morte
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
-                    info_print("✅ TCP Keepalive activé (détection connexion morte: ~2min)")
-                except (AttributeError, OSError) as e:
-                    # TCP_KEEPIDLE, etc. ne sont pas disponibles sur tous les systèmes
-                    debug_print(f"⚠️ Impossible de configurer keepalive avancé: {e}")
-                    # Le keepalive de base (SO_KEEPALIVE) est quand même actif
-                
                 info_print(f"✅ Socket configuré: blocking={True}, timeout={self.socket_timeout}s")
             except Exception as e:
                 error_print(f"Erreur configuration socket: {e}")
     
     def _readBytes(self, length):
         """
-        Version optimisée de _readBytes avec select() pour réduire CPU
+        Version optimisée de _readBytes avec select()
         
-        APPROCHE SIMPLIFIÉE (v3):
-        - Un seul appel select() avec timeout court (1 seconde)
-        - Pas de boucle interne - laisse le reader thread de Meshtastic gérer les retries
-        - CPU faible car select() est bloquant et efficace
-        - Répond rapidement à _wantExit pour fermeture propre
-        
-        Returns:
-        - bytes: Data read from socket
-        - b'': No data yet (timeout) - reader thread will retry
-        - None: Exit signal or no socket - reader thread should stop
-        
-        Cette version est plus proche de l'original Meshtastic mais avec select()
-        pour éviter le busy-waiting du socket.recv() non-bloquant.
-        """
-        # Check if we should exit (interface being closed)
-        if getattr(self, '_wantExit', False):
-            return None  # Signal exit to reader thread
-        
-        # Check socket validity
-        if not self.socket:
-            return None  # No socket, signal exit
-        
-        try:
-            # Use select() with SHORT timeout (1 second) for CPU efficiency
-            # The reader thread will call us again if we return empty bytes
-            ready, _, _ = select.select([self.socket], [], [], 1.0)
-            
+        Au lieu de:
+            while True:
+                data = socket.recv(1)  # ← BUSY WAITING 78% CPU!
+                
+        On fait:
+            ready, _, _ = select.select([socket], [], [], timeout)
             if ready:
-                # Socket ready: read data
-                data = self.socket.recv(length)
-                
-                if not data:
-                    # Empty bytes = dead socket (TCP FIN received)
-                    # This is a CRITICAL condition - socket is permanently dead
-                    # Set _wantExit to stop ALL subsequent calls immediately
-                    if not getattr(self, '_wantExit', False):
-                        info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
-                        self._wantExit = True  # Stop all future reads
-                        
-                        # Trigger immediate reconnection via INSTANCE callback
-                        # This bypasses the 2-minute health monitor delay
-                        # IMPORTANT: Only trigger if THIS instance has a callback set
-                        # Temporary connections (SafeTCPConnection) won't have one
-                        instance_callback = getattr(self, '_on_dead_socket_callback', None)
-                        if instance_callback:
-                            info_print("🔄 Déclenchement reconnexion immédiate...")
-                            try:
-                                instance_callback()
-                            except Exception as e:
-                                error_print(f"Erreur callback reconnexion: {e}")
-                        else:
-                            debug_print("🔌 Pas de callback reconnexion (connexion temporaire)")
-                    return None  # Signal reader thread to exit
-                
-                # Data read successfully
-                return data
+                data = socket.recv(length)  # ← BLOQUANT EFFICACE <5% CPU
+        
+        FIX: Return empty bytes on timeout instead of looping.
+        The Meshtastic library's __reader thread will call this method again,
+        providing the necessary retry mechanism without a tight CPU-consuming loop.
+        
+        CRITICAL FIX: Use self.read_timeout (default 30.0s) to drastically reduce CPU usage.
+        select() wakes up immediately when data arrives, so latency is not affected.
+        The long timeout only matters when truly idle (no mesh traffic).
+        
+        EMERGENCY FIX (2024-11-21): Add small sleep when returning empty to prevent
+        tight loop in __reader thread. The Meshtastic __reader immediately calls
+        _readBytes again when it returns empty, creating 89% CPU usage.
+        """
+        try:
+            # Use configured timeout (default 30s) to reduce CPU when idle
+            # select() will wake up immediately when data arrives, so message latency is unaffected
+            # The timeout only matters when there's truly no traffic for 30 seconds
+            # This reduces CPU from 92% to <1% by avoiding tight polling loops
             
-            # Timeout: no data yet, return empty bytes
-            # The reader thread will call us again
-            return b''
+            # Wait for data with select() - blocks for up to self.read_timeout seconds
+            # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
+            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
+            
+            if not ready:
+                # Timeout: no data available
+                # CRITICAL: Add small sleep to prevent tight loop in __reader thread
+                # The __reader thread will immediately call _readBytes again if we return empty,
+                # creating 89% CPU usage even with long select() timeout!
+                time.sleep(0.01)  # 10ms sleep prevents tight loop while keeping latency low
+                return b''
+            
+            # Socket ready: read data in blocking mode
+            data = self.socket.recv(length)
+            
+            if not data:
+                # Connection closed - log only in debug mode to avoid spam
+                if globals().get('DEBUG_MODE', False):
+                    debug_print("Connexion TCP fermée (recv retourne vide)")
+                # Add sleep here too to prevent tight loop on closed connection
+                time.sleep(0.01)
+                return b''
+            
+            # Data read successfully
+            return data
             
         except socket.timeout:
-            # Timeout normal - return empty bytes
+            # Timeout normal, retourner vide (ne PAS logger)
+            # Add sleep to prevent tight loop
+            time.sleep(0.01)
             return b''
             
         except socket.error as e:
-            # Socket error - log only unexpected errors
-            errno_val = getattr(e, 'errno', None)
-            if errno_val not in SOCKET_ERROR_CODES:
-                error_print(f"Erreur socket lecture: {e}")
-            # Return empty bytes, let health monitor handle reconnection
-            time.sleep(0.1)
+            # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
+            if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
+                error_print(f"Erreur socket lors de la lecture: {e}")
+            # Add sleep to prevent tight loop on socket errors
+            time.sleep(0.01)
             return b''
             
         except Exception as e:
-            error_print(f"Erreur _readBytes inattendue: {e}")
+            error_print(f"Erreur _readBytes: {e}")
             import traceback
             error_print(traceback.format_exc())
-            time.sleep(0.1)
+            # Add sleep to prevent tight loop on exceptions
+            time.sleep(0.01)
             return b''
     
     def close(self):
