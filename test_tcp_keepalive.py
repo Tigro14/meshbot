@@ -103,8 +103,10 @@ if __name__ == "__main__":
     print("RÉSUMÉ")
     print("=" * 70)
     
-    passed = sum(results)
-    total = len(results)
+    # Filter None results and count
+    valid_results = [r for r in results if r is not None]
+    passed = sum(1 for r in valid_results if r)
+    total = len(valid_results)
     
     print(f"Tests réussis: {passed}/{total}")
     

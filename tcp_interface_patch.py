@@ -125,12 +125,12 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 data = self.socket.recv(length)
                 
                 if not data:
-                    # Empty bytes = dead socket (per original Meshtastic behavior)
-                    # Let the health monitor handle reconnection
-                    debug_print("🔌 Socket TCP: recv() retourne vide (connexion morte)")
-                    # Small sleep to avoid tight loop
-                    time.sleep(0.1)
-                    return b''
+                    # Empty bytes = dead socket (TCP FIN received)
+                    # This is a CRITICAL condition - socket is permanently dead
+                    # Return None to signal reader thread to stop completely
+                    # The health monitor will trigger reconnection
+                    info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
+                    return None  # Signal reader thread to exit
                 
                 # Data read successfully
                 return data
