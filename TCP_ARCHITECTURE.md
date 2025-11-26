@@ -199,15 +199,22 @@ interface.set_dead_socket_callback(self._reconnect_tcp_interface)
 **Symptom:** Every ~3 minutes, the TCP connection dies.
 
 **Root Cause Found (v2025.11.26):**
-The `OptimizedTCPInterface` was enabling TCP keepalive by default and setting
-a socket timeout. These settings caused the ESP32-based Meshtastic node to
-close the connection prematurely.
+The `OptimizedTCPInterface` was modifying socket options that the standard
+`TCPInterface` doesn't touch. Specifically:
+- TCP keepalive settings
+- Socket timeout
+- TCP_NODELAY
+
+These modifications caused the ESP32-based Meshtastic node to close the
+connection prematurely after ~2.5-3 minutes.
 
 **Fix:**
-- Disabled TCP keepalive by default
-- Removed socket timeout setting (keep default blocking behavior)
-- Keep only the `select()` optimization for CPU efficiency
-- The standard `meshtastic.TCPInterface` works fine without these settings
+- **Do NOT modify any socket options by default**
+- No TCP keepalive
+- No socket timeout (keep default blocking behavior)
+- No TCP_NODELAY
+- Keep ONLY the `select()` optimization for CPU efficiency
+- Match the standard `meshtastic.TCPInterface` socket configuration exactly
 
 **Verification:**
 Use the diagnostic tool to compare modes:

@@ -112,43 +112,44 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         """
         Configure socket options for optimal performance.
         
-        CRITICAL: We minimize socket configuration to avoid interfering with
-        the standard TCPInterface behavior that works correctly.
+        CRITICAL: We minimize socket configuration to be AS CLOSE AS POSSIBLE
+        to the standard TCPInterface behavior that works correctly.
         
-        The main optimization is in _readBytes() using select() for CPU efficiency.
-        We avoid changing socket timeout or enabling keepalive by default as these
-        were found to cause the ESP32 to close connections prematurely.
+        The ONLY optimization is in _readBytes() using select() for CPU efficiency.
+        We do NOT change:
+        - Socket timeout (standard TCPInterface uses None/blocking)
+        - TCP_NODELAY (standard TCPInterface doesn't set it)
+        - TCP keepalive (standard TCPInterface doesn't use it)
+        
+        Any socket modification can cause the ESP32 to close connections prematurely!
         """
-        try:
-            # Only set TCP_NODELAY for reduced latency - this is safe and improves performance
-            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            debug_print("✅ TCP_NODELAY activé")
-            
-            # Only set socket timeout if explicitly requested (not recommended)
-            if self.socket_timeout is not None:
-                self.socket.settimeout(self.socket_timeout)
-                info_print(f"⚠️ Socket timeout configuré: {self.socket_timeout}s (non recommandé)")
-            
-            # Only configure TCP keepalive if explicitly enabled (disabled by default)
-            if self.tcp_keepalive_enabled:
-                try:
-                    # Enable keepalive
-                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                    
-                    # Linux-specific keepalive parameters
-                    if hasattr(socket, 'TCP_KEEPIDLE'):
-                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.tcp_keepalive_idle)
-                    if hasattr(socket, 'TCP_KEEPINTVL'):
-                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, self.tcp_keepalive_interval)
-                    if hasattr(socket, 'TCP_KEEPCNT'):
-                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count)
-                    
-                    info_print(f"⚠️ TCP keepalive activé (non recommandé): idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
-                except (AttributeError, OSError) as e:
-                    debug_print(f"⚠️ TCP keepalive non disponible: {e}")
-            
-        except Exception as e:
-            error_print(f"Erreur configuration socket: {e}")
+        # CRITICAL: Do NOT modify socket options!
+        # The standard TCPInterface uses socket.create_connection() which creates
+        # a plain blocking socket with default options. We must do the same.
+        # 
+        # Tests showed that even setting TCP_NODELAY caused connection drops.
+        # The only difference between us and the standard TCPInterface is the
+        # use of select() in _readBytes() for CPU efficiency.
+        
+        # Only configure TCP keepalive if EXPLICITLY enabled (disabled by default)
+        # This is useful for debugging but causes ESP32 to close connections
+        if self.tcp_keepalive_enabled:
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                if hasattr(socket, 'TCP_KEEPIDLE'):
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.tcp_keepalive_idle)
+                if hasattr(socket, 'TCP_KEEPINTVL'):
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, self.tcp_keepalive_interval)
+                if hasattr(socket, 'TCP_KEEPCNT'):
+                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count)
+                info_print(f"⚠️ TCP keepalive activé (non recommandé): idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
+            except (AttributeError, OSError) as e:
+                debug_print(f"⚠️ TCP keepalive non disponible: {e}")
+        
+        # Only set socket timeout if EXPLICITLY requested (not recommended)
+        if self.socket_timeout is not None:
+            self.socket.settimeout(self.socket_timeout)
+            info_print(f"⚠️ Socket timeout configuré: {self.socket_timeout}s (non recommandé)")
     
     def _readBytes(self, length):
         """
