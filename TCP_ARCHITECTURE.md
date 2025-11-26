@@ -174,6 +174,19 @@ tcp_keepalive_count = 3      # Consider dead after 3 failed probes
 This helps detect dead connections faster at the OS level, complementing
 the application-level health monitor.
 
+**Dead Socket Callback (Immediate Reconnection)**
+When `recv()` returns empty bytes (connection closed by server), the 
+`OptimizedTCPInterface` now triggers an immediate reconnection callback
+instead of waiting for the health monitor to detect silence:
+
+```python
+# main_bot.py sets the callback:
+interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+
+# When socket death is detected, callback is triggered immediately
+# Reduces downtime from ~60s (waiting for health monitor) to ~10s
+```
+
 ## Known Issues & Fixes
 
 ### 2-Minute Silence Problem (Issue Referenced)
@@ -186,9 +199,9 @@ the application-level health monitor.
 3. **Network infrastructure issues** - Router/switch timeouts
 
 **Current Mitigations:**
+- **Immediate reconnection callback** - Triggers reconnection as soon as socket death is detected
 - TCP keepalive enabled (detects dead connections in ~60s)
-- Health monitor with 60s silence detection
-- Automatic reconnection on socket death
+- Health monitor with 60s silence detection (backup)
 - 30s health check interval (reduced from 60s)
 
 **Recommendations:**

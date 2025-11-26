@@ -40,6 +40,7 @@ USAGE:
 import socket
 import select
 import time
+import threading
 import meshtastic.tcp_interface
 from meshtastic.stream_interface import StreamInterface
 from utils import info_print, error_print, debug_print
@@ -71,12 +72,34 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         self.tcp_keepalive_interval = kwargs.pop('tcp_keepalive_interval', 10)  # Send probe every 10s
         self.tcp_keepalive_count = kwargs.pop('tcp_keepalive_count', 3)  # Consider dead after 3 failed probes
         
+        # Callback for dead socket detection - allows immediate reconnection
+        # instead of waiting for the health monitor to detect silence
+        self._dead_socket_callback = None
+        # Prevent multiple callback invocations for the same dead socket.
+        # This flag is NOT reset because once a socket is dead, this interface
+        # instance is replaced by a new one during reconnection.
+        self._callback_triggered = False
+        
         # Appeler le constructeur parent
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
         
         # Configurer le socket pour des opérations bloquantes optimisées
         if hasattr(self, 'socket') and self.socket:
             self._configure_socket()
+    
+    def set_dead_socket_callback(self, callback):
+        """
+        Set a callback to be invoked when the socket is detected as dead.
+        
+        This allows the main bot to immediately trigger reconnection when
+        recv() returns empty bytes (connection closed by server), instead of
+        waiting for the health monitor to detect silence after 60s.
+        
+        Args:
+            callback: Function to call when socket is dead (no arguments)
+        """
+        self._dead_socket_callback = callback
+        debug_print("✅ Callback socket mort configuré")
     
     def _configure_socket(self):
         """
@@ -171,14 +194,27 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             if not data:
                 # Connection closed by server - recv() returns empty bytes
                 # This is a definitive signal that the socket is dead
-                # Log ONCE and sleep longer to prevent CPU-burning tight loop
+                # Log ONCE and trigger callback for immediate reconnection
                 if not getattr(self, '_socket_dead_logged', False):
                     info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
                     self._socket_dead_logged = True
+                    
+                    # Trigger callback for immediate reconnection (instead of waiting for health monitor)
+                    if self._dead_socket_callback and not self._callback_triggered:
+                        self._callback_triggered = True
+                        info_print("🔄 Déclenchement reconnexion immédiate via callback...")
+                        try:
+                            # Call in a separate thread to avoid blocking the reader
+                            threading.Thread(
+                                target=self._dead_socket_callback,
+                                name="DeadSocketCallback",
+                                daemon=True
+                            ).start()
+                        except Exception as e:
+                            error_print(f"Erreur callback socket mort: {e}")
                 
                 # Sleep 5 seconds when socket is dead to prevent tight loop
                 # This is much better than 10ms which causes 89% CPU
-                # The health monitor will detect the silence and trigger reconnection
                 time.sleep(5.0)
                 return b''
             
