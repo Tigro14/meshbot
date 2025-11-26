@@ -3,23 +3,32 @@
 🔍 DIAGNOSTIC: TCP Connection Monitor
 =====================================
 
-Simple test script to monitor a raw TCP connection to a Meshtastic node.
-This script does NOT use any bot code - only raw socket operations.
+Test script to monitor Meshtastic TCP connection stability.
+Has two modes:
+1. --raw: Raw socket (no protocol) - for baseline testing
+2. --meshtastic (default): Uses Meshtastic library with proper protocol
 
 PURPOSE:
     Determine if the 3-minute disconnection issue is:
-    - External (Meshtastic node, router, network)
-    - Or caused by something in the bot codebase
+    - In the Meshtastic protocol handling
+    - In the bot codebase
+    - External (router, network)
 
 USAGE:
-    python diag_tcp_connection.py 192.168.1.38 4403
+    # Using Meshtastic library (like CLI does) - DEFAULT
+    python diag_tcp_connection.py 192.168.1.38
 
-    # With custom timeout (default: 600s = 10 minutes)
-    python diag_tcp_connection.py 192.168.1.38 4403 --duration 1800
+    # Using OptimizedTCPInterface (like bot does)
+    python diag_tcp_connection.py 192.168.1.38 --optimized
+
+    # Raw socket (no Meshtastic protocol)
+    python diag_tcp_connection.py 192.168.1.38 --raw
+
+    # Extended test (30 minutes)
+    python diag_tcp_connection.py 192.168.1.38 --duration 1800
 
 OUTPUT:
     Logs every packet received with timestamp, and reports when connection dies.
-    If connection dies after ~3 minutes consistently, the issue is EXTERNAL.
 """
 
 import socket
@@ -42,9 +51,176 @@ def format_bytes(data):
     return f"{data[:10].hex()}...({len(data)} bytes)"
 
 
-def monitor_tcp_connection(host, port, duration_seconds, keepalive=True):
+def monitor_meshtastic_connection(host, port, duration_seconds):
+    """
+    Monitor using standard Meshtastic TCPInterface (like CLI does).
+    This properly implements the Meshtastic protocol.
+    """
+    print(f"\n{'='*60}")
+    print(f"🔍 Meshtastic TCPInterface Monitor - DIAGNOSTIC")
+    print(f"{'='*60}")
+    print(f"Target: {host}:{port}")
+    print(f"Duration: {duration_seconds}s ({duration_seconds//60} minutes)")
+    print(f"Mode: Standard meshtastic.TCPInterface (like CLI)")
+    print(f"Started: {format_timestamp()}")
+    print(f"{'='*60}\n")
+    
+    try:
+        from meshtastic.tcp_interface import TCPInterface
+    except ImportError:
+        print("❌ meshtastic library not installed!")
+        print("   pip install meshtastic")
+        return
+    
+    packet_count = 0
+    start_time = time.time()
+    
+    def on_receive(packet, interface):
+        nonlocal packet_count
+        packet_count += 1
+        elapsed = time.time() - start_time
+        from_id = packet.get('fromId', 'unknown')
+        portnum = packet.get('decoded', {}).get('portnum', 'unknown')
+        print(f"[{format_timestamp()}] 📦 Packet #{packet_count}: {portnum} from {from_id} | elapsed={elapsed:.0f}s")
+    
+    try:
+        print(f"[{format_timestamp()}] 🔌 Connecting with TCPInterface...")
+        interface = TCPInterface(hostname=host, portNumber=port)
+        
+        # Subscribe to receive packets
+        from pubsub import pub
+        pub.subscribe(on_receive, "meshtastic.receive")
+        
+        print(f"[{format_timestamp()}] ✅ Connected!")
+        print(f"\n[{format_timestamp()}] 📡 Monitoring... (Ctrl+C to stop)\n")
+        
+        # Wait for duration
+        while time.time() - start_time < duration_seconds:
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print(f"\n[{format_timestamp()}] ⏹️ Stopped by user")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"[{format_timestamp()}] ❌ ERROR: {e}")
+        print(f"    Elapsed time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        print(f"    Packets received: {packet_count}")
+        print(f"{'='*60}")
+    finally:
+        try:
+            pub.unsubscribe(on_receive, "meshtastic.receive")
+        except:
+            pass
+        try:
+            interface.close()
+        except:
+            pass
+        
+        # Summary
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"📊 SUMMARY (TCPInterface)")
+        print(f"{'='*60}")
+        print(f"Duration: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        print(f"Packets received: {packet_count}")
+        print(f"{'='*60}")
+
+
+def monitor_optimized_connection(host, port, duration_seconds):
+    """
+    Monitor using OptimizedTCPInterface (like bot does).
+    This uses our CPU-optimized wrapper.
+    """
+    print(f"\n{'='*60}")
+    print(f"🔍 OptimizedTCPInterface Monitor - DIAGNOSTIC")
+    print(f"{'='*60}")
+    print(f"Target: {host}:{port}")
+    print(f"Duration: {duration_seconds}s ({duration_seconds//60} minutes)")
+    print(f"Mode: OptimizedTCPInterface (like bot)")
+    print(f"Started: {format_timestamp()}")
+    print(f"{'='*60}\n")
+    
+    try:
+        from tcp_interface_patch import OptimizedTCPInterface
+    except ImportError:
+        print("❌ tcp_interface_patch not found!")
+        print("   Run from the bot directory")
+        return
+    
+    packet_count = 0
+    start_time = time.time()
+    connection_died = False
+    
+    def on_receive(packet, interface):
+        nonlocal packet_count
+        packet_count += 1
+        elapsed = time.time() - start_time
+        from_id = packet.get('fromId', 'unknown')
+        portnum = packet.get('decoded', {}).get('portnum', 'unknown')
+        print(f"[{format_timestamp()}] 📦 Packet #{packet_count}: {portnum} from {from_id} | elapsed={elapsed:.0f}s")
+    
+    def on_dead_socket():
+        nonlocal connection_died
+        connection_died = True
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"[{format_timestamp()}] 🔌 SOCKET DEAD via callback!")
+        print(f"    Elapsed time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        print(f"    Packets received: {packet_count}")
+        print(f"{'='*60}")
+    
+    try:
+        print(f"[{format_timestamp()}] 🔌 Connecting with OptimizedTCPInterface...")
+        interface = OptimizedTCPInterface(hostname=host, portNumber=port)
+        interface.set_dead_socket_callback(on_dead_socket)
+        
+        # Subscribe to receive packets
+        from pubsub import pub
+        pub.subscribe(on_receive, "meshtastic.receive")
+        
+        print(f"[{format_timestamp()}] ✅ Connected!")
+        print(f"\n[{format_timestamp()}] 📡 Monitoring... (Ctrl+C to stop)\n")
+        
+        # Wait for duration or until connection dies
+        while time.time() - start_time < duration_seconds and not connection_died:
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print(f"\n[{format_timestamp()}] ⏹️ Stopped by user")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"[{format_timestamp()}] ❌ ERROR: {e}")
+        print(f"    Elapsed time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        print(f"    Packets received: {packet_count}")
+        print(f"{'='*60}")
+    finally:
+        try:
+            pub.unsubscribe(on_receive, "meshtastic.receive")
+        except:
+            pass
+        try:
+            interface.close()
+        except:
+            pass
+        
+        # Summary
+        elapsed = time.time() - start_time
+        print(f"\n{'='*60}")
+        print(f"📊 SUMMARY (OptimizedTCPInterface)")
+        print(f"{'='*60}")
+        print(f"Duration: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
+        print(f"Packets received: {packet_count}")
+        print(f"Connection died: {connection_died}")
+        print(f"{'='*60}")
+
+
+def monitor_raw_connection(host, port, duration_seconds, keepalive=True):
     """
     Open a raw TCP connection and monitor for disconnection.
+    NOTE: This doesn't implement Meshtastic protocol, so connection
+    may be closed by node for being "idle/invalid".
     
     Args:
         host: Meshtastic node IP
@@ -53,11 +229,13 @@ def monitor_tcp_connection(host, port, duration_seconds, keepalive=True):
         keepalive: Whether to enable TCP keepalive
     """
     print(f"\n{'='*60}")
-    print(f"🔍 TCP Connection Monitor - DIAGNOSTIC")
+    print(f"🔍 Raw TCP Socket Monitor - DIAGNOSTIC")
     print(f"{'='*60}")
     print(f"Target: {host}:{port}")
     print(f"Duration: {duration_seconds}s ({duration_seconds//60} minutes)")
     print(f"Keepalive: {'enabled' if keepalive else 'disabled'}")
+    print(f"Mode: Raw socket (NO Meshtastic protocol)")
+    print(f"⚠️  NOTE: Node may close 'idle' connections without protocol!")
     print(f"Started: {format_timestamp()}")
     print(f"{'='*60}\n")
     
@@ -144,7 +322,7 @@ def monitor_tcp_connection(host, port, duration_seconds, keepalive=True):
         # Summary
         elapsed = time.time() - start_time
         print(f"\n{'='*60}")
-        print(f"📊 SUMMARY")
+        print(f"📊 SUMMARY (Raw Socket)")
         print(f"{'='*60}")
         print(f"Duration: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
         print(f"Packets received: {packet_count}")
@@ -157,23 +335,46 @@ def monitor_tcp_connection(host, port, duration_seconds, keepalive=True):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Monitor a raw TCP connection to a Meshtastic node"
+        description="Monitor TCP connection to a Meshtastic node"
     )
     parser.add_argument("host", help="Meshtastic node IP address (e.g., 192.168.1.38)")
     parser.add_argument("port", type=int, nargs="?", default=4403, help="Port (default: 4403)")
     parser.add_argument("--duration", "-d", type=int, default=600, 
                        help="Duration in seconds (default: 600 = 10 minutes)")
+    
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--raw", action="store_true",
+                           help="Use raw socket (no Meshtastic protocol)")
+    mode_group.add_argument("--optimized", action="store_true",
+                           help="Use OptimizedTCPInterface (like bot)")
+    mode_group.add_argument("--meshtastic", action="store_true", default=True,
+                           help="Use standard TCPInterface (like CLI) - DEFAULT")
+    
     parser.add_argument("--no-keepalive", action="store_true",
-                       help="Disable TCP keepalive")
+                       help="Disable TCP keepalive (raw mode only)")
     
     args = parser.parse_args()
     
-    monitor_tcp_connection(
-        args.host, 
-        args.port, 
-        args.duration,
-        keepalive=not args.no_keepalive
-    )
+    if args.raw:
+        monitor_raw_connection(
+            args.host, 
+            args.port, 
+            args.duration,
+            keepalive=not args.no_keepalive
+        )
+    elif args.optimized:
+        monitor_optimized_connection(
+            args.host,
+            args.port,
+            args.duration
+        )
+    else:
+        # Default: meshtastic
+        monitor_meshtastic_connection(
+            args.host,
+            args.port,
+            args.duration
+        )
 
 
 if __name__ == "__main__":
