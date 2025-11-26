@@ -40,6 +40,13 @@ from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
 class MeshBot:
+    # Configuration pour la reconnexion TCP
+    TCP_INTERFACE_CLEANUP_DELAY = 5  # Secondes à attendre après fermeture ancienne interface (augmenté de 3 à 5)
+    TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface (augmenté de 3 à 5)
+    TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP (réduit de 60 à 30 pour détection rapide)
+    TCP_SILENT_TIMEOUT = 60  # Secondes sans paquet avant de forcer une reconnexion (réduit de 120 à 60)
+    TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
+    
     def __init__(self):
         self.interface = None
         self.running = False
@@ -93,12 +100,29 @@ class MeshBot:
         # Timer pour télémétrie ESPHome
         self._last_telemetry_broadcast = 0
         
+        # État de reconnexion TCP (pour éviter reconnexions multiples)
+        self._tcp_reconnection_thread = None
+        self._tcp_reconnection_in_progress = False
+        
+        # Détection silence TCP - si pas de paquet reçu depuis trop longtemps, forcer reconnexion
+        self._last_packet_time = time.time()
+        self._tcp_health_thread = None  # Thread de vérification santé TCP rapide
+        
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
         #self._packets_analyzed = 0
         #self._channel_debug_active = True
         #info_print("🔍 Analyseur de canal activé - diagnostic en cours...")
         # === FIN DIAGNOSTIC ===
+
+    def _is_tcp_mode(self):
+        """
+        Vérifie si le bot est en mode TCP
+        
+        Returns:
+            bool: True si CONNECTION_MODE == 'tcp', False sinon
+        """
+        return globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp'
 
     def _track_broadcast(self, message):
         """
@@ -184,6 +208,16 @@ class MeshBot:
         # Debug: Tracer TOUS les appels à on_message
         debug_print(f"🔍 on_message APPELÉ - packet keys: {list(packet.keys()) if packet else 'None'}, interface: {interface is not None}")
 
+        # Protection contre les traitements pendant la reconnexion TCP
+        # Évite les race conditions et les messages provenant de l'ancienne interface
+        if self._tcp_reconnection_in_progress:
+            debug_print("⏸️ Message ignoré: reconnexion TCP en cours")
+            return
+        
+        # ✅ IMPORTANT: Enregistrer le timestamp de réception du paquet
+        # Utilisé pour détecter les silences TCP et forcer la reconnexion
+        self._last_packet_time = time.time()
+
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
             if interface is None:
@@ -212,16 +246,14 @@ class MeshBot:
             # ========================================
             # DÉTERMINER LE MODE DE FONCTIONNEMENT
             # ========================================
-            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-            
             # En mode single-node, tous les paquets viennent de notre interface unique
             # Pas besoin de filtrage par source
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            if connection_mode == 'tcp':
+            if self._is_tcp_mode():
                 source = 'tcp'
-            elif connection_mode == 'serial':
+            elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
             else:
                 # Mode legacy: distinguer serial vs TCP externe
@@ -249,6 +281,9 @@ class MeshBot:
             # ========================================
             # En mode single-node: tous les paquets de notre interface sont traités
             # En mode legacy: filtrer selon PROCESS_TCP_COMMANDS
+            
+            # Get connection mode from globals (set in run() method)
+            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
             if connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
@@ -412,11 +447,17 @@ class MeshBot:
         Vérifie la santé de l'interface TCP et reconnecte si nécessaire
         
         Retourne True si l'interface est opérationnelle, False sinon
+        
+        IMPORTANT: Version non-bloquante - ne bloque pas le thread périodique
         """
         # Seulement pour le mode TCP
-        connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-        if connection_mode != 'tcp':
+        if not self._is_tcp_mode():
             return True
+        
+        # Vérifier si une reconnexion est déjà en cours
+        if self._tcp_reconnection_in_progress:
+            debug_print("⏳ Reconnexion TCP déjà en cours, skip health check")
+            return False  # Pas OK mais reconnexion en cours
         
         try:
             # Vérifier si l'interface existe et si le socket est vivant
@@ -476,47 +517,122 @@ class MeshBot:
         """
         Reconnecte l'interface TCP après une déconnexion
         
-        Retourne True en cas de succès, False sinon
+        Retourne False immédiatement et lance la reconnexion en arrière-plan
+        
+        IMPORTANT: Version NON-BLOQUANTE - ne bloque pas le thread appelant
+        La reconnexion se fait dans un thread séparé pour ne pas freezer le bot
         """
         try:
+            # Marquer la reconnexion comme en cours
+            if self._tcp_reconnection_in_progress:
+                debug_print("⏳ Reconnexion déjà en cours, ignorer")
+                return False
+            
+            self._tcp_reconnection_in_progress = True
+            
             tcp_host = globals().get('TCP_HOST', '192.168.1.38')
             tcp_port = globals().get('TCP_PORT', 4403)
             
-            info_print(f"🔄 Reconnexion TCP à {tcp_host}:{tcp_port}...")
+            info_print(f"🔄 Lancement reconnexion TCP à {tcp_host}:{tcp_port} (en arrière-plan)...")
             
-            # Fermer l'ancienne interface si elle existe
-            if self.interface:
+            def reconnect_background():
+                """Fonction de reconnexion exécutée dans un thread séparé"""
                 try:
-                    self.interface.close()
-                except:
-                    pass
+                    # Fermer l'ancienne interface si elle existe
+                    old_interface = self.interface
+                    if old_interface:
+                        try:
+                            debug_print("🔄 Fermeture ancienne interface TCP...")
+                            old_interface.close()
+                            debug_print("✅ Ancienne interface fermée")
+                        except Exception as close_error:
+                            debug_print(f"⚠️ Erreur fermeture ancienne interface: {close_error}")
+                        
+                        # IMPORTANT: Attendre que les threads de l'ancienne interface
+                        # aient le temps de se terminer avant de créer la nouvelle
+                        # Ceci évite les conflits de ressources et les doublons de messages
+                        debug_print(f"⏳ Attente nettoyage threads ancienne interface ({self.TCP_INTERFACE_CLEANUP_DELAY}s)...")
+                        time.sleep(self.TCP_INTERFACE_CLEANUP_DELAY)
+                    
+                    # Créer une nouvelle interface
+                    # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
+                    debug_print("🔧 Création nouvelle interface TCP...")
+                    new_interface = OptimizedTCPInterface(
+                        hostname=tcp_host,
+                        portNumber=tcp_port
+                    )
+                    
+                    # Configurer le callback (si disponible) pour reconnexion immédiate
+                    # Ceci est optionnel - le health monitor détectera aussi les morts
+                    if hasattr(new_interface, 'set_dead_socket_callback'):
+                        debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
+                        new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                    
+                    # Attendre la stabilisation de la nouvelle interface
+                    debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
+                    time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
+                    
+                    # CRITIQUE: Vérifier que le socket est TOUJOURS connecté après stabilisation
+                    # Le socket peut mourir pendant la stabilisation
+                    socket_ok = False
+                    if hasattr(new_interface, 'socket') and new_interface.socket:
+                        try:
+                            peer = new_interface.socket.getpeername()
+                            debug_print(f"✅ Socket connecté à {peer}")
+                            socket_ok = True
+                        except Exception as e:
+                            error_print(f"⚠️ Socket mort pendant stabilisation: {e}")
+                    
+                    # Si le socket est mort, abandonner cette tentative
+                    # Le callback a déjà été appelé, une nouvelle reconnexion sera lancée
+                    if not socket_ok:
+                        error_print("❌ Reconnexion abandonnée (socket mort pendant stabilisation)")
+                        self._tcp_reconnection_in_progress = False
+                        return  # Ne pas mettre à jour les références avec une interface morte
+                    
+                    # Mettre à jour les références
+                    debug_print("🔄 Mise à jour références interface...")
+                    self.interface = new_interface
+                    self.node_manager.interface = self.interface
+                    self.remote_nodes_client.interface = self.interface
+                    if self.mesh_traceroute:
+                        self.mesh_traceroute.interface = self.interface
+                    
+                    # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
+                    # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
+                    # Réabonner causerait des duplications de messages et des freezes.
+                    # Le système pubsub de Meshtastic route les messages de TOUTES les interfaces
+                    # vers les callbacks enregistrés - pas besoin de re-subscribe.
+                    debug_print("ℹ️ Pas de réabonnement nécessaire (pubsub global)")
+                    
+                    # Réinitialiser le timer de dernière réception pour permettre 
+                    # au health monitor de détecter si la nouvelle interface fonctionne
+                    self._last_packet_time = time.time()
+                    debug_print("⏱️ Timer dernier paquet réinitialisé")
+                    
+                    info_print("✅ Reconnexion TCP réussie (background)")
+                    self._tcp_reconnection_in_progress = False
+                    
+                except Exception as e:
+                    error_print(f"❌ Échec reconnexion TCP (background): {e}")
+                    error_print(traceback.format_exc())
+                    self._tcp_reconnection_in_progress = False
             
-            # Créer une nouvelle interface
-            self.interface = OptimizedTCPInterface(
-                hostname=tcp_host,
-                portNumber=tcp_port
+            # Lancer la reconnexion dans un thread daemon (ne bloque pas l'arrêt du bot)
+            self._tcp_reconnection_thread = threading.Thread(
+                target=reconnect_background,
+                daemon=True,
+                name="TCP-Reconnect"
             )
+            self._tcp_reconnection_thread.start()
             
-            # Attendre la stabilisation
-            time.sleep(5)
-            
-            # Mettre à jour les références
-            self.node_manager.interface = self.interface
-            self.remote_nodes_client.interface = self.interface
-            if self.mesh_traceroute_manager:
-                self.mesh_traceroute_manager.interface = self.interface
-            
-            # Se réabonner aux messages
-            pub.subscribe(
-                self.on_message,
-                "meshtastic.receive"
-            )
-            
-            info_print("✅ Reconnexion TCP réussie")
-            return True
+            # Retourner False immédiatement (reconnexion en cours)
+            return False
             
         except Exception as e:
-            error_print(f"❌ Échec reconnexion TCP: {e}")
+            error_print(f"❌ Erreur lancement reconnexion: {e}")
+            error_print(traceback.format_exc())
+            self._tcp_reconnection_in_progress = False
             return False
     
     def periodic_update_thread(self):
@@ -533,7 +649,7 @@ class MeshBot:
                     break
                 
                 # Vérifier la santé de l'interface TCP et reconnexion si nécessaire
-                if globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp':
+                if self._is_tcp_mode():
                     debug_print("🔍 Vérification santé interface TCP...")
                     self._check_and_reconnect_interface()
                 
@@ -591,6 +707,67 @@ class MeshBot:
                 
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
+
+    def tcp_health_monitor_thread(self):
+        """
+        Thread de surveillance santé TCP (RAPIDE)
+        
+        Ce thread vérifie fréquemment (toutes les 60s) si:
+        1. L'interface TCP est toujours connectée
+        2. Des paquets sont reçus régulièrement
+        
+        Si aucun paquet n'est reçu depuis TCP_SILENT_TIMEOUT (2 min),
+        on force une reconnexion car l'interface est probablement morte
+        même si le socket semble "vivant".
+        
+        C'est une protection contre les cas où:
+        - Le thread __reader de meshtastic a crashé silencieusement
+        - Le socket est half-open (TCP keepalive ne suffit pas)
+        - Le nœud distant a redémarré sans fermer proprement
+        """
+        # Délai initial pour laisser le système démarrer
+        time.sleep(self.TCP_HEALTH_MONITOR_INITIAL_DELAY)
+        
+        info_print(f"🔍 Moniteur santé TCP démarré (intervalle: {self.TCP_HEALTH_CHECK_INTERVAL}s, silence max: {self.TCP_SILENT_TIMEOUT}s)")
+        
+        while self.running:
+            try:
+                time.sleep(self.TCP_HEALTH_CHECK_INTERVAL)
+                
+                if not self.running:
+                    break
+                
+                # Ne vérifier qu'en mode TCP (utiliser helper method)
+                if not self._is_tcp_mode():
+                    continue
+                
+                # Ne pas vérifier si reconnexion en cours
+                if self._tcp_reconnection_in_progress:
+                    debug_print("🔍 Health check: reconnexion en cours, skip")
+                    continue
+                
+                # Vérifier le temps depuis le dernier paquet
+                silence_duration = time.time() - self._last_packet_time
+                
+                if silence_duration > self.TCP_SILENT_TIMEOUT:
+                    # Aucun paquet reçu depuis trop longtemps!
+                    # L'interface est probablement morte
+                    info_print(f"⚠️ SILENCE TCP: {silence_duration:.0f}s sans paquet (max: {self.TCP_SILENT_TIMEOUT}s)")
+                    info_print("🔄 Forçage reconnexion TCP (silence détecté)...")
+                    
+                    # Forcer la reconnexion
+                    self._reconnect_tcp_interface()
+                    
+                    # Réinitialiser le timer pour éviter les reconnexions en boucle
+                    self._last_packet_time = time.time()
+                else:
+                    # Tout va bien
+                    debug_print(f"✅ Health TCP OK: dernier paquet il y a {silence_duration:.0f}s")
+                
+            except Exception as e:
+                error_print(f"Erreur thread health TCP: {e}")
+                import traceback
+                error_print(traceback.format_exc())
 
     def cleanup_cache(self):
         """Nettoyage périodique général"""
@@ -799,6 +976,15 @@ class MeshBot:
                     portNumber=tcp_port
                 )
                 info_print("✅ Interface TCP créée")
+                
+                # Configurer le callback pour reconnexion immédiate quand le socket meurt
+                # Cela permet de ne pas attendre le health monitor (2 minutes)
+                # IMPORTANT: Utilise la méthode d'instance, pas de classe!
+                # Ceci garantit que seule l'interface principale déclenche la reconnexion,
+                # pas les connexions temporaires (SafeTCPConnection/RemoteNodesClient)
+                # Note: Cette méthode est optionnelle, le health monitor gère aussi les morts
+                if hasattr(self.interface, 'set_dead_socket_callback'):
+                    self.interface.set_dead_socket_callback(self._reconnect_tcp_interface)
                 
                 # Stabilisation plus longue pour TCP
                 time.sleep(5)
@@ -1048,6 +1234,20 @@ class MeshBot:
             )
             self.update_thread.start()
             info_print(f"⏰ Mise à jour périodique démarrée (toutes les {NODE_UPDATE_INTERVAL//60}min)")
+            
+            # ========================================
+            # THREAD MONITEUR SANTÉ TCP (RAPIDE)
+            # ========================================
+            # Ce thread vérifie fréquemment si l'interface TCP reçoit des paquets
+            # Si silence > 2 min, force une reconnexion (plus rapide que le health check normal)
+            if self._is_tcp_mode():
+                self._tcp_health_thread = threading.Thread(
+                    target=self.tcp_health_monitor_thread,
+                    daemon=True,
+                    name="TCPHealthMonitor"
+                )
+                self._tcp_health_thread.start()
+                info_print(f"🔍 Moniteur santé TCP démarré (check: {self.TCP_HEALTH_CHECK_INTERVAL}s, silence max: {self.TCP_SILENT_TIMEOUT}s)")
             
             if DEBUG_MODE:
                 info_print("🔧 MODE DEBUG activé")
