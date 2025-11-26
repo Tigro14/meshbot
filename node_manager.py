@@ -131,6 +131,10 @@ class NodeManager:
     
     def get_node_name(self, node_id, interface=None):
         """Récupérer le nom d'un nœud par son ID"""
+        # Return fallback name when node_id is None (e.g., when node lookup fails)
+        if node_id is None:
+            return "Unknown"
+        
         if node_id in self.node_names:
             return self.node_names[node_id]['name']
         

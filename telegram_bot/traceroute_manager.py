@@ -514,11 +514,7 @@ class TracerouteManager:
                     pass
                 return
 
-            target_full_name = self.telegram.node_manager.get_node_name(target_node_id)
-            info_print(f"✅ Nœud trouvé: {target_full_name}")
-            info_print(
-                f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
-
+            # Check if node was found BEFORE trying to use node_id
             if not target_node_id:
                 error_print(f"❌ Nœud '{target_short_name}' introuvable")
                 asyncio.run_coroutine_threadsafe(
@@ -530,6 +526,11 @@ class TracerouteManager:
                     self.telegram.loop
                 ).result(timeout=5)
                 return
+
+            target_full_name = self.telegram.node_manager.get_node_name(target_node_id)
+            info_print(f"✅ Nœud trouvé: {target_full_name}")
+            info_print(
+                f"   Node ID: 0x{target_node_id:08x} ({target_node_id})")
 
             info_print(f"✅ Trace enregistrée")
             # Enregistrer la trace
