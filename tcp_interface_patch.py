@@ -101,11 +101,17 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             data = self.socket.recv(length)
             
             if not data:
-                # Connection closed - log only in debug mode to avoid spam
-                if globals().get('DEBUG_MODE', False):
-                    debug_print("Connexion TCP fermée (recv retourne vide)")
-                # Add sleep here too to prevent tight loop on closed connection
-                time.sleep(0.01)
+                # Connection closed by server - recv() returns empty bytes
+                # This is a definitive signal that the socket is dead
+                # Log ONCE and sleep longer to prevent CPU-burning tight loop
+                if not getattr(self, '_socket_dead_logged', False):
+                    info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
+                    self._socket_dead_logged = True
+                
+                # Sleep 5 seconds when socket is dead to prevent tight loop
+                # This is much better than 10ms which causes 89% CPU
+                # The health monitor will detect the silence and trigger reconnection
+                time.sleep(5.0)
                 return b''
             
             # Data read successfully

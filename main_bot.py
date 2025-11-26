@@ -43,8 +43,8 @@ class MeshBot:
     # Configuration pour la reconnexion TCP
     TCP_INTERFACE_CLEANUP_DELAY = 5  # Secondes à attendre après fermeture ancienne interface (augmenté de 3 à 5)
     TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface (augmenté de 3 à 5)
-    TCP_HEALTH_CHECK_INTERVAL = 60  # Secondes entre chaque vérification santé TCP (1 minute)
-    TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (2 minutes)
+    TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP (réduit de 60 à 30 pour détection rapide)
+    TCP_SILENT_TIMEOUT = 60  # Secondes sans paquet avant de forcer une reconnexion (réduit de 120 à 60)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     
     def __init__(self):
