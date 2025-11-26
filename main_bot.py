@@ -205,8 +205,7 @@ class MeshBot:
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
 
-        # Debug: Tracer TOUS les appels à on_message
-        debug_print(f"🔍 on_message APPELÉ - packet keys: {list(packet.keys()) if packet else 'None'}, interface: {interface is not None}")
+
 
         # Protection contre les traitements pendant la reconnexion TCP
         # Évite les race conditions et les messages provenant de l'ancienne interface
@@ -1021,26 +1020,14 @@ class MeshBot:
             # - meshtastic.receive.data : messages de données
             # - meshtastic.receive : messages génériques (fallback)
             
-            # Debug: Créer un callback de débogage pour voir ce qui est reçu
-            def debug_callback(**kwargs):
-                """Callback de debug pour tracer tous les messages pubsub"""
-                debug_print(f"🔍 DEBUG PUBSUB - Reçu avec args: {list(kwargs.keys())}")
-                if 'packet' in kwargs:
-                    pkt = kwargs['packet']
-                    from_id = pkt.get('from', 'N/A')
-                    to_id = pkt.get('to', 'N/A')
-                    decoded = pkt.get('decoded', {})
-                    portnum = decoded.get('portnum', 'N/A')
-                    debug_print(f"🔍 DEBUG PUBSUB - from={from_id}, to={to_id}, portnum={portnum}")
+
             
             # S'abonner avec le callback principal
             # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
             # (ce topic catch ALL messages: text, data, position, etc.)
             pub.subscribe(self.on_message, "meshtastic.receive")
             
-            # Debug callback seulement si DEBUG_MODE
-            if globals().get('DEBUG_MODE', False):
-                pub.subscribe(debug_callback, "meshtastic.receive")
+
             
             info_print("✅ Abonné aux messages Meshtastic (receive)")
             self.running = True

@@ -226,10 +226,7 @@ class TrafficMonitor:
                 # Seuls les paquets télémétrie du nœud LOCAL sont filtrés (auto-générés)
                 # Les paquets télémétrie des AUTRES nœuds reçus par radio sont conservés
                 if packet_type == 'TELEMETRY_APP' and my_node_id and from_id == my_node_id:
-                    # Paquet auto-généré par le nœud local
-                    if DEBUG_MODE:
-                        sender_name = self.node_manager.get_node_name(from_id)
-                        debug_print(f"⏭️  Télémétrie auto-générée ignorée (non-radio): {sender_name}")
+                    # Paquet auto-généré par le nœud local - silently ignored
                     return
 
                 if packet_type == 'TEXT_MESSAGE_APP':
