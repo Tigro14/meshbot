@@ -2,12 +2,39 @@
 🔧 PATCH TCP INTERFACE - Réduction CPU de 78% → <5%
 =======================================================
 
-Problème: meshtastic/tcp_interface.py fait du busy-waiting dans _readBytes
-Solution: Wrapper avec select() pour des opérations bloquantes efficaces
+PURPOSE:
+    CPU-optimized wrapper for Meshtastic TCP connections (port 4403 only).
+    This module is SPECIFICALLY for Meshtastic protocol communication.
+    
+    For other services (HTTP, MQTT), use their respective libraries:
+    - ESPHome: requests library (esphome_client.py)
+    - Weather: curl subprocess (utils_weather.py)  
+    - Blitzortung: paho-mqtt library (blitz_monitor.py)
 
-Usage:
+PROBLEM:
+    meshtastic/tcp_interface.py uses busy-waiting in _readBytes(),
+    consuming 78% CPU even when idle.
+
+SOLUTION:
+    Override _readBytes() to use select() for efficient blocking I/O,
+    reducing CPU usage to <5%.
+
+ARCHITECTURE:
+    See TCP_ARCHITECTURE.md for full documentation on the network stack design.
+    
+    OptimizedTCPInterface (this file)
+        └── Used directly for long-lived main connections (main_bot.py)
+        
+    SafeTCPConnection (safe_tcp_connection.py)
+        └── Context manager wrapper using OptimizedTCPInterface
+        └── Used for temporary queries (remote_nodes_client.py)
+
+USAGE:
     from tcp_interface_patch import OptimizedTCPInterface
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
+    
+    # Or via factory function:
+    interface = create_optimized_interface(hostname='192.168.1.100')
 """
 
 import socket
@@ -37,22 +64,63 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         self.read_timeout = kwargs.pop('read_timeout', 30.0)  # Timeout select() - long pour réduire CPU
         self.socket_timeout = kwargs.pop('socket_timeout', 5.0)  # Timeout socket général
         
+        # TCP keepalive parameters - helps detect dead connections faster
+        # Without keepalive, a dead TCP connection can remain undetected for hours
+        self.tcp_keepalive_enabled = kwargs.pop('tcp_keepalive', True)  # Enable TCP keepalive
+        self.tcp_keepalive_idle = kwargs.pop('tcp_keepalive_idle', 30)  # Start keepalive after 30s idle
+        self.tcp_keepalive_interval = kwargs.pop('tcp_keepalive_interval', 10)  # Send probe every 10s
+        self.tcp_keepalive_count = kwargs.pop('tcp_keepalive_count', 3)  # Consider dead after 3 failed probes
+        
         # Appeler le constructeur parent
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
         
         # Configurer le socket pour des opérations bloquantes optimisées
         if hasattr(self, 'socket') and self.socket:
-            try:
-                # Socket en mode bloquant avec timeout
-                self.socket.setblocking(True)
-                self.socket.settimeout(self.socket_timeout)
-                
-                # Options TCP pour réduire latence
-                self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                
-                info_print(f"✅ Socket configuré: blocking={True}, timeout={self.socket_timeout}s")
-            except Exception as e:
-                error_print(f"Erreur configuration socket: {e}")
+            self._configure_socket()
+    
+    def _configure_socket(self):
+        """
+        Configure socket options for optimal performance and connection monitoring.
+        
+        Includes:
+        - Blocking mode with timeout
+        - TCP_NODELAY for reduced latency
+        - TCP keepalive for dead connection detection
+        """
+        try:
+            # Socket en mode bloquant avec timeout
+            self.socket.setblocking(True)
+            self.socket.settimeout(self.socket_timeout)
+            
+            # Options TCP pour réduire latence
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            
+            # Configure TCP keepalive to detect dead connections faster
+            # This helps with the "2 minutes silence" problem by probing the connection
+            if self.tcp_keepalive_enabled:
+                try:
+                    # Enable keepalive
+                    self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    
+                    # Linux-specific keepalive parameters
+                    # TCP_KEEPIDLE: Time before first keepalive probe (default: 7200s = 2h!)
+                    # TCP_KEEPINTVL: Interval between probes (default: 75s)
+                    # TCP_KEEPCNT: Number of failed probes before connection is dead (default: 9)
+                    if hasattr(socket, 'TCP_KEEPIDLE'):
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.tcp_keepalive_idle)
+                    if hasattr(socket, 'TCP_KEEPINTVL'):
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, self.tcp_keepalive_interval)
+                    if hasattr(socket, 'TCP_KEEPCNT'):
+                        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count)
+                    
+                    info_print(f"✅ TCP keepalive activé: idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
+                except (AttributeError, OSError) as e:
+                    # Keepalive options may not be available on all platforms
+                    debug_print(f"⚠️ TCP keepalive non disponible: {e}")
+            
+            info_print(f"✅ Socket configuré: blocking={True}, timeout={self.socket_timeout}s")
+        except Exception as e:
+            error_print(f"Erreur configuration socket: {e}")
     
     def _readBytes(self, length):
         """
