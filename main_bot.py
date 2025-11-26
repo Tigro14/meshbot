@@ -204,9 +204,6 @@ class MeshBot:
             packet: Packet Meshtastic reçu
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
-
-
-
         # Protection contre les traitements pendant la reconnexion TCP
         # Évite les race conditions et les messages provenant de l'ancienne interface
         if self._tcp_reconnection_in_progress:
@@ -1020,14 +1017,10 @@ class MeshBot:
             # - meshtastic.receive.data : messages de données
             # - meshtastic.receive : messages génériques (fallback)
             
-
-            
             # S'abonner avec le callback principal
             # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
             # (ce topic catch ALL messages: text, data, position, etc.)
             pub.subscribe(self.on_message, "meshtastic.receive")
-            
-
             
             info_print("✅ Abonné aux messages Meshtastic (receive)")
             self.running = True
