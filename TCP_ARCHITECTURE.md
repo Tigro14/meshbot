@@ -200,9 +200,9 @@ the application-level health monitor.
 
 ### Potential Improvements
 
-1. **TCP Keepalive**: Add socket-level keepalive options
-2. **Connection Pooling**: For RemoteNodesClient queries
-3. **Metrics**: Track connection uptime and reconnection frequency
+1. **Connection Pooling**: For RemoteNodesClient queries
+2. **Metrics**: Track connection uptime and reconnection frequency
+3. **Adaptive Keepalive**: Adjust keepalive parameters based on network conditions
 
 ### NOT Recommended
 
