@@ -63,14 +63,20 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         # Use 30s timeout to drastically reduce CPU usage (was 1.0s causing 92% CPU)
         # select() will wake up immediately when data arrives, so latency is not affected
         self.read_timeout = kwargs.pop('read_timeout', 30.0)  # Timeout select() - long pour réduire CPU
-        self.socket_timeout = kwargs.pop('socket_timeout', 5.0)  # Timeout socket général
         
-        # TCP keepalive parameters - helps detect dead connections faster
-        # Without keepalive, a dead TCP connection can remain undetected for hours
-        self.tcp_keepalive_enabled = kwargs.pop('tcp_keepalive', True)  # Enable TCP keepalive
-        self.tcp_keepalive_idle = kwargs.pop('tcp_keepalive_idle', 30)  # Start keepalive after 30s idle
-        self.tcp_keepalive_interval = kwargs.pop('tcp_keepalive_interval', 10)  # Send probe every 10s
-        self.tcp_keepalive_count = kwargs.pop('tcp_keepalive_count', 3)  # Consider dead after 3 failed probes
+        # CRITICAL FIX: Don't set socket timeout - it interferes with the standard behavior
+        # The standard TCPInterface leaves the socket in blocking mode with timeout=None
+        # Setting a timeout caused the ESP32 to close connections after ~2.5 minutes
+        self.socket_timeout = kwargs.pop('socket_timeout', None)  # None = don't modify socket timeout
+        
+        # TCP keepalive parameters - DISABLED BY DEFAULT
+        # Testing showed that TCP keepalive may cause the ESP32 to close connections
+        # The standard TCPInterface doesn't use keepalive and works fine
+        # Only enable this if you need it for debugging dead connection issues
+        self.tcp_keepalive_enabled = kwargs.pop('tcp_keepalive', False)  # Disabled by default
+        self.tcp_keepalive_idle = kwargs.pop('tcp_keepalive_idle', 60)  # Start keepalive after 60s idle
+        self.tcp_keepalive_interval = kwargs.pop('tcp_keepalive_interval', 30)  # Send probe every 30s
+        self.tcp_keepalive_count = kwargs.pop('tcp_keepalive_count', 5)  # Consider dead after 5 failed probes
         
         # Callback for dead socket detection - allows immediate reconnection
         # instead of waiting for the health monitor to detect silence
@@ -84,6 +90,7 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
         
         # Configurer le socket pour des opérations bloquantes optimisées
+        # IMPORTANT: Only configure minimal options to avoid interfering with standard behavior
         if hasattr(self, 'socket') and self.socket:
             self._configure_socket()
     
@@ -103,32 +110,32 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     
     def _configure_socket(self):
         """
-        Configure socket options for optimal performance and connection monitoring.
+        Configure socket options for optimal performance.
         
-        Includes:
-        - Blocking mode with timeout
-        - TCP_NODELAY for reduced latency
-        - TCP keepalive for dead connection detection
+        CRITICAL: We minimize socket configuration to avoid interfering with
+        the standard TCPInterface behavior that works correctly.
+        
+        The main optimization is in _readBytes() using select() for CPU efficiency.
+        We avoid changing socket timeout or enabling keepalive by default as these
+        were found to cause the ESP32 to close connections prematurely.
         """
         try:
-            # Socket en mode bloquant avec timeout
-            self.socket.setblocking(True)
-            self.socket.settimeout(self.socket_timeout)
-            
-            # Options TCP pour réduire latence
+            # Only set TCP_NODELAY for reduced latency - this is safe and improves performance
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            debug_print("✅ TCP_NODELAY activé")
             
-            # Configure TCP keepalive to detect dead connections faster
-            # This helps with the "2 minutes silence" problem by probing the connection
+            # Only set socket timeout if explicitly requested (not recommended)
+            if self.socket_timeout is not None:
+                self.socket.settimeout(self.socket_timeout)
+                info_print(f"⚠️ Socket timeout configuré: {self.socket_timeout}s (non recommandé)")
+            
+            # Only configure TCP keepalive if explicitly enabled (disabled by default)
             if self.tcp_keepalive_enabled:
                 try:
                     # Enable keepalive
                     self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
                     
                     # Linux-specific keepalive parameters
-                    # TCP_KEEPIDLE: Time before first keepalive probe (default: 7200s = 2h!)
-                    # TCP_KEEPINTVL: Interval between probes (default: 75s)
-                    # TCP_KEEPCNT: Number of failed probes before connection is dead (default: 9)
                     if hasattr(socket, 'TCP_KEEPIDLE'):
                         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.tcp_keepalive_idle)
                     if hasattr(socket, 'TCP_KEEPINTVL'):
@@ -136,12 +143,10 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                     if hasattr(socket, 'TCP_KEEPCNT'):
                         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count)
                     
-                    info_print(f"✅ TCP keepalive activé: idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
+                    info_print(f"⚠️ TCP keepalive activé (non recommandé): idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
                 except (AttributeError, OSError) as e:
-                    # Keepalive options may not be available on all platforms
                     debug_print(f"⚠️ TCP keepalive non disponible: {e}")
             
-            info_print(f"✅ Socket configuré: blocking={True}, timeout={self.socket_timeout}s")
         except Exception as e:
             error_print(f"Erreur configuration socket: {e}")
     

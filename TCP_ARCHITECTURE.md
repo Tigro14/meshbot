@@ -163,16 +163,21 @@ TCP_SILENT_TIMEOUT = 60s          # Reconnect if no packet for 60s
 - Monitors packet reception timestamps
 - Forces reconnection on detected silence
 
-**TCP Keepalive (Socket Level)**
-Since v2025.11, OptimizedTCPInterface enables TCP keepalive by default:
-```
-tcp_keepalive_idle = 30s     # Start keepalive after 30s idle
-tcp_keepalive_interval = 10s # Send probe every 10s
-tcp_keepalive_count = 3      # Consider dead after 3 failed probes
-```
+**TCP Keepalive (Socket Level) - DISABLED BY DEFAULT**
 
-This helps detect dead connections faster at the OS level, complementing
-the application-level health monitor.
+⚠️ **Warning:** TCP keepalive was found to cause connection instability with some
+ESP32-based Meshtastic devices. It is **disabled by default** since v2025.11.26.
+
+If needed for debugging, it can be enabled via constructor:
+```python
+interface = OptimizedTCPInterface(
+    hostname="192.168.1.38",
+    tcp_keepalive=True,  # Enable keepalive (not recommended)
+    tcp_keepalive_idle=60,    # Start after 60s idle
+    tcp_keepalive_interval=30, # Probe every 30s
+    tcp_keepalive_count=5      # Dead after 5 failures
+)
+```
 
 **Dead Socket Callback (Immediate Reconnection)**
 When `recv()` returns empty bytes (connection closed by server), the 
@@ -189,22 +194,37 @@ interface.set_dead_socket_callback(self._reconnect_tcp_interface)
 
 ## Known Issues & Fixes
 
-### 2-Minute Silence Problem (Issue Referenced)
+### 2-Minute Silence / ~3-Minute Disconnect Problem
 
-**Symptom:** Every 3 minutes, 2 minutes of silence on TCP connection.
+**Symptom:** Every ~3 minutes, the TCP connection dies.
 
-**Potential Causes:**
-1. **Meshtastic node WiFi sleep** - The router node may have WiFi power saving enabled
-2. **TCP keepalive not working** - Silent socket deaths not detected
-3. **Network infrastructure issues** - Router/switch timeouts
+**Root Cause Found (v2025.11.26):**
+The `OptimizedTCPInterface` was enabling TCP keepalive by default and setting
+a socket timeout. These settings caused the ESP32-based Meshtastic node to
+close the connection prematurely.
+
+**Fix:**
+- Disabled TCP keepalive by default
+- Removed socket timeout setting (keep default blocking behavior)
+- Keep only the `select()` optimization for CPU efficiency
+- The standard `meshtastic.TCPInterface` works fine without these settings
+
+**Verification:**
+Use the diagnostic tool to compare modes:
+```bash
+# Standard TCPInterface (like CLI) - should work
+python3 diag_tcp_connection.py 192.168.1.38 --duration 600
+
+# OptimizedTCPInterface (like bot) - should also work now
+python3 diag_tcp_connection.py 192.168.1.38 --optimized --duration 600
+```
 
 **Current Mitigations:**
 - **Immediate reconnection callback** - Triggers reconnection as soon as socket death is detected
-- TCP keepalive enabled (detects dead connections in ~60s)
 - Health monitor with 60s silence detection (backup)
-- 30s health check interval (reduced from 60s)
+- 30s health check interval
 
-**Recommendations:**
+**Previous Recommendations (if issue persists):**
 1. Check router node settings: Disable WiFi sleep/power saving
 2. Verify network path: No aggressive NAT timeouts
 3. Monitor with `DEBUG_MODE=True` to see packet timestamps
