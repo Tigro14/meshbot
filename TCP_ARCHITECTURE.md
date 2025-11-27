@@ -4,22 +4,54 @@
 
 This document clarifies the network connection architecture used in MeshBot. The codebase uses **different network stacks for different purposes**, which is intentional and appropriate.
 
+## ⚠️ CRITICAL: ESP32 Single TCP Connection Limitation
+
+**ESP32-based Meshtastic nodes only support ONE TCP connection at a time.**
+
+This is a hardware/firmware limitation. When a new TCP connection is established:
+1. The existing connection is immediately dropped
+2. The bot loses all packet reception until reconnection
+3. This causes the "2 minutes of packet loss every 3 minutes" symptom when multiple connections are created
+
+**MANDATORY RULE**: All code accessing a Meshtastic node via TCP MUST share the same interface.
+
+### Correct Usage
+
+```python
+# In main_bot.py - create the single shared interface
+self.interface = OptimizedTCPInterface(hostname=tcp_host, portNumber=tcp_port)
+
+# Share it with all components
+self.remote_nodes_client.set_interface(self.interface)
+self.node_manager.interface = self.interface
+```
+
+### Forbidden Patterns
+
+```python
+# ❌ WRONG - Creating a new connection kills the main interface!
+new_interface = TCPInterface(hostname=same_host)
+
+# ❌ WRONG - SafeTCPConnection creates new connections!  
+with SafeTCPConnection(same_host) as interface:
+    interface.sendText("Hello")  # This kills main connection!
+```
+
 ## Network Stack Separation
 
 ### 1. Meshtastic Node Connection Stack
 
 **Files:**
-- `tcp_interface_patch.py` - TCPInterface with dead socket callback for fast reconnection
-- `safe_tcp_connection.py` - Context manager wrapper for temporary connections
+- `tcp_interface_patch.py` - OptimizedTCPInterface with dead socket callback
+- `safe_tcp_connection.py` - Context manager for **different hosts only**
 
 **Purpose:** 
 Dedicated to **Meshtastic protocol communication** on port 4403.
 
-**Why Separated:**
-- Meshtastic uses a proprietary protocol over TCP (protobuf-based)
-- Needs reconnection handling specific to mesh network behavior
-- Long-lived connection that needs health monitoring
-- Dead socket callback for immediate reconnection
+**Single Connection Enforcement:**
+- `OptimizedTCPInterface`: Used for the main bot connection (ONE instance only)
+- `SafeTCPConnection`: Only for connecting to DIFFERENT physical nodes
+- All components MUST share the main interface for same-host operations
 
 ### 2. External Services Stack
 
@@ -34,9 +66,9 @@ Dedicated to **Meshtastic protocol communication** on port 4403.
 
 **Why Different:**
 - Each service uses its standard protocol (HTTP, MQTT)
+- These are different hosts, so no conflict with ESP32 limitation
 - Standard Python libraries handle these protocols well
 - No CPU optimization needed (short-lived requests)
-- Retry logic is handled per-service as needed
 
 ## File Details
 
@@ -83,85 +115,108 @@ def _readBytes(self, length):
 ```
 SafeTCPConnection
 ├── Type: Context Manager
-├── Purpose: Safe temporary connections to Meshtastic nodes
+├── Purpose: Safe temporary connections to DIFFERENT Meshtastic nodes
 ├── Uses: OptimizedTCPInterface internally
+├── ⚠️ WARNING: Only use for hosts DIFFERENT from main bot connection!
 └── Features:
     ├── Automatic connection/disconnection
     ├── Connection timing tracking
     └── Error handling with cleanup
 ```
 
-**Usage Patterns:**
+**⚠️ ESP32 LIMITATION WARNING:**
+SafeTCPConnection creates NEW TCP connections. If used with the same host
+as the main bot connection, it will KILL the main connection!
+
+**CORRECT Usage (different host):**
 ```python
-# For temporary queries (e.g., getting remote node list)
-with SafeTCPConnection("192.168.1.100") as interface:
+# Querying a DIFFERENT physical node
+with SafeTCPConnection("192.168.1.200") as interface:  # Different IP!
     nodes = interface.nodes
-    
-# Helper functions
-send_text_to_remote(hostname, text)
-quick_tcp_command(hostname, command)
-broadcast_message(hostname, message)
-test_connection(hostname)
+```
+
+**FORBIDDEN Usage (same host):**
+```python
+# ❌ This kills the main bot connection!
+with SafeTCPConnection("192.168.1.38") as interface:  # Same as TCP_HOST!
+    interface.sendText("Hello")  # Main bot now disconnected!
 ```
 
 **Used By:**
-- `remote_nodes_client.py` - Querying remote mesh nodes
-- Temporary operations that don't need persistent connection
+- `remote_nodes_client.py` - Only for querying DIFFERENT physical nodes
+- Should NOT be used for same-host operations
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         MeshBot                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │            MESHTASTIC NODE CONNECTION                     │ │
-│  │                   (Port 4403)                             │ │
-│  │                                                           │ │
-│  │  ┌─────────────────────┐   ┌───────────────────────────┐ │ │
-│  │  │ tcp_interface_patch │   │  safe_tcp_connection      │ │ │
-│  │  │ OptimizedTCPInterface│   │  SafeTCPConnection        │ │ │
-│  │  │                     │   │  (Context Manager)        │ │ │
-│  │  │ Dead socket callback│   │  Uses OptimizedTCPInterface│ │ │
-│  │  └─────────────────────┘   └───────────────────────────┘ │ │
-│  │            │                          │                   │ │
-│  │            ▼                          ▼                   │ │
-│  │  ┌─────────────────────────────────────────────────────┐ │ │
-│  │  │           Meshtastic Protocol (protobuf)            │ │ │
-│  │  │              meshtastic.tcp_interface               │ │ │
-│  │  └─────────────────────────────────────────────────────┘ │ │
-│  └───────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │              EXTERNAL SERVICES                            │ │
-│  │           (Standard Protocols)                            │ │
-│  │                                                           │ │
-│  │  ┌────────────┐ ┌────────────┐ ┌────────────────────────┐│ │
-│  │  │  ESPHome   │ │  Weather   │ │   Blitzortung          ││ │
-│  │  │  (HTTP)    │ │  (HTTP)    │ │   (MQTT)               ││ │
-│  │  │  requests  │ │  curl      │ │   paho-mqtt            ││ │
-│  │  └────────────┘ └────────────┘ └────────────────────────┘│ │
-│  │                                                           │ │
-│  │  ┌────────────────────────────────────────────────────┐  │ │
-│  │  │               Météo-France Vigilance               │  │ │
-│  │  │               (HTTP + HTML scraping)               │  │ │
-│  │  │               beautifulsoup4 + lxml                │  │ │
-│  │  └────────────────────────────────────────────────────┘  │ │
-│  └───────────────────────────────────────────────────────────┘ │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              MeshBot                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │            MESHTASTIC NODE CONNECTION (Port 4403)                 │ │
+│  │                                                                   │ │
+│  │   ⚠️ ESP32 LIMITATION: ONLY ONE TCP CONNECTION ALLOWED!          │ │
+│  │                                                                   │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
+│  │  │  OptimizedTCPInterface (tcp_interface_patch.py)             │ │ │
+│  │  │  ├── SINGLE SHARED INSTANCE for main connection             │ │ │
+│  │  │  ├── Dead socket callback for fast reconnection             │ │ │
+│  │  │  └── Used by: main_bot, remote_nodes_client, utility_cmds   │ │ │
+│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  │                           │                                       │ │
+│  │                           │ shared                                │ │
+│  │                           ▼                                       │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
+│  │  │  All Components Use Shared Interface                        │ │ │
+│  │  │  ├── main_bot.py (packet reception, sending)                │ │ │
+│  │  │  ├── remote_nodes_client.py (node queries)                  │ │ │
+│  │  │  ├── utility_commands.py (/echo command)                    │ │ │
+│  │  │  └── message_sender.py (all message sending)                │ │ │
+│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                   │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
+│  │  │  SafeTCPConnection (safe_tcp_connection.py)                 │ │ │
+│  │  │  ⚠️ ONLY for DIFFERENT physical nodes!                      │ │ │
+│  │  │  Creating new connection to same host kills main interface! │ │ │
+│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │              EXTERNAL SERVICES (No ESP32 Conflict)                │ │
+│  │                     (Different hosts/protocols)                   │ │
+│  │                                                                   │ │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────────────────────────┐│ │
+│  │  │  ESPHome   │ │  Weather   │ │   Blitzortung                  ││ │
+│  │  │  (HTTP)    │ │  (HTTP)    │ │   (MQTT)                       ││ │
+│  │  │  requests  │ │  curl      │ │   paho-mqtt                    ││ │
+│  │  └────────────┘ └────────────┘ └────────────────────────────────┘│ │
+│  │                                                                   │ │
+│  │  ┌────────────────────────────────────────────────────────────┐  │ │
+│  │  │               Météo-France Vigilance                       │  │ │
+│  │  │               (HTTP + HTML scraping)                       │  │ │
+│  │  │               beautifulsoup4 + lxml                        │  │ │
+│  │  └────────────────────────────────────────────────────────────┘  │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Why Not Merge All TCP Code?
+## Why Separate Files for TCP?
 
-**The stacks are intentionally separated because:**
+**The TCP files are organized by role:**
 
-1. **Different Protocols**: Meshtastic uses protobuf over raw TCP; others use HTTP/MQTT
-2. **Different Requirements**: Meshtastic needs reconnection handling; HTTP requests don't
-3. **Different Libraries**: Each external service has its own well-tested Python library
-4. **Maintainability**: Separation allows independent updates and debugging
-5. **Reliability**: A bug in one stack doesn't affect others
+1. **tcp_interface_patch.py** - Single shared interface wrapper
+   - Provides dead socket callback for fast reconnection
+   - One instance shared by entire application
+   
+2. **safe_tcp_connection.py** - Context manager for DIFFERENT hosts
+   - Only for connecting to physically different Meshtastic nodes
+   - NOT for same-host operations (would kill main connection)
+
+3. **External services** use standard libraries (requests, paho-mqtt)
+   - Different protocols (HTTP, MQTT), different hosts
+   - No conflict with ESP32 limitation
 
 ## TCP Health Monitoring
 
@@ -192,11 +247,33 @@ interface.set_dead_socket_callback(self._reconnect_tcp_interface)
 
 ## Known Issues & Fixes
 
+### ESP32 Single TCP Connection (v2025.11.27)
+
+**Root Cause Found:**
+ESP32-based Meshtastic nodes only support ONE TCP connection at a time.
+Multiple connections to the same node cause the previous connection to drop.
+
+**Symptoms:**
+- Periodic packet loss (2 minutes every 3 minutes)
+- Connection drops when running certain commands
+- Bot becomes unresponsive after /echo or stats queries
+
+**The Fix:**
+All code MUST share the single TCP interface:
+
+```python
+# ✅ CORRECT - Use shared interface
+interface = self.interface  # From main_bot
+interface.sendText("Hello")
+
+# ❌ WRONG - Creates new connection, kills main bot!
+new_interface = TCPInterface(hostname=same_host)
+```
+
 ### ESP32 Socket Sensitivity (v2025.11.27)
 
 **Root Cause Found:**
-After extensive testing with the diagnostic tool, we discovered that ESP32-based
-Meshtastic nodes are extremely sensitive to ANY socket modifications:
+ESP32-based Meshtastic nodes are extremely sensitive to ANY socket modifications:
 
 | Modification | Result |
 |-------------|--------|
@@ -214,6 +291,7 @@ Use the **EXACT same socket behavior** as the standard `meshtastic.TCPInterface`
 
 **What OptimizedTCPInterface DOES:**
 - ✅ Dead socket callback for immediate reconnection notification
+- ✅ Socket state monitoring in background thread
 
 **What OptimizedTCPInterface does NOT do:**
 - ❌ No select() calls

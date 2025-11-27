@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Test pour vérifier que TCP keepalive est correctement configuré
+Test pour vérifier que la configuration TCP est correcte
 
 Ce test vérifie:
-1. SO_KEEPALIVE est activé sur le socket
-2. Les paramètres keepalive sont configurés (si disponibles)
-3. select() inclut la liste d'exceptions pour détecter les sockets morts
+1. OptimizedTCPInterface existe et hérite de TCPInterface
+2. Dead socket callback est implémenté
+3. Socket monitor thread existe
+4. ESP32 single-connection limitation is documented
 """
 
 import sys
@@ -14,127 +15,135 @@ import os
 # Ajouter le répertoire courant au path
 sys.path.insert(0, os.path.dirname(__file__))
 
-def test_keepalive_configuration():
+def test_optimized_interface_exists():
     """
-    Test que le code de configuration TCP inclut keepalive (optionnel)
-    Note: TCP keepalive est optionnel car il peut causer des problèmes
-    avec certains appareils Meshtastic
+    Test que OptimizedTCPInterface existe et hérite correctement
     """
-    print("\n🧪 Test: Configuration TCP Keepalive (optionnel)")
+    print("\n🧪 Test: OptimizedTCPInterface existe")
     
     # Lire le fichier tcp_interface_patch.py
     with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
         content = f.read()
     
-    # Chercher SO_KEEPALIVE dans tout le fichier (peut être dans __init__ ou _configure_socket)
-    has_keepalive = 'SO_KEEPALIVE' in content
-    if has_keepalive:
-        print("✅ SO_KEEPALIVE est activé (optionnel)")
-        if 'TCP_KEEPIDLE' in content:
-            print("✅ TCP_KEEPIDLE configuré")
-        if 'TCP_KEEPINTVL' in content:
-            print("✅ TCP_KEEPINTVL configuré")
-        if 'TCP_KEEPCNT' in content:
-            print("✅ TCP_KEEPCNT configuré")
-    else:
-        print("ℹ️ TCP keepalive non activé (comportement standard)")
+    # Vérifier l'héritage
+    assert 'class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface)' in content, \
+        "❌ OptimizedTCPInterface devrait hériter de TCPInterface"
+    print("✅ OptimizedTCPInterface hérite de TCPInterface")
     
-    # Vérifier que le socket est configuré correctement (obligatoire)
-    print("✅ Configuration socket de base présente")
+    # Vérifier qu'on ne modifie PAS le socket (ESP32 limitation)
+    assert '_readBytes' not in content or content.count('def _readBytes') == 0, \
+        "⚠️ _readBytes ne devrait PAS être surchargé (ESP32 sensibilité)"
+    print("✅ _readBytes non surchargé (stabilité ESP32)")
     
-    print("\n✅ TESTS KEEPALIVE RÉUSSIS")
-    return True
-
-def test_select_no_exception_list():
-    """
-    Test that select() is configured for CPU efficiency
-    """
-    print("\n🧪 Test: select() configuré pour efficacité CPU")
-    
-    with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
-        content = f.read()
-    
-    # Trouver _readBytes
-    readbytes_start = content.find('def _readBytes')
-    readbytes_end = content.find('\n    def ', readbytes_start + 1)
-    if readbytes_end == -1:
-        readbytes_end = len(content)
-    readbytes_code = content[readbytes_start:readbytes_end]
-    
-    # Vérifier que select() est utilisé
-    assert 'select.select' in readbytes_code, \
-        "❌ select() devrait être utilisé pour efficacité CPU"
-    print("✅ select() utilisé pour efficacité CPU")
-    
-    print("✅ Test réussi")
-    return True
-
-def test_dead_socket_stops_loop():
-    """
-    Test that dead socket handling prevents tight loops
-    """
-    print("\n🧪 Test: Gestion socket mort")
-    
-    with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
-        content = f.read()
-    
-    # Trouver _readBytes
-    readbytes_start = content.find('def _readBytes')
-    readbytes_end = content.find('\n    def ', readbytes_start + 1)
-    if readbytes_end == -1:
-        readbytes_end = len(content)
-    readbytes_code = content[readbytes_start:readbytes_end]
-    
-    # Vérifier qu'on gère le cas où recv() retourne vide
-    assert 'not data' in readbytes_code or 'if data' in readbytes_code or 'return b' in readbytes_code, \
-        "❌ Devrait gérer le cas socket mort/vide"
-    print("✅ Gestion socket mort présente")
-    
-    # Vérifier qu'un sleep ou return évite la tight loop
-    assert 'sleep' in readbytes_code or "return b''" in readbytes_code, \
-        "❌ Devrait avoir sleep ou return pour éviter tight loop"
-    print("✅ Protection contre tight loop présente")
-    
-    print("✅ Test réussi")
+    print("\n✅ TEST RÉUSSI")
     return True
 
 def test_dead_socket_callback():
     """
-    Test that dead socket detection triggers immediate reconnection callback (optional feature)
-    
-    Note: This callback feature is optional - the health monitor also handles reconnection
+    Test que le dead socket callback est implémenté
     """
-    print("\n🧪 Test: Callback reconnexion (optionnel)")
+    print("\n🧪 Test: Dead socket callback")
     
     with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
         content = f.read()
     
-    # Le callback est optionnel
-    has_callback = 'set_dead_socket_callback' in content
-    if has_callback:
-        print("✅ Méthode set_dead_socket_callback existe (optionnel)")
-        
-        # Vérifier que c'est une méthode d'INSTANCE (pas @classmethod)
-        set_callback_start = content.find('def set_dead_socket_callback')
-        set_callback_context = content[max(0, set_callback_start - 50):set_callback_start]
-        if '@classmethod' not in set_callback_context:
-            print("✅ set_dead_socket_callback est une méthode d'instance")
-    else:
-        print("ℹ️ Callback non configuré (le health monitor gère les reconnexions)")
+    # Vérifier que le callback existe
+    assert 'set_dead_socket_callback' in content, \
+        "❌ set_dead_socket_callback devrait exister"
+    print("✅ set_dead_socket_callback existe")
+    
+    assert '_dead_socket_callback' in content, \
+        "❌ _dead_socket_callback devrait être stocké"
+    print("✅ _dead_socket_callback stocké")
+    
+    print("✅ Test réussi")
+    return True
+
+def test_socket_monitor_thread():
+    """
+    Test que le thread de monitoring socket existe
+    """
+    print("\n🧪 Test: Socket monitor thread")
+    
+    with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
+        content = f.read()
+    
+    # Vérifier le thread de monitoring
+    assert '_monitor_socket_state' in content, \
+        "❌ _monitor_socket_state devrait exister"
+    print("✅ _monitor_socket_state existe")
+    
+    assert 'SocketMonitor' in content or '_monitor_thread' in content, \
+        "❌ Thread de monitoring devrait être créé"
+    print("✅ Thread de monitoring créé")
+    
+    print("✅ Test réussi")
+    return True
+
+def test_single_connection_enforcement():
+    """
+    Test que le code enforce la limitation single-connection ESP32
+    """
+    print("\n🧪 Test: ESP32 single-connection enforcement")
+    
+    # Vérifier remote_nodes_client.py
+    with open('/home/runner/work/meshbot/meshbot/remote_nodes_client.py', 'r') as f:
+        content = f.read()
+    
+    # Vérifier la documentation de la limitation
+    assert 'ESP32' in content or 'single' in content.lower() or 'one tcp' in content.lower(), \
+        "❌ remote_nodes_client devrait documenter la limitation ESP32"
+    print("✅ remote_nodes_client documente la limitation")
+    
+    # Vérifier que l'interface est réutilisée
+    assert 'self.interface' in content, \
+        "❌ remote_nodes_client devrait utiliser interface partagée"
+    print("✅ remote_nodes_client utilise interface partagée")
+    
+    # Vérifier utility_commands.py (echo)
+    with open('/home/runner/work/meshbot/meshbot/handlers/command_handlers/utility_commands.py', 'r') as f:
+        content = f.read()
+    
+    # Vérifier qu'on n'utilise plus TCPInterface direct
+    assert content.count('meshtastic.tcp_interface.TCPInterface') == 0, \
+        "❌ utility_commands ne devrait pas créer de nouvelles connexions TCP"
+    print("✅ utility_commands n'utilise pas TCPInterface directement")
+    
+    print("✅ Test réussi")
+    return True
+
+def test_documentation_updated():
+    """
+    Test que la documentation TCP est à jour
+    """
+    print("\n🧪 Test: Documentation TCP")
+    
+    with open('/home/runner/work/meshbot/meshbot/TCP_ARCHITECTURE.md', 'r') as f:
+        content = f.read()
+    
+    # Vérifier que la limitation ESP32 est documentée
+    assert 'ESP32' in content, \
+        "❌ TCP_ARCHITECTURE.md devrait mentionner ESP32"
+    print("✅ ESP32 mentionné dans documentation")
+    
+    assert 'single' in content.lower() or 'one tcp' in content.lower() or 'one connection' in content.lower(), \
+        "❌ Limitation single-connection devrait être documentée"
+    print("✅ Limitation single-connection documentée")
     
     print("✅ Test réussi")
     return True
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("TEST TCP INTERFACE - Configuration socket")
+    print("TEST TCP INTERFACE - Architecture et Limitations ESP32")
     print("=" * 70)
     
     results = [
-        test_keepalive_configuration(),
-        test_select_no_exception_list(),
-        test_dead_socket_stops_loop(),
+        test_optimized_interface_exists(),
         test_dead_socket_callback(),
+        test_socket_monitor_thread(),
+        test_single_connection_enforcement(),
+        test_documentation_updated(),
     ]
     
     print("\n" + "=" * 70)
@@ -150,10 +159,12 @@ if __name__ == "__main__":
     
     if all(results):
         print("\n✅ TOUS LES TESTS RÉUSSIS")
-        print("\nConfiguration TCP:")
-        print("- select() utilisé pour efficacité CPU")
-        print("- Gestion des sockets morts")
-        print("- Health monitor pour reconnexion automatique")
+        print("\nArchitecture TCP:")
+        print("- OptimizedTCPInterface hérite de TCPInterface standard")
+        print("- Dead socket callback pour reconnexion rapide")
+        print("- Socket monitor thread pour détection d'état")
+        print("- Single-connection ESP32 respectée")
+        print("- Documentation à jour")
         sys.exit(0)
     else:
         print("\n❌ CERTAINS TESTS ONT ÉCHOUÉ")
