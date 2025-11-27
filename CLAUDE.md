@@ -2570,6 +2570,7 @@ This document should be updated when:
 - **TRAFFIC_DB_VIEWER.md**: CLI database viewer
 - **STATS_CONSOLIDATION_PLAN.md**: Unified statistics system architecture
 - **PLATFORMS.md**: Multi-platform architecture documentation
+- **TCP_ARCHITECTURE.md**: Network stack architecture (Meshtastic TCP vs HTTP/MQTT services)
 - **ENCRYPTED_PACKETS_EXPLAINED.md**: Guide to encrypted vs direct messages
 - **PR_DESCRIPTION.md**: Pull request templates and guidelines
 - **llama.cpp-integration/README.md**: Llama.cpp setup guide

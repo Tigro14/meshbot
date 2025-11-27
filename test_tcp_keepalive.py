@@ -26,22 +26,15 @@ def test_keepalive_configuration():
     with open('/home/runner/work/meshbot/meshbot/tcp_interface_patch.py', 'r') as f:
         content = f.read()
     
-    # Trouver la fonction __init__
-    init_start = content.find('def __init__')
-    init_end = content.find('\n    def ', init_start + 1)
-    if init_end == -1:  # Si pas de méthode après __init__
-        init_end = len(content)
-    init_code = content[init_start:init_end]
-    
-    # TCP keepalive est maintenant optionnel - on vérifie juste que le socket est configuré
-    has_keepalive = 'SO_KEEPALIVE' in init_code
+    # Chercher SO_KEEPALIVE dans tout le fichier (peut être dans __init__ ou _configure_socket)
+    has_keepalive = 'SO_KEEPALIVE' in content
     if has_keepalive:
         print("✅ SO_KEEPALIVE est activé (optionnel)")
-        if 'TCP_KEEPIDLE' in init_code:
+        if 'TCP_KEEPIDLE' in content:
             print("✅ TCP_KEEPIDLE configuré")
-        if 'TCP_KEEPINTVL' in init_code:
+        if 'TCP_KEEPINTVL' in content:
             print("✅ TCP_KEEPINTVL configuré")
-        if 'TCP_KEEPCNT' in init_code:
+        if 'TCP_KEEPCNT' in content:
             print("✅ TCP_KEEPCNT configuré")
     else:
         print("ℹ️ TCP keepalive non activé (comportement standard)")

@@ -3,6 +3,30 @@
 """
 Context manager pour gérer proprement les connexions TCP Meshtastic
 
+PURPOSE:
+    Provides a context manager wrapper around OptimizedTCPInterface for
+    TEMPORARY connections to Meshtastic nodes (port 4403 only).
+    
+    This is NOT for HTTP/MQTT services - those use their own libraries:
+    - ESPHome: requests library (esphome_client.py)
+    - Weather: curl subprocess (utils_weather.py)
+    - Blitzortung: paho-mqtt library (blitz_monitor.py)
+
+RELATIONSHIP TO tcp_interface_patch.py:
+    SafeTCPConnection uses OptimizedTCPInterface internally.
+    
+    - OptimizedTCPInterface: Low-level CPU-optimized Meshtastic TCP
+    - SafeTCPConnection: High-level context manager for temporary queries
+
+ARCHITECTURE:
+    See TCP_ARCHITECTURE.md for full documentation on the network stack design.
+
+    For LONG-LIVED connections (main bot interface):
+        Use OptimizedTCPInterface directly in main_bot.py
+        
+    For SHORT-LIVED connections (queries, one-off commands):
+        Use SafeTCPConnection context manager (this module)
+
 Ce module fournit:
 1. SafeTCPConnection: Context manager pour gérer les connexions TCP
 2. send_text_to_remote(): Fonction simple pour envoyer un message
