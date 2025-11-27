@@ -1,56 +1,66 @@
 """
-🔧 PATCH TCP INTERFACE - Dead Socket Callback for External Notification
-=========================================================================
+🔧 MESHTASTIC TCP INTERFACE WRAPPER
+====================================
 
 PURPOSE:
-    Wrapper for Meshtastic TCP connections (port 4403) that adds a dead socket
-    callback for external notification. The standard TCPInterface handles 
-    reconnection internally; this class adds the ability to notify external
-    code (like main_bot.py) when a disconnection occurs.
+    Extended Meshtastic TCP interface for port 4403 connections to Meshtastic nodes.
+    This module provides socket state monitoring and external notification callbacks
+    to support reliable long-lived connections with fast dead socket detection.
     
-    This module is SPECIFICALLY for Meshtastic protocol communication.
+    This module is SPECIFICALLY for Meshtastic protocol communication (port 4403).
     
-    For other services (HTTP, MQTT), use their respective libraries:
+    For other services, use their respective libraries:
     - ESPHome: requests library (esphome_client.py)
     - Weather: curl subprocess (utils_weather.py)  
     - Blitzortung: paho-mqtt library (blitz_monitor.py)
 
-BEHAVIOR:
-    This class is IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface,
-    with one addition: when the socket dies (recv() returns empty bytes), it
-    triggers a callback to notify external code BEFORE doing the internal
-    reconnection that the standard TCPInterface does.
+DESIGN PHILOSOPHY:
+    After extensive testing documented in TCP_ARCHITECTURE.md, we found that
+    ESP32-based Meshtastic nodes are extremely sensitive to socket modifications.
+    ANY of the following changes cause connections to die within 2.5 minutes:
+    - TCP keepalive options
+    - Socket timeout changes
+    - TCP_NODELAY setting
+    - select() calls before recv()
     
-    The internal reconnection keeps the reader thread alive and allows the
-    connection to recover automatically.
+    Therefore, this wrapper uses IDENTICAL socket behavior to the standard
+    meshtastic.tcp_interface.TCPInterface. The ONLY additions are:
+    1. Background monitoring thread to detect socket death via state change
+    2. Callback mechanism to notify external code (main_bot.py) immediately
+    3. Thread exception filter to suppress expected network errors from logs
 
-IMPORTANT - NO SOCKET MODIFICATIONS:
-    After extensive testing, we found that ANY modification to socket behavior
-    (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
-    Meshtastic node to close connections prematurely.
+DIVISION OF RESPONSIBILITY:
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  OptimizedTCPInterface (this file)                                  │
+    │  ├── ROLE: Long-lived primary connections                           │
+    │  ├── USED BY: main_bot.py (main interface)                          │
+    │  ├── FEATURES:                                                      │
+    │  │   ├── Socket state monitoring (every 500ms)                      │
+    │  │   ├── Dead socket callback for fast notification                 │
+    │  │   └── Clean shutdown with thread cleanup                         │
+    │  └── DOES NOT MODIFY: Socket options, recv() behavior               │
+    └─────────────────────────────────────────────────────────────────────┘
     
-    Therefore, this implementation uses the EXACT same socket handling as the
-    standard TCPInterface. We do NOT modify any socket options.
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  SafeTCPConnection (safe_tcp_connection.py)                         │
+    │  ├── ROLE: Temporary/short-lived connections                        │
+    │  ├── USED BY: remote_nodes_client.py                                │
+    │  └── FEATURES: Context manager, automatic cleanup, helper functions │
+    └─────────────────────────────────────────────────────────────────────┘
 
 ARCHITECTURE:
-    See TCP_ARCHITECTURE.md for full documentation on the network stack design.
-    
-    OptimizedTCPInterface (this file)
-        └── Used directly for long-lived main connections (main_bot.py)
-        └── Adds dead socket callback for external notification
-        └── Internal reconnection handled by inherited code
-        
-    SafeTCPConnection (safe_tcp_connection.py)
-        └── Context manager wrapper using OptimizedTCPInterface
-        └── Used for temporary queries (remote_nodes_client.py)
+    See TCP_ARCHITECTURE.md for full network stack documentation.
 
 USAGE:
+    # For long-lived connections (recommended in main_bot.py):
     from tcp_interface_patch import OptimizedTCPInterface
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
     interface.set_dead_socket_callback(my_notification_function)
     
-    # Or via factory function:
-    interface = create_optimized_interface(hostname='192.168.1.100')
+    # For temporary connections (use SafeTCPConnection instead):
+    from safe_tcp_connection import SafeTCPConnection
+    with SafeTCPConnection('192.168.1.100') as interface:
+        interface.sendText("Hello")
 """
 
 import socket
