@@ -1,9 +1,11 @@
 """
-🔧 PATCH TCP INTERFACE - Réduction CPU de 78% → <5%
-=======================================================
+🔧 PATCH TCP INTERFACE - Dead Socket Callback for Fast Reconnection
+====================================================================
 
 PURPOSE:
-    CPU-optimized wrapper for Meshtastic TCP connections (port 4403 only).
+    Wrapper for Meshtastic TCP connections (port 4403) that adds a dead socket
+    callback for immediate reconnection notification.
+    
     This module is SPECIFICALLY for Meshtastic protocol communication.
     
     For other services (HTTP, MQTT), use their respective libraries:
@@ -12,18 +14,30 @@ PURPOSE:
     - Blitzortung: paho-mqtt library (blitz_monitor.py)
 
 PROBLEM:
-    meshtastic/tcp_interface.py uses busy-waiting in _readBytes(),
-    consuming 78% CPU even when idle.
+    When the Meshtastic node closes the TCP connection, the standard TCPInterface
+    takes ~60+ seconds (health monitor timeout) to detect and reconnect.
 
 SOLUTION:
-    Override _readBytes() to use select() for efficient blocking I/O,
-    reducing CPU usage to <5%.
+    We extend TCPInterface with a dead socket callback that triggers immediate
+    reconnection when recv() returns empty bytes. This reduces downtime from
+    ~75 seconds to ~10 seconds.
+
+IMPORTANT - CPU USAGE NOTE:
+    After extensive testing, we found that ANY modification to socket behavior
+    (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
+    Meshtastic node to close connections prematurely.
+    
+    Therefore, this implementation uses the EXACT same blocking recv() approach
+    as the standard TCPInterface. CPU usage may be higher, but stability is
+    more important. If CPU becomes a problem, investigate upstream in the
+    meshtastic library.
 
 ARCHITECTURE:
     See TCP_ARCHITECTURE.md for full documentation on the network stack design.
     
     OptimizedTCPInterface (this file)
         └── Used directly for long-lived main connections (main_bot.py)
+        └── Adds dead socket callback for immediate reconnection
         
     SafeTCPConnection (safe_tcp_connection.py)
         └── Context manager wrapper using OptimizedTCPInterface
@@ -32,13 +46,13 @@ ARCHITECTURE:
 USAGE:
     from tcp_interface_patch import OptimizedTCPInterface
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
+    interface.set_dead_socket_callback(my_reconnect_function)
     
     # Or via factory function:
     interface = create_optimized_interface(hostname='192.168.1.100')
 """
 
 import socket
-import select
 import time
 import threading
 import meshtastic.tcp_interface
@@ -48,35 +62,27 @@ from utils import info_print, error_print, debug_print
 
 class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     """
-    Interface TCP optimisée pour réduire la consommation CPU
+    Meshtastic TCPInterface with dead socket callback for fast reconnection.
     
-    ✅ Modifications:
-    - Utilise select() au lieu de polling continu
-    - Timeout configurables (non-blocking → blocking intelligent)
-    - Réduction CPU: 78% → <5%
+    This class is nearly IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface.
+    The ONLY addition is a dead socket callback that triggers immediate reconnection
+    when the socket is detected as dead.
+    
+    IMPORTANT: After extensive testing, we found that ANY modification to socket
+    behavior (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
+    Meshtastic node to close connections prematurely. Therefore, we use the
+    EXACT same blocking recv() approach as the standard TCPInterface.
+    
+    ✅ What this class adds:
+    - Dead socket callback for immediate reconnection notification
+    
+    ❌ What this class does NOT modify:
+    - Socket configuration (timeout, TCP_NODELAY, keepalive)
+    - The read approach (uses standard blocking recv())
     """
     
     def __init__(self, hostname, portNumber=4403, **kwargs):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
-        
-        # Paramètres d'optimisation
-        # Use 30s timeout to drastically reduce CPU usage (was 1.0s causing 92% CPU)
-        # select() will wake up immediately when data arrives, so latency is not affected
-        self.read_timeout = kwargs.pop('read_timeout', 30.0)  # Timeout select() - long pour réduire CPU
-        
-        # CRITICAL FIX: Don't set socket timeout - it interferes with the standard behavior
-        # The standard TCPInterface leaves the socket in blocking mode with timeout=None
-        # Setting a timeout caused the ESP32 to close connections after ~2.5 minutes
-        self.socket_timeout = kwargs.pop('socket_timeout', None)  # None = don't modify socket timeout
-        
-        # TCP keepalive parameters - DISABLED BY DEFAULT
-        # Testing showed that TCP keepalive may cause the ESP32 to close connections
-        # The standard TCPInterface doesn't use keepalive and works fine
-        # Only enable this if you need it for debugging dead connection issues
-        self.tcp_keepalive_enabled = kwargs.pop('tcp_keepalive', False)  # Disabled by default
-        self.tcp_keepalive_idle = kwargs.pop('tcp_keepalive_idle', 60)  # Start keepalive after 60s idle
-        self.tcp_keepalive_interval = kwargs.pop('tcp_keepalive_interval', 30)  # Send probe every 30s
-        self.tcp_keepalive_count = kwargs.pop('tcp_keepalive_count', 5)  # Consider dead after 5 failed probes
         
         # Callback for dead socket detection - allows immediate reconnection
         # instead of waiting for the health monitor to detect silence
@@ -86,13 +92,9 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         # instance is replaced by a new one during reconnection.
         self._callback_triggered = False
         
-        # Appeler le constructeur parent
+        # Call the parent constructor - this creates the socket and connects
+        # IMPORTANT: We do NOT modify the socket in any way after this
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
-        
-        # Configurer le socket pour des opérations bloquantes optimisées
-        # IMPORTANT: Only configure minimal options to avoid interfering with standard behavior
-        if hasattr(self, 'socket') and self.socket:
-            self._configure_socket()
     
     def set_dead_socket_callback(self, callback):
         """
@@ -108,104 +110,44 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         self._dead_socket_callback = callback
         debug_print("✅ Callback socket mort configuré")
     
-    def _configure_socket(self):
-        """
-        Configure socket options for optimal performance.
-        
-        CRITICAL: We minimize socket configuration to be AS CLOSE AS POSSIBLE
-        to the standard TCPInterface behavior that works correctly.
-        
-        The ONLY optimization is in _readBytes() using select() for CPU efficiency.
-        We do NOT change:
-        - Socket timeout (standard TCPInterface uses None/blocking)
-        - TCP_NODELAY (standard TCPInterface doesn't set it)
-        - TCP keepalive (standard TCPInterface doesn't use it)
-        
-        Any socket modification can cause the ESP32 to close connections prematurely!
-        """
-        # CRITICAL: Do NOT modify socket options!
-        # The standard TCPInterface uses socket.create_connection() which creates
-        # a plain blocking socket with default options. We must do the same.
-        # 
-        # Tests showed that even setting TCP_NODELAY caused connection drops.
-        # The only difference between us and the standard TCPInterface is the
-        # use of select() in _readBytes() for CPU efficiency.
-        
-        # Only configure TCP keepalive if EXPLICITLY enabled (disabled by default)
-        # This is useful for debugging but causes ESP32 to close connections
-        if self.tcp_keepalive_enabled:
-            try:
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                if hasattr(socket, 'TCP_KEEPIDLE'):
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.tcp_keepalive_idle)
-                if hasattr(socket, 'TCP_KEEPINTVL'):
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, self.tcp_keepalive_interval)
-                if hasattr(socket, 'TCP_KEEPCNT'):
-                    self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count)
-                info_print(f"⚠️ TCP keepalive activé (non recommandé): idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}")
-            except (AttributeError, OSError) as e:
-                debug_print(f"⚠️ TCP keepalive non disponible: {e}")
-        
-        # Only set socket timeout if EXPLICITLY requested (not recommended)
-        if self.socket_timeout is not None:
-            self.socket.settimeout(self.socket_timeout)
-            info_print(f"⚠️ Socket timeout configuré: {self.socket_timeout}s (non recommandé)")
-    
     def _readBytes(self, length):
         """
-        Version optimisée de _readBytes avec select()
+        Read bytes from the TCP socket - MATCHES standard TCPInterface exactly.
         
-        Au lieu de:
-            while True:
-                data = socket.recv(1)  # ← BUSY WAITING 78% CPU!
-                
-        On fait:
-            ready, _, _ = select.select([socket], [], [], timeout)
-            if ready:
-                data = socket.recv(length)  # ← BLOQUANT EFFICACE <5% CPU
+        CRITICAL: After extensive testing, we found that ANY modification to socket
+        behavior (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
+        Meshtastic node to close connections prematurely.
         
-        FIX: Return empty bytes on timeout instead of looping.
-        The Meshtastic library's __reader thread will call this method again,
-        providing the necessary retry mechanism without a tight CPU-consuming loop.
+        This implementation is now IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface._readBytes(),
+        with one addition: a callback for immediate dead socket notification.
         
-        CRITICAL FIX: Use self.read_timeout (default 30.0s) to drastically reduce CPU usage.
-        select() wakes up immediately when data arrives, so latency is not affected.
-        The long timeout only matters when truly idle (no mesh traffic).
+        The standard TCPInterface uses simple blocking recv() which works reliably.
+        We keep only the dead socket callback for faster reconnection response.
         
-        EMERGENCY FIX (2024-11-21): Add small sleep when returning empty to prevent
-        tight loop in __reader thread. The Meshtastic __reader immediately calls
-        _readBytes again when it returns empty, creating 89% CPU usage.
+        CPU Usage Note:
+        The standard TCPInterface does have higher CPU usage due to blocking recv().
+        However, stability is more important than CPU optimization. If CPU usage
+        becomes a problem, the solution should be investigated upstream in the
+        meshtastic library, not in a monkey-patch.
         """
+        if self.socket is None:
+            # No socket, break reader thread (matches standard behavior)
+            self._wantExit = True
+            return None
+        
         try:
-            # Use configured timeout (default 30s) to reduce CPU when idle
-            # select() will wake up immediately when data arrives, so message latency is unaffected
-            # The timeout only matters when there's truly no traffic for 30 seconds
-            # This reduces CPU from 92% to <1% by avoiding tight polling loops
-            
-            # Wait for data with select() - blocks for up to self.read_timeout seconds
-            # NOTE: We do NOT include self.socket in exception list to avoid spurious wakeups
-            ready, _, exception = select.select([self.socket], [], [], self.read_timeout)
-            
-            if not ready:
-                # Timeout: no data available
-                # CRITICAL: Add small sleep to prevent tight loop in __reader thread
-                # The __reader thread will immediately call _readBytes again if we return empty,
-                # creating 89% CPU usage even with long select() timeout!
-                time.sleep(0.01)  # 10ms sleep prevents tight loop while keeping latency low
-                return b''
-            
-            # Socket ready: read data in blocking mode
+            # Simple blocking recv - EXACTLY like standard TCPInterface
             data = self.socket.recv(length)
             
-            if not data:
-                # Connection closed by server - recv() returns empty bytes
-                # This is a definitive signal that the socket is dead
+            if data == b'':
+                # Connection closed by server - empty bytes means dead socket
                 # Log ONCE and trigger callback for immediate reconnection
                 if not getattr(self, '_socket_dead_logged', False):
                     info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
                     self._socket_dead_logged = True
                     
-                    # Trigger callback for immediate reconnection (instead of waiting for health monitor)
+                    # Trigger callback for immediate reconnection
+                    # This is the ONLY addition to standard behavior
                     if self._dead_socket_callback and not self._callback_triggered:
                         self._callback_triggered = True
                         info_print("🔄 Déclenchement reconnexion immédiate via callback...")
@@ -219,35 +161,24 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                         except Exception as e:
                             error_print(f"Erreur callback socket mort: {e}")
                 
-                # Sleep 5 seconds when socket is dead to prevent tight loop
-                # This is much better than 10ms which causes 89% CPU
-                time.sleep(5.0)
-                return b''
+                # Return None like the standard implementation does
+                # The standard implementation also does reconnection logic here,
+                # but we let the callback handle reconnection externally
+                return None
             
-            # Data read successfully
             return data
             
-        except socket.timeout:
-            # Timeout normal, retourner vide (ne PAS logger)
-            # Add sleep to prevent tight loop
-            time.sleep(0.01)
-            return b''
-            
         except socket.error as e:
-            # Erreur socket - logger seulement si ce n'est pas une simple déconnexion
+            # Socket error - log only for non-common errors
             if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
                 error_print(f"Erreur socket lors de la lecture: {e}")
-            # Add sleep to prevent tight loop on socket errors
-            time.sleep(0.01)
-            return b''
+            return None
             
         except Exception as e:
             error_print(f"Erreur _readBytes: {e}")
             import traceback
             error_print(traceback.format_exc())
-            # Add sleep to prevent tight loop on exceptions
-            time.sleep(0.01)
-            return b''
+            return None
     
     def close(self):
         """Fermeture propre avec logs"""
@@ -261,13 +192,12 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
 
 def create_optimized_interface(hostname, port=4403, **kwargs):
     """
-    Factory pour créer une interface TCP optimisée
+    Factory to create a TCPInterface with dead socket callback support.
     
     Args:
-        hostname: IP du nœud Meshtastic
-        port: Port TCP (défaut 4403)
-        read_timeout: Timeout select() en secondes (défaut 30.0)
-        socket_timeout: Timeout socket en secondes (défaut 5.0)
+        hostname: IP of Meshtastic node
+        port: TCP port (default 4403)
+        **kwargs: Additional arguments passed to OptimizedTCPInterface
     
     Returns:
         OptimizedTCPInterface

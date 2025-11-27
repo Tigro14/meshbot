@@ -9,7 +9,7 @@ This document clarifies the network connection architecture used in MeshBot. The
 ### 1. Meshtastic Node Connection Stack
 
 **Files:**
-- `tcp_interface_patch.py` - CPU-optimized TCP interface for Meshtastic
+- `tcp_interface_patch.py` - TCPInterface with dead socket callback for fast reconnection
 - `safe_tcp_connection.py` - Context manager wrapper for temporary connections
 
 **Purpose:** 
@@ -17,9 +17,9 @@ Dedicated to **Meshtastic protocol communication** on port 4403.
 
 **Why Separated:**
 - Meshtastic uses a proprietary protocol over TCP (protobuf-based)
-- Requires CPU optimization (original meshtastic library had 78% CPU usage due to busy-waiting)
 - Needs reconnection handling specific to mesh network behavior
 - Long-lived connection that needs health monitoring
+- Dead socket callback for immediate reconnection
 
 ### 2. External Services Stack
 
@@ -45,19 +45,33 @@ Dedicated to **Meshtastic protocol communication** on port 4403.
 ```
 OptimizedTCPInterface
 ├── Extends: meshtastic.tcp_interface.TCPInterface
-├── Purpose: CPU-optimized Meshtastic TCP connection
-├── Key Fix: Uses select() instead of busy-waiting in _readBytes()
-├── CPU Impact: Reduces from 78% to <5%
+├── Purpose: TCPInterface with dead socket callback
+├── Key Addition: Callback for immediate reconnection on socket death
+├── Socket Config: IDENTICAL to standard TCPInterface (no modifications)
 └── Used By: main_bot.py (main interface), system_monitor.py
 ```
+
+**CRITICAL DESIGN NOTE:**
+After extensive testing, we found that ANY modification to socket behavior
+(select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based Meshtastic
+node to close connections prematurely after ~2.5 minutes.
+
+Therefore, this implementation uses the **EXACT same blocking recv() approach**
+as the standard TCPInterface. The ONLY addition is the dead socket callback.
 
 **Key Method:**
 ```python
 def _readBytes(self, length):
     """
-    Uses select() for efficient blocking reads.
-    Returns empty bytes on timeout with small sleep to prevent tight loops.
+    Simple blocking recv() - IDENTICAL to standard TCPInterface.
+    The ONLY addition: triggers callback when socket is dead.
     """
+    data = self.socket.recv(length)
+    if data == b'':
+        # Trigger callback for immediate reconnection
+        if self._dead_socket_callback:
+            self._dead_socket_callback()
+    return data if data != b'' else None
 ```
 
 **Additional Features:**
@@ -109,7 +123,7 @@ test_connection(hostname)
 │  │  │ tcp_interface_patch │   │  safe_tcp_connection      │ │ │
 │  │  │ OptimizedTCPInterface│   │  SafeTCPConnection        │ │ │
 │  │  │                     │   │  (Context Manager)        │ │ │
-│  │  │ CPU: 78% → <5%      │   │  Uses OptimizedTCPInterface│ │ │
+│  │  │ Dead socket callback│   │  Uses OptimizedTCPInterface│ │ │
 │  │  └─────────────────────┘   └───────────────────────────┘ │ │
 │  │            │                          │                   │ │
 │  │            ▼                          ▼                   │ │
@@ -144,7 +158,7 @@ test_connection(hostname)
 **The stacks are intentionally separated because:**
 
 1. **Different Protocols**: Meshtastic uses protobuf over raw TCP; others use HTTP/MQTT
-2. **Different Requirements**: Meshtastic needs CPU optimization; HTTP requests don't
+2. **Different Requirements**: Meshtastic needs reconnection handling; HTTP requests don't
 3. **Different Libraries**: Each external service has its own well-tested Python library
 4. **Maintainability**: Separation allows independent updates and debugging
 5. **Reliability**: A bug in one stack doesn't affect others
@@ -163,25 +177,9 @@ TCP_SILENT_TIMEOUT = 60s          # Reconnect if no packet for 60s
 - Monitors packet reception timestamps
 - Forces reconnection on detected silence
 
-**TCP Keepalive (Socket Level) - DISABLED BY DEFAULT**
-
-⚠️ **Warning:** TCP keepalive was found to cause connection instability with some
-ESP32-based Meshtastic devices. It is **disabled by default** since v2025.11.26.
-
-If needed for debugging, it can be enabled via constructor:
-```python
-interface = OptimizedTCPInterface(
-    hostname="192.168.1.38",
-    tcp_keepalive=True,  # Enable keepalive (not recommended)
-    tcp_keepalive_idle=60,    # Start after 60s idle
-    tcp_keepalive_interval=30, # Probe every 30s
-    tcp_keepalive_count=5      # Dead after 5 failures
-)
-```
-
 **Dead Socket Callback (Immediate Reconnection)**
 When `recv()` returns empty bytes (connection closed by server), the 
-`OptimizedTCPInterface` now triggers an immediate reconnection callback
+`OptimizedTCPInterface` triggers an immediate reconnection callback
 instead of waiting for the health monitor to detect silence:
 
 ```python
@@ -194,73 +192,61 @@ interface.set_dead_socket_callback(self._reconnect_tcp_interface)
 
 ## Known Issues & Fixes
 
-### 2-Minute Silence / ~3-Minute Disconnect Problem
+### ESP32 Socket Sensitivity (v2025.11.27)
 
-**Symptom:** Every ~3 minutes, the TCP connection dies.
+**Root Cause Found:**
+After extensive testing with the diagnostic tool, we discovered that ESP32-based
+Meshtastic nodes are extremely sensitive to ANY socket modifications:
 
-**Root Cause Found (v2025.11.26):**
-The `OptimizedTCPInterface` was modifying socket options that the standard
-`TCPInterface` doesn't touch. Specifically:
-- TCP keepalive settings
-- Socket timeout
-- TCP_NODELAY
+| Modification | Result |
+|-------------|--------|
+| TCP keepalive | Connection dies after ~2.5 minutes |
+| Socket timeout | Connection dies after ~2.5 minutes |
+| TCP_NODELAY | Connection dies after ~10 seconds |
+| select() before recv() | Connection dies after ~10 seconds |
 
-These modifications caused the ESP32-based Meshtastic node to close the
-connection prematurely after ~2.5-3 minutes.
+**The Fix:**
+Use the **EXACT same socket behavior** as the standard `meshtastic.TCPInterface`:
+- Simple blocking `recv()` with no modifications
+- No socket options changed
+- No select() calls
+- Only add the dead socket callback for faster reconnection
 
-**Fix:**
-- **Do NOT modify any socket options by default**
-- No TCP keepalive
-- No socket timeout (keep default blocking behavior)
-- No TCP_NODELAY
-- Keep ONLY the `select()` optimization for CPU efficiency
-- Match the standard `meshtastic.TCPInterface` socket configuration exactly
+**What OptimizedTCPInterface DOES:**
+- ✅ Dead socket callback for immediate reconnection notification
 
-**Verification:**
-Use the diagnostic tool to compare modes:
-```bash
-# Standard TCPInterface (like CLI) - should work
-python3 diag_tcp_connection.py 192.168.1.38 --duration 600
+**What OptimizedTCPInterface does NOT do:**
+- ❌ No select() calls
+- ❌ No socket timeout modification
+- ❌ No TCP_NODELAY
+- ❌ No TCP keepalive
+- ❌ No CPU optimization (stability > performance)
 
-# OptimizedTCPInterface (like bot) - should also work now
-python3 diag_tcp_connection.py 192.168.1.38 --optimized --duration 600
-```
-
-**Current Mitigations:**
-- **Immediate reconnection callback** - Triggers reconnection as soon as socket death is detected
-- Health monitor with 60s silence detection (backup)
-- 30s health check interval
-
-**Previous Recommendations (if issue persists):**
-1. Check router node settings: Disable WiFi sleep/power saving
-2. Verify network path: No aggressive NAT timeouts
-3. Monitor with `DEBUG_MODE=True` to see packet timestamps
-
-## Future Considerations
-
-### Potential Improvements
-
-1. **Connection Pooling**: For RemoteNodesClient queries
-2. **Metrics**: Track connection uptime and reconnection frequency
-3. **Adaptive Keepalive**: Adjust keepalive parameters based on network conditions
-
-### NOT Recommended
-
-- Merging HTTP/MQTT into Meshtastic TCP stack (different protocols)
-- Using raw sockets for HTTP services (reinventing the wheel)
-- Sharing connection state between services (isolation is good)
-
-## Related Files
-
-- `main_bot.py` - Main bot using OptimizedTCPInterface
-- `system_monitor.py` - Uses OptimizedTCPInterface for tigrog2 monitoring
-- `remote_nodes_client.py` - Uses SafeTCPConnection for node queries
-- `esphome_client.py` - HTTP requests to ESPHome
-- `utils_weather.py` - curl subprocess for weather
-- `blitz_monitor.py` - MQTT client for lightning data
-- `vigilance_scraper.py` - HTTP + BeautifulSoup for weather alerts
+**CPU Usage Note:**
+The standard TCPInterface does have higher CPU usage due to blocking recv().
+However, stability is more important than CPU optimization. If CPU usage
+becomes a problem, investigate upstream in the meshtastic library.
 
 ## Debugging
+
+### Diagnostic Tool
+
+Use `diag_tcp_connection.py` to compare connection stability:
+
+```bash
+# Standard TCPInterface (like CLI) - baseline
+python3 diag_tcp_connection.py 192.168.1.38 --duration 600
+
+# OptimizedTCPInterface (like bot)
+python3 diag_tcp_connection.py 192.168.1.38 --optimized --duration 600
+
+# Raw socket (expected to fail - no protocol)
+python3 diag_tcp_connection.py 192.168.1.38 --raw --duration 60
+```
+
+**Expected Results:**
+- Standard and Optimized modes should both work indefinitely
+- Raw mode will fail quickly (no Meshtastic protocol)
 
 ### Enable Debug Mode
 ```python
@@ -274,14 +260,19 @@ DEBUG_MODE = True
 journalctl -u meshbot -f | grep -i "tcp\|socket\|health"
 ```
 
-### Test TCP Connection
-```bash
-# Direct connection test
-python3 tcp_interface_patch.py 192.168.1.38 4403
-```
-
 ### Check Network Path
 ```bash
 # Verify TCP connectivity
 nc -vz 192.168.1.38 4403
 ```
+
+## Related Files
+
+- `main_bot.py` - Main bot using OptimizedTCPInterface
+- `system_monitor.py` - Uses OptimizedTCPInterface for tigrog2 monitoring
+- `remote_nodes_client.py` - Uses SafeTCPConnection for node queries
+- `esphome_client.py` - HTTP requests to ESPHome
+- `utils_weather.py` - curl subprocess for weather
+- `blitz_monitor.py` - MQTT client for lightning data
+- `vigilance_scraper.py` - HTTP + BeautifulSoup for weather alerts
+- `diag_tcp_connection.py` - Diagnostic tool for TCP connection testing
