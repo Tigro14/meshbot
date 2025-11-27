@@ -91,6 +91,8 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         # Callback for dead socket detection - for external notification
         self._dead_socket_callback = None
         self._last_socket_state = None
+        self._callback_paused = False  # Flag to pause callbacks during reconnection
+        self._dead_socket_reported = False  # Flag to avoid repeated logging
         
         # Call the parent constructor - uses standard TCPInterface entirely
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
@@ -112,7 +114,23 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             callback: Function to call when socket dies (no arguments)
         """
         self._dead_socket_callback = callback
+        self._dead_socket_reported = False  # Reset flag when new callback is set
         debug_print("✅ Callback socket mort configuré")
+    
+    def pause_dead_socket_callbacks(self):
+        """
+        Pause dead socket callbacks (call during reconnection to avoid spam).
+        """
+        self._callback_paused = True
+        debug_print("⏸️ Callbacks socket mort en pause")
+    
+    def resume_dead_socket_callbacks(self):
+        """
+        Resume dead socket callbacks after reconnection.
+        """
+        self._callback_paused = False
+        self._dead_socket_reported = False  # Reset to allow new detection
+        debug_print("▶️ Callbacks socket mort repris")
     
     def _monitor_socket_state(self):
         """Background thread to monitor socket state and trigger callback."""
@@ -122,13 +140,21 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 
                 # Detect transition from connected to disconnected
                 if self._last_socket_state is not None and current_socket is None:
-                    if self._dead_socket_callback:
+                    # Only trigger callback once and if not paused
+                    if (self._dead_socket_callback and 
+                        not self._callback_paused and 
+                        not self._dead_socket_reported):
+                        self._dead_socket_reported = True  # Mark as reported
                         info_print("🔌 Socket TCP mort: détecté par moniteur")
                         info_print("🔄 Déclenchement reconnexion immédiate via callback...")
                         try:
                             self._dead_socket_callback()
                         except Exception as e:
                             error_print(f"Erreur callback socket mort: {e}")
+                
+                # Reset the reported flag when socket becomes connected again
+                if current_socket is not None:
+                    self._dead_socket_reported = False
                 
                 self._last_socket_state = current_socket
                 time.sleep(0.5)  # Check every 500ms

@@ -526,6 +526,10 @@ class MeshBot:
             
             self._tcp_reconnection_in_progress = True
             
+            # Pause callbacks on old interface to avoid spam during reconnection
+            if self.interface and hasattr(self.interface, 'pause_dead_socket_callbacks'):
+                self.interface.pause_dead_socket_callbacks()
+            
             tcp_host = globals().get('TCP_HOST', '192.168.1.38')
             tcp_port = globals().get('TCP_PORT', 4403)
             

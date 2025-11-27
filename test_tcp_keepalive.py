@@ -59,6 +59,20 @@ def test_dead_socket_callback():
         "❌ _dead_socket_callback devrait être stocké"
     print("✅ _dead_socket_callback stocké")
     
+    # Vérifier que pause/resume existe pour réduire le spam de logs
+    assert 'pause_dead_socket_callbacks' in content, \
+        "❌ pause_dead_socket_callbacks devrait exister"
+    print("✅ pause_dead_socket_callbacks existe")
+    
+    assert 'resume_dead_socket_callbacks' in content, \
+        "❌ resume_dead_socket_callbacks devrait exister"
+    print("✅ resume_dead_socket_callbacks existe")
+    
+    # Vérifier que _dead_socket_reported existe pour éviter le spam
+    assert '_dead_socket_reported' in content, \
+        "❌ _dead_socket_reported devrait exister pour éviter le spam"
+    print("✅ _dead_socket_reported existe (anti-spam)")
+    
     print("✅ Test réussi")
     return True
 
