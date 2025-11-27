@@ -150,7 +150,7 @@ def monitor_optimized_connection(host, port, duration_seconds):
     
     packet_count = 0
     start_time = time.time()
-    connection_died = False
+    reconnection_count = 0
     
     def on_receive(packet, interface):
         nonlocal packet_count
@@ -161,14 +161,13 @@ def monitor_optimized_connection(host, port, duration_seconds):
         print(f"[{format_timestamp()}] 📦 Packet #{packet_count}: {portnum} from {from_id} | elapsed={elapsed:.0f}s")
     
     def on_dead_socket():
-        nonlocal connection_died
-        connection_died = True
+        nonlocal reconnection_count
+        reconnection_count += 1
         elapsed = time.time() - start_time
-        print(f"\n{'='*60}")
-        print(f"[{format_timestamp()}] 🔌 SOCKET DEAD via callback!")
+        print(f"\n[{format_timestamp()}] 🔌 SOCKET DEAD via callback (reconnection #{reconnection_count})")
         print(f"    Elapsed time: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
-        print(f"    Packets received: {packet_count}")
-        print(f"{'='*60}")
+        print(f"    Packets so far: {packet_count}")
+        print(f"    (Internal reconnection should occur automatically...)\n")
     
     try:
         print(f"[{format_timestamp()}] 🔌 Connecting with OptimizedTCPInterface...")
@@ -182,8 +181,8 @@ def monitor_optimized_connection(host, port, duration_seconds):
         print(f"[{format_timestamp()}] ✅ Connected!")
         print(f"\n[{format_timestamp()}] 📡 Monitoring... (Ctrl+C to stop)\n")
         
-        # Wait for duration or until connection dies
-        while time.time() - start_time < duration_seconds and not connection_died:
+        # Wait for duration (reconnections happen automatically via internal reconnect)
+        while time.time() - start_time < duration_seconds:
             time.sleep(1)
             
     except KeyboardInterrupt:
@@ -212,7 +211,9 @@ def monitor_optimized_connection(host, port, duration_seconds):
         print(f"{'='*60}")
         print(f"Duration: {elapsed:.1f}s ({elapsed/60:.1f} minutes)")
         print(f"Packets received: {packet_count}")
-        print(f"Connection died: {connection_died}")
+        print(f"Reconnections: {reconnection_count}")
+        if reconnection_count > 0:
+            print(f"Average time between reconnections: {elapsed/reconnection_count:.1f}s")
         print(f"{'='*60}")
 
 
