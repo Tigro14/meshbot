@@ -1,10 +1,12 @@
 """
-🔧 PATCH TCP INTERFACE - Dead Socket Callback for Fast Reconnection
-====================================================================
+🔧 PATCH TCP INTERFACE - Dead Socket Callback for External Notification
+=========================================================================
 
 PURPOSE:
     Wrapper for Meshtastic TCP connections (port 4403) that adds a dead socket
-    callback for immediate reconnection notification.
+    callback for external notification. The standard TCPInterface handles 
+    reconnection internally; this class adds the ability to notify external
+    code (like main_bot.py) when a disconnection occurs.
     
     This module is SPECIFICALLY for Meshtastic protocol communication.
     
@@ -13,31 +15,30 @@ PURPOSE:
     - Weather: curl subprocess (utils_weather.py)  
     - Blitzortung: paho-mqtt library (blitz_monitor.py)
 
-PROBLEM:
-    When the Meshtastic node closes the TCP connection, the standard TCPInterface
-    takes ~60+ seconds (health monitor timeout) to detect and reconnect.
+BEHAVIOR:
+    This class is IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface,
+    with one addition: when the socket dies (recv() returns empty bytes), it
+    triggers a callback to notify external code BEFORE doing the internal
+    reconnection that the standard TCPInterface does.
+    
+    The internal reconnection keeps the reader thread alive and allows the
+    connection to recover automatically.
 
-SOLUTION:
-    We extend TCPInterface with a dead socket callback that triggers immediate
-    reconnection when recv() returns empty bytes. This reduces downtime from
-    ~75 seconds to ~10 seconds.
-
-IMPORTANT - CPU USAGE NOTE:
+IMPORTANT - NO SOCKET MODIFICATIONS:
     After extensive testing, we found that ANY modification to socket behavior
     (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
     Meshtastic node to close connections prematurely.
     
-    Therefore, this implementation uses the EXACT same blocking recv() approach
-    as the standard TCPInterface. CPU usage may be higher, but stability is
-    more important. If CPU becomes a problem, investigate upstream in the
-    meshtastic library.
+    Therefore, this implementation uses the EXACT same socket handling as the
+    standard TCPInterface. We do NOT modify any socket options.
 
 ARCHITECTURE:
     See TCP_ARCHITECTURE.md for full documentation on the network stack design.
     
     OptimizedTCPInterface (this file)
         └── Used directly for long-lived main connections (main_bot.py)
-        └── Adds dead socket callback for immediate reconnection
+        └── Adds dead socket callback for external notification
+        └── Internal reconnection handled by inherited code
         
     SafeTCPConnection (safe_tcp_connection.py)
         └── Context manager wrapper using OptimizedTCPInterface
@@ -46,7 +47,7 @@ ARCHITECTURE:
 USAGE:
     from tcp_interface_patch import OptimizedTCPInterface
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
-    interface.set_dead_socket_callback(my_reconnect_function)
+    interface.set_dead_socket_callback(my_notification_function)
     
     # Or via factory function:
     interface = create_optimized_interface(hostname='192.168.1.100')
@@ -62,35 +63,40 @@ from utils import info_print, error_print, debug_print
 
 class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
     """
-    Meshtastic TCPInterface with dead socket callback for fast reconnection.
+    Meshtastic TCPInterface with dead socket callback for external notification.
     
-    This class is nearly IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface.
-    The ONLY addition is a dead socket callback that triggers immediate reconnection
-    when the socket is detected as dead.
+    This class is IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface,
+    with one addition: a dead socket callback that notifies external code when
+    the connection dies.
+    
+    BEHAVIOR:
+    - When socket dies (recv() returns empty): triggers callback, then does
+      internal reconnection (same as standard TCPInterface)
+    - The internal reconnection keeps the reader thread alive
+    - External code is notified via callback for logging/monitoring purposes
     
     IMPORTANT: After extensive testing, we found that ANY modification to socket
     behavior (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
     Meshtastic node to close connections prematurely. Therefore, we use the
-    EXACT same blocking recv() approach as the standard TCPInterface.
+    EXACT same socket handling as the standard TCPInterface.
     
     ✅ What this class adds:
-    - Dead socket callback for immediate reconnection notification
+    - Dead socket callback for external notification
     
     ❌ What this class does NOT modify:
     - Socket configuration (timeout, TCP_NODELAY, keepalive)
     - The read approach (uses standard blocking recv())
+    - Internal reconnection behavior (inherited from parent)
     """
     
     def __init__(self, hostname, portNumber=4403, **kwargs):
         info_print(f"🔧 Initialisation OptimizedTCPInterface pour {hostname}:{portNumber}")
         
-        # Callback for dead socket detection - allows immediate reconnection
-        # instead of waiting for the health monitor to detect silence
+        # Callback for dead socket detection - for external notification
         self._dead_socket_callback = None
-        # Prevent multiple callback invocations for the same dead socket.
-        # This flag is NOT reset because once a socket is dead, this interface
-        # instance is replaced by a new one during reconnection.
+        # Prevent multiple callback invocations for the same dead socket event
         self._callback_triggered = False
+        self._socket_dead_logged = False
         
         # Call the parent constructor - this creates the socket and connects
         # IMPORTANT: We do NOT modify the socket in any way after this
@@ -119,66 +125,74 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         Meshtastic node to close connections prematurely.
         
         This implementation is now IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface._readBytes(),
-        with one addition: a callback for immediate dead socket notification.
+        with one addition: a callback for immediate dead socket notification BEFORE the
+        internal reconnection.
         
-        The standard TCPInterface uses simple blocking recv() which works reliably.
-        We keep only the dead socket callback for faster reconnection response.
-        
-        CPU Usage Note:
-        The standard TCPInterface does have higher CPU usage due to blocking recv().
-        However, stability is more important than CPU optimization. If CPU usage
-        becomes a problem, the solution should be investigated upstream in the
-        meshtastic library, not in a monkey-patch.
+        The standard TCPInterface does internal reconnection when socket dies.
+        We keep this behavior and add a callback notification.
         """
-        if self.socket is None:
-            # No socket, break reader thread (matches standard behavior)
-            self._wantExit = True
-            return None
+        import contextlib  # Import here to match standard behavior
         
-        try:
-            # Simple blocking recv - EXACTLY like standard TCPInterface
-            data = self.socket.recv(length)
-            
-            if data == b'':
-                # Connection closed by server - empty bytes means dead socket
-                # Log ONCE and trigger callback for immediate reconnection
-                if not getattr(self, '_socket_dead_logged', False):
-                    info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
-                    self._socket_dead_logged = True
-                    
-                    # Trigger callback for immediate reconnection
-                    # This is the ONLY addition to standard behavior
-                    if self._dead_socket_callback and not self._callback_triggered:
-                        self._callback_triggered = True
-                        info_print("🔄 Déclenchement reconnexion immédiate via callback...")
-                        try:
-                            # Call in a separate thread to avoid blocking the reader
-                            threading.Thread(
-                                target=self._dead_socket_callback,
-                                name="DeadSocketCallback",
-                                daemon=True
-                            ).start()
-                        except Exception as e:
-                            error_print(f"Erreur callback socket mort: {e}")
+        if self.socket is not None:
+            try:
+                # Simple blocking recv - EXACTLY like standard TCPInterface
+                data = self.socket.recv(length)
                 
-                # Return None like the standard implementation does
-                # The standard implementation also does reconnection logic here,
-                # but we let the callback handle reconnection externally
+                if data == b'':
+                    # Connection closed by server - empty bytes means dead socket
+                    # This matches the standard TCPInterface behavior
+                    
+                    # Log ONCE and trigger callback for immediate notification
+                    if not getattr(self, '_socket_dead_logged', False):
+                        info_print("🔌 Socket TCP mort: recv() retourne vide (connexion fermée par le serveur)")
+                        self._socket_dead_logged = True
+                        
+                        # Trigger callback for external notification
+                        # This is the ONLY addition to standard behavior
+                        if self._dead_socket_callback and not self._callback_triggered:
+                            self._callback_triggered = True
+                            info_print("🔄 Déclenchement reconnexion immédiate via callback...")
+                            try:
+                                # Call in a separate thread to avoid blocking the reader
+                                threading.Thread(
+                                    target=self._dead_socket_callback,
+                                    name="DeadSocketCallback",
+                                    daemon=True
+                                ).start()
+                            except Exception as e:
+                                error_print(f"Erreur callback socket mort: {e}")
+                    
+                    # IMPORTANT: Do the same internal reconnection as standard TCPInterface
+                    # This keeps the reader thread alive and allows the connection to recover
+                    with contextlib.suppress(Exception):
+                        self._socket_shutdown()
+                    self.socket.close()
+                    self.socket = None
+                    time.sleep(1)
+                    self.myConnect()
+                    self._startConfig()
+                    # Reset flag for next potential disconnection
+                    self._socket_dead_logged = False
+                    self._callback_triggered = False
+                    return None
+                
+                return data
+                
+            except socket.error as e:
+                # Socket error - log only for non-common errors
+                if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
+                    error_print(f"Erreur socket lors de la lecture: {e}")
                 return None
-            
-            return data
-            
-        except socket.error as e:
-            # Socket error - log only for non-common errors
-            if hasattr(e, 'errno') and e.errno not in (104, 110, 111):  # Connection reset, timeout, refused
-                error_print(f"Erreur socket lors de la lecture: {e}")
-            return None
-            
-        except Exception as e:
-            error_print(f"Erreur _readBytes: {e}")
-            import traceback
-            error_print(traceback.format_exc())
-            return None
+                
+            except Exception as e:
+                error_print(f"Erreur _readBytes: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return None
+        
+        # No socket, break reader thread (matches standard behavior)
+        self._wantExit = True
+        return None
     
     def close(self):
         """Fermeture propre avec logs"""
