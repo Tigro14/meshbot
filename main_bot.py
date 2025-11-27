@@ -41,10 +41,11 @@ from platform_config import get_enabled_platforms
 
 class MeshBot:
     # Configuration pour la reconnexion TCP
-    TCP_INTERFACE_CLEANUP_DELAY = 5  # Secondes à attendre après fermeture ancienne interface (augmenté de 3 à 5)
-    TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface (augmenté de 3 à 5)
-    TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP (réduit de 60 à 30 pour détection rapide)
-    TCP_SILENT_TIMEOUT = 60  # Secondes sans paquet avant de forcer une reconnexion (réduit de 120 à 60)
+    # ESP32 needs time to fully release the old connection before accepting a new one
+    TCP_INTERFACE_CLEANUP_DELAY = 10  # Secondes à attendre après fermeture ancienne interface (augmenté de 5 à 10)
+    TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface
+    TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
+    TCP_SILENT_TIMEOUT = 60  # Secondes sans paquet avant de forcer une reconnexion
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     
     def __init__(self):
@@ -103,6 +104,8 @@ class MeshBot:
         # État de reconnexion TCP (pour éviter reconnexions multiples)
         self._tcp_reconnection_thread = None
         self._tcp_reconnection_in_progress = False
+        self._tcp_reconnection_attempts = 0  # Counter for backoff
+        self._tcp_last_reconnection_attempt = 0  # Timestamp of last attempt
         
         # Détection silence TCP - si pas de paquet reçu depuis trop longtemps, forcer reconnexion
         self._last_packet_time = time.time()
@@ -517,6 +520,9 @@ class MeshBot:
         
         IMPORTANT: Version NON-BLOQUANTE - ne bloque pas le thread appelant
         La reconnexion se fait dans un thread séparé pour ne pas freezer le bot
+        
+        Implements exponential backoff to avoid hammering the ESP32 with rapid
+        reconnection attempts. ESP32 needs time to fully release old connections.
         """
         try:
             # Marquer la reconnexion comme en cours
@@ -524,7 +530,21 @@ class MeshBot:
                 debug_print("⏳ Reconnexion déjà en cours, ignorer")
                 return False
             
+            # Implement backoff: wait longer between reconnection attempts
+            current_time = time.time()
+            time_since_last = current_time - self._tcp_last_reconnection_attempt
+            
+            # Calculate backoff delay: 0, 5, 10, 20, 30, 30, 30... seconds
+            backoff_delay = min(30, self._tcp_reconnection_attempts * 5)
+            
+            if time_since_last < backoff_delay:
+                remaining = int(backoff_delay - time_since_last)
+                debug_print(f"⏳ Backoff: attendre encore {remaining}s avant reconnexion (tentative {self._tcp_reconnection_attempts + 1})")
+                return False
+            
             self._tcp_reconnection_in_progress = True
+            self._tcp_reconnection_attempts += 1
+            self._tcp_last_reconnection_attempt = current_time
             
             # Pause callbacks on old interface to avoid spam during reconnection
             if self.interface and hasattr(self.interface, 'pause_dead_socket_callbacks'):
@@ -533,7 +553,7 @@ class MeshBot:
             tcp_host = globals().get('TCP_HOST', '192.168.1.38')
             tcp_port = globals().get('TCP_PORT', 4403)
             
-            info_print(f"🔄 Lancement reconnexion TCP à {tcp_host}:{tcp_port} (en arrière-plan)...")
+            info_print(f"🔄 Reconnexion TCP #{self._tcp_reconnection_attempts} à {tcp_host}:{tcp_port}...")
             
             def reconnect_background():
                 """Fonction de reconnexion exécutée dans un thread séparé"""
@@ -609,6 +629,9 @@ class MeshBot:
                     # au health monitor de détecter si la nouvelle interface fonctionne
                     self._last_packet_time = time.time()
                     debug_print("⏱️ Timer dernier paquet réinitialisé")
+                    
+                    # Reset backoff counter on successful reconnection
+                    self._tcp_reconnection_attempts = 0
                     
                     info_print("✅ Reconnexion TCP réussie (background)")
                     self._tcp_reconnection_in_progress = False

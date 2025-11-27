@@ -146,11 +146,12 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                         not self._dead_socket_reported):
                         self._dead_socket_reported = True  # Mark as reported
                         info_print("🔌 Socket TCP mort: détecté par moniteur")
-                        info_print("🔄 Déclenchement reconnexion immédiate via callback...")
+                        debug_print("🔄 Déclenchement reconnexion via callback...")
                         try:
                             self._dead_socket_callback()
                         except Exception as e:
                             error_print(f"Erreur callback socket mort: {e}")
+                    # Silent skip if paused or already reported - no log spam
                 
                 # Reset the reported flag when socket becomes connected again
                 if current_socket is not None:
@@ -167,6 +168,9 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         try:
             info_print("Fermeture OptimizedTCPInterface...")
             self._monitor_stop.set()
+            # Wait for monitor thread to actually stop (max 2 seconds)
+            if self._monitor_thread and self._monitor_thread.is_alive():
+                self._monitor_thread.join(timeout=2.0)
             super().close()
             info_print("✅ OptimizedTCPInterface fermée")
         except Exception as e:
