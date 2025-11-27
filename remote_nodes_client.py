@@ -28,9 +28,22 @@ from utils import (
 )
 
 class RemoteNodesClient:
-    def __init__(self, interface=None):
+    def __init__(self, interface=None, connection_mode=None, tcp_host=None):
+        """
+        Initialize the RemoteNodesClient
+        
+        Args:
+            interface: Shared Meshtastic interface to reuse
+            connection_mode: 'serial' or 'tcp' (from config if None)
+            tcp_host: TCP host IP (from config if None)
+        """
         self.node_manager = None
         self.interface = interface  # Interface principale à réutiliser (single-node mode)
+        
+        # Config values - prefer passed values, fall back to globals
+        self._connection_mode = connection_mode
+        self._tcp_host = tcp_host
+        
         # ✅ AJOUT: Système de cache pour éviter connexions répétées
         self._cache = {}           # Stockage des résultats
         self._cache_ttl = 60       # Cache valide 60 secondes
@@ -39,11 +52,41 @@ class RemoteNodesClient:
             'misses': 0,
             'last_cleanup': time.time()
         }
-        pass
 
         # Démarrer un thread de nettoyage
         self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True, name="CacheCleanup")
         self._cleanup_thread.start()
+    
+    def _get_connection_mode(self):
+        """Get connection mode from config or constructor"""
+        if self._connection_mode is not None:
+            return self._connection_mode.lower()
+        return globals().get('CONNECTION_MODE', 'serial').lower()
+    
+    def _get_tcp_host(self):
+        """Get TCP host from config or constructor"""
+        if self._tcp_host is not None:
+            return self._tcp_host
+        return globals().get('TCP_HOST', '')
+    
+    def _must_use_shared_interface(self, remote_host):
+        """
+        Check if shared interface MUST be used for this host
+        
+        ESP32 only supports ONE TCP connection - must use shared interface
+        when connecting to the same host as main bot connection.
+        
+        Args:
+            remote_host: The host we want to connect to
+            
+        Returns:
+            bool: True if shared interface MUST be used, False if new connection allowed
+        """
+        connection_mode = self._get_connection_mode()
+        tcp_host = self._get_tcp_host()
+        return (connection_mode == 'tcp' and 
+                tcp_host == remote_host and 
+                self.interface is not None)
 
     def set_node_manager(self, node_manager):
         """Définir le node_manager après l'initialisation"""
@@ -198,17 +241,8 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_metrics = 0
         
-        # Check if we're in TCP mode and this is the same host
-        connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-        tcp_host = globals().get('TCP_HOST', '')
-        
-        # MUST use shared interface if:
-        # 1. We're in TCP mode AND
-        # 2. The requested host is the same as our main TCP connection AND
-        # 3. We have an interface set
-        must_use_shared = (connection_mode == 'tcp' and 
-                          tcp_host == remote_host and 
-                          self.interface is not None)
+        # Check if shared interface MUST be used (ESP32 single-connection limitation)
+        must_use_shared = self._must_use_shared_interface(remote_host)
         
         if must_use_shared:
             debug_print(f"♻️ OBLIGATOIRE: Réutilisation interface partagée (même host TCP: {remote_host})")
@@ -229,6 +263,8 @@ class RemoteNodesClient:
                         close_interface = False
                     else:
                         # Different host - check if we're allowed to create new connection
+                        connection_mode = self._get_connection_mode()
+                        tcp_host = self._get_tcp_host()
                         if connection_mode == 'tcp':
                             # In TCP mode, warn about creating separate connection
                             info_print(f"⚠️ Création connexion TCP séparée vers {remote_host} (host différent de {tcp_host})")
@@ -401,12 +437,8 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_no_data = 0
         
-        # Check if we should use shared interface
-        connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-        tcp_host = globals().get('TCP_HOST', '')
-        must_use_shared = (connection_mode == 'tcp' and 
-                          tcp_host == remote_host and 
-                          self.interface is not None)
+        # Check if shared interface MUST be used (ESP32 single-connection limitation)
+        must_use_shared = self._must_use_shared_interface(remote_host)
         
         remote_interface = None
         close_interface = False

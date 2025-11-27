@@ -234,11 +234,12 @@ class SystemMonitor:
         """
         try:
             # Check if bot is in TCP mode and connected to the same host
-            connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
-            tcp_host = globals().get('TCP_HOST', '')
-            remote_host = globals().get('REMOTE_NODE_HOST', '')
+            # Use config module values directly (already imported via from config import *)
+            connection_mode = CONNECTION_MODE if 'CONNECTION_MODE' in dir() else globals().get('CONNECTION_MODE', 'serial')
+            tcp_host = TCP_HOST if 'TCP_HOST' in dir() else globals().get('TCP_HOST', '')
+            remote_host = REMOTE_NODE_HOST if 'REMOTE_NODE_HOST' in dir() else globals().get('REMOTE_NODE_HOST', '')
             
-            if connection_mode == 'tcp' and tcp_host == remote_host:
+            if connection_mode.lower() == 'tcp' and tcp_host == remote_host:
                 # Skip check - we're already connected to this node via TCP
                 # Creating a new connection would kill the main bot connection
                 debug_print(f"⏭️ tigrog2 check skipped: same host as main TCP connection ({tcp_host})")
@@ -253,9 +254,9 @@ class SystemMonitor:
             current_uptime = None
             
             try:
-                debug_print(f"Vérification tigrog2 ({REMOTE_NODE_HOST})...")
+                debug_print(f"Vérification tigrog2 ({remote_host})...")
                 remote_interface = OptimizedTCPInterface(
-                    hostname=REMOTE_NODE_HOST,
+                    hostname=remote_host,
                     portNumber=4403
                 )
                 
