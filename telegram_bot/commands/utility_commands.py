@@ -319,11 +319,14 @@ Variables `VIGILANCE_*` dans config.py
         lines = ["🌦️ VIGILANCE MÉTÉO-FRANCE", ""]
         lines.append("📍 Configuration:")
 
-        # Département
-        dept_str = VIGILANCE_DEPARTEMENT
-        if VIGILANCE_DEPARTEMENT in DEPARTMENT_NAMES:
-            dept_str = f"{VIGILANCE_DEPARTEMENT} ({DEPARTMENT_NAMES[VIGILANCE_DEPARTEMENT]})"
-        lines.append(f"• Département: {dept_str}")
+        # Département - handle None or empty string
+        if VIGILANCE_DEPARTEMENT:
+            dept_str = VIGILANCE_DEPARTEMENT
+            if VIGILANCE_DEPARTEMENT in DEPARTMENT_NAMES:
+                dept_str = f"{VIGILANCE_DEPARTEMENT} ({DEPARTMENT_NAMES[VIGILANCE_DEPARTEMENT]})"
+            lines.append(f"• Département: {dept_str}")
+        else:
+            lines.append("• Département: Non configuré")
 
         # Intervalle de vérification (en heures)
         if VIGILANCE_CHECK_INTERVAL:
