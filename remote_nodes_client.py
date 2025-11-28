@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """
 Client pour la récupération des nœuds distants
-VERSION AVEC SafeTCPConnection
+
+⚠️ ESP32 LIMITATION:
+ESP32 Meshtastic nodes only support ONE TCP connection at a time.
+This client MUST use the shared interface when connecting to the same
+host as the main bot connection. Creating a new connection would kill
+the main bot connection and cause packet loss.
+
+USAGE:
+    client = RemoteNodesClient()
+    client.set_interface(main_interface)  # Share the main bot's interface
+    nodes = client.get_remote_nodes(host, port, days_filter)
 """
 
 import time
 import threading
-from safe_tcp_connection import SafeTCPConnection
 from config import *
 from utils import (
     debug_print,
     error_print,
+    info_print,
     format_elapsed_time,
     get_signal_quality_icon,
     truncate_text,
@@ -18,9 +28,22 @@ from utils import (
 )
 
 class RemoteNodesClient:
-    def __init__(self, interface=None):
+    def __init__(self, interface=None, connection_mode=None, tcp_host=None):
+        """
+        Initialize the RemoteNodesClient
+        
+        Args:
+            interface: Shared Meshtastic interface to reuse
+            connection_mode: 'serial' or 'tcp' (from config if None)
+            tcp_host: TCP host IP (from config if None)
+        """
         self.node_manager = None
         self.interface = interface  # Interface principale à réutiliser (single-node mode)
+        
+        # Config values - prefer passed values, fall back to globals
+        self._connection_mode = connection_mode
+        self._tcp_host = tcp_host
+        
         # ✅ AJOUT: Système de cache pour éviter connexions répétées
         self._cache = {}           # Stockage des résultats
         self._cache_ttl = 60       # Cache valide 60 secondes
@@ -29,11 +52,41 @@ class RemoteNodesClient:
             'misses': 0,
             'last_cleanup': time.time()
         }
-        pass
 
         # Démarrer un thread de nettoyage
         self._cleanup_thread = threading.Thread(target=self._cache_cleanup_loop, daemon=True, name="CacheCleanup")
         self._cleanup_thread.start()
+    
+    def _get_connection_mode(self):
+        """Get connection mode from config or constructor"""
+        if self._connection_mode is not None:
+            return self._connection_mode.lower()
+        return globals().get('CONNECTION_MODE', 'serial').lower()
+    
+    def _get_tcp_host(self):
+        """Get TCP host from config or constructor"""
+        if self._tcp_host is not None:
+            return self._tcp_host
+        return globals().get('TCP_HOST', '')
+    
+    def _must_use_shared_interface(self, remote_host):
+        """
+        Check if shared interface MUST be used for this host
+        
+        ESP32 only supports ONE TCP connection - must use shared interface
+        when connecting to the same host as main bot connection.
+        
+        Args:
+            remote_host: The host we want to connect to
+            
+        Returns:
+            bool: True if shared interface MUST be used, False if new connection allowed
+        """
+        connection_mode = self._get_connection_mode()
+        tcp_host = self._get_tcp_host()
+        return (connection_mode == 'tcp' and 
+                tcp_host == remote_host and 
+                self.interface is not None)
 
     def set_node_manager(self, node_manager):
         """Définir le node_manager après l'initialisation"""
@@ -156,8 +209,22 @@ class RemoteNodesClient:
         }
 
     def get_remote_nodes(self, remote_host, remote_port=4403, days_filter=3):
-        from safe_tcp_connection import SafeTCPConnection
-
+        """
+        Récupérer les nœuds distants d'un node Meshtastic
+        
+        ⚠️ ESP32 LIMITATION:
+        ESP32 only supports ONE TCP connection at a time. This method MUST use
+        the shared interface when connecting to the same host as the main bot
+        connection. Creating a new connection would kill the main bot connection.
+        
+        Args:
+            remote_host: IP address of the Meshtastic node
+            remote_port: TCP port (default 4403)
+            days_filter: Filter nodes seen in the last N days
+            
+        Returns:
+            list: List of node dictionaries
+        """
         cache_key = f"{remote_host}:{remote_port}:{days_filter}"
 
         # Vérifier le cache d'abord (TTL: 60 secondes)
@@ -174,8 +241,14 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_metrics = 0
         
-        # Retry logic pour connexion TCP
-        max_retries = 2
+        # Check if shared interface MUST be used (ESP32 single-connection limitation)
+        must_use_shared = self._must_use_shared_interface(remote_host)
+        
+        if must_use_shared:
+            debug_print(f"♻️ OBLIGATOIRE: Réutilisation interface partagée (même host TCP: {remote_host})")
+        
+        # Retry logic pour connexion TCP (only for different hosts)
+        max_retries = 1 if must_use_shared else 2
         retry_delay = 3
 
         for attempt in range(max_retries):
@@ -184,22 +257,36 @@ class RemoteNodesClient:
                 if self.interface is not None:
                     # Vérifier que l'interface correspond au host/port demandé
                     interface_host = getattr(self.interface, 'hostname', None)
-                    if interface_host == remote_host:
+                    if interface_host == remote_host or must_use_shared:
                         debug_print(f"♻️ Réutilisation interface principale pour {remote_host}")
                         remote_interface = self.interface
                         close_interface = False
                     else:
+                        # Different host - check if we're allowed to create new connection
+                        connection_mode = self._get_connection_mode()
+                        tcp_host = self._get_tcp_host()
+                        if connection_mode == 'tcp':
+                            # In TCP mode, warn about creating separate connection
+                            info_print(f"⚠️ Création connexion TCP séparée vers {remote_host} (host différent de {tcp_host})")
                         if attempt > 0:
                             debug_print(f"🔗 Connexion TCP à {remote_host} (tentative {attempt + 1}/{max_retries})...")
                         else:
                             debug_print(f"🔗 Connexion TCP à {remote_host}... (host différent)")
+                        from safe_tcp_connection import SafeTCPConnection
                         remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
                         close_interface = True
                 else:
+                    # No interface set - we must create one
+                    if must_use_shared:
+                        # This shouldn't happen in normal operation
+                        error_print(f"❌ Interface non disponible mais mode TCP actif - impossible de requêter {remote_host}")
+                        return []
+                    
                     if attempt > 0:
                         debug_print(f"🔗 Connexion TCP à {remote_host} (tentative {attempt + 1}/{max_retries})...")
                     else:
-                        debug_print(f"🔗 Connexion TCP à {remote_host}... (cache miss)")
+                        debug_print(f"🔗 Connexion TCP à {remote_host}... (pas d'interface partagée)")
+                    from safe_tcp_connection import SafeTCPConnection
                     remote_interface = SafeTCPConnection(remote_host, remote_port, wait_time=2).__enter__()
                     close_interface = True
                 
@@ -334,7 +421,14 @@ class RemoteNodesClient:
         return []
 
     def get_all_remote_nodes(self, remote_host, remote_port=4403, days_filter=30):
-        """Récupérer TOUS les nœuds (directs + relayés) d'un nœud distant"""
+        """
+        Récupérer TOUS les nœuds (directs + relayés) d'un nœud distant
+        
+        ⚠️ ESP32 LIMITATION:
+        ESP32 only supports ONE TCP connection at a time. This method MUST use
+        the shared interface when connecting to the same host as the main bot
+        connection.
+        """
         
         current_time = time.time()
         cutoff_time = current_time - (days_filter * 24 * 3600)
@@ -343,65 +437,79 @@ class RemoteNodesClient:
         skipped_by_date = 0
         skipped_by_no_data = 0
         
+        # Check if shared interface MUST be used (ESP32 single-connection limitation)
+        must_use_shared = self._must_use_shared_interface(remote_host)
+        
+        remote_interface = None
+        close_interface = False
+        
         try:
-            debug_print(f"Connexion au nœud distant {remote_host}...")
+            # Determine which interface to use
+            if must_use_shared or (self.interface is not None and 
+                                   getattr(self.interface, 'hostname', None) == remote_host):
+                debug_print(f"♻️ Réutilisation interface partagée pour {remote_host}")
+                remote_interface = self.interface
+                close_interface = False
+            else:
+                if must_use_shared:
+                    error_print(f"❌ Interface non disponible mais mode TCP actif - impossible de requêter {remote_host}")
+                    return []
+                debug_print(f"Connexion au nœud distant {remote_host}...")
+                from safe_tcp_connection import SafeTCPConnection
+                remote_interface = SafeTCPConnection(remote_host, remote_port).__enter__()
+                close_interface = True
+                time.sleep(2)  # Laisser les données se charger (seulement pour nouvelle connexion)
             
-            # ✅ Utilisation de SafeTCPConnection avec context manager
-#           with SafeTCPConnection.connect(remote_host, remote_port) as remote_interface:
-            with SafeTCPConnection(remote_host, remote_port) as remote_interface:
-                time.sleep(2)  # Laisser les données se charger
-                remote_nodes = remote_interface.nodes
-                
-                node_list = []
-                for node_id, node_info in remote_nodes.items():
-                    try:
-                        if not isinstance(node_info, dict):
-                            continue
-                        
-                        last_heard = node_info.get('lastHeard', 0)
-                        if last_heard == 0:
-                            skipped_by_no_data += 1
-                            continue
-                        
-                        if last_heard < cutoff_time:
-                            skipped_by_date += 1
-                            continue
-                        
-                        # Traiter l'ID
-                        if isinstance(node_id, str):
-                            if node_id.startswith('!'):
-                                id_int = int(node_id[1:], 16)
-                            else:
-                                id_int = int(node_id)
+            remote_nodes = remote_interface.nodes
+            
+            node_list = []
+            for node_id, node_info in remote_nodes.items():
+                try:
+                    if not isinstance(node_info, dict):
+                        continue
+                    
+                    last_heard = node_info.get('lastHeard', 0)
+                    if last_heard == 0:
+                        skipped_by_no_data += 1
+                        continue
+                    
+                    if last_heard < cutoff_time:
+                        skipped_by_date += 1
+                        continue
+                    
+                    # Traiter l'ID
+                    if isinstance(node_id, str):
+                        if node_id.startswith('!'):
+                            id_int = int(node_id[1:], 16)
                         else:
                             id_int = int(node_id)
-                        
-                        # Extraire le nom
-                        user_info = node_info.get('user', {})
-                        if user_info:
-                            shortName = user_info.get('shortName', '???')
-                            longName = user_info.get('longName', 'Unknown')
-                            name = f"{shortName} {longName}"
-                        else:
-                            name = f"!{id_int:08x}"
-                        
-                        hops_away = node_info.get('hopsAway', None)
-                        
-                        node_data = {
-                            'id': id_int,
-                            'name': name,
-                            'last_heard': last_heard,
-                            'hops_away': hops_away if hops_away is not None else 999
-                        }
-                        
-                        node_list.append(node_data)
-                        
-                    except Exception as e:
-                        debug_print(f"Erreur traitement nœud {node_id}: {e}")
-                        continue
-                
-                # ✅ Fermeture automatique grâce au context manager
-                
+                    else:
+                        id_int = int(node_id)
+                    
+                    # Extraire le nom
+                    user_info = node_info.get('user', {})
+                    if user_info:
+                        shortName = user_info.get('shortName', '???')
+                        longName = user_info.get('longName', 'Unknown')
+                        name = f"{shortName} {longName}"
+                    else:
+                        name = f"!{id_int:08x}"
+                    
+                    hops_away = node_info.get('hopsAway', None)
+                    
+                    node_data = {
+                        'id': id_int,
+                        'name': name,
+                        'last_heard': last_heard,
+                        'hops_away': hops_away if hops_away is not None else 999
+                    }
+                    
+                    node_list.append(node_data)
+                    
+                except Exception as e:
+                    debug_print(f"Erreur traitement nœud {node_id}: {e}")
+                    continue
+            
             debug_print(f"✅ Résultats TOUS nœuds pour {remote_host} (filtre: {days_filter}j):")
             debug_print(f"   - Nœuds acceptés: {len(node_list)}")
             debug_print(f"   - Ignorés (>{days_filter}j): {skipped_by_date}")
@@ -412,6 +520,13 @@ class RemoteNodesClient:
         except Exception as e:
             error_print(f"Erreur récupération TOUS nœuds {remote_host}: {e}")
             return []
+        finally:
+            # Fermer la connexion seulement si on l'a créée
+            if close_interface and remote_interface is not None:
+                try:
+                    remote_interface.__exit__(None, None, None)
+                except:
+                    pass
 
     def get_tigrog2_paginated(self, page=1, days_filter=3):
         """

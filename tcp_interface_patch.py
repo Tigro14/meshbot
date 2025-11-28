@@ -1,56 +1,66 @@
 """
-🔧 PATCH TCP INTERFACE - Dead Socket Callback for External Notification
-=========================================================================
+🔧 MESHTASTIC TCP INTERFACE WRAPPER
+====================================
 
 PURPOSE:
-    Wrapper for Meshtastic TCP connections (port 4403) that adds a dead socket
-    callback for external notification. The standard TCPInterface handles 
-    reconnection internally; this class adds the ability to notify external
-    code (like main_bot.py) when a disconnection occurs.
+    Extended Meshtastic TCP interface for port 4403 connections to Meshtastic nodes.
+    This module provides socket state monitoring and external notification callbacks
+    to support reliable long-lived connections with fast dead socket detection.
     
-    This module is SPECIFICALLY for Meshtastic protocol communication.
+    This module is SPECIFICALLY for Meshtastic protocol communication (port 4403).
     
-    For other services (HTTP, MQTT), use their respective libraries:
+    For other services, use their respective libraries:
     - ESPHome: requests library (esphome_client.py)
     - Weather: curl subprocess (utils_weather.py)  
     - Blitzortung: paho-mqtt library (blitz_monitor.py)
 
-BEHAVIOR:
-    This class is IDENTICAL to the standard meshtastic.tcp_interface.TCPInterface,
-    with one addition: when the socket dies (recv() returns empty bytes), it
-    triggers a callback to notify external code BEFORE doing the internal
-    reconnection that the standard TCPInterface does.
+DESIGN PHILOSOPHY:
+    After extensive testing documented in TCP_ARCHITECTURE.md, we found that
+    ESP32-based Meshtastic nodes are extremely sensitive to socket modifications.
+    ANY of the following changes cause connections to die within 2.5 minutes:
+    - TCP keepalive options
+    - Socket timeout changes
+    - TCP_NODELAY setting
+    - select() calls before recv()
     
-    The internal reconnection keeps the reader thread alive and allows the
-    connection to recover automatically.
+    Therefore, this wrapper uses IDENTICAL socket behavior to the standard
+    meshtastic.tcp_interface.TCPInterface. The ONLY additions are:
+    1. Background monitoring thread to detect socket death via state change
+    2. Callback mechanism to notify external code (main_bot.py) immediately
+    3. Thread exception filter to suppress expected network errors from logs
 
-IMPORTANT - NO SOCKET MODIFICATIONS:
-    After extensive testing, we found that ANY modification to socket behavior
-    (select(), timeouts, TCP_NODELAY, keepalive) causes the ESP32-based
-    Meshtastic node to close connections prematurely.
+DIVISION OF RESPONSIBILITY:
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  OptimizedTCPInterface (this file)                                  │
+    │  ├── ROLE: Long-lived primary connections                           │
+    │  ├── USED BY: main_bot.py (main interface)                          │
+    │  ├── FEATURES:                                                      │
+    │  │   ├── Socket state monitoring (every 500ms)                      │
+    │  │   ├── Dead socket callback for fast notification                 │
+    │  │   └── Clean shutdown with thread cleanup                         │
+    │  └── DOES NOT MODIFY: Socket options, recv() behavior               │
+    └─────────────────────────────────────────────────────────────────────┘
     
-    Therefore, this implementation uses the EXACT same socket handling as the
-    standard TCPInterface. We do NOT modify any socket options.
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  SafeTCPConnection (safe_tcp_connection.py)                         │
+    │  ├── ROLE: Temporary/short-lived connections                        │
+    │  ├── USED BY: remote_nodes_client.py                                │
+    │  └── FEATURES: Context manager, automatic cleanup, helper functions │
+    └─────────────────────────────────────────────────────────────────────┘
 
 ARCHITECTURE:
-    See TCP_ARCHITECTURE.md for full documentation on the network stack design.
-    
-    OptimizedTCPInterface (this file)
-        └── Used directly for long-lived main connections (main_bot.py)
-        └── Adds dead socket callback for external notification
-        └── Internal reconnection handled by inherited code
-        
-    SafeTCPConnection (safe_tcp_connection.py)
-        └── Context manager wrapper using OptimizedTCPInterface
-        └── Used for temporary queries (remote_nodes_client.py)
+    See TCP_ARCHITECTURE.md for full network stack documentation.
 
 USAGE:
+    # For long-lived connections (recommended in main_bot.py):
     from tcp_interface_patch import OptimizedTCPInterface
     interface = OptimizedTCPInterface(hostname='192.168.1.100')
     interface.set_dead_socket_callback(my_notification_function)
     
-    # Or via factory function:
-    interface = create_optimized_interface(hostname='192.168.1.100')
+    # For temporary connections (use SafeTCPConnection instead):
+    from safe_tcp_connection import SafeTCPConnection
+    with SafeTCPConnection('192.168.1.100') as interface:
+        interface.sendText("Hello")
 """
 
 import socket
@@ -81,6 +91,8 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         # Callback for dead socket detection - for external notification
         self._dead_socket_callback = None
         self._last_socket_state = None
+        self._callback_paused = False  # Flag to pause callbacks during reconnection
+        self._dead_socket_reported = False  # Flag to avoid repeated logging
         
         # Call the parent constructor - uses standard TCPInterface entirely
         super().__init__(hostname=hostname, portNumber=portNumber, **kwargs)
@@ -102,7 +114,23 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
             callback: Function to call when socket dies (no arguments)
         """
         self._dead_socket_callback = callback
+        self._dead_socket_reported = False  # Reset flag when new callback is set
         debug_print("✅ Callback socket mort configuré")
+    
+    def pause_dead_socket_callbacks(self):
+        """
+        Pause dead socket callbacks (call during reconnection to avoid spam).
+        """
+        self._callback_paused = True
+        debug_print("⏸️ Callbacks socket mort en pause")
+    
+    def resume_dead_socket_callbacks(self):
+        """
+        Resume dead socket callbacks after reconnection.
+        """
+        self._callback_paused = False
+        self._dead_socket_reported = False  # Reset to allow new detection
+        debug_print("▶️ Callbacks socket mort repris")
     
     def _monitor_socket_state(self):
         """Background thread to monitor socket state and trigger callback."""
@@ -112,13 +140,22 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
                 
                 # Detect transition from connected to disconnected
                 if self._last_socket_state is not None and current_socket is None:
-                    if self._dead_socket_callback:
+                    # Only trigger callback once and if not paused
+                    if (self._dead_socket_callback and 
+                        not self._callback_paused and 
+                        not self._dead_socket_reported):
+                        self._dead_socket_reported = True  # Mark as reported
                         info_print("🔌 Socket TCP mort: détecté par moniteur")
-                        info_print("🔄 Déclenchement reconnexion immédiate via callback...")
+                        debug_print("🔄 Déclenchement reconnexion via callback...")
                         try:
                             self._dead_socket_callback()
                         except Exception as e:
                             error_print(f"Erreur callback socket mort: {e}")
+                    # Silent skip if paused or already reported - no log spam
+                
+                # Reset the reported flag when socket becomes connected again
+                if current_socket is not None:
+                    self._dead_socket_reported = False
                 
                 self._last_socket_state = current_socket
                 time.sleep(0.5)  # Check every 500ms
@@ -131,6 +168,9 @@ class OptimizedTCPInterface(meshtastic.tcp_interface.TCPInterface):
         try:
             info_print("Fermeture OptimizedTCPInterface...")
             self._monitor_stop.set()
+            # Wait for monitor thread to actually stop (max 2 seconds)
+            if self._monitor_thread and self._monitor_thread.is_alive():
+                self._monitor_thread.join(timeout=2.0)
             super().close()
             info_print("✅ OptimizedTCPInterface fermée")
         except Exception as e:

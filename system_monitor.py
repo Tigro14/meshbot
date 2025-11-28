@@ -226,8 +226,27 @@ class SystemMonitor:
         - Sleep réduit: 1s au lieu de 3s (-66% temps)
         - Fermeture immédiate de la connexion
         - Gestion d'erreur améliorée
+        
+        ⚠️ ESP32 LIMITATION:
+        ESP32 only supports ONE TCP connection at a time. If the bot is connected
+        via TCP to the same node as REMOTE_NODE_HOST, this check is SKIPPED to
+        avoid killing the main bot connection.
         """
         try:
+            # Check if bot is in TCP mode and connected to the same host
+            # Use config module values directly (already imported via from config import *)
+            connection_mode = CONNECTION_MODE if 'CONNECTION_MODE' in dir() else globals().get('CONNECTION_MODE', 'serial')
+            tcp_host = TCP_HOST if 'TCP_HOST' in dir() else globals().get('TCP_HOST', '')
+            remote_host = REMOTE_NODE_HOST if 'REMOTE_NODE_HOST' in dir() else globals().get('REMOTE_NODE_HOST', '')
+            
+            if connection_mode.lower() == 'tcp' and tcp_host == remote_host:
+                # Skip check - we're already connected to this node via TCP
+                # Creating a new connection would kill the main bot connection
+                debug_print(f"⏭️ tigrog2 check skipped: same host as main TCP connection ({tcp_host})")
+                # Mark as online since we're actively connected to it
+                self.tigrog2_was_online = True
+                return
+            
             import meshtastic.tcp_interface
             
             current_time = time.time()
@@ -235,9 +254,9 @@ class SystemMonitor:
             current_uptime = None
             
             try:
-                debug_print(f"Vérification tigrog2 ({REMOTE_NODE_HOST})...")
+                debug_print(f"Vérification tigrog2 ({remote_host})...")
                 remote_interface = OptimizedTCPInterface(
-                    hostname=REMOTE_NODE_HOST,
+                    hostname=remote_host,
                     portNumber=4403
                 )
                 
