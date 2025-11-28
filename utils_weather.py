@@ -567,13 +567,15 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
     # Sélection des lignes de graphe
     if ultra_compact and len(truncated_lines) >= 5:
         # Ultra compact: seulement 2 lignes (top + bottom) pour économiser espace
-        result_lines.append(truncated_lines[0].rstrip())  # Top - strip trailing spaces
+        # Strip trailing spaces for both lines to minimize character count
+        result_lines.append(truncated_lines[0].rstrip())  # Top
         result_lines.append(truncated_lines[4].rstrip())  # Bottom
     elif compact_mode and len(truncated_lines) >= 5:
         # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
-        result_lines.append(truncated_lines[0])  # Top
-        result_lines.append(truncated_lines[2])  # Middle
-        result_lines.append(truncated_lines[4])  # Bottom
+        # Strip trailing spaces to minimize character count
+        result_lines.append(truncated_lines[0].rstrip())  # Top
+        result_lines.append(truncated_lines[2].rstrip())  # Middle
+        result_lines.append(truncated_lines[4].rstrip())  # Bottom
     else:
         # Mode normal (Telegram): toutes les 5 lignes
         for line in truncated_lines:
@@ -595,6 +597,7 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
         result_lines.append(''.join(hour_scale).rstrip())
     else:
         # Standard: marqueurs toutes les 3h
+        # Strip trailing spaces to reduce message size
         hour_scale = []
         for i in range(truncate_width):
             actual_position = start_offset + i
@@ -604,7 +607,7 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
-        result_lines.append(''.join(hour_scale))
+        result_lines.append(''.join(hour_scale).rstrip())
 
     return "\n".join(result_lines)
 
