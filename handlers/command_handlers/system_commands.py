@@ -257,5 +257,6 @@ class SystemCommands:
             return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
             
         except Exception as e:
-            error_print(f"Erreur reboot: {e}")
+            node_name = REMOTE_NODE_NAME if 'REMOTE_NODE_NAME' in dir() else 'node distant'
+            error_print(f"Erreur reboot {node_name}: {e}")
             return f"❌ Erreur: {str(e)[:50]}"

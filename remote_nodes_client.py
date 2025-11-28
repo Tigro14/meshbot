@@ -28,9 +28,10 @@ from utils import (
 )
 
 # Fallback defaults for optional config values
-if 'REMOTE_NODE_HOST' not in dir():
+# Use globals() because we're checking module-level variables imported via 'from config import *'
+if 'REMOTE_NODE_HOST' not in globals():
     REMOTE_NODE_HOST = None
-if 'REMOTE_NODE_NAME' not in dir():
+if 'REMOTE_NODE_NAME' not in globals():
     REMOTE_NODE_NAME = "RemoteNode"
 
 class RemoteNodesClient:
