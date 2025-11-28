@@ -105,6 +105,13 @@ class MessageSender:
             
             debug_print(f"[SEND_SINGLE] Interface: {interface}")
             
+            # Vérifier que le socket est connecté (TCP uniquement)
+            # Si socket is None, _writeBytes() silencieusement ignore l'envoi
+            if hasattr(interface, 'socket') and interface.socket is None:
+                error_print("❌ Socket TCP mort (socket=None) - message non envoyé!")
+                error_print("   → L'interface doit être reconnectée")
+                return
+            
             interface.sendText(message, destinationId=sender_id)
             info_print(f"✅ Message envoyé → {sender_info}")
             
