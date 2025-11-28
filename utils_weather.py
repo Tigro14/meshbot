@@ -603,7 +603,7 @@ def get_weather_data(location=None, persistence=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode):
+def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode, ultra_compact=False):
     """
     Formater le graphe pour un seul jour
 
@@ -615,47 +615,75 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
         start_offset: Offset de départ dans le graphe source
         truncate_width: Largeur du graphe tronqué
         compact_mode: Si True, seulement 3 lignes
+        ultra_compact: Si True, format minimal pour LoRa (<180 chars)
+                      - Seulement 2 lignes de graphe
+                      - Header court
+                      - Échelle horaire minimale
 
     Returns:
         str: Graphe formaté pour ce jour
     """
     result_lines = []
-    result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
-
-    # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
-    # Mode normal (Telegram): toutes les 5 lignes
-    if compact_mode and len(truncated_lines) >= 5:
-        # Garder lignes 0, 2, 4 (top, middle, bottom)
-        result_lines.append(truncated_lines[0])  # Top
-        result_lines.append(truncated_lines[2])  # Middle
-        result_lines.append(truncated_lines[4])  # Bottom
+    
+    # Header format selon le mode
+    if ultra_compact:
+        # Ultra compact header: "🌧 28/11 1.1mm" (~15-18 chars)
+        # Extraire juste la date du date_label (ex: "aujourd'hui 28/11" -> "28/11")
+        date_only = date_label.split()[-1] if date_label else ""
+        result_lines.append(f"🌧 {date_only} {max_str}")
     else:
-        # Toutes les 5 lignes du graphe vertical (de haut en bas)
+        # Standard header
+        result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+
+    # Sélection des lignes de graphe
+    if ultra_compact and len(truncated_lines) >= 5:
+        # Ultra compact: seulement 2 lignes (top + bottom) pour économiser espace
+        # Strip trailing spaces for both lines to minimize character count
+        result_lines.append(truncated_lines[0].rstrip())  # Top
+        result_lines.append(truncated_lines[4].rstrip())  # Bottom
+    elif compact_mode and len(truncated_lines) >= 5:
+        # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
+        # Strip trailing spaces to minimize character count
+        result_lines.append(truncated_lines[0].rstrip())  # Top
+        result_lines.append(truncated_lines[2].rstrip())  # Middle
+        result_lines.append(truncated_lines[4].rstrip())  # Bottom
+    else:
+        # Mode normal (Telegram): toutes les 5 lignes
         for line in truncated_lines:
             result_lines.append(line)
 
-    # Créer l'échelle horaire (marqueurs toutes les 3h)
-    # 2 points par heure
-    hour_scale = []
-    for i in range(truncate_width):
-        # Calculer l'heure réelle affichée (en tenant compte de l'offset)
-        actual_position = start_offset + i
-        hour = (actual_position // 2) % 24
-        point_in_hour = actual_position % 2
-
-        # Afficher l'heure sur le premier point de l'heure, toutes les 3h
-        if point_in_hour == 0 and hour % 3 == 0:
-            hour_scale.append(str(hour))
-        else:
-            hour_scale.append(' ')
-
-    # Ajouter l'échelle horaire
-    result_lines.append(''.join(hour_scale))
+    # Créer l'échelle horaire
+    if ultra_compact:
+        # Ultra compact: échelle simplifiée avec espacement fixe toutes les 6h
+        hour_scale = []
+        for i in range(truncate_width):
+            actual_position = start_offset + i
+            hour = (actual_position // 2) % 24
+            point_in_hour = actual_position % 2
+            # Afficher l'heure toutes les 6h seulement
+            if point_in_hour == 0 and hour % 6 == 0:
+                hour_scale.append(str(hour))
+            else:
+                hour_scale.append(' ')
+        result_lines.append(''.join(hour_scale).rstrip())
+    else:
+        # Standard: marqueurs toutes les 3h
+        # Strip trailing spaces to reduce message size
+        hour_scale = []
+        for i in range(truncate_width):
+            actual_position = start_offset + i
+            hour = (actual_position // 2) % 24
+            point_in_hour = actual_position % 2
+            if point_in_hour == 0 and hour % 3 == 0:
+                hour_scale.append(str(hour))
+            else:
+                hour_scale.append(' ')
+        result_lines.append(''.join(hour_scale).rstrip())
 
     return "\n".join(result_lines)
 
 
-def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False, ultra_compact=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -667,15 +695,21 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
               2 = aujourd'hui + demain - 2 graphes séparés
               3 = aujourd'hui + demain + J+2 - 3 graphes séparés
         max_hours: Nombre d'heures maximum à afficher par jour (défaut 38)
+                   15 = Ultra compact for LoRa (<180 chars with ultra_compact=True)
                    22 = Mesh compact (44 chars, 3 lines, ~207 chars total)
                    38 = Telegram/CLI (76 chars, 5 lines, ~450 chars total)
         compact_mode: Si True, affiche 3 lignes au lieu de 5 (Mesh LoRa limit)
         persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
         start_at_current_time: Si True, démarre le graphe à l'heure actuelle au lieu de minuit
                               (utile pour Mesh: affiche les prochaines heures au lieu du passé)
+        ultra_compact: Si True, format minimal pour LoRa (<180 chars)
+                      - Seulement 2 lignes de graphe au lieu de 3
+                      - Header court sans nom de ville
+                      - Échelle horaire simplifiée (toutes les 6h)
+                      Recommandé: max_hours=15 avec ultra_compact=True
 
     Returns:
-        str: Graphe sparkline compact des précipitations (3 ou 5 lignes vertical)
+        str: Graphe sparkline compact des précipitations (2, 3 ou 5 lignes vertical)
              Pour days > 1: plusieurs graphes séparés par '\n\n'
 
     Exemples:
@@ -683,6 +717,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         >>> rain = get_rain_graph("Paris", days=2)  # Aujourd'hui + demain (2 graphes)
         >>> rain = get_rain_graph("Paris", days=3)  # Aujourd'hui + demain + J+2 (3 graphes)
         >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True)  # Mesh compact
+        >>> rain = get_rain_graph("Paris", max_hours=15, ultra_compact=True)  # LoRa ultra compact
     """
     # Initialize cache variables at function level for exception handlers
     cache_key = None
@@ -699,9 +734,9 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         if start_at_current_time:
             from datetime import datetime
             current_hour = datetime.now().hour
-            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_now{current_hour}"
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}_now{current_hour}"
         else:
-            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}"
 
         # ----------------------------------------------------------------
         # "Serve first" pattern: always return cached data if available
@@ -954,7 +989,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                     max_str,
                     start_offset,
                     day_truncate_width,
-                    compact_mode
+                    compact_mode,
+                    ultra_compact
                 )
                 result_parts.append(day_result)
 
@@ -995,7 +1031,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             max_str,
             start_offset,
             truncate_width,
-            compact_mode
+            compact_mode,
+            ultra_compact
         )
 
         # Sauvegarder en cache SQLite
