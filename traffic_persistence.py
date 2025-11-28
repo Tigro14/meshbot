@@ -677,6 +677,46 @@ class TrafficPersistence:
             logger.error(f"Erreur lors de la récupération du cache météo : {e}")
             return None
 
+    def get_weather_cache_with_age(self, location: str, cache_type: str, max_age_seconds: int = 86400) -> tuple:
+        """
+        Récupère les données météo en cache avec leur âge, même si expirées.
+        Utilisé pour le pattern "serve stale first, refresh later".
+
+        Args:
+            location: Nom de la localisation (ex: "Paris", "" pour default)
+            cache_type: Type de cache ("weather", "rain", "astro")
+            max_age_seconds: Âge maximum acceptable (défaut: 86400 = 24h)
+
+        Returns:
+            tuple: (data, age_hours) ou (None, 0) si pas de cache ou trop vieux
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT data, timestamp FROM weather_cache
+                WHERE location = ? AND cache_type = ?
+            ''', (location, cache_type))
+
+            row = cursor.fetchone()
+            if row:
+                data, timestamp = row['data'], row['timestamp']
+                age_seconds = time.time() - timestamp
+                age_hours = int(age_seconds / 3600)
+
+                # Rejeter cache trop vieux
+                if age_seconds > max_age_seconds:
+                    logger.info(f"⏰ Cache trop vieux ({cache_type}/{location}): {age_hours}h > {max_age_seconds//3600}h")
+                    return (None, 0)
+
+                logger.info(f"📦 Cache récupéré ({cache_type}/{location}): âge={age_hours}h")
+                return (data, age_hours)
+
+            return (None, 0)
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du cache météo avec âge : {e}")
+            return (None, 0)
+
     def set_weather_cache(self, location: str, cache_type: str, data: str):
         """
         Stocke les données météo en cache.

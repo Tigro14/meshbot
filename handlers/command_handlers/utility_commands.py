@@ -507,8 +507,9 @@ class UtilityCommands:
             else:
                 self.sender.send_single(vigi_info, sender_id, sender_info)
         else:
-            # Météo normale
-            weather_data = get_weather_data(location)
+            # Météo normale - utiliser le cache SQLite si disponible
+            persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
+            weather_data = get_weather_data(location, persistence=persistence)
             cmd = f"/weather {location}" if location else "/weather"
             self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
 
