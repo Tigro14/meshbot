@@ -28,6 +28,15 @@ class DepartmentWeatherAlert:
     permettre un remplacement transparent dans le code existant.
     """
     
+    # Patterns CSS à ignorer (éléments non-alertes comme légendes, navigation, etc.)
+    _SKIP_PATTERNS = ['legend', 'legende', 'footer', 'nav', 'menu', 'list', 'liste']
+    
+    # Couleurs de vigilance reconnues
+    _COLOR_CLASSES = ['vert', 'jaune', 'orange', 'rouge', 'green', 'yellow', 'red']
+    
+    # Indicateurs d'éléments d'alerte actifs
+    _ALERT_INDICATORS = ['alert', 'alerte', 'status', 'niveau', 'vigilance-level', 'current']
+    
     def __init__(self, department_number: str, timeout: int = 10):
         """
         Initialiser le scraper pour un département
@@ -142,8 +151,6 @@ class DepartmentWeatherAlert:
         # IMPORTANT: On cherche la couleur d'alerte ACTUELLE, pas les mentions de couleurs
         # dans les légendes ou textes explicatifs
         
-        color_classes = ['vert', 'jaune', 'orange', 'rouge', 'green', 'yellow', 'red']
-        
         # 1. Chercher des éléments avec attributs data-* contenant la couleur
         # C'est la méthode la plus fiable car elle indique l'état actuel
         for element in soup.find_all(attrs={'data-color': True}):
@@ -158,19 +165,18 @@ class DepartmentWeatherAlert:
         
         # 2. Chercher des classes CSS dans des éléments d'alerte spécifiques
         # On vérifie que l'élément est bien un indicateur d'alerte, pas une légende
-        alert_indicators = ['alert', 'alerte', 'status', 'niveau', 'vigilance-level', 'current']
         for element in soup.find_all(class_=True):
             classes = ' '.join(element.get('class', [])).lower()
             
             # Skip les éléments de légende/navigation/footer
-            if any(skip in classes for skip in ['legend', 'legende', 'footer', 'nav', 'menu', 'list', 'liste']):
+            if any(skip in classes for skip in self._SKIP_PATTERNS):
                 continue
             
             # Vérifier si c'est un indicateur d'alerte
-            is_alert_indicator = any(indicator in classes for indicator in alert_indicators)
+            is_alert_indicator = any(indicator in classes for indicator in self._ALERT_INDICATORS)
             
             if is_alert_indicator:
-                for color in color_classes:
+                for color in self._COLOR_CLASSES:
                     if color in classes:
                         return self._normalize_color(color)
         
@@ -179,16 +185,16 @@ class DepartmentWeatherAlert:
         for element in soup.find_all(class_=True):
             classes = ' '.join(element.get('class', [])).lower()
             
-            # Skip les éléments de légende/navigation
+            # Skip les éléments de légende/navigation (aussi sur le parent)
             parent = element.find_parent()
             if parent:
                 parent_classes = ' '.join(parent.get('class', [])).lower() if parent.get('class') else ''
-                if any(skip in parent_classes for skip in ['legend', 'legende', 'footer', 'list', 'liste']):
+                if any(skip in parent_classes for skip in self._SKIP_PATTERNS):
                     continue
             
             # Chercher des patterns comme "vigilance-rouge" ou "alerte-orange"
             for prefix in ['vigilance-', 'alerte-', 'niveau-', 'alert-', 'status-']:
-                for color in color_classes:
+                for color in self._COLOR_CLASSES:
                     pattern = f'{prefix}{color}'
                     if pattern in classes:
                         return self._normalize_color(color)
@@ -206,21 +212,16 @@ class DepartmentWeatherAlert:
         text = soup.get_text().lower()
         
         # Patterns qui indiquent une alerte ACTIVE (pas une explication)
-        active_patterns = [
-            (r'vigilance\s+rouge\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Rouge'),
-            (r'alerte\s+rouge\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Rouge'),
-            (r'niveau\s+rouge\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Rouge'),
-            (r'vigilance\s+orange\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Orange'),
-            (r'alerte\s+orange\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Orange'),
-            (r'niveau\s+orange\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Orange'),
-            (r'vigilance\s+jaune\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Jaune'),
-            (r'alerte\s+jaune\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Jaune'),
-            (r'niveau\s+jaune\s+(en\s+cours|activ[ée]|pour\s+le|jusqu)', 'Jaune'),
-        ]
+        # Généré dynamiquement pour éviter la duplication de code
+        alert_prefixes = ['vigilance', 'alerte', 'niveau']
+        active_suffixes = r'(en\s+cours|activ[ée]|pour\s+le|jusqu)'
+        alert_colors = [('rouge', 'Rouge'), ('orange', 'Orange'), ('jaune', 'Jaune')]
         
-        for pattern, color in active_patterns:
-            if re.search(pattern, text):
-                return color
+        for prefix in alert_prefixes:
+            for color_pattern, color_result in alert_colors:
+                pattern = rf'{prefix}\s+{color_pattern}\s+{active_suffixes}'
+                if re.search(pattern, text):
+                    return color_result
         
         # 6. Vérifier explicitement si la page indique "pas de vigilance" ou équivalent
         no_alert_patterns = [
