@@ -4,11 +4,39 @@
 Commandes utilitaires Telegram : power, weather, graphs
 """
 
+import time
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram_bot.command_base import TelegramCommandBase
 from utils import info_print, error_print
 import asyncio
+
+# Mapping département -> nom ville (pour les plus courants)
+DEPARTMENT_NAMES = {
+    '75': 'Paris',
+    '13': 'Marseille',
+    '69': 'Lyon',
+    '31': 'Toulouse',
+    '06': 'Nice',
+    '44': 'Nantes',
+    '67': 'Strasbourg',
+    '33': 'Bordeaux',
+    '59': 'Lille',
+    '34': 'Montpellier',
+    '25': 'Doubs',
+    '38': 'Isère',
+    '76': 'Seine-Maritime',
+    '57': 'Moselle',
+    '35': 'Rennes',
+}
+
+# Emoji mapping pour les niveaux de vigilance
+VIGILANCE_EMOJI_MAP = {
+    'Vert': '✅',
+    'Jaune': '⚠️',
+    'Orange': '🟠',
+    'Rouge': '🔴'
+}
 
 
 class UtilityCommands(TelegramCommandBase):
@@ -262,7 +290,6 @@ Variables `VIGILANCE_*` dans config.py
         - Configuration (département, intervalle, throttle, niveaux d'alerte)
         - État actuel (niveau de vigilance, dernière vérification, dernière alerte)
         """
-        import time
         user = update.effective_user
         info_print(f"📱 Telegram /vigi: {user.username}")
 
@@ -289,41 +316,14 @@ Variables `VIGILANCE_*` dans config.py
             await update.effective_message.reply_text(response)
             return
 
-        # Mapping département -> nom ville (pour les plus courants)
-        dept_names = {
-            '75': 'Paris',
-            '13': 'Marseille',
-            '69': 'Lyon',
-            '31': 'Toulouse',
-            '06': 'Nice',
-            '44': 'Nantes',
-            '67': 'Strasbourg',
-            '33': 'Bordeaux',
-            '59': 'Lille',
-            '34': 'Montpellier',
-            '25': 'Doubs',
-            '38': 'Isère',
-            '76': 'Seine-Maritime',
-            '57': 'Moselle',
-            '35': 'Rennes',
-        }
-
-        # Emoji mapping pour les niveaux de vigilance
-        emoji_map = {
-            'Vert': '✅',
-            'Jaune': '⚠️',
-            'Orange': '🟠',
-            'Rouge': '🔴'
-        }
-
         # Construire la section configuration
         lines = ["🌦️ VIGILANCE MÉTÉO-FRANCE", ""]
         lines.append("📍 Configuration:")
 
         # Département
         dept_str = VIGILANCE_DEPARTEMENT
-        if VIGILANCE_DEPARTEMENT in dept_names:
-            dept_str = f"{VIGILANCE_DEPARTEMENT} ({dept_names[VIGILANCE_DEPARTEMENT]})"
+        if VIGILANCE_DEPARTEMENT in DEPARTMENT_NAMES:
+            dept_str = f"{VIGILANCE_DEPARTEMENT} ({DEPARTMENT_NAMES[VIGILANCE_DEPARTEMENT]})"
         lines.append(f"• Département: {dept_str}")
 
         # Intervalle de vérification (en heures)
@@ -353,15 +353,11 @@ Variables `VIGILANCE_*` dans config.py
         lines.append("📊 État actuel:")
 
         # Accéder au vigilance_monitor via le message_handler
-        vigilance_monitor = None
-        try:
-            vigilance_monitor = self.telegram.message_handler.router.utility_handler.vigilance_monitor
-        except AttributeError:
-            pass
+        vigilance_monitor = self._get_vigilance_monitor()
 
         if vigilance_monitor and vigilance_monitor.last_color:
             # Niveau actuel
-            emoji = emoji_map.get(vigilance_monitor.last_color, '🌦️')
+            emoji = VIGILANCE_EMOJI_MAP.get(vigilance_monitor.last_color, '🌦️')
             lines.append(f"{emoji} Niveau: {vigilance_monitor.last_color.upper()}")
 
             # Dernière vérification
@@ -382,6 +378,18 @@ Variables `VIGILANCE_*` dans config.py
 
         response = '\n'.join(lines)
         await update.effective_message.reply_text(response)
+
+    def _get_vigilance_monitor(self):
+        """
+        Obtenir l'instance du moniteur de vigilance
+        
+        Returns:
+            VigilanceMonitor: Instance du moniteur ou None si non disponible
+        """
+        try:
+            return self.telegram.message_handler.router.utility_handler.vigilance_monitor
+        except AttributeError:
+            return None
 
     def _format_elapsed_time(self, seconds: int) -> str:
         """
