@@ -259,6 +259,7 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("weather", self.utility_commands.weather_command))
         self.application.add_handler(CommandHandler("rain", self.utility_commands.rain_command))
         self.application.add_handler(CommandHandler("graphs", self.utility_commands.graphs_command))
+        self.application.add_handler(CommandHandler("vigi", self.utility_commands.vigi_command))
 
         # Commandes mesh
         self.application.add_handler(CommandHandler("echo", self.mesh_commands.echo_command))

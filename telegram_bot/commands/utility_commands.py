@@ -4,11 +4,39 @@
 Commandes utilitaires Telegram : power, weather, graphs
 """
 
+import time
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram_bot.command_base import TelegramCommandBase
 from utils import info_print, error_print
 import asyncio
+
+# Mapping département -> nom ville (pour les plus courants)
+DEPARTMENT_NAMES = {
+    '75': 'Paris',
+    '13': 'Marseille',
+    '69': 'Lyon',
+    '31': 'Toulouse',
+    '06': 'Nice',
+    '44': 'Nantes',
+    '67': 'Strasbourg',
+    '33': 'Bordeaux',
+    '59': 'Lille',
+    '34': 'Montpellier',
+    '25': 'Doubs',
+    '38': 'Isère',
+    '76': 'Seine-Maritime',
+    '57': 'Moselle',
+    '35': 'Rennes',
+}
+
+# Emoji mapping pour les niveaux de vigilance
+VIGILANCE_EMOJI_MAP = {
+    'Vert': '✅',
+    'Jaune': '⚠️',
+    'Orange': '🟠',
+    'Rouge': '🔴'
+}
 
 
 class UtilityCommands(TelegramCommandBase):
@@ -250,3 +278,133 @@ Variables `VIGILANCE_*` dans config.py
 
         # TODO: Implémenter selon vos besoins
         await update.effective_message.reply_text("🚧 Commande /graph en cours d'implémentation")
+
+    async def vigi_command(
+            self,
+            update: Update,
+            context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /vigi - Afficher la configuration et l'état de la vigilance Météo-France
+        
+        Affiche:
+        - Configuration (département, intervalle, throttle, niveaux d'alerte)
+        - État actuel (niveau de vigilance, dernière vérification, dernière alerte)
+        """
+        user = update.effective_user
+        info_print(f"📱 Telegram /vigi: {user.username}")
+
+        # Import config avec valeurs par défaut pour chaque variable
+        try:
+            import config
+            VIGILANCE_ENABLED = getattr(config, 'VIGILANCE_ENABLED', False)
+            VIGILANCE_DEPARTEMENT = getattr(config, 'VIGILANCE_DEPARTEMENT', None)
+            VIGILANCE_CHECK_INTERVAL = getattr(config, 'VIGILANCE_CHECK_INTERVAL', None)
+            VIGILANCE_ALERT_THROTTLE = getattr(config, 'VIGILANCE_ALERT_THROTTLE', None)
+            VIGILANCE_ALERT_LEVELS = getattr(config, 'VIGILANCE_ALERT_LEVELS', None)
+        except ImportError:
+            # Module config non disponible
+            VIGILANCE_ENABLED = False
+            VIGILANCE_DEPARTEMENT = None
+            VIGILANCE_CHECK_INTERVAL = None
+            VIGILANCE_ALERT_THROTTLE = None
+            VIGILANCE_ALERT_LEVELS = None
+
+        # Si la vigilance est désactivée
+        if not VIGILANCE_ENABLED:
+            response = "🌦️ VIGILANCE MÉTÉO-FRANCE\n\n❌ Surveillance désactivée"
+            await update.effective_message.reply_text(response)
+            return
+
+        # Construire la section configuration
+        lines = ["🌦️ VIGILANCE MÉTÉO-FRANCE", ""]
+        lines.append("📍 Configuration:")
+
+        # Département
+        dept_str = VIGILANCE_DEPARTEMENT
+        if VIGILANCE_DEPARTEMENT in DEPARTMENT_NAMES:
+            dept_str = f"{VIGILANCE_DEPARTEMENT} ({DEPARTMENT_NAMES[VIGILANCE_DEPARTEMENT]})"
+        lines.append(f"• Département: {dept_str}")
+
+        # Intervalle de vérification (en heures)
+        if VIGILANCE_CHECK_INTERVAL:
+            interval_hours = VIGILANCE_CHECK_INTERVAL / 3600
+            if interval_hours >= 1:
+                lines.append(f"• Vérification: toutes les {int(interval_hours)}h")
+            else:
+                interval_minutes = VIGILANCE_CHECK_INTERVAL / 60
+                lines.append(f"• Vérification: toutes les {int(interval_minutes)}min")
+
+        # Throttle alertes
+        if VIGILANCE_ALERT_THROTTLE:
+            throttle_hours = VIGILANCE_ALERT_THROTTLE / 3600
+            if throttle_hours >= 1:
+                lines.append(f"• Throttle alertes: {int(throttle_hours)}h")
+            else:
+                throttle_minutes = VIGILANCE_ALERT_THROTTLE / 60
+                lines.append(f"• Throttle alertes: {int(throttle_minutes)}min")
+
+        # Niveaux d'alerte
+        if VIGILANCE_ALERT_LEVELS:
+            levels_str = ', '.join(VIGILANCE_ALERT_LEVELS)
+            lines.append(f"• Niveaux d'alerte: {levels_str}")
+
+        lines.append("")
+        lines.append("📊 État actuel:")
+
+        # Accéder au vigilance_monitor via le message_handler
+        vigilance_monitor = self._get_vigilance_monitor()
+
+        if vigilance_monitor and vigilance_monitor.last_color:
+            # Niveau actuel
+            emoji = VIGILANCE_EMOJI_MAP.get(vigilance_monitor.last_color, '🌦️')
+            lines.append(f"{emoji} Niveau: {vigilance_monitor.last_color.upper()}")
+
+            # Dernière vérification
+            if vigilance_monitor.last_check_time > 0:
+                elapsed = int(time.time() - vigilance_monitor.last_check_time)
+                time_str = self._format_elapsed_time(elapsed)
+                lines.append(f"🕐 Dernière vérif: {time_str}")
+
+            # Dernière alerte
+            if vigilance_monitor.last_alert_time > 0:
+                elapsed = int(time.time() - vigilance_monitor.last_alert_time)
+                time_str = self._format_elapsed_time(elapsed)
+                lines.append(f"📢 Dernière alerte: {time_str}")
+        elif vigilance_monitor:
+            lines.append("⏳ Pas encore initialisé")
+        else:
+            lines.append("⏳ Moniteur non disponible")
+
+        response = '\n'.join(lines)
+        await update.effective_message.reply_text(response)
+
+    def _get_vigilance_monitor(self):
+        """
+        Obtenir l'instance du moniteur de vigilance
+        
+        Returns:
+            VigilanceMonitor: Instance du moniteur ou None si non disponible
+        """
+        try:
+            return self.telegram.message_handler.router.utility_handler.vigilance_monitor
+        except AttributeError:
+            return None
+
+    def _format_elapsed_time(self, seconds: int) -> str:
+        """
+        Formater un temps écoulé en format lisible
+        
+        Args:
+            seconds: Temps écoulé en secondes
+            
+        Returns:
+            str: Temps formaté (ex: "il y a 15min", "il y a 2h")
+        """
+        if seconds < 60:
+            return f"il y a {seconds}s"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            return f"il y a {minutes}min"
+        else:
+            hours = seconds // 3600
+            return f"il y a {hours}h"
