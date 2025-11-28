@@ -362,8 +362,8 @@ def get_weather_data(location=None, persistence=None):
         >>> print(weather)
         Now: 🌧️ 8°C 20km/h 2mm 80%
     """
-    # Variable pour le cache_key (utilisé dans les exceptions)
-    cache_key = location or 'default'
+    # Variables pour fallback dans les exceptions
+    cache_key = None
     cache_file = None
 
     try:
@@ -706,9 +706,6 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         # ----------------------------------------------------------------
         # "Serve first" pattern: always return cached data if available
         # ----------------------------------------------------------------
-        cached_data = None
-        cache_age_seconds = 0
-
         if persistence:
             # Check for any cached data (even stale)
             stale_data, age_hours = persistence.get_weather_cache_with_age(cache_key, 'rain', max_age_seconds=CACHE_MAX_AGE)
@@ -1018,7 +1015,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
 
         # Fallback: cache SQLite périmé
-        if cache_key:
+        if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
@@ -1038,7 +1035,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
 
         # Fallback: cache SQLite périmé
-        if cache_key:
+        if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
@@ -1272,7 +1269,7 @@ def get_weather_astro(location=None, persistence=None):
             return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
 
         # Fallback: cache SQLite périmé
-        if cache_key:
+        if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
@@ -1292,7 +1289,7 @@ def get_weather_astro(location=None, persistence=None):
             return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
 
         # Fallback: cache SQLite périmé
-        if cache_key:
+        if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
