@@ -8,8 +8,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram_bot.command_base import TelegramCommandBase
 from utils import info_print, error_print
-from config import REMOTE_NODE_HOST
 import asyncio
+
+# Import optionnel de REMOTE_NODE_HOST avec fallback
+try:
+    from config import REMOTE_NODE_HOST
+except ImportError:
+    REMOTE_NODE_HOST = None
 
 
 class MeshCommands(TelegramCommandBase):
@@ -35,6 +40,10 @@ class MeshCommands(TelegramCommandBase):
         def send_echo():
             info_print("✅ 3. ENTRÉE dans send_echo()")
             try:
+                # Vérifier que REMOTE_NODE_HOST est configuré
+                if not REMOTE_NODE_HOST:
+                    return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+
                 # Utiliser le mapping Telegram → Meshtastic
                 mesh_identity = self.get_mesh_identity(user.id)
 

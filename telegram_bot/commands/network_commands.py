@@ -8,10 +8,16 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram_bot.command_base import TelegramCommandBase
 from utils import info_print, error_print
-from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
 import asyncio
 import time
 import traceback
+
+# Import optionnel de REMOTE_NODE_HOST/NAME avec fallback
+try:
+    from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
+except ImportError:
+    REMOTE_NODE_HOST = None
+    REMOTE_NODE_NAME = "RemoteNode"
 
 
 class NetworkCommands(TelegramCommandBase):
@@ -48,6 +54,10 @@ class NetworkCommands(TelegramCommandBase):
 
         def get_nodes_list():
             try:
+                # Vérifier que REMOTE_NODE_HOST est configuré
+                if not REMOTE_NODE_HOST:
+                    return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+
                 nodes = self.message_handler.remote_nodes_client.get_remote_nodes(
                     REMOTE_NODE_HOST)
                 if not nodes:

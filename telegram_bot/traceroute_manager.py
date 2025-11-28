@@ -8,12 +8,17 @@ Gère les requêtes de traceroute et les réponses
 from telegram import Update
 from telegram.ext import ContextTypes
 from utils import info_print, error_print, debug_print
-from config import REMOTE_NODE_HOST
 from safe_tcp_connection import SafeTCPConnection
 import time
 import asyncio
 import traceback
 import threading
+
+# Import optionnel de REMOTE_NODE_HOST avec fallback
+try:
+    from config import REMOTE_NODE_HOST
+except ImportError:
+    REMOTE_NODE_HOST = None
 
 # Import Meshtastic protobuf pour traceroute natif
 try:
@@ -487,6 +492,17 @@ class TracerouteManager:
     def _execute_active_trace(self, target_short_name, chat_id, username):
         """Traceroute avec timeout approprié"""
         try:
+            # Vérifier que REMOTE_NODE_HOST est configuré
+            if not REMOTE_NODE_HOST:
+                asyncio.run_coroutine_threadsafe(
+                    self.telegram.application.bot.send_message(
+                        chat_id=chat_id,
+                        text="❌ REMOTE_NODE_HOST non configuré dans config.py"
+                    ),
+                    self.telegram.loop
+                ).result(timeout=5)
+                return
+
             info_print("=" * 60)
             info_print("🚀 Traceroute NATIF Meshtastic démarré")
             info_print(f"   Target: {target_short_name}")
