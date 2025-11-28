@@ -293,17 +293,16 @@ Variables `VIGILANCE_*` dans config.py
         user = update.effective_user
         info_print(f"📱 Telegram /vigi: {user.username}")
 
+        # Import config avec valeurs par défaut pour chaque variable
         try:
-            # Import des configs
-            from config import (
-                VIGILANCE_ENABLED,
-                VIGILANCE_DEPARTEMENT,
-                VIGILANCE_CHECK_INTERVAL,
-                VIGILANCE_ALERT_THROTTLE,
-                VIGILANCE_ALERT_LEVELS
-            )
+            import config
+            VIGILANCE_ENABLED = getattr(config, 'VIGILANCE_ENABLED', False)
+            VIGILANCE_DEPARTEMENT = getattr(config, 'VIGILANCE_DEPARTEMENT', None)
+            VIGILANCE_CHECK_INTERVAL = getattr(config, 'VIGILANCE_CHECK_INTERVAL', None)
+            VIGILANCE_ALERT_THROTTLE = getattr(config, 'VIGILANCE_ALERT_THROTTLE', None)
+            VIGILANCE_ALERT_LEVELS = getattr(config, 'VIGILANCE_ALERT_LEVELS', None)
         except ImportError:
-            # Si les configs ne sont pas définies
+            # Module config non disponible
             VIGILANCE_ENABLED = False
             VIGILANCE_DEPARTEMENT = None
             VIGILANCE_CHECK_INTERVAL = None
