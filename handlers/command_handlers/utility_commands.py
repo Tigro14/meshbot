@@ -405,7 +405,8 @@ class UtilityCommands:
         # Traiter selon la sous-commande
         if subcommand == 'rain':
             # Graphe de précipitations pour LoRa (ultra-compact pour <180 chars)
-            # - max_hours=15: 15 heures de prévision (30 chars de largeur)
+            # - max_hours=24: 24 heures de prévision (48 chars de largeur)
+            #   Max tested: 28h (175 chars), using 24h for safety margin (~160 chars)
             # - ultra_compact=True: header court + 2 lignes graphe seulement
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
             # - Cache SQLite 5min via traffic_monitor.persistence
@@ -413,7 +414,7 @@ class UtilityCommands:
             weather_data = get_rain_graph(
                 location, 
                 days=days, 
-                max_hours=15,  # Réduit de 22 à 15 pour respecter limite LoRa
+                max_hours=24,  # 24h de prévision (48 chars width, ~160 chars total)
                 compact_mode=True, 
                 persistence=persistence, 
                 start_at_current_time=True,
