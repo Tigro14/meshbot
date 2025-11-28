@@ -630,6 +630,15 @@ class MeshBot:
                         if self.mesh_traceroute:
                             self.mesh_traceroute.interface = self.interface
                         
+                        # CRITIQUE: Mettre à jour MessageHandler et MessageSender
+                        # Sans cette mise à jour, les réponses sont envoyées vers l'ancienne
+                        # interface morte et silencieusement ignorées
+                        if self.message_handler:
+                            self.message_handler.interface = self.interface
+                            self.message_handler.router.interface = self.interface
+                            self.message_handler.router.sender.interface_provider = self.interface
+                            debug_print("✅ MessageHandler/Sender interfaces mises à jour")
+                        
                         # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
                         # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
                         # Réabonner causerait des duplications de messages et des freezes.
