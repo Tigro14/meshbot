@@ -205,6 +205,66 @@ def test_mock_html_parsing():
         return False
 
 
+def test_no_false_positive_from_legend_text():
+    """Test that legend/explanatory text doesn't trigger false color detection"""
+    print("\n" + "="*70)
+    print("TEST 6: No false positive from legend/explanatory text")
+    print("="*70)
+    
+    try:
+        from vigilance_scraper import DepartmentWeatherAlert
+        from bs4 import BeautifulSoup
+        import unittest.mock as mock
+        
+        # This HTML simulates a page with NO active alert but mentions
+        # colors in legend and explanatory text - the bug was that this
+        # was incorrectly detected as "Rouge"
+        mock_html_no_alert = """
+        <html>
+            <body>
+                <h1>Vigilance Météo</h1>
+                <div class="vigilance-map">
+                    <p>La carte de vigilance pour demain sera disponible à partir de 06h.</p>
+                </div>
+                <div class="legend">
+                    <p>Niveaux de vigilance:</p>
+                    <ul>
+                        <li>Vert: Pas de vigilance</li>
+                        <li>Jaune: Soyez attentif</li>
+                        <li>Orange: Soyez très vigilant</li>
+                        <li>Rouge: Une vigilance absolue</li>
+                    </ul>
+                </div>
+                <div class="footer">
+                    Pour la vigilance rouge, consultez les recommandations.
+                </div>
+            </body>
+        </html>
+        """
+        
+        soup = BeautifulSoup(mock_html_no_alert, 'html.parser')
+        
+        with mock.patch.object(DepartmentWeatherAlert, '_fetch_data'):
+            alert = DepartmentWeatherAlert('75')
+            
+            # Test color extraction - should be Vert, not Rouge
+            color = alert._extract_color(soup)
+            print(f"Extracted color: {color}")
+            
+            if color == 'Vert':
+                print("✅ PASS: Correctly returned Vert (no false positive)")
+                return True
+            else:
+                print(f"❌ FAIL: Expected 'Vert' but got '{color}' (false positive from legend text)")
+                return False
+        
+    except Exception as e:
+        print(f"❌ FAIL: Error testing false positive prevention: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests"""
     print("\n" + "="*70)
@@ -221,6 +281,7 @@ def main():
         ("Department Mapping", test_department_name_mapping),
         ("Color Normalization", test_color_normalization),
         ("HTML Parsing", test_mock_html_parsing),
+        ("No False Positive From Legend", test_no_false_positive_from_legend_text),
     ]
     
     for name, test_func in tests:

@@ -319,11 +319,24 @@ Variables `VIGILANCE_*` dans config.py
         lines = ["🌦️ VIGILANCE MÉTÉO-FRANCE", ""]
         lines.append("📍 Configuration:")
 
-        # Département
-        dept_str = VIGILANCE_DEPARTEMENT
-        if VIGILANCE_DEPARTEMENT in DEPARTMENT_NAMES:
-            dept_str = f"{VIGILANCE_DEPARTEMENT} ({DEPARTMENT_NAMES[VIGILANCE_DEPARTEMENT]})"
-        lines.append(f"• Département: {dept_str}")
+        # Accéder au vigilance_monitor via le message_handler (do this early to get dept)
+        vigilance_monitor = self._get_vigilance_monitor()
+        
+        # Département - prioritize from vigilance_monitor, fallback to config
+        # Handle None, empty string, or string "None"
+        dept_value = None
+        if vigilance_monitor and vigilance_monitor.departement:
+            dept_value = vigilance_monitor.departement
+        elif VIGILANCE_DEPARTEMENT and str(VIGILANCE_DEPARTEMENT).lower() != 'none':
+            dept_value = str(VIGILANCE_DEPARTEMENT)
+        
+        if dept_value:
+            dept_str = dept_value
+            if dept_value in DEPARTMENT_NAMES:
+                dept_str = f"{dept_value} ({DEPARTMENT_NAMES[dept_value]})"
+            lines.append(f"• Département: {dept_str}")
+        else:
+            lines.append("• Département: Non configuré")
 
         # Intervalle de vérification (en heures)
         if VIGILANCE_CHECK_INTERVAL:
@@ -351,9 +364,7 @@ Variables `VIGILANCE_*` dans config.py
         lines.append("")
         lines.append("📊 État actuel:")
 
-        # Accéder au vigilance_monitor via le message_handler
-        vigilance_monitor = self._get_vigilance_monitor()
-
+        # vigilance_monitor already fetched earlier for département
         if vigilance_monitor and vigilance_monitor.last_color:
             # Niveau actuel
             emoji = VIGILANCE_EMOJI_MAP.get(vigilance_monitor.last_color, '🌦️')

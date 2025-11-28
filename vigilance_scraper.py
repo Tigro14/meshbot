@@ -28,6 +28,15 @@ class DepartmentWeatherAlert:
     permettre un remplacement transparent dans le code existant.
     """
     
+    # Patterns CSS à ignorer (éléments non-alertes comme légendes, navigation, etc.)
+    _SKIP_PATTERNS = ['legend', 'legende', 'footer', 'nav', 'menu', 'list', 'liste']
+    
+    # Couleurs de vigilance reconnues
+    _COLOR_CLASSES = ['vert', 'jaune', 'orange', 'rouge', 'green', 'yellow', 'red']
+    
+    # Indicateurs d'éléments d'alerte actifs
+    _ALERT_INDICATORS = ['alert', 'alerte', 'status', 'niveau', 'vigilance-level', 'current']
+    
     def __init__(self, department_number: str, timeout: int = 10):
         """
         Initialiser le scraper pour un département
@@ -139,31 +148,58 @@ class DepartmentWeatherAlert:
             str: 'Vert', 'Jaune', 'Orange', ou 'Rouge'
         """
         # Stratégies multiples pour extraire la couleur:
+        # IMPORTANT: On cherche la couleur d'alerte ACTUELLE, pas les mentions de couleurs
+        # dans les légendes ou textes explicatifs
         
-        # 1. Chercher des classes CSS contenant la couleur
-        color_classes = ['vert', 'jaune', 'orange', 'rouge', 'green', 'yellow', 'red']
+        # 1. Chercher des éléments avec attributs data-* contenant la couleur
+        # C'est la méthode la plus fiable car elle indique l'état actuel
+        for element in soup.find_all(attrs={'data-color': True}):
+            color = element.get('data-color', '').lower()
+            if color:
+                return self._normalize_color(color)
+        
+        for element in soup.find_all(attrs={'data-level': True}):
+            level = element.get('data-level', '').lower()
+            if level:
+                return self._normalize_color(level)
+        
+        # 2. Chercher des classes CSS dans des éléments d'alerte spécifiques
+        # On vérifie que l'élément est bien un indicateur d'alerte, pas une légende
         for element in soup.find_all(class_=True):
             classes = ' '.join(element.get('class', [])).lower()
-            if 'vigilance' in classes or 'couleur' in classes or 'niveau' in classes:
-                for color in color_classes:
+            
+            # Skip les éléments de légende/navigation/footer
+            if any(skip in classes for skip in self._SKIP_PATTERNS):
+                continue
+            
+            # Vérifier si c'est un indicateur d'alerte
+            is_alert_indicator = any(indicator in classes for indicator in self._ALERT_INDICATORS)
+            
+            if is_alert_indicator:
+                for color in self._COLOR_CLASSES:
                     if color in classes:
                         return self._normalize_color(color)
         
-        # 2. Chercher dans le texte
-        text = soup.get_text().lower()
-        if 'vigilance rouge' in text or 'niveau rouge' in text:
-            return 'Rouge'
-        if 'vigilance orange' in text or 'niveau orange' in text:
-            return 'Orange'
-        if 'vigilance jaune' in text or 'niveau jaune' in text:
-            return 'Jaune'
+        # 3. Chercher des classes CSS avec format spécifique couleur-alerte
+        # Ex: vigilance-rouge, niveau-orange, alert-jaune
+        for element in soup.find_all(class_=True):
+            classes = ' '.join(element.get('class', [])).lower()
+            
+            # Skip les éléments de légende/navigation (aussi sur le parent)
+            parent = element.find_parent()
+            if parent:
+                parent_classes = ' '.join(parent.get('class', [])).lower() if parent.get('class') else ''
+                if any(skip in parent_classes for skip in self._SKIP_PATTERNS):
+                    continue
+            
+            # Chercher des patterns comme "vigilance-rouge" ou "alerte-orange"
+            for prefix in ['vigilance-', 'alerte-', 'niveau-', 'alert-', 'status-']:
+                for color in self._COLOR_CLASSES:
+                    pattern = f'{prefix}{color}'
+                    if pattern in classes:
+                        return self._normalize_color(color)
         
-        # 3. Chercher des éléments avec attributs data-* contenant la couleur
-        for element in soup.find_all(attrs={'data-color': True}):
-            color = element.get('data-color', '').lower()
-            return self._normalize_color(color)
-        
-        # 4. Chercher dans les meta tags
+        # 4. Chercher dans les meta tags (fiable car contient l'état actuel)
         meta_tags = soup.find_all('meta', attrs={'name': re.compile(r'vigilance|couleur|niveau', re.I)})
         for meta in meta_tags:
             content = meta.get('content', '').lower()
@@ -171,7 +207,35 @@ class DepartmentWeatherAlert:
                 if color in content:
                     return self._normalize_color(color)
         
+        # 5. Chercher dans le texte - UNIQUEMENT pour les alertes actives
+        # On cherche des patterns qui indiquent une alerte EN COURS, pas des explications
+        text = soup.get_text().lower()
+        
+        # Patterns qui indiquent une alerte ACTIVE (pas une explication)
+        # Généré dynamiquement pour éviter la duplication de code
+        alert_prefixes = ['vigilance', 'alerte', 'niveau']
+        active_suffixes = r'(en\s+cours|activ[ée]|pour\s+le|jusqu)'
+        alert_colors = [('rouge', 'Rouge'), ('orange', 'Orange'), ('jaune', 'Jaune')]
+        
+        for prefix in alert_prefixes:
+            for color_pattern, color_result in alert_colors:
+                pattern = rf'{prefix}\s+{color_pattern}\s+{active_suffixes}'
+                if re.search(pattern, text):
+                    return color_result
+        
+        # 6. Vérifier explicitement si la page indique "pas de vigilance" ou équivalent
+        no_alert_patterns = [
+            r'pas\s+de\s+vigilance\s+particulière',
+            r'aucune\s+vigilance',
+            r'vigilance\s+verte',
+            r'niveau\s+vert',
+        ]
+        for pattern in no_alert_patterns:
+            if re.search(pattern, text):
+                return 'Vert'
+        
         # Par défaut, considérer Vert (pas de vigilance)
+        # C'est le choix le plus sûr pour éviter les fausses alertes
         return 'Vert'
     
     def _normalize_color(self, color: str) -> str:
