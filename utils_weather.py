@@ -312,7 +312,7 @@ def _load_stale_cache_sqlite(persistence, cache_key, cache_type):
     Args:
         persistence: Instance TrafficPersistence
         cache_key: Clé de cache
-        cache_type: Type de cache ('rain', 'astro')
+        cache_type: Type de cache ('rain', 'astro', 'weather')
 
     Returns:
         tuple: (data, age_hours) ou (None, 0) si pas de cache
@@ -321,12 +321,8 @@ def _load_stale_cache_sqlite(persistence, cache_key, cache_type):
         return (None, 0)
 
     try:
-        # Récupérer le cache avec max_age_seconds très élevé (24h)
-        cached = persistence.get_weather_cache(cache_key, cache_type, max_age_seconds=CACHE_MAX_AGE)
-        if cached:
-            # Essayer de récupérer l'âge exact du cache
-            # Pour l'instant on retourne un âge approximatif
-            return (cached, 1)  # 1h par défaut (on ne connaît pas l'âge exact)
+        # Utiliser la nouvelle méthode qui retourne l'âge exact
+        return persistence.get_weather_cache_with_age(cache_key, cache_type, max_age_seconds=CACHE_MAX_AGE)
 
     except Exception as e:
         error_print(f"⚠️ Erreur lecture cache SQLite périmé: {e}")
@@ -334,18 +330,25 @@ def _load_stale_cache_sqlite(persistence, cache_key, cache_type):
     return (None, 0)
 
 
-def get_weather_data(location=None):
+def get_weather_data(location=None, persistence=None):
     """
-    Récupérer les données météo avec système de cache
+    Récupérer les données météo avec système de cache (SQLite ou fichier)
 
     Args:
         location: Ville/lieu pour la météo (ex: "Paris", "London", "New York")
                  Si None ou vide, utilise la géolocalisation par IP
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
+                    Si fourni, utilise SQLite; sinon, cache fichier /tmp
 
-    Le cache est vérifié en premier. S'il est valide (< 5 minutes),
-    les données sont retournées immédiatement sans appel réseau.
+    Le cache est vérifié en premier. S'il existe (même périmé), les données
+    sont retournées immédiatement ("serve first"). Une tentative de
+    rafraîchissement est faite uniquement si le cache est périmé.
 
-    Sinon, un appel curl est fait vers wttr.in et le cache est mis à jour.
+    Pattern "serve first, refresh later":
+    - Cache < 5 min (FRESH): retourne immédiatement
+    - Cache < 1h (STALE): retourne immédiatement (skip refresh pour performance)
+    - Cache > 1h: tente de rafraîchir, fallback sur cache périmé si échec
+    - Pas de cache: tente de récupérer depuis wttr.in
 
     Returns:
         str: Données météo formatées sur 4 lignes ou message d'erreur
@@ -355,21 +358,28 @@ def get_weather_data(location=None):
         >>> print(weather)
         Now: ☀️ 12°C 15km/h 0mm 65%
 
-        >>> weather = get_weather_data("London")  # Ville spécifique
+        >>> weather = get_weather_data("London", persistence)  # Avec SQLite
         >>> print(weather)
         Now: 🌧️ 8°C 20km/h 2mm 80%
     """
+    # Variable pour le cache_key (utilisé dans les exceptions)
+    cache_key = location or 'default'
+    cache_file = None
+
     try:
         # Normaliser la location
         if not location:
             location = DEFAULT_LOCATION
 
-        # Construire l'URL et le nom du cache
+        # Clé de cache pour SQLite
+        cache_key = location or 'default'
+
+        # Construire l'URL
         if location:
             # Encoder la ville pour l'URL (espaces → +)
             location_encoded = location.replace(' ', '+')
             wttr_url = f"{WTTR_BASE_URL}/{location_encoded}?format=j1"
-            # Nom de cache safe (espaces → _)
+            # Nom de cache safe pour fichier (espaces → _)
             location_safe = location.replace(' ', '_').replace('/', '_')
             cache_file = f"{CACHE_DIR}/weather_cache_{location_safe}.json"
         else:
@@ -377,59 +387,76 @@ def get_weather_data(location=None):
             cache_file = f"{CACHE_DIR}/weather_cache_default.json"
 
         # ----------------------------------------------------------------
-        # Phase 1: Vérifier le cache (stale-while-revalidate pattern)
+        # Phase 1: Vérifier le cache SQLite ou fichier ("serve first")
         # ----------------------------------------------------------------
         cache_needs_refresh = False
-        stale_data_to_serve = None
-        
-        if os.path.exists(cache_file):
+        cached_data = None
+        cache_age_seconds = 0
+
+        if persistence:
+            # Utiliser le cache SQLite
             try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
-                
-                cache_time = cache_data.get('timestamp', 0)
-                current_time = time.time()
-                age_seconds = int(current_time - cache_time)
-                
-                # Fresh cache (<5 min): serve immediately
-                if age_seconds < CACHE_DURATION:
-                    weather_data = cache_data.get('data', '')
-                    info_print(f"✅ Cache météo FRESH utilisé (age: {age_seconds}s / {CACHE_DURATION}s)")
-                    return weather_data
-                
-                # Stale but valid (<1 hour): serve and refresh in background
-                elif age_seconds < CACHE_STALE_DURATION:
-                    weather_data = cache_data.get('data', '')
-                    info_print(f"⚡ Cache météo STALE mais valide (age: {age_seconds}s / {CACHE_STALE_DURATION}s)")
-                    info_print(f"   → Servir le cache immédiatement et rafraîchir en arrière-plan")
-                    stale_data_to_serve = weather_data
-                    cache_needs_refresh = True
-                    # On va continuer pour rafraîchir, mais on servira le cache en cas d'échec
-                
+                stale_data, age_hours = persistence.get_weather_cache_with_age(
+                    cache_key, 'weather', max_age_seconds=CACHE_MAX_AGE
+                )
+                if stale_data:
+                    cached_data = stale_data
+                    cache_age_seconds = age_hours * 3600
+
+                    if cache_age_seconds < CACHE_DURATION:
+                        info_print(f"✅ Cache SQLite FRESH utilisé (age: {cache_age_seconds}s / {CACHE_DURATION}s)")
+                        return cached_data
+                    elif cache_age_seconds < CACHE_STALE_DURATION:
+                        info_print(f"⚡ Cache SQLite STALE mais valide (age: {cache_age_seconds}s / {CACHE_STALE_DURATION}s)")
+                        # Serve first: return immediately
+                        return cached_data
+                    else:
+                        info_print(f"⏰ Cache SQLite expiré (age: {age_hours}h), tentative de rafraîchissement")
+                        cache_needs_refresh = True
                 else:
-                    info_print(f"⏰ Cache expiré (age: {age_seconds}s > {CACHE_STALE_DURATION}s)")
                     cache_needs_refresh = True
-            
-            except (json.JSONDecodeError, IOError) as e:
-                error_print(f"⚠️ Erreur lecture cache: {e}")
+            except Exception as e:
+                error_print(f"⚠️ Erreur lecture cache SQLite: {e}")
                 cache_needs_refresh = True
         else:
-            cache_needs_refresh = True
-        
+            # Utiliser le cache fichier (comportement original)
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cache_data = json.load(f)
+
+                    cache_time = cache_data.get('timestamp', 0)
+                    current_time = time.time()
+                    cache_age_seconds = int(current_time - cache_time)
+                    cached_data = cache_data.get('data', '')
+
+                    # Fresh cache (<5 min): serve immediately
+                    if cache_age_seconds < CACHE_DURATION:
+                        info_print(f"✅ Cache fichier FRESH utilisé (age: {cache_age_seconds}s / {CACHE_DURATION}s)")
+                        return cached_data
+
+                    # Stale but valid (<1 hour): serve immediately (skip refresh)
+                    elif cache_age_seconds < CACHE_STALE_DURATION:
+                        info_print(f"⚡ Cache fichier STALE mais valide (age: {cache_age_seconds}s / {CACHE_STALE_DURATION}s)")
+                        return cached_data
+
+                    else:
+                        info_print(f"⏰ Cache fichier expiré (age: {cache_age_seconds}s > {CACHE_STALE_DURATION}s)")
+                        cache_needs_refresh = True
+
+                except (json.JSONDecodeError, IOError) as e:
+                    error_print(f"⚠️ Erreur lecture cache fichier: {e}")
+                    cache_needs_refresh = True
+            else:
+                cache_needs_refresh = True
+
         # ----------------------------------------------------------------
-        # Phase 2: Appel curl vers wttr.in (si cache manquant ou expiré)
+        # Phase 2: Rafraîchissement depuis wttr.in (si nécessaire)
         # ----------------------------------------------------------------
         if not cache_needs_refresh:
             # Fresh cache already returned above
             pass
-        
-        # If we have stale data, return it immediately (stale-while-revalidate)
-        if stale_data_to_serve:
-            info_print(f"⚡ Retour immédiat du cache stale (age <1h)")
-            # Note: In a real async implementation, we'd refresh in background here
-            # For now, we return stale data and skip refresh to maintain responsiveness
-            return stale_data_to_serve
-        
+
         info_print(f"🌤️ Récupération météo depuis {wttr_url}...")
 
         # Appel curl avec retry logic
@@ -438,7 +465,15 @@ def get_weather_data(location=None):
         except subprocess.TimeoutExpired:
             error_print(f"❌ Timeout météo après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)")
             # Fallback vers cache périmé si disponible
-            stale_data, age_hours = _load_stale_cache(cache_file)
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{cached_data}"
+            # Essayer le cache SQLite/fichier périmé
+            if persistence:
+                stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+            else:
+                stale_data, age_hours = _load_stale_cache(cache_file)
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache {age_hours}h)\n{stale_data}"
@@ -446,7 +481,14 @@ def get_weather_data(location=None):
         except Exception as e:
             error_print(f"❌ Erreur curl après {CURL_MAX_RETRIES} tentatives: {e}")
             # Fallback vers cache périmé
-            stale_data, age_hours = _load_stale_cache(cache_file)
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{cached_data}"
+            if persistence:
+                stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+            else:
+                stale_data, age_hours = _load_stale_cache(cache_file)
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache {age_hours}h)\n{stale_data}"
@@ -457,40 +499,51 @@ def get_weather_data(location=None):
         # ----------------------------------------------------------------
         if result.returncode == 0 and result.stdout:
             json_response = result.stdout.strip()
-            
+
             # Parser le JSON
             try:
                 weather_json = json.loads(json_response)
                 weather_data = parse_weather_json(weather_json)
             except json.JSONDecodeError as e:
                 error_print(f"⚠️ JSON invalide: {e}")
+                # Fallback sur cache si disponible
+                if cached_data:
+                    age_hours = int(cache_age_seconds / 3600)
+                    return f"⚠️ (cache {age_hours}h)\n{cached_data}"
                 return "❌ Réponse météo invalide"
-            
+
             # Validation basique de la réponse formatée
             if not weather_data or 'Erreur' in weather_data:
                 error_print(f"⚠️ Données météo invalides")
+                if cached_data:
+                    age_hours = int(cache_age_seconds / 3600)
+                    return f"⚠️ (cache {age_hours}h)\n{cached_data}"
                 return "❌ Données météo invalides"
-            
-            # Sauvegarder en cache
-            cache_data = {
-                'timestamp': time.time(),
-                'data': weather_data,
-                'source': 'wttr.in',
-                'url': wttr_url,
-                'location': location or 'auto'
-            }
 
-            try:
-                with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, indent=2)
-                info_print(f"✅ Cache météo créé/mis à jour")
-            except IOError as e:
-                error_print(f"⚠️ Impossible d'écrire le cache: {e}")
-                # Pas grave, on retourne quand même les données
-            
+            # Sauvegarder en cache SQLite ou fichier
+            if persistence:
+                persistence.set_weather_cache(cache_key, 'weather', weather_data)
+            else:
+                # Cache fichier (comportement original)
+                cache_data = {
+                    'timestamp': time.time(),
+                    'data': weather_data,
+                    'source': 'wttr.in',
+                    'url': wttr_url,
+                    'location': location or 'auto'
+                }
+
+                try:
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(cache_data, f, indent=2)
+                    info_print(f"✅ Cache fichier météo créé/mis à jour")
+                except IOError as e:
+                    error_print(f"⚠️ Impossible d'écrire le cache fichier: {e}")
+                    # Pas grave, on retourne quand même les données
+
             info_print(f"✅ Météo récupérée:\n{weather_data}")
             return weather_data
-        
+
         else:
             error_msg = "❌ Erreur récupération météo"
             error_print(f"{error_msg} (curl returncode: {result.returncode})")
@@ -499,7 +552,15 @@ def get_weather_data(location=None):
                 error_print(f"   stderr: {result.stderr[:200]}")
 
             # Fallback: essayer de servir le cache périmé
-            stale_data, age_hours = _load_stale_cache(cache_file)
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache {age_hours}h)\n{cached_data}"
+
+            if persistence:
+                stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+            else:
+                stale_data, age_hours = _load_stale_cache(cache_file)
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache {age_hours}h)\n{stale_data}"
@@ -511,7 +572,12 @@ def get_weather_data(location=None):
         error_print(error_msg)
 
         # Fallback: cache périmé
-        stale_data, age_hours = _load_stale_cache(cache_file)
+        if persistence:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+        elif cache_file:
+            stale_data, age_hours = _load_stale_cache(cache_file)
+        else:
+            stale_data, age_hours = None, 0
         if stale_data:
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
             return f"⚠️ (cache {age_hours}h)\n{stale_data}"
@@ -524,7 +590,12 @@ def get_weather_data(location=None):
         error_print(traceback.format_exc())
 
         # Fallback: cache périmé
-        stale_data, age_hours = _load_stale_cache(cache_file)
+        if persistence:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'weather')
+        elif cache_file:
+            stale_data, age_hours = _load_stale_cache(cache_file)
+        else:
+            stale_data, age_hours = None, 0
         if stale_data:
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
             return f"⚠️ (cache {age_hours}h)\n{stale_data}"
@@ -613,6 +684,11 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         >>> rain = get_rain_graph("Paris", days=3)  # Aujourd'hui + demain + J+2 (3 graphes)
         >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True)  # Mesh compact
     """
+    # Initialize cache variables at function level for exception handlers
+    cache_key = None
+    cached_data = None
+    cache_age_seconds = 0
+
     try:
         # Normaliser la location
         if not location:
@@ -627,11 +703,32 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         else:
             cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}"
 
-        # Vérifier le cache SQLite (5 minutes)
+        # ----------------------------------------------------------------
+        # "Serve first" pattern: always return cached data if available
+        # ----------------------------------------------------------------
+        cached_data = None
+        cache_age_seconds = 0
+
         if persistence:
-            cached = persistence.get_weather_cache(cache_key, 'rain', max_age_seconds=300)
-            if cached:
-                return cached
+            # Check for any cached data (even stale)
+            stale_data, age_hours = persistence.get_weather_cache_with_age(cache_key, 'rain', max_age_seconds=CACHE_MAX_AGE)
+            if stale_data:
+                cached_data = stale_data
+                cache_age_seconds = age_hours * 3600
+
+                # Fresh cache (<5 min): return immediately
+                if cache_age_seconds < CACHE_DURATION:
+                    info_print(f"✅ Cache SQLite rain FRESH (age: {cache_age_seconds}s)")
+                    return cached_data
+
+                # Stale but valid (<1 hour): return immediately
+                elif cache_age_seconds < CACHE_STALE_DURATION:
+                    info_print(f"⚡ Cache SQLite rain STALE mais valide (age: {cache_age_seconds}s)")
+                    return cached_data
+
+                # Very stale (>1h): try to refresh, fallback to cached
+                else:
+                    info_print(f"⏰ Cache SQLite rain expiré (age: {age_hours}h), tentative de rafraîchissement")
 
         # Construire l'URL v2n (narrow format avec graphes ASCII)
         # Ajouter ?T pour désactiver les codes ANSI (couleurs)
@@ -651,6 +748,12 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 error_msg = "❌ Erreur récupération graphe pluie"
                 error_print(f"{error_msg} (curl returncode: {result.returncode})")
 
+                # Fallback: use cached data if available
+                if cached_data:
+                    age_hours = int(cache_age_seconds / 3600)
+                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                    return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
                 # Fallback: cache SQLite périmé
                 stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
                 if stale_data:
@@ -663,6 +766,12 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             error_msg = f"❌ Timeout graphe pluie après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)"
             error_print(error_msg)
 
+            # Fallback: use cached data if available
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
@@ -673,13 +782,19 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         except Exception as e:
             error_msg = f"❌ Erreur curl: {e}"
             error_print(error_msg)
-            
+
+            # Fallback: use cached data if available
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
-            
+
             return error_msg
 
         output = result.stdout.strip()
@@ -687,6 +802,12 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         if not output:
             error_msg = "❌ Graphe pluie vide"
             error_print(error_msg)
+
+            # Fallback: use cached data if available
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
 
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
@@ -890,11 +1011,18 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
 
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
-        if stale_data:
+        # Fallback: use cached data if available
+        if cached_data:
+            age_hours = int(cache_age_seconds / 3600)
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
+        # Fallback: cache SQLite périmé
+        if cache_key:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
         return error_msg
 
@@ -903,11 +1031,18 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         import traceback
         error_print(traceback.format_exc())
 
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
-        if stale_data:
+        # Fallback: use cached data if available
+        if cached_data:
+            age_hours = int(cache_age_seconds / 3600)
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
+        # Fallback: cache SQLite périmé
+        if cache_key:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
         return f"❌ Erreur: {str(e)[:50]}"
 
@@ -966,6 +1101,11 @@ def get_weather_astro(location=None, persistence=None):
         Now: 00:53:40 | Sunrise: 08:01 | Sunset: 17:08
         🌔 Moonrise: 10:23 | Moonset: 18:45 (67%)
     """
+    # Initialize cache variables at function level for exception handlers
+    cache_key = None
+    cached_data = None
+    cache_age_seconds = 0
+
     try:
         # Normaliser la location
         if not location:
@@ -974,11 +1114,29 @@ def get_weather_astro(location=None, persistence=None):
         # Clé de cache
         cache_key = location or 'default'
 
-        # Vérifier le cache SQLite (5 minutes)
+        # ----------------------------------------------------------------
+        # "Serve first" pattern: always return cached data if available
+        # ----------------------------------------------------------------
         if persistence:
-            cached = persistence.get_weather_cache(cache_key, 'astro', max_age_seconds=300)
-            if cached:
-                return cached
+            # Check for any cached data (even stale)
+            stale_data, age_hours = persistence.get_weather_cache_with_age(cache_key, 'astro', max_age_seconds=CACHE_MAX_AGE)
+            if stale_data:
+                cached_data = stale_data
+                cache_age_seconds = age_hours * 3600
+
+                # Fresh cache (<5 min): return immediately
+                if cache_age_seconds < CACHE_DURATION:
+                    info_print(f"✅ Cache SQLite astro FRESH (age: {cache_age_seconds}s)")
+                    return cached_data
+
+                # Stale but valid (<1 hour): return immediately
+                elif cache_age_seconds < CACHE_STALE_DURATION:
+                    info_print(f"⚡ Cache SQLite astro STALE mais valide (age: {cache_age_seconds}s)")
+                    return cached_data
+
+                # Very stale (>1h): try to refresh, fallback to cached
+                else:
+                    info_print(f"⏰ Cache SQLite astro expiré (age: {age_hours}h), tentative de rafraîchissement")
 
         # Construire l'URL
         if location:
@@ -996,6 +1154,12 @@ def get_weather_astro(location=None, persistence=None):
                 error_msg = "❌ Erreur récupération données astro"
                 error_print(f"{error_msg} (curl returncode: {result.returncode})")
 
+                # Fallback: use cached data if available
+                if cached_data:
+                    age_hours = int(cache_age_seconds / 3600)
+                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                    return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
                 # Fallback: cache SQLite périmé
                 stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
                 if stale_data:
@@ -1008,6 +1172,12 @@ def get_weather_astro(location=None, persistence=None):
             error_msg = f"❌ Timeout données astro après {CURL_MAX_RETRIES} tentatives (>{CURL_TIMEOUT}s chacune)"
             error_print(error_msg)
 
+            # Fallback: use cached data if available
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
             if stale_data:
@@ -1018,13 +1188,19 @@ def get_weather_astro(location=None, persistence=None):
         except Exception as e:
             error_msg = f"❌ Erreur curl: {e}"
             error_print(error_msg)
-            
+
+            # Fallback: use cached data if available
+            if cached_data:
+                age_hours = int(cache_age_seconds / 3600)
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
             # Fallback: cache SQLite périmé
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
                 return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
-            
+
             return error_msg
 
         weather_json = json.loads(result.stdout.strip())
@@ -1089,11 +1265,18 @@ def get_weather_astro(location=None, persistence=None):
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
 
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
-        if stale_data:
+        # Fallback: use cached data if available
+        if cached_data:
+            age_hours = int(cache_age_seconds / 3600)
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
+        # Fallback: cache SQLite périmé
+        if cache_key:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
         return error_msg
 
@@ -1102,11 +1285,18 @@ def get_weather_astro(location=None, persistence=None):
         import traceback
         error_print(traceback.format_exc())
 
-        # Fallback: cache SQLite périmé
-        stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
-        if stale_data:
+        # Fallback: use cached data if available
+        if cached_data:
+            age_hours = int(cache_age_seconds / 3600)
             error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+
+        # Fallback: cache SQLite périmé
+        if cache_key:
+            stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'astro')
+            if stale_data:
+                error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
+                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
 
         return f"❌ Erreur: {str(e)[:50]}"
 

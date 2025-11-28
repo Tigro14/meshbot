@@ -106,30 +106,43 @@ This prevents sending empty messages if the split produces empty strings.
 
 ## Cache Locations
 
-### File-based Cache (get_weather_data)
+### SQLite Cache (all weather functions)
+- Location: Managed by `TrafficPersistence` in `traffic_history.db`
+- Table: `weather_cache` (location, cache_type, data, timestamp)
+- Types: 'weather', 'rain', 'astro'
+- Per-location and per-type caching
+- Unified storage for all weather data
+
+### File-based Cache (legacy fallback)
 - Location: `/tmp/weather_cache_*.json`
 - Format: JSON with timestamp
+- Only used when `persistence` parameter is not provided
 - Per-location caching (separate files for different cities)
-
-### SQLite Cache (get_rain_graph, get_weather_astro)
-- Location: Managed by `TrafficPersistence`
-- Table: `weather_cache` or similar
-- Per-location and per-type caching
 
 ## Testing
 
-Run the test suite:
+Run the test suites:
 ```bash
-python3 test_weather_optimizations.py
+python3 test_weather_optimizations.py      # Basic optimization tests
+python3 test_weather_sqlite_cache.py       # SQLite cache enhancement tests
 ```
 
-**Test Coverage:**
+**Test Coverage (test_weather_optimizations.py):**
 1. CURL_TIMEOUT = 25s
 2. Cache duration constants
 3. Retry logic implementation
 4. Stale-while-revalidate pattern
 5. Rain graph message splitting safety
 6. Python syntax validation
+
+**Test Coverage (test_weather_sqlite_cache.py):**
+1. TrafficPersistence.get_weather_cache_with_age()
+2. get_weather_data() accepts persistence parameter
+3. Serve-first pattern in get_weather_data()
+4. Serve-first pattern in get_rain_graph()
+5. Serve-first pattern in get_weather_astro()
+6. utility_commands.py uses persistence
+7. Python syntax validation
 
 ## Troubleshooting
 
@@ -182,15 +195,17 @@ CURL_RETRY_DELAY = 2                 # Initial retry delay (exponential)
 
 Potential enhancements (not currently implemented):
 
-1. **Background refresh for stale cache:** Currently we skip refresh for stale data. Could refresh in background thread.
+1. ~~**Unified SQLite caching:** All weather functions using SQLite cache.~~ ✅ **Done in v2.1**
 
-2. **Unified weather fetch:** Consolidate `/weather` and `/weather astro` to use same API call (both use wttr.in JSON).
+2. **Background refresh for stale cache:** Currently we skip refresh for stale data. Could refresh in background thread.
 
-3. **Cache prewarming:** Periodically refresh popular locations before cache expires.
+3. **Unified weather fetch:** Consolidate `/weather` and `/weather astro` to use same API call (both use wttr.in JSON).
 
-4. **Metrics/monitoring:** Track cache hit rates, timeout rates, retry counts.
+4. **Cache prewarming:** Periodically refresh popular locations before cache expires.
 
-5. **Adaptive timeout:** Increase timeout based on historical latency.
+5. **Metrics/monitoring:** Track cache hit rates, timeout rates, retry counts.
+
+6. **Adaptive timeout:** Increase timeout based on historical latency.
 
 ## Related Issues
 
@@ -199,14 +214,21 @@ Potential enhancements (not currently implemented):
 
 ## Changelog
 
-### Version 2.0 (Current)
+### Version 2.1 (Current)
+- **Unified SQLite caching:** All weather functions (`get_weather_data`, `get_rain_graph`, `get_weather_astro`) now use SQLite caching via `TrafficPersistence`
+- **Serve-first pattern:** Always serve cached data immediately if available (even if stale), attempt refresh only when cache is expired (>1h)
+- **New method:** `TrafficPersistence.get_weather_cache_with_age()` returns cache data with actual age in hours
+- **Updated tests:** New `test_weather_sqlite_cache.py` test suite for SQLite cache enhancements
+- **Backward compatible:** File-based caching still available when persistence not provided
+
+### Version 2.0 (Previous)
 - Increased timeout: 10s → 25s
 - Added retry logic: 3 attempts with exponential backoff
 - Implemented stale-while-revalidate caching
 - Added safety checks for message splitting
 - Created test suite
 
-### Version 1.0 (Previous)
+### Version 1.0 (Legacy)
 - Basic 5-minute cache
 - 10-second timeout
 - No retry logic
@@ -214,6 +236,6 @@ Potential enhancements (not currently implemented):
 
 ---
 
-**Last Updated:** 2024-11-19
+**Last Updated:** 2024-11-28
 **Author:** GitHub Copilot
 **Reviewed by:** [Maintainer name]

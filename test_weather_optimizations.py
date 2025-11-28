@@ -79,11 +79,11 @@ def test_stale_while_revalidate():
     
     checks = [
         ('cache_needs_refresh', 'Refresh flag'),
-        ('stale_data_to_serve', 'Stale data tracking'),
-        ('Cache météo FRESH', 'Fresh cache message'),
-        ('Cache météo STALE', 'Stale cache message'),
-        ('age_seconds < CACHE_DURATION', 'Fresh check'),
-        ('age_seconds < CACHE_STALE_DURATION', 'Stale check')
+        ('cached_data', 'Cached data tracking'),
+        ('FRESH', 'Fresh cache message'),
+        ('STALE', 'Stale cache message'),
+        ('cache_age_seconds < CACHE_DURATION', 'Fresh check'),
+        ('cache_age_seconds < CACHE_STALE_DURATION', 'Stale check')
     ]
     
     all_ok = True
