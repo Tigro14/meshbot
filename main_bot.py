@@ -42,10 +42,11 @@ from platform_config import get_enabled_platforms
 class MeshBot:
     # Configuration pour la reconnexion TCP
     # ESP32 needs time to fully release the old connection before accepting a new one
-    TCP_INTERFACE_CLEANUP_DELAY = 10  # Secondes à attendre après fermeture ancienne interface (augmenté de 5 à 10)
-    TCP_INTERFACE_STABILIZATION_DELAY = 5  # Secondes à attendre après création nouvelle interface
+    # The ESP32 may keep the connection in TIME_WAIT state for up to 2 minutes
+    TCP_INTERFACE_CLEANUP_DELAY = 15  # Secondes à attendre après fermeture ancienne interface
+    TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface (réduit car vérification socket directe)
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
-    TCP_SILENT_TIMEOUT = 60  # Secondes sans paquet avant de forcer une reconnexion
+    TCP_SILENT_TIMEOUT = 90  # Secondes sans paquet avant de forcer une reconnexion (augmenté pour éviter faux positifs)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     
     def __init__(self):
@@ -557,89 +558,105 @@ class MeshBot:
             
             def reconnect_background():
                 """Fonction de reconnexion exécutée dans un thread séparé"""
-                try:
-                    # Fermer l'ancienne interface si elle existe
-                    old_interface = self.interface
-                    if old_interface:
-                        try:
-                            debug_print("🔄 Fermeture ancienne interface TCP...")
-                            old_interface.close()
-                            debug_print("✅ Ancienne interface fermée")
-                        except Exception as close_error:
-                            debug_print(f"⚠️ Erreur fermeture ancienne interface: {close_error}")
+                MAX_RETRIES = 3
+                retry_delays = [15, 30, 60]  # Increasing delays between retries
+                
+                for retry in range(MAX_RETRIES):
+                    try:
+                        # Fermer l'ancienne interface si elle existe
+                        old_interface = self.interface
+                        if old_interface:
+                            try:
+                                debug_print("🔄 Fermeture ancienne interface TCP...")
+                                old_interface.close()
+                                debug_print("✅ Ancienne interface fermée")
+                            except Exception as close_error:
+                                debug_print(f"⚠️ Erreur fermeture ancienne interface: {close_error}")
+                            
+                            # IMPORTANT: Attendre que les threads de l'ancienne interface
+                            # aient le temps de se terminer avant de créer la nouvelle
+                            # Ceci évite les conflits de ressources et les doublons de messages
+                            wait_time = self.TCP_INTERFACE_CLEANUP_DELAY if retry == 0 else retry_delays[retry]
+                            debug_print(f"⏳ Attente nettoyage ({wait_time}s) - tentative {retry + 1}/{MAX_RETRIES}...")
+                            time.sleep(wait_time)
                         
-                        # IMPORTANT: Attendre que les threads de l'ancienne interface
-                        # aient le temps de se terminer avant de créer la nouvelle
-                        # Ceci évite les conflits de ressources et les doublons de messages
-                        debug_print(f"⏳ Attente nettoyage threads ancienne interface ({self.TCP_INTERFACE_CLEANUP_DELAY}s)...")
-                        time.sleep(self.TCP_INTERFACE_CLEANUP_DELAY)
-                    
-                    # Créer une nouvelle interface
-                    # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
-                    debug_print("🔧 Création nouvelle interface TCP...")
-                    new_interface = OptimizedTCPInterface(
-                        hostname=tcp_host,
-                        portNumber=tcp_port
-                    )
-                    
-                    # Configurer le callback (si disponible) pour reconnexion immédiate
-                    # Ceci est optionnel - le health monitor détectera aussi les morts
-                    if hasattr(new_interface, 'set_dead_socket_callback'):
-                        debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
-                        new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
-                    
-                    # Attendre la stabilisation de la nouvelle interface
-                    debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
-                    time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
-                    
-                    # CRITIQUE: Vérifier que le socket est TOUJOURS connecté après stabilisation
-                    # Le socket peut mourir pendant la stabilisation
-                    socket_ok = False
-                    if hasattr(new_interface, 'socket') and new_interface.socket:
-                        try:
-                            peer = new_interface.socket.getpeername()
-                            debug_print(f"✅ Socket connecté à {peer}")
-                            socket_ok = True
-                        except Exception as e:
-                            error_print(f"⚠️ Socket mort pendant stabilisation: {e}")
-                    
-                    # Si le socket est mort, abandonner cette tentative
-                    # Le callback a déjà été appelé, une nouvelle reconnexion sera lancée
-                    if not socket_ok:
-                        error_print("❌ Reconnexion abandonnée (socket mort pendant stabilisation)")
+                        # Créer une nouvelle interface
+                        # Le socket a un timeout de 5s, donc même si bloqué, ça timeout rapidement
+                        debug_print("🔧 Création nouvelle interface TCP...")
+                        new_interface = OptimizedTCPInterface(
+                            hostname=tcp_host,
+                            portNumber=tcp_port
+                        )
+                        
+                        # Attendre la stabilisation de la nouvelle interface AVANT de configurer le callback
+                        debug_print(f"⏳ Stabilisation nouvelle interface ({self.TCP_INTERFACE_STABILIZATION_DELAY}s)...")
+                        time.sleep(self.TCP_INTERFACE_STABILIZATION_DELAY)
+                        
+                        # CRITIQUE: Vérifier que le socket est TOUJOURS connecté après stabilisation
+                        # Le socket peut mourir pendant la stabilisation
+                        socket_ok = False
+                        if hasattr(new_interface, 'socket') and new_interface.socket:
+                            try:
+                                peer = new_interface.socket.getpeername()
+                                debug_print(f"✅ Socket connecté à {peer}")
+                                socket_ok = True
+                            except Exception as e:
+                                debug_print(f"⚠️ Socket mort pendant stabilisation: {e}")
+                        
+                        # Si le socket est mort, retry avec un délai plus long
+                        if not socket_ok:
+                            if retry < MAX_RETRIES - 1:
+                                error_print(f"❌ Connexion échouée, nouvelle tentative dans {retry_delays[retry + 1]}s...")
+                                try:
+                                    new_interface.close()
+                                except:
+                                    pass
+                                continue  # Retry
+                            else:
+                                error_print("❌ Reconnexion abandonnée après 3 tentatives")
+                                self._tcp_reconnection_in_progress = False
+                                return
+                        
+                        # Configurer le callback SEULEMENT après stabilisation réussie
+                        if hasattr(new_interface, 'set_dead_socket_callback'):
+                            debug_print("🔌 Configuration callback reconnexion sur nouvelle interface...")
+                            new_interface.set_dead_socket_callback(self._reconnect_tcp_interface)
+                        
+                        # Mettre à jour les références
+                        debug_print("🔄 Mise à jour références interface...")
+                        self.interface = new_interface
+                        self.node_manager.interface = self.interface
+                        self.remote_nodes_client.interface = self.interface
+                        if self.mesh_traceroute:
+                            self.mesh_traceroute.interface = self.interface
+                        
+                        # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
+                        # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
+                        # Réabonner causerait des duplications de messages et des freezes.
+                        # Le système pubsub de Meshtastic route les messages de TOUTES les interfaces
+                        # vers les callbacks enregistrés - pas besoin de re-subscribe.
+                        debug_print("ℹ️ Pas de réabonnement nécessaire (pubsub global)")
+                        
+                        # Réinitialiser le timer de dernière réception pour permettre 
+                        # au health monitor de détecter si la nouvelle interface fonctionne
+                        self._last_packet_time = time.time()
+                        debug_print("⏱️ Timer dernier paquet réinitialisé")
+                        
+                        # Reset backoff counter on successful reconnection
+                        self._tcp_reconnection_attempts = 0
+                        
+                        info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
-                        return  # Ne pas mettre à jour les références avec une interface morte
-                    
-                    # Mettre à jour les références
-                    debug_print("🔄 Mise à jour références interface...")
-                    self.interface = new_interface
-                    self.node_manager.interface = self.interface
-                    self.remote_nodes_client.interface = self.interface
-                    if self.mesh_traceroute:
-                        self.mesh_traceroute.interface = self.interface
-                    
-                    # NOTE: PAS de réabonnement ici ! L'abonnement initial à pub.subscribe()
-                    # est déjà actif et fonctionne automatiquement avec la nouvelle interface.
-                    # Réabonner causerait des duplications de messages et des freezes.
-                    # Le système pubsub de Meshtastic route les messages de TOUTES les interfaces
-                    # vers les callbacks enregistrés - pas besoin de re-subscribe.
-                    debug_print("ℹ️ Pas de réabonnement nécessaire (pubsub global)")
-                    
-                    # Réinitialiser le timer de dernière réception pour permettre 
-                    # au health monitor de détecter si la nouvelle interface fonctionne
-                    self._last_packet_time = time.time()
-                    debug_print("⏱️ Timer dernier paquet réinitialisé")
-                    
-                    # Reset backoff counter on successful reconnection
-                    self._tcp_reconnection_attempts = 0
-                    
-                    info_print("✅ Reconnexion TCP réussie (background)")
-                    self._tcp_reconnection_in_progress = False
-                    
-                except Exception as e:
-                    error_print(f"❌ Échec reconnexion TCP (background): {e}")
-                    error_print(traceback.format_exc())
-                    self._tcp_reconnection_in_progress = False
+                        return  # Success - exit loop
+                        
+                    except Exception as e:
+                        if retry < MAX_RETRIES - 1:
+                            error_print(f"❌ Erreur reconnexion tentative {retry + 1}: {e}")
+                            time.sleep(retry_delays[retry])
+                        else:
+                            error_print(f"❌ Échec reconnexion TCP après {MAX_RETRIES} tentatives: {e}")
+                            error_print(traceback.format_exc())
+                            self._tcp_reconnection_in_progress = False
             
             # Lancer la reconnexion dans un thread daemon (ne bloque pas l'arrêt du bot)
             self._tcp_reconnection_thread = threading.Thread(
