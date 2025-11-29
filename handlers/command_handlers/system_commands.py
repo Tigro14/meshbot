@@ -227,7 +227,13 @@ class SystemCommands:
         # Exécuter le reboot
         try:
             import meshtastic.tcp_interface
-            from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
+            try:
+                from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
+            except ImportError:
+                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+            
+            if not REMOTE_NODE_HOST:
+                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
             
             node_name = self.node_manager.get_node_name(from_id, self._get_interface())
             info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
@@ -251,5 +257,6 @@ class SystemCommands:
             return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
             
         except Exception as e:
-            error_print(f"Erreur reboot {REMOTE_NODE_NAME}: {e}")
+            node_name = REMOTE_NODE_NAME if 'REMOTE_NODE_NAME' in dir() else 'node distant'
+            error_print(f"Erreur reboot {node_name}: {e}")
             return f"❌ Erreur: {str(e)[:50]}"

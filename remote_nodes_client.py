@@ -27,6 +27,13 @@ from utils import (
     validate_page_number
 )
 
+# Fallback defaults for optional config values
+# Use globals() because we're checking module-level variables imported via 'from config import *'
+if 'REMOTE_NODE_HOST' not in globals():
+    REMOTE_NODE_HOST = None
+if 'REMOTE_NODE_NAME' not in globals():
+    REMOTE_NODE_NAME = "RemoteNode"
+
 class RemoteNodesClient:
     def __init__(self, interface=None, connection_mode=None, tcp_host=None):
         """
@@ -535,6 +542,10 @@ class RemoteNodesClient:
         Note: Nom de fonction legacy, utilise REMOTE_NODE_NAME/HOST du config
         """
         try:
+            # Vérifier que REMOTE_NODE_HOST est configuré
+            if not REMOTE_NODE_HOST:
+                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+            
             remote_nodes = self.get_remote_nodes(REMOTE_NODE_HOST, days_filter=days_filter)
             
             if not remote_nodes:
@@ -580,6 +591,10 @@ class RemoteNodesClient:
     def get_all_nodes_alphabetical(self, days_limit=30):
         """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
         try:
+            # Vérifier que REMOTE_NODE_HOST est configuré
+            if not REMOTE_NODE_HOST:
+                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+            
             remote_nodes = self.get_all_remote_nodes(
                 REMOTE_NODE_HOST, 
                 days_filter=days_limit

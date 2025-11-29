@@ -25,15 +25,20 @@ TCP_HOST = "192.168.1.38"
 TCP_PORT = 4403
 
 # ========================================
-# CONFIGURATION NŒUD CONNECTÉ
+# CONFIGURATION NŒUD DISTANT (OPTIONNEL)
 # ========================================
-# Nom du node connecté (utilisé pour affichage dans les messages et logs)
-# En mode single-node, c'est le node auquel le bot est connecté
-# En mode legacy multi-nodes, c'est le node distant pour requêtes de stats
+# Configuration pour monitorer un nœud distant via TCP (ex: tigrog2)
+# ⚠️ IMPORTANT: Ces paramètres sont utilisés par:
+#   1. CONNECTION_MODE='tcp' : Connexion principale au bot
+#   2. TIGROG2_MONITORING_ENABLED=True : Surveillance d'un nœud distant
+#
+# Si vous ne voulez PAS de connexions TCP vers ce nœud:
+#   → Mettez TIGROG2_MONITORING_ENABLED = False (section ALERTES plus bas)
+#
 # NOTE: L'ID du node (nodeNum) est automatiquement détecté depuis la connexion
 #       via interface.localNode.nodeNum - pas besoin de le configurer manuellement
-REMOTE_NODE_HOST = "192.168.1.38"  # IP du node (utilisé si CONNECTION_MODE='tcp')
-REMOTE_NODE_NAME = "MyNode"        # Nom d'affichage de votre node
+REMOTE_NODE_HOST = "192.168.1.38"  # IP du node distant (TCP mode ou monitoring)
+REMOTE_NODE_NAME = "MyNode"        # Nom d'affichage pour les alertes
 
 # ========================================
 # CONFIGURATION LEGACY MULTI-NODES (AVANCÉ)
@@ -215,12 +220,15 @@ TEMP_WARNING_DURATION = 300  # Durée en secondes avant alerte (5 minutes)
 TEMP_CRITICAL_THRESHOLD = 68.0  # Température critique
 TEMP_CHECK_INTERVAL = 60  # Vérifier la température toutes les 60 secondes
 
-# Configuration monitoring tigrog2
-TIGROG2_MONITORING_ENABLED = True  # Activer/désactiver le monitoring tigrog2
-TIGROG2_CHECK_INTERVAL = 120  # Vérifier tigrog2 toutes les 2 minutes
+# Configuration monitoring nœud distant (tigrog2)
+# ⚠️ IMPORTANT: Si activé, le bot crée des connexions TCP vers REMOTE_NODE_HOST
+#    pour surveiller l'état du nœud distant. Désactiver si vous n'avez pas besoin
+#    de cette fonctionnalité ou si vous voulez éviter les connexions TCP.
+TIGROG2_MONITORING_ENABLED = False  # Activer/désactiver le monitoring du nœud distant via TCP
+TIGROG2_CHECK_INTERVAL = 120  # Vérifier le nœud distant toutes les 2 minutes
 TIGROG2_TIMEOUT = 20  # Timeout de connexion en secondes
 TIGROG2_ALERT_ON_REBOOT = True  # Alerter lors d'un redémarrage détecté
-TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si tigrog2 devient inaccessible
+TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si le nœud distant devient inaccessible
 
 # Configuration monitoring CPU du bot
 CPU_WARNING_ENABLED = True  # Activer/désactiver les alertes CPU
