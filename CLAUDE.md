@@ -106,6 +106,40 @@ The codebase has undergone a significant refactoring to support multiple messagi
 - New code should use `platforms/telegram_platform.py`
 - Commands now organized by category in `telegram_bot/commands/`
 
+### TCP Disconnect Alerts (November 2025)
+
+New Telegram alerting when TCP connection to Meshtastic node is permanently lost:
+
+**Problem Solved:**
+- In TCP mode, if the bot loses connection to the Meshtastic node, there was no way to remotely know about it
+- Without the Meshtastic connection, remote reboot commands via mesh are not possible
+- Users need to be notified via Telegram to check the hardware
+
+**Implementation:**
+- Added `_send_tcp_disconnect_alert()` method in `main_bot.py`
+- Alert sent after all reconnection attempts fail (3 retries with exponential backoff)
+- Message includes: node name, host:port, timestamp, and error details
+- Configurable via `TCP_DISCONNECT_ALERT_ENABLED` in config.py
+
+**Configuration:**
+```python
+TCP_DISCONNECT_ALERT_ENABLED = True  # Enable/disable TCP disconnect alerts
+```
+
+**Alert Message:**
+```
+🔴 ALERTE: Connexion TCP perdue
+
+📡 Nœud: MyNode
+🌐 Host: 192.168.1.38:4403
+⏱️ Heure: 14:23:45
+❌ Erreur: Socket mort après stabilisation
+
+⚠️ Le bot ne peut plus communiquer avec le réseau Meshtastic.
+🔄 Reconnexion automatique en échec après plusieurs tentatives.
+💡 Action recommandée: Vérifier l'alimentation et le réseau du nœud.
+```
+
 ### Network Visualization
 
 New map generation tools added in `map/` directory:
@@ -1153,6 +1187,9 @@ REBOOT_AUTHORIZED_USERS = [12345678, 0x16fad3dc]
 # ========================================
 TEMP_WARNING_THRESHOLD = 60
 CPU_WARNING_THRESHOLD = 90
+
+# TCP disconnect alerts (TCP mode only)
+TCP_DISCONNECT_ALERT_ENABLED = True  # Alert via Telegram when TCP connection lost
 
 # ========================================
 # DEBUG
