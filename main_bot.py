@@ -375,40 +375,23 @@ class MeshBot:
                         error_print(traceback.format_exc())
                         # Continuer avec le traitement normal
                 
-                info_print("=" * 60)
-                info_print(f"📨 MESSAGE REÇU")
-                info_print(f"De: 0x{from_id:08x} ({self.node_manager.get_node_name(from_id)})")
-                info_print(f"Pour: {'broadcast' if is_broadcast else f'0x{to_id:08x}'}")
-                info_print(f"Contenu: {message[:50]}")
+                debug_print(f"📨 MESSAGE REÇU De: 0x{from_id:08x} Contenu: {message[:50]}")
                 
                 # Gestion des traceroutes Telegram
-                if self.telegram_integration:
-                    if message:
-                        info_print(f"✅ Message présent: '{message[:30]}'")
+                if self.telegram_integration and message:
+                    try:
+                        trace_handled = self.telegram_integration.handle_trace_response(
+                            from_id,
+                            message
+                        )
 
-                        try:
-                            # Vérifier que pending_traces existe avant de l'utiliser
-                            if hasattr(self.telegram_integration, 'pending_traces'):
-                                info_print(f"   Traces en attente: {len(self.telegram_integration.pending_traces)}")
+                        if trace_handled:
+                            debug_print("Message traité comme réponse de traceroute")
+                            return
 
-                            trace_handled = self.telegram_integration.handle_trace_response(
-                                from_id,
-                                message
-                            )
-
-                            if trace_handled:
-                                info_print("✅ Message traité comme réponse de traceroute")
-                                info_print("=" * 60)
-                                return
-                            else:
-                                info_print("ℹ️ Message N'EST PAS une réponse de traceroute")
-
-                        except Exception as trace_error:
-                            error_print(f"❌ Erreur handle_trace_response: {trace_error}")
-                            error_print(traceback.format_exc())
-
-                # Traitement normal du message
-                info_print("➡️ Traitement normal du message...")
+                    except Exception as trace_error:
+                        error_print(f"❌ Erreur handle_trace_response: {trace_error}")
+                        error_print(traceback.format_exc())
 
                 # Enregistrer les messages publics
                 if message and is_broadcast and not is_from_me:
@@ -417,8 +400,6 @@ class MeshBot:
                 # Traiter les commandes
                 if message and self.message_handler:
                     self.message_handler.process_text_message(packet, decoded, message)
-
-                info_print("=" * 60)
         
         except Exception as e:
             error_print(f"Erreur on_message: {e}")

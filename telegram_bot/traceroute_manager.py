@@ -274,30 +274,18 @@ class TracerouteManager:
     def handle_trace_response(self, from_id, message_text):
         """
         Traiter une réponse de traceroute depuis le mesh
-        VERSION AVEC DEBUG INTENSIF
         """
         try:
-            info_print("=" * 60)
-            info_print("🔍 DEBUG handle_trace_response() appelé")
-            info_print(f"   from_id: {from_id} (0x{from_id:08x})")
-            info_print(f"   message length: {len(message_text)} chars")
-            info_print(f"   message preview: {message_text[:100]}...")
-            info_print("=" * 60)
-
-            # Debug: Afficher l'état des traces en attente
-            info_print(f"📋 Traces en attente: {len(self.pending_traces)}")
-            for node_id, trace_data in self.pending_traces.items():
-                elapsed = time.time() - trace_data['timestamp']
-                info_print(
-                    f"   - 0x{node_id:08x} ({trace_data['full_name']}) depuis {elapsed:.1f}s")
-
+            # Early return: no traces pending to match against
+            if not self.pending_traces:
+                return False
+            
             # Vérifier si c'est une réponse attendue
             if from_id not in self.pending_traces:
-                info_print(f"❌ from_id 0x{from_id:08x} NOT in pending_traces")
-                info_print(f"   Ce n'est PAS une réponse de trace attendue")
+                debug_print(f"handle_trace_response: from_id 0x{from_id:08x} not in pending_traces")
                 return False
 
-            info_print(f"✅ from_id 0x{from_id:08x} IS in pending_traces!")
+            debug_print(f"handle_trace_response: from_id 0x{from_id:08x} found in pending_traces")
 
             # Vérifier que le message ressemble à un traceroute
             trace_indicators = [
@@ -310,23 +298,12 @@ class TracerouteManager:
                 "hopLimit:"
             ]
 
-            info_print("🔍 Vérification des indicateurs de traceroute:")
-            matches = []
-            for indicator in trace_indicators:
-                if indicator in message_text:
-                    matches.append(indicator)
-                    info_print(f"   ✅ Trouvé: '{indicator}'")
-                else:
-                    info_print(f"   ❌ Absent: '{indicator}'")
+            matches = [ind for ind in trace_indicators if ind in message_text]
+            debug_print(f"handle_trace_response: {len(matches)} trace indicators found")
 
             if not matches:
-                info_print(
-                    f"⚠️ Message de 0x{from_id:08x} ne contient AUCUN indicateur de trace")
-                info_print(f"   Message complet:\n{message_text}")
+                debug_print(f"handle_trace_response: message has no trace indicators")
                 return False
-
-            info_print(
-                f"✅ Message contient {len(matches)} indicateurs de trace: {matches}")
 
             # C'est bien une réponse de trace !
             trace_data = self.pending_traces[from_id]
@@ -334,10 +311,7 @@ class TracerouteManager:
             node_name = trace_data['full_name']
             elapsed_time = time.time() - trace_data['timestamp']
 
-            info_print(f"🎯 RÉPONSE DE TRACE CONFIRMÉE!")
-            info_print(f"   Node: {node_name}")
-            info_print(f"   Chat ID: {chat_id}")
-            info_print(f"   Temps écoulé: {elapsed_time:.1f}s")
+            info_print(f"🎯 Traceroute reçu de {node_name} ({elapsed_time:.1f}s)")
 
             # Envoyer la réponse à Telegram
             try:
@@ -352,15 +326,12 @@ class TracerouteManager:
                     self.telegram.loop
                 ).result(timeout=10)
 
-                info_print(f"✅ Réponse envoyée à Telegram (chat {chat_id})")
-
             except Exception as send_error:
                 error_print(
                     f"Erreur envoi Telegram: {send_error or 'Unknown error'}")
 
             # Supprimer la trace de la liste des pending
             del self.pending_traces[from_id]
-            info_print(f"🧹 Trace supprimée de pending_traces")
 
             return True
 
