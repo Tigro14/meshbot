@@ -494,6 +494,54 @@ class MeshBot:
             # En cas d'erreur, tenter quand même une reconnexion
             return self._reconnect_tcp_interface()
     
+    def _send_tcp_disconnect_alert(self, tcp_host, tcp_port, error_message=None):
+        """
+        Envoyer une alerte Telegram quand la connexion TCP est définitivement perdue
+        
+        Args:
+            tcp_host: Adresse du nœud TCP
+            tcp_port: Port du nœud TCP
+            error_message: Message d'erreur optionnel (cause de la déconnexion)
+        """
+        # Vérifier si les alertes TCP sont activées
+        if not globals().get('TCP_DISCONNECT_ALERT_ENABLED', True):
+            debug_print("⏸️ Alertes déconnexion TCP désactivées")
+            return
+        
+        # Vérifier si Telegram est disponible
+        if not self.telegram_integration:
+            debug_print("⚠️ Pas de Telegram pour alerte déconnexion TCP")
+            return
+        
+        try:
+            # Construire le message d'alerte
+            remote_name = globals().get('REMOTE_NODE_NAME', 'Meshtastic')
+            
+            message = (
+                f"🔴 ALERTE: Connexion TCP perdue\n\n"
+                f"📡 Nœud: {remote_name}\n"
+                f"🌐 Host: {tcp_host}:{tcp_port}\n"
+                f"⏱️ Heure: {time.strftime('%H:%M:%S')}\n"
+            )
+            
+            if error_message:
+                # Limiter la longueur de l'erreur
+                error_short = str(error_message)[:100]
+                message += f"❌ Erreur: {error_short}\n"
+            
+            message += (
+                f"\n⚠️ Le bot ne peut plus communiquer avec le réseau Meshtastic.\n"
+                f"🔄 Reconnexion automatique en échec après plusieurs tentatives.\n"
+                f"💡 Action recommandée: Vérifier l'alimentation et le réseau du nœud."
+            )
+            
+            self.telegram_integration.send_alert(message)
+            info_print("📢 Alerte déconnexion TCP envoyée via Telegram")
+            
+        except Exception as e:
+            error_print(f"⚠️ Erreur envoi alerte déconnexion TCP: {e}")
+            error_print(traceback.format_exc())
+    
     def _reconnect_tcp_interface(self):
         """
         Reconnecte l'interface TCP après une déconnexion
@@ -595,6 +643,8 @@ class MeshBot:
                                 continue  # Retry
                             else:
                                 error_print("❌ Reconnexion abandonnée après 3 tentatives")
+                                # Envoyer alerte Telegram
+                                self._send_tcp_disconnect_alert(tcp_host, tcp_port, "Socket mort après stabilisation")
                                 self._tcp_reconnection_in_progress = False
                                 return
                         
@@ -646,6 +696,8 @@ class MeshBot:
                         else:
                             error_print(f"❌ Échec reconnexion TCP après {MAX_RETRIES} tentatives: {e}")
                             error_print(traceback.format_exc())
+                            # Envoyer alerte Telegram
+                            self._send_tcp_disconnect_alert(tcp_host, tcp_port, str(e))
                             self._tcp_reconnection_in_progress = False
             
             # Lancer la reconnexion dans un thread daemon (ne bloque pas l'arrêt du bot)

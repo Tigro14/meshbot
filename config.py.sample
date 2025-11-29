@@ -230,6 +230,11 @@ TIGROG2_TIMEOUT = 20  # Timeout de connexion en secondes
 TIGROG2_ALERT_ON_REBOOT = True  # Alerter lors d'un redémarrage détecté
 TIGROG2_ALERT_ON_DISCONNECT = True  # Alerter si le nœud distant devient inaccessible
 
+# Configuration alertes de déconnexion TCP (mode TCP uniquement)
+# Si le bot est en mode TCP et perd la connexion au nœud Meshtastic,
+# une alerte est envoyée via Telegram après l'échec des tentatives de reconnexion.
+TCP_DISCONNECT_ALERT_ENABLED = True  # Activer/désactiver les alertes de déconnexion TCP
+
 # Configuration monitoring CPU du bot
 CPU_WARNING_ENABLED = True  # Activer/désactiver les alertes CPU
 CPU_WARNING_THRESHOLD = 90  # % CPU déclenchant une alerte (80%)
