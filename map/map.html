@@ -425,6 +425,11 @@
             const linksLegend = document.getElementById('linksLegend');
             const legendTitle = document.getElementById('legendTitle');
             
+            // Safety check - return if elements don't exist yet
+            if (!hopsLegend || !linksLegend || !legendTitle || !map) {
+                return;
+            }
+            
             if (currentView === 'nodes') {
                 hopsLegend.style.display = 'block';
                 linksLegend.style.display = 'none';
@@ -439,7 +444,9 @@
                 if (!map.hasLayer(linkLayerGroup)) {
                     map.addLayer(linkLayerGroup);
                 }
-                drawLinks(meshData.nodes);
+                if (meshData && meshData.nodes) {
+                    drawLinks(meshData.nodes);
+                }
             } else if (currentView === 'both') {
                 hopsLegend.style.display = 'block';
                 linksLegend.style.display = 'block';
@@ -447,7 +454,9 @@
                 if (!map.hasLayer(linkLayerGroup)) {
                     map.addLayer(linkLayerGroup);
                 }
-                drawLinks(meshData.nodes);
+                if (meshData && meshData.nodes) {
+                    drawLinks(meshData.nodes);
+                }
             }
         }
         
@@ -676,22 +685,31 @@
                 // Update button states
                 document.querySelectorAll('.view-btn').forEach(btn => {
                     btn.classList.remove('active');
-                    if (btn.textContent.toLowerCase().includes(viewParam) ||
-                        (viewParam === 'both' && btn.textContent.includes('deux'))) {
-                        btn.classList.add('active');
-                    }
                 });
+                
+                // Activate the correct button based on viewParam
+                const buttons = document.querySelectorAll('.view-btn');
+                if (viewParam === 'nodes' && buttons[0]) {
+                    buttons[0].classList.add('active');
+                } else if (viewParam === 'links' && buttons[1]) {
+                    buttons[1].classList.add('active');
+                } else if (viewParam === 'both' && buttons[2]) {
+                    buttons[2].classList.add('active');
+                }
                 
                 // Show/hide links row
                 const linksRow = document.getElementById('linksRow');
-                if (viewParam === 'links' || viewParam === 'both') {
+                if (linksRow && (viewParam === 'links' || viewParam === 'both')) {
                     linksRow.style.display = 'flex';
                 }
             }
         }
         
-        initFromURLParams();
-        initMap();
+        // Initialize everything when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            initFromURLParams();
+            initMap();
+        });
     </script>
 </body>
 </html>
