@@ -186,6 +186,33 @@ class TrafficPersistence:
                 ON weather_cache(timestamp)
             ''')
 
+            # Table pour les informations de voisinage (neighbor info)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS neighbors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    node_id TEXT NOT NULL,
+                    neighbor_id TEXT NOT NULL,
+                    snr REAL,
+                    last_rx_time INTEGER,
+                    node_broadcast_interval INTEGER
+                )
+            ''')
+
+            # Index pour optimiser les requêtes sur les voisins
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_neighbors_timestamp
+                ON neighbors(timestamp)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_neighbors_node_id
+                ON neighbors(node_id)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_neighbors_composite
+                ON neighbors(node_id, neighbor_id, timestamp)
+            ''')
+
             self.conn.commit()
             logger.info(f"✅ Base de données initialisée : {self.db_path}")
 
@@ -552,6 +579,104 @@ class TrafficPersistence:
             logger.error(f"Erreur lors du chargement des statistiques réseau : {e}")
             return None
 
+    def save_neighbor_info(self, node_id: str, neighbors: List[Dict]):
+        """
+        Sauvegarde les informations de voisinage pour un nœud.
+
+        Args:
+            node_id: ID du nœud (format !xxxxxxxx ou hex)
+            neighbors: Liste des voisins avec leurs informations
+        """
+        try:
+            if not neighbors:
+                return
+
+            cursor = self.conn.cursor()
+            timestamp = time.time()
+
+            for neighbor in neighbors:
+                neighbor_id = neighbor.get('node_id')
+                if not neighbor_id:
+                    continue
+
+                # Normaliser les IDs
+                if isinstance(node_id, int):
+                    node_id_str = f"!{node_id:08x}"
+                else:
+                    node_id_str = node_id if node_id.startswith('!') else f"!{node_id}"
+
+                if isinstance(neighbor_id, int):
+                    neighbor_id_str = f"!{neighbor_id:08x}"
+                else:
+                    neighbor_id_str = neighbor_id if neighbor_id.startswith('!') else f"!{neighbor_id}"
+
+                cursor.execute('''
+                    INSERT INTO neighbors (
+                        timestamp, node_id, neighbor_id, snr,
+                        last_rx_time, node_broadcast_interval
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    timestamp,
+                    node_id_str,
+                    neighbor_id_str,
+                    neighbor.get('snr'),
+                    neighbor.get('last_rx_time'),
+                    neighbor.get('node_broadcast_interval')
+                ))
+
+            self.conn.commit()
+            logger.debug(f"💾 Sauvegarde {len(neighbors)} voisins pour {node_id_str}")
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde des voisins : {e}")
+
+    def load_neighbors(self, hours: int = 48) -> Dict[str, List[Dict]]:
+        """
+        Charge les informations de voisinage récentes.
+
+        Args:
+            hours: Nombre d'heures à charger
+
+        Returns:
+            Dictionnaire {node_id: [liste de voisins]}
+        """
+        try:
+            cursor = self.conn.cursor()
+            cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
+
+            # Récupérer les dernières entrées de voisinage par node/neighbor
+            cursor.execute('''
+                SELECT n1.*
+                FROM neighbors n1
+                INNER JOIN (
+                    SELECT node_id, neighbor_id, MAX(timestamp) as max_timestamp
+                    FROM neighbors
+                    WHERE timestamp >= ?
+                    GROUP BY node_id, neighbor_id
+                ) n2 ON n1.node_id = n2.node_id
+                    AND n1.neighbor_id = n2.neighbor_id
+                    AND n1.timestamp = n2.max_timestamp
+                ORDER BY n1.node_id, n1.timestamp DESC
+            ''', (cutoff,))
+
+            neighbors_by_node = defaultdict(list)
+            for row in cursor.fetchall():
+                node_id = row['node_id']
+                neighbor_data = {
+                    'node_id': row['neighbor_id'],
+                    'snr': row['snr'],
+                    'last_rx_time': row['last_rx_time'],
+                    'node_broadcast_interval': row['node_broadcast_interval'],
+                    'timestamp': row['timestamp']
+                }
+                neighbors_by_node[node_id].append(neighbor_data)
+
+            return dict(neighbors_by_node)
+
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement des voisins : {e}")
+            return {}
+
     def cleanup_old_data(self, hours: int = 48):
         """
         Supprime les données plus anciennes que le nombre d'heures spécifié.
@@ -564,12 +689,17 @@ class TrafficPersistence:
             cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
 
             cursor.execute('DELETE FROM packets WHERE timestamp < ?', (cutoff,))
+            packets_deleted = cursor.rowcount
+            
             cursor.execute('DELETE FROM public_messages WHERE timestamp < ?', (cutoff,))
+            messages_deleted = cursor.rowcount
+            
+            cursor.execute('DELETE FROM neighbors WHERE timestamp < ?', (cutoff,))
+            neighbors_deleted = cursor.rowcount
 
-            deleted_packets = cursor.rowcount
             self.conn.commit()
 
-            logger.info(f"Nettoyage : {deleted_packets} paquets supprimés (> {hours}h)")
+            logger.info(f"Nettoyage : {packets_deleted} paquets, {messages_deleted} messages, {neighbors_deleted} voisins supprimés (> {hours}h)")
 
             # Optimiser la base de données après le nettoyage
             cursor.execute('VACUUM')
@@ -587,6 +717,7 @@ class TrafficPersistence:
             cursor.execute('DELETE FROM node_stats')
             cursor.execute('DELETE FROM global_stats')
             cursor.execute('DELETE FROM network_stats')
+            cursor.execute('DELETE FROM neighbors')
 
             self.conn.commit()
 
@@ -618,6 +749,9 @@ class TrafficPersistence:
             cursor.execute('SELECT COUNT(*) as count FROM node_stats')
             total_nodes = cursor.fetchone()['count']
 
+            cursor.execute('SELECT COUNT(*) as count FROM neighbors')
+            total_neighbors = cursor.fetchone()['count']
+
             cursor.execute('SELECT MIN(timestamp) as oldest, MAX(timestamp) as newest FROM packets')
             row = cursor.fetchone()
             oldest = row['oldest']
@@ -631,6 +765,7 @@ class TrafficPersistence:
                 'total_packets': total_packets,
                 'total_messages': total_messages,
                 'total_nodes': total_nodes,
+                'total_neighbors': total_neighbors,
                 'oldest_packet': datetime.fromtimestamp(oldest).isoformat() if oldest else None,
                 'newest_packet': datetime.fromtimestamp(newest).isoformat() if newest else None,
                 'database_size_mb': round(db_size_mb, 2)

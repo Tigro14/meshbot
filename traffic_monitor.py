@@ -281,6 +281,17 @@ class TrafficMonitor:
                             'air_util': metrics.get('airUtilTx')
                         }
 
+            # Extraire les informations de voisinage pour NEIGHBORINFO_APP
+            if packet_type == 'NEIGHBORINFO_APP' and 'decoded' in packet:
+                decoded = packet['decoded']
+                neighbors = self._extract_neighbor_info(decoded, from_id)
+                if neighbors:
+                    try:
+                        self.persistence.save_neighbor_info(from_id, neighbors)
+                        logger.debug(f"👥 {len(neighbors)} voisins enregistrés pour {from_id:08x}")
+                    except Exception as e:
+                        logger.error(f"Erreur sauvegarde voisins: {e}")
+
             self.all_packets.append(packet_entry)
 
             # Log périodique des paquets enregistrés (tous les 25 paquets)
@@ -457,6 +468,90 @@ class TrafficMonitor:
                 message = str(payload)
         
         return message
+    
+    def _extract_neighbor_info(self, decoded, from_id):
+        """
+        Extraire les informations de voisinage depuis un paquet NEIGHBORINFO_APP
+        
+        Args:
+            decoded: Paquet décodé contenant les informations de voisinage
+            from_id: ID du nœud émetteur
+            
+        Returns:
+            Liste de dictionnaires avec les informations de voisins
+        """
+        neighbors = []
+        
+        try:
+            # Structure typique d'un paquet neighborinfo:
+            # decoded['neighborinfo']['neighbors'] = liste de voisins
+            # Chaque voisin a: node_id, snr, last_rx_time, node_broadcast_interval
+            
+            if 'neighborinfo' in decoded:
+                neighborinfo = decoded['neighborinfo']
+                
+                if hasattr(neighborinfo, 'neighbors'):
+                    # Format objet protobuf
+                    neighbor_list = neighborinfo.neighbors
+                elif isinstance(neighborinfo, dict) and 'neighbors' in neighborinfo:
+                    # Format dictionnaire
+                    neighbor_list = neighborinfo['neighbors']
+                else:
+                    logger.debug(f"Format neighborinfo non reconnu pour {from_id:08x}")
+                    return []
+                
+                for neighbor in neighbor_list:
+                    neighbor_data = {}
+                    
+                    # Extraire node_id (peut être dans différents formats)
+                    if hasattr(neighbor, 'node_id'):
+                        neighbor_data['node_id'] = neighbor.node_id
+                    elif isinstance(neighbor, dict) and 'node_id' in neighbor:
+                        neighbor_data['node_id'] = neighbor['node_id']
+                    elif hasattr(neighbor, 'nodeId'):
+                        neighbor_data['node_id'] = neighbor.nodeId
+                    elif isinstance(neighbor, dict) and 'nodeId' in neighbor:
+                        neighbor_data['node_id'] = neighbor['nodeId']
+                    else:
+                        logger.debug(f"node_id manquant dans voisin: {neighbor}")
+                        continue
+                    
+                    # Extraire SNR
+                    if hasattr(neighbor, 'snr'):
+                        neighbor_data['snr'] = neighbor.snr
+                    elif isinstance(neighbor, dict) and 'snr' in neighbor:
+                        neighbor_data['snr'] = neighbor['snr']
+                    
+                    # Extraire last_rx_time
+                    if hasattr(neighbor, 'last_rx_time'):
+                        neighbor_data['last_rx_time'] = neighbor.last_rx_time
+                    elif isinstance(neighbor, dict) and 'last_rx_time' in neighbor:
+                        neighbor_data['last_rx_time'] = neighbor['last_rx_time']
+                    elif hasattr(neighbor, 'lastRxTime'):
+                        neighbor_data['last_rx_time'] = neighbor.lastRxTime
+                    elif isinstance(neighbor, dict) and 'lastRxTime' in neighbor:
+                        neighbor_data['last_rx_time'] = neighbor['lastRxTime']
+                    
+                    # Extraire node_broadcast_interval
+                    if hasattr(neighbor, 'node_broadcast_interval'):
+                        neighbor_data['node_broadcast_interval'] = neighbor.node_broadcast_interval
+                    elif isinstance(neighbor, dict) and 'node_broadcast_interval' in neighbor:
+                        neighbor_data['node_broadcast_interval'] = neighbor['node_broadcast_interval']
+                    elif hasattr(neighbor, 'nodeBroadcastInterval'):
+                        neighbor_data['node_broadcast_interval'] = neighbor.nodeBroadcastInterval
+                    elif isinstance(neighbor, dict) and 'nodeBroadcastInterval' in neighbor:
+                        neighbor_data['node_broadcast_interval'] = neighbor['nodeBroadcastInterval']
+                    
+                    neighbors.append(neighbor_data)
+                
+                logger.debug(f"👥 Extrait {len(neighbors)} voisins de {from_id:08x}")
+            
+        except Exception as e:
+            logger.error(f"Erreur extraction voisins pour {from_id:08x}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        return neighbors
     
     def _update_packet_statistics(self, node_id, sender_name, packet_entry, packet):
         """Mettre à jour les statistiques détaillées par type de paquet"""
@@ -1956,4 +2051,129 @@ class TrafficMonitor:
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des stats de persistance : {e}")
             return f"❌ Erreur : {e}"
+
+    def get_neighbors_report(self, node_filter=None, compact=True):
+        """
+        Générer un rapport sur les voisins mesh
+        
+        Args:
+            node_filter: Nom ou ID partiel du nœud à filtrer (optionnel)
+            compact: Format compact pour LoRa (180 chars) ou détaillé pour Telegram
+            
+        Returns:
+            Rapport formaté des voisins
+        """
+        try:
+            # Charger les données de voisinage depuis SQLite
+            neighbors_data = self.persistence.load_neighbors(hours=48)
+            
+            if not neighbors_data:
+                return "❌ Aucune donnée de voisinage disponible. Les nœuds doivent avoir neighborinfo activé."
+            
+            # Filtrer si nécessaire
+            if node_filter:
+                filtered_data = {}
+                node_filter_lower = node_filter.lower()
+                
+                for node_id, neighbors in neighbors_data.items():
+                    # Chercher par ID (hex) ou nom
+                    node_name = self.node_manager.get_node_name(
+                        int(node_id[1:], 16) if node_id.startswith('!') else int(node_id, 16)
+                    )
+                    
+                    if (node_filter_lower in node_id.lower() or 
+                        node_filter_lower in node_name.lower()):
+                        filtered_data[node_id] = neighbors
+                
+                if not filtered_data:
+                    return f"❌ Aucun nœud trouvé pour '{node_filter}'"
+                
+                neighbors_data = filtered_data
+            
+            if compact:
+                # Format compact pour LoRa (180 chars max)
+                lines = []
+                total_nodes = len(neighbors_data)
+                total_neighbors = sum(len(n) for n in neighbors_data.values())
+                
+                lines.append(f"👥 {total_nodes} nœuds, {total_neighbors} liens")
+                
+                # Trier par nombre de voisins (décroissant)
+                sorted_nodes = sorted(
+                    neighbors_data.items(),
+                    key=lambda x: len(x[1]),
+                    reverse=True
+                )
+                
+                # Afficher les 3 premiers seulement en mode compact
+                for node_id, neighbors in sorted_nodes[:3]:
+                    node_num = int(node_id[1:], 16) if node_id.startswith('!') else int(node_id, 16)
+                    node_name = self.node_manager.get_node_name(node_num)
+                    
+                    # Nom court (max 8 chars)
+                    if len(node_name) > 8:
+                        node_name = node_name[:8]
+                    
+                    # Calculer SNR moyen
+                    snrs = [n.get('snr', 0) for n in neighbors if n.get('snr')]
+                    avg_snr = sum(snrs) / len(snrs) if snrs else 0
+                    
+                    lines.append(f"{node_name}: {len(neighbors)}v SNR{avg_snr:.0f}")
+                
+                if len(sorted_nodes) > 3:
+                    lines.append(f"...+{len(sorted_nodes) - 3} autres")
+                
+                return "\n".join(lines)
+            
+            else:
+                # Format détaillé pour Telegram
+                lines = []
+                lines.append("👥 **Voisins Mesh**\n")
+                
+                total_nodes = len(neighbors_data)
+                total_neighbors = sum(len(n) for n in neighbors_data.values())
+                lines.append(f"📊 **Statistiques**: {total_nodes} nœuds, {total_neighbors} liens totaux\n")
+                
+                # Trier par nombre de voisins (décroissant)
+                sorted_nodes = sorted(
+                    neighbors_data.items(),
+                    key=lambda x: len(x[1]),
+                    reverse=True
+                )
+                
+                for node_id, neighbors in sorted_nodes:
+                    node_num = int(node_id[1:], 16) if node_id.startswith('!') else int(node_id, 16)
+                    node_name = self.node_manager.get_node_name(node_num)
+                    
+                    lines.append(f"**{node_name}** ({node_id})")
+                    lines.append(f"  └─ {len(neighbors)} voisin(s):")
+                    
+                    # Trier voisins par SNR (meilleur d'abord)
+                    sorted_neighbors = sorted(
+                        neighbors,
+                        key=lambda x: x.get('snr', -999),
+                        reverse=True
+                    )
+                    
+                    for neighbor in sorted_neighbors:
+                        neighbor_num = neighbor['node_id']
+                        if isinstance(neighbor_num, str):
+                            neighbor_num = int(neighbor_num[1:], 16) if neighbor_num.startswith('!') else int(neighbor_num, 16)
+                        
+                        neighbor_name = self.node_manager.get_node_name(neighbor_num)
+                        snr = neighbor.get('snr')
+                        
+                        snr_str = f"SNR: {snr:.1f}" if snr else "SNR: N/A"
+                        lines.append(f"     • {neighbor_name}: {snr_str}")
+                    
+                    lines.append("")  # Ligne vide entre nœuds
+                
+                return "\n".join(lines)
+            
+        except Exception as e:
+            logger.error(f"Erreur dans get_neighbors_report: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"⚠️ Erreur: {str(e)[:50]}"
+
 

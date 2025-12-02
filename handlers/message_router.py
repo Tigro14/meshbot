@@ -34,7 +34,7 @@ class MessageRouter:
 
         # Gestionnaires de commandes par domaine
         self.ai_handler = AICommands(llama_client, self.sender)
-        self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager, interface=interface, broadcast_tracker=broadcast_tracker)
+        self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager, traffic_monitor=traffic_monitor, interface=interface, broadcast_tracker=broadcast_tracker)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender, node_manager, blitz_monitor, vigilance_monitor, broadcast_tracker=broadcast_tracker)
 
@@ -114,6 +114,8 @@ class MessageRouter:
             self.network_handler.handle_my(sender_id, sender_info, is_broadcast=False)
         elif message.startswith('/nodes'):  
             self.network_handler.handle_nodes(message, sender_id, sender_info)
+        elif message.startswith('/neighbors'):
+            self.network_handler.handle_neighbors(message, sender_id, sender_info)
         
         # ===================================================================
         # Commandes système avec authentification
