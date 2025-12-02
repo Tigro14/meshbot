@@ -4,10 +4,14 @@ Visualisation géographique et topologique du réseau Meshtastic via cartes inte
 
 ## 📋 Vue d'ensemble
 
-Ce système génère automatiquement deux types de cartes interactives à partir des données du réseau Meshtastic :
+Ce système génère automatiquement une carte interactive unifiée à partir des données du réseau Meshtastic :
 
-1. **`map.html`** - Carte géographique (GPS) des nœuds
-2. **`meshlink.html`** - Carte de topologie réseau (liens et voisinage)
+**`map.html`** - Carte unifiée avec trois modes de visualisation :
+- 🗺️ **Vue Nœuds** : Carte géographique (GPS) des nœuds avec filtres temporels
+- 🔗 **Vue Liens** : Topologie réseau avec liens et qualité SNR
+- 👁️ **Vue Les deux** : Superposition des deux vues précédentes
+
+**`meshlink.html`** - Redirection automatique vers la vue Liens de la carte unifiée
 
 Les données sont extraites du nœud Meshtastic `tigrog2`, formatées en JSON, puis synchronisées vers un serveur web externe pour visualisation publique.
 
@@ -52,16 +56,18 @@ Les données sont extraites du nœud Meshtastic `tigrog2`, formatées en JSON, p
 │           Serveur Web (100.120.148.60)                  │
 │         /opt/WebSites/projectsend/                      │
 │                                                          │
-│  ┌──────────────┐         ┌────────────────┐           │
-│  │ info.json    │◄────────│  map.html      │           │
-│  └──────────────┘         │  (Leaflet.js)  │           │
-│                           │  Carte GPS     │           │
-│  ┌─────────────────────┐  └────────────────┘           │
-│  │ info_neighbors.json │                                │
-│  └──────────┬──────────┘  ┌────────────────┐           │
-│             └────────────►│ meshlink.html  │           │
-│                           │ Carte topologie│           │
-│                           └────────────────┘           │
+│  ┌──────────────┐         ┌────────────────────────┐       │
+│  │ info.json    │◄────────│  map.html (Unifiée)    │       │
+│  └──────────────┘         │  - Vue Nœuds (GPS)     │       │
+│                           │  - Vue Liens (Topo)    │       │
+│  ┌─────────────────────┐  │  - Vue Les deux        │       │
+│  │ info_neighbors.json │  └────────────────────────┘       │
+│  └─────────────────────┘                                    │
+│                           ┌────────────────┐               │
+│                           │ meshlink.html  │               │
+│                           │ (Redirige vers │               │
+│                           │  map.html)     │               │
+│                           └────────────────┘               │
 │                                                          │
 │            Accessible via https://tigro.fr/             │
 └─────────────────────────────────────────────────────────┘
@@ -101,9 +107,12 @@ Les données sont extraites du nœud Meshtastic `tigrog2`, formatées en JSON, p
 
 | Fichier | Description | Source de données |
 |---------|-------------|-------------------|
-| `map.html` | Carte géographique (Leaflet.js) | `https://tigro.fr/info.json` |
-| `meshlink.html` | Carte de topologie réseau | `info.json` (local) |
-| `mesh_map.html` | Carte alternative de topologie | Générée par `generate_mesh_map.py` |
+| `map.html` | ✨ **Carte unifiée** avec 3 modes de visualisation | `https://tigro.fr/info.json` |
+|  | - Vue **Nœuds** : géographique avec filtres temporels (24h/48h/72h) | |
+|  | - Vue **Liens** : topologie réseau avec qualité SNR | |
+|  | - Vue **Les deux** : superposition des vues | |
+| `meshlink.html` | Redirection automatique vers `map.html?view=links` | - |
+| `mesh_map.html` | Carte alternative de topologie (legacy) | Générée par `generate_mesh_map.py` |
 
 ---
 
