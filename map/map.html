@@ -59,6 +59,36 @@
             color: #1a73e8;
         }
         
+        .view-buttons {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        
+        .view-btn {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #dadce0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            color: #5f6368;
+        }
+        
+        .view-btn:hover {
+            background: #f8f9fa;
+            border-color: #1a73e8;
+        }
+        
+        .view-btn.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+        
         .filter-buttons {
             display: flex;
             flex-wrap: wrap;
@@ -123,6 +153,12 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
         }
         
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            margin-right: 8px;
+        }
+        
         .owner-node {
             background-color: #e74c3c;
         }
@@ -166,6 +202,12 @@
             <div class="stats-title">Réseau Mesh vu par tigro G2 PV</div>
         </div>
         
+        <div class="view-buttons">
+            <button class="view-btn active" onclick="setView('nodes')">Nœuds</button>
+            <button class="view-btn" onclick="setView('links')">Liens</button>
+            <button class="view-btn" onclick="setView('both')">Les deux</button>
+        </div>
+        
         <div class="stat-row">
             <span class="stat-label">Nœuds actifs</span>
             <span class="stat-value" id="visibleNodes">0</span>
@@ -173,6 +215,10 @@
         <div class="stat-row">
             <span class="stat-label">Total nœuds</span>
             <span class="stat-value" id="totalNodes">0</span>
+        </div>
+        <div class="stat-row" id="linksRow" style="display: none;">
+            <span class="stat-label">Liaisons</span>
+            <span class="stat-value" id="totalLinks">0</span>
         </div>
         <div class="stat-row" style="border-bottom: none;">
             <span class="stat-label">Dernier entendu</span>
@@ -195,7 +241,10 @@
         let markers = {};
         let meshData = null;
         let currentFilter = 'all';
+        let currentView = 'nodes';
         let myNodeId = '!a2e175ac';
+        let linkLayerGroup = L.layerGroup();
+        let linkCount = 0;
         
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
@@ -221,6 +270,45 @@
             }
         }
         
+        function getLinkColor(snr) {
+            if (snr === null || snr === undefined) return '#888888';
+            if (snr > 5) return '#00ff00'; // Vert - Excellent
+            if (snr > 0) return '#ffff00';  // Jaune - Bon
+            return '#ff6600';                // Orange - Faible
+        }
+
+        function getLinkOpacity(snr) {
+            if (snr === null || snr === undefined) return 0.3;
+            if (snr > 5) return 0.9;
+            if (snr > 0) return 0.6;
+            return 0.4;
+        }
+
+        function getLinkWeight(snr) {
+            if (snr === null || snr === undefined) return 3;
+            if (snr > 5) return 7;
+            if (snr > 0) return 5;
+            return 4;
+        }
+        
+        function setView(view) {
+            currentView = view;
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Show/hide links row in stats
+            const linksRow = document.getElementById('linksRow');
+            if (view === 'links' || view === 'both') {
+                linksRow.style.display = 'flex';
+            } else {
+                linksRow.style.display = 'none';
+            }
+            
+            updateMapView();
+        }
+        
         function setTimeFilter(hours) {
             currentFilter = hours;
             document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -232,7 +320,6 @@
         
         async function parseNodeInfo() {
             try {
-                // Charger le JSON nettoyé
                 const response = await fetch('https://tigro.fr/info.json');
                 const data = await response.json();
                 
@@ -259,34 +346,50 @@
             legend.onAdd = () => {
                 const div = L.DomUtil.create('div', 'legend');
                 div.innerHTML = `
-                    <h4>Distance (hops)</h4>
-                    <div class="legend-item">
-                        <div class="color-box owner-node"></div>
-                        <span>Votre nœud</span>
+                    <h4 id="legendTitle">Distance (hops)</h4>
+                    <div id="hopsLegend">
+                        <div class="legend-item">
+                            <div class="color-box owner-node"></div>
+                            <span>Votre nœud</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#27ae60"></div>
+                            <span>Direct (0 hop)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#3498db"></div>
+                            <span>Hop 1</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#f39c12"></div>
+                            <span>Hop 2</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#e67e22"></div>
+                            <span>Hop 3</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#9b59b6"></div>
+                            <span>Hop 4</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="color-box" style="background-color:#95a5a6"></div>
+                            <span>Hop 5+</span>
+                        </div>
                     </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#27ae60"></div>
-                        <span>Direct (0 hop)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#3498db"></div>
-                        <span>Hop 1</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#f39c12"></div>
-                        <span>Hop 2</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#e67e22"></div>
-                        <span>Hop 3</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#9b59b6"></div>
-                        <span>Hop 4</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="color-box" style="background-color:#95a5a6"></div>
-                        <span>Hop 5+</span>
+                    <div id="linksLegend" style="display:none;">
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #00ff00;"></div>
+                            <span>Excellente (SNR > 5)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #ffff00;"></div>
+                            <span>Bonne (SNR 0-5)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #ff6600;"></div>
+                            <span>Faible (SNR < 0)</span>
+                        </div>
                     </div>
                 `;
                 return div;
@@ -309,10 +412,151 @@
                 }
                 
                 createMarkers(meshData.nodes);
+                updateMapView();
             } catch (error) {
                 console.error('Erreur chargement données:', error);
                 document.getElementById('lastHeard').textContent = 'Erreur: ' + error.message;
             }
+        }
+        
+        function updateMapView() {
+            // Update legend
+            const hopsLegend = document.getElementById('hopsLegend');
+            const linksLegend = document.getElementById('linksLegend');
+            const legendTitle = document.getElementById('legendTitle');
+            
+            if (currentView === 'nodes') {
+                hopsLegend.style.display = 'block';
+                linksLegend.style.display = 'none';
+                legendTitle.textContent = 'Distance (hops)';
+                if (map.hasLayer(linkLayerGroup)) {
+                    map.removeLayer(linkLayerGroup);
+                }
+            } else if (currentView === 'links') {
+                hopsLegend.style.display = 'none';
+                linksLegend.style.display = 'block';
+                legendTitle.textContent = 'Qualité des liaisons';
+                if (!map.hasLayer(linkLayerGroup)) {
+                    map.addLayer(linkLayerGroup);
+                }
+                drawLinks(meshData.nodes);
+            } else if (currentView === 'both') {
+                hopsLegend.style.display = 'block';
+                linksLegend.style.display = 'block';
+                legendTitle.textContent = 'Distance et Liaisons';
+                if (!map.hasLayer(linkLayerGroup)) {
+                    map.addLayer(linkLayerGroup);
+                }
+                drawLinks(meshData.nodes);
+            }
+        }
+        
+        function drawLinks(nodes) {
+            linkLayerGroup.clearLayers();
+            linkCount = 0;
+            const drawnLinks = new Set();
+
+            // Convertir en tableau si nécessaire
+            const nodesArray = Array.isArray(nodes) ? nodes : Object.values(nodes);
+            
+            let hasNeighborInfo = false;
+            
+            nodesArray.forEach(node => {
+                const nodeId = node.user?.id || node.nodeId;
+                if (!node.position || !markers[nodeId]) return;
+
+                const neighbors = node.neighbors || node.neighbours || [];
+                
+                if (neighbors.length > 0) {
+                    hasNeighborInfo = true;
+                    
+                    neighbors.forEach(neighbor => {
+                        const neighborId = neighbor.nodeId || neighbor.node_id || neighbor.id;
+                        if (!markers[neighborId]) return;
+                        
+                        const linkKey = [nodeId, neighborId].sort().join('-');
+                        if (drawnLinks.has(linkKey)) return;
+                        drawnLinks.add(linkKey);
+
+                        const fromLatLng = markers[nodeId].getLatLng();
+                        const toLatLng = markers[neighborId].getLatLng();
+                        const snr = neighbor.snr || neighbor.SNR || null;
+                        
+                        const line = L.polyline([fromLatLng, toLatLng], {
+                            color: getLinkColor(snr),
+                            weight: getLinkWeight(snr),
+                            opacity: getLinkOpacity(snr),
+                            dashArray: snr === null ? '5, 5' : null
+                        });
+
+                        let popupContent = `<strong>Liaison directe</strong><br>`;
+                        popupContent += `${node.user.shortName || nodeId} ↔ ${markers[neighborId].options.title}<br>`;
+                        if (snr !== null) popupContent += `SNR: ${snr.toFixed(1)} dB`;
+                        
+                        line.bindPopup(popupContent);
+                        linkLayerGroup.addLayer(line);
+                        linkCount++;
+                    });
+                }
+            });
+
+            // Si pas d'infos de voisinage, créer des liaisons inférées
+            if (!hasNeighborInfo) {
+                console.log('Pas d\'infos de voisinage - utilisation de liaisons inférées');
+                
+                nodesArray.forEach(node => {
+                    const nodeId = node.user?.id || node.nodeId;
+                    if (!node.position || !markers[nodeId]) return;
+                    
+                    if (node.hopsAway && node.hopsAway > 0) {
+                        const targetHops = node.hopsAway - 1;
+                        const potentialParents = nodesArray.filter(n => {
+                            const nId = n.user?.id || n.nodeId;
+                            return nId !== nodeId && 
+                                   n.position && 
+                                   markers[nId] && 
+                                   (n.hopsAway === targetHops || (!n.hopsAway && targetHops === 0));
+                        });
+                        
+                        if (potentialParents.length > 0) {
+                            potentialParents.sort((a, b) => {
+                                const snrA = a.snr || -100;
+                                const snrB = b.snr || -100;
+                                return snrB - snrA;
+                            });
+                            
+                            const parent = potentialParents[0];
+                            const parentId = parent.user?.id || parent.nodeId;
+                            
+                            const linkKey = [nodeId, parentId].sort().join('-');
+                            if (!drawnLinks.has(linkKey)) {
+                                drawnLinks.add(linkKey);
+                                
+                                const fromLatLng = markers[nodeId].getLatLng();
+                                const toLatLng = markers[parentId].getLatLng();
+                                
+                                const line = L.polyline([fromLatLng, toLatLng], {
+                                    color: getLinkColor(node.snr),
+                                    weight: getLinkWeight(node.snr),
+                                    opacity: getLinkOpacity(node.snr) * 0.6,
+                                    dashArray: '5, 5'
+                                });
+
+                                let popupContent = `<strong>Liaison inférée</strong><br>`;
+                                popupContent += `${node.user.shortName || nodeId} → ${parent.user.shortName || parentId}<br>`;
+                                popupContent += `Distance: ${node.hopsAway} hop(s)<br>`;
+                                if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB`;
+                                
+                                line.bindPopup(popupContent);
+                                linkLayerGroup.addLayer(line);
+                                linkCount++;
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('totalLinks').textContent = linkCount;
         }
         
         function createMarkers(nodes) {
@@ -365,7 +609,8 @@
                         color: '#fff',
                         weight: 2,
                         opacity: 1,
-                        fillOpacity: 0.8
+                        fillOpacity: 0.8,
+                        title: node.user?.shortName || id
                     });
                     
                     marker.on('mouseover', function() {
@@ -381,16 +626,18 @@
                         `Il y a ${Math.floor(hoursAgo * 60)} minutes` : 
                         `Il y a ${Math.floor(hoursAgo)} heures`;
                     
-                    const popupContent = `
-                        <div class="popup-title">${node.user?.longName || 'Nœud inconnu'}</div>
-                        <div class="popup-info">
-                            <strong>ID:</strong> ${node.user?.shortName || id}<br>
-                            <strong>Hops:</strong> ${node.hopsAway !== undefined ? node.hopsAway : 'N/A'}<br>
-                            <strong>SNR:</strong> ${node.snr !== undefined ? node.snr.toFixed(1) + ' dB' : 'N/A'}<br>
-                            <strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>
-                            <em>${hoursAgoText}</em>
-                        </div>
-                    `;
+                    let popupContent = `<div class="popup-title">${node.user?.longName || 'Nœud inconnu'}</div>`;
+                    popupContent += `<div class="popup-info">`;
+                    popupContent += `<strong>ID:</strong> ${node.user?.shortName || id}<br>`;
+                    popupContent += `<strong>Hops:</strong> ${node.hopsAway !== undefined ? node.hopsAway : 'N/A'}<br>`;
+                    popupContent += `<strong>SNR:</strong> ${node.snr !== undefined ? node.snr.toFixed(1) + ' dB' : 'N/A'}<br>`;
+                    if (node.neighbors || node.neighbours) {
+                        const neighborCount = (node.neighbors || node.neighbours).length;
+                        popupContent += `<strong>Voisins directs:</strong> ${neighborCount}<br>`;
+                    }
+                    popupContent += `<strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
+                    popupContent += `<em>${hoursAgoText}</em>`;
+                    popupContent += `</div>`;
                     
                     marker.bindPopup(popupContent);
                     marker.addTo(map);
@@ -414,9 +661,36 @@
         function applyTimeFilter() {
             if (meshData) {
                 createMarkers(meshData.nodes);
+                updateMapView();
             }
         }
         
+        // Check for URL parameters to set initial view
+        function initFromURLParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const viewParam = urlParams.get('view');
+            
+            if (viewParam && ['nodes', 'links', 'both'].includes(viewParam)) {
+                currentView = viewParam;
+                
+                // Update button states
+                document.querySelectorAll('.view-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.textContent.toLowerCase().includes(viewParam) ||
+                        (viewParam === 'both' && btn.textContent.includes('deux'))) {
+                        btn.classList.add('active');
+                    }
+                });
+                
+                // Show/hide links row
+                const linksRow = document.getElementById('linksRow');
+                if (viewParam === 'links' || viewParam === 'both') {
+                    linksRow.style.display = 'flex';
+                }
+            }
+        }
+        
+        initFromURLParams();
         initMap();
     </script>
 </body>
