@@ -552,6 +552,7 @@ class UtilityCommands:
             "/sys",
             "/echo",
             "/nodes",
+            "/neighbors",
             "/stats [cmd]",
             "/db [cmd]",
             "/trace",
@@ -595,7 +596,10 @@ class UtilityCommands:
 
         📡 RÉSEAU MESHTASTIC
         • /nodes - Liste nœuds directs de votre node
-        • /fullnodes [jours] [recherche] - Liste alphabétique complète
+        • /neighbors [node] - Voisins mesh (topology réseau)
+          /neighbors → Tous les voisins (format compact)
+          /neighbors tigro → Voisins d'un nœud spécifique
+        • /fullnodes [jours] - Liste alphabétique complète
           Défaut: 30j, max 365j, tri par longName
           Exemples:
             /fullnodes → Tous les nœuds (30j)

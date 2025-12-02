@@ -13,10 +13,11 @@ from utils import *
 from .signal_utils import *
 
 class NetworkCommands:
-    def __init__(self, remote_nodes_client, sender, node_manager, interface=None, mesh_traceroute=None, broadcast_tracker=None):
+    def __init__(self, remote_nodes_client, sender, node_manager, traffic_monitor=None, interface=None, mesh_traceroute=None, broadcast_tracker=None):
         self.remote_nodes_client = remote_nodes_client
         self.sender = sender
         self.node_manager = node_manager
+        self.traffic_monitor = traffic_monitor
         self.interface = interface
         self.mesh_traceroute = mesh_traceroute
         self.broadcast_tracker = broadcast_tracker  # Callback pour tracker broadcasts
@@ -182,6 +183,57 @@ class NetworkCommands:
             response_parts.append("❓ Route mesh complexe")
         
         return "\n".join(response_parts)
+    
+    def handle_neighbors(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /neighbors - Afficher les voisins mesh
+        
+        Usage:
+        - /neighbors : Tous les voisins (format compact pour LoRa)
+        - /neighbors <node> : Filtrer par nom/ID de nœud
+        """
+        info_print(f"Neighbors: {sender_info}")
+        
+        # Vérifier si traffic_monitor est disponible
+        if not self.traffic_monitor:
+            error_msg = "⚠️ Traffic monitor non disponible"
+            self.sender.send_single(error_msg, sender_id, sender_info)
+            return
+        
+        # Extraire le filtre optionnel
+        parts = message.split(maxsplit=1)
+        node_filter = parts[1].strip() if len(parts) > 1 else None
+        
+        # Déterminer le format (compact pour mesh, détaillé pour autres)
+        # On suppose que si le sender_info contient 'telegram' ou 'cli', c'est détaillé
+        sender_str = str(sender_info).lower()
+        compact = 'telegram' not in sender_str and 'cli' not in sender_str
+        
+        try:
+            # Générer le rapport
+            report = self.traffic_monitor.get_neighbors_report(
+                node_filter=node_filter,
+                compact=compact
+            )
+            
+            # Construire la commande pour les logs
+            command_log = f"/neighbors {node_filter}" if node_filter else "/neighbors"
+            
+            # Envoyer la réponse
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
+            
+            if compact:
+                # Pour LoRa, envoyer tel quel (déjà optimisé pour 180 chars)
+                self.sender.send_single(report, sender_id, sender_info)
+            else:
+                # Pour Telegram/CLI, peut être plus long
+                self.sender.send_chunks(report, sender_id, sender_info)
+            
+        except Exception as e:
+            error_print(f"Erreur commande /neighbors: {e}")
+            error_print(traceback.format_exc())
+            error_msg = f"⚠️ Erreur: {str(e)[:30]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)
     
     def _send_broadcast_via_tigrog2(self, message, sender_id, sender_info, command):
         """
