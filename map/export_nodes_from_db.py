@@ -11,6 +11,7 @@ IMPORTANT: Logs go to stderr, JSON goes to stdout (same as export_neighbors_from
 import json
 import sys
 import os
+import traceback
 from datetime import datetime
 
 # Helper to log on stderr (doesn't pollute JSON on stdout)
@@ -130,7 +131,6 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
-                import traceback
                 log(traceback.format_exc())
         else:
             log(f"⚠️  Base de données SQLite introuvable: {db_path}")
@@ -225,7 +225,6 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         
     except Exception as e:
         log(f"✗ Erreur : {e}")
-        import traceback
         log(traceback.format_exc())
         return False
 
