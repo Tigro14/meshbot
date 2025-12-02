@@ -6,6 +6,14 @@ This directory contains tools for visualizing the Meshtastic network topology.
 
 ### Data Export Scripts
 
+- **`export_nodes_from_db.py`** (NEW) - Export node information from bot's local files
+  - Reads from `node_names.json` (maintained by bot)
+  - Enriches with data from `traffic_history.db` (SNR, lastHeard)
+  - No TCP connection needed (avoids "unique session" violations)
+  - Output: JSON on stdout (compatible with `meshtastic --info`), logs on stderr
+  - Usage: `./export_nodes_from_db.py [node_names_file] [db_path] [hours]`
+  - Replaces: `meshtastic --host <ip> --info`
+
 - **`export_neighbors_from_db.py`** (NEW) - Export neighbor data from bot's SQLite database
   - Reads from `traffic_history.db`
   - No TCP connection needed (avoids "unique session" violations)
@@ -19,13 +27,14 @@ This directory contains tools for visualizing the Meshtastic network topology.
 
 ### Update Scripts
 
-- **`infoup_db.sh`** (NEW) - Update maps using database export
-  - Uses `export_neighbors_from_db.py` instead of TCP
+- **`infoup_db.sh`** (RECOMMENDED) - Update maps using database export
+  - Uses `export_nodes_from_db.py` for node information (no TCP needed)
+  - Uses `export_neighbors_from_db.py` for neighbor data (no TCP needed)
   - Recommended for use when bot is running
-  - Avoids TCP connection conflicts
+  - Completely avoids TCP connection conflicts
 
 - **`infoup.sh`** (LEGACY) - Original update script using TCP
-  - Uses `export_neighbors.py`
+  - Uses `meshtastic --host --info` and `export_neighbors.py`
   - May conflict with running bot
   - Use only when bot is stopped
 
@@ -46,13 +55,19 @@ This directory contains tools for visualizing the Meshtastic network topology.
 
 **Old workflow (with TCP conflicts):**
 ```bash
-# Conflicts with bot if both try to connect
+# Node information via TCP - conflicts with bot
+meshtastic --host 192.168.1.38 --info > info.json
+
+# Neighbor data via TCP - conflicts with bot
 ./export_neighbors.py > info_neighbors.json
 ```
 
 **New workflow (no conflicts):**
 ```bash
-# Uses bot's database - no TCP needed
+# Node information from local files - no TCP needed
+./export_nodes_from_db.py ../node_names.json ../traffic_history.db 48 > info.json
+
+# Neighbor data from database - no TCP needed
 ./export_neighbors_from_db.py ../traffic_history.db 48 > info_neighbors.json
 ```
 
@@ -72,6 +87,17 @@ If you have a cron job running `infoup.sh`, update it to use `infoup_db.sh`:
 
 ### Data Collection
 
+#### Node Information
+1. **Bot collects NODEINFO_APP packets** with node names and details
+2. **Bot collects POSITION_APP packets** with GPS coordinates
+3. **NodeManager maintains `node_names.json`** with consolidated node data:
+   - Node ID
+   - Long name / short name
+   - GPS coordinates (latitude, longitude, altitude)
+   - Last update timestamp
+4. **Traffic monitor stores packets in SQLite** with SNR and signal metrics
+
+#### Neighbor Information
 1. **Bot collects NEIGHBORINFO_APP packets** automatically
 2. **Traffic monitor extracts neighbor data** from packets
 3. **SQLite database stores** node relationships with metadata:
@@ -83,16 +109,24 @@ If you have a cron job running `infoup.sh`, update it to use `infoup_db.sh`:
 
 ### Data Export
 
+#### Node Export
+1. **export_nodes_from_db.py** reads `node_names.json`
+2. Enriches with SQLite data (SNR, lastHeard from packets)
+3. Generates JSON compatible with `meshtastic --info` format
+4. Outputs to stdout for piping or redirection
+
+#### Neighbor Export
 1. **export_neighbors_from_db.py** queries the database
 2. Generates JSON compatible with HTML maps
 3. Outputs to stdout for piping or redirection
 
 ### Benefits
 
-✅ **No TCP conflicts** - bot and maps can both access data
-✅ **Historical data** - 48 hours of neighbor relationships
+✅ **No TCP conflicts** - bot and maps can both access data simultaneously
+✅ **Historical data** - 48 hours of neighbor relationships and node metrics
 ✅ **Automatic updates** - data collected continuously by bot
-✅ **Simplified architecture** - single data source
+✅ **Simplified architecture** - single data source (bot's files)
+✅ **Complete replacement** - no need for `meshtastic --host --info` TCP connection
 
 ## Troubleshooting
 

@@ -7,22 +7,19 @@
 JSON_FILE="/home/dietpi/bot/map/info.json"
 JSON_LINKS_FILE="/home/dietpi/bot/map/info_neighbors.json"
 DB_PATH="/home/dietpi/bot/traffic_history.db"
+NODE_NAMES_FILE="/home/dietpi/bot/node_names.json"
 
 cd /home/dietpi/bot/map
 
 echo "🗄️  Export des voisins depuis la base de données..."
 # Utiliser le nouveau script qui lit depuis la DB au lieu de se connecter en TCP
-/home/dietpi/bot/map/export_neighbors_from_db.py "$DB_PATH" 48 > $JSON_LINKS_FILE 2>&1
+# Logs vont sur stderr, JSON va sur stdout
+/home/dietpi/bot/map/export_neighbors_from_db.py "$DB_PATH" 48 > $JSON_LINKS_FILE
 
-echo "📡 Récupération des infos nœuds via meshtastic..."
-# Toujours utiliser meshtastic pour les infos complètes des nœuds
-meshtastic --host 192.168.1.38 --info > $JSON_FILE
-
-echo "🧹 Nettoyage du JSON..."
-python3 info_json_clean.py info.json info_clean.json
-
-echo "🔄 Remplacement du fichier..."
-mv info_clean.json $JSON_FILE
+echo "📡 Récupération des infos nœuds depuis la base de données..."
+# Utiliser le nouveau script qui lit depuis node_names.json et la DB au lieu de se connecter en TCP
+# Logs vont sur stderr, JSON va sur stdout
+/home/dietpi/bot/map/export_nodes_from_db.py "$NODE_NAMES_FILE" "$DB_PATH" 48 > $JSON_FILE
 
 echo "📤 Envoi vers le serveur web..."
 # Envoie les JSON vers le serveur qui héberge map.html et meshlink.html
