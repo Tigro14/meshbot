@@ -263,6 +263,53 @@ PROCESS_TCP_COMMANDS = True   # Enable: accept commands from both serial and TCP
 - Clear debug messages differentiate stats-only vs command processing modes
 - No impact on statistics collection (both nodes always contribute to traffic analytics)
 
+### Mesh Neighbors Feature (December 2025)
+
+New functionality to display and export mesh network neighbor relationships:
+
+**Key Features:**
+- **NEIGHBORINFO_APP Collection**: Automatic extraction from Meshtastic packets
+- **SQLite Storage**: Persistent neighbor data with 48h retention
+- **User Command**: `/neighbors [node]` for querying topology
+- **Map Export**: Database-based JSON export (no TCP conflicts)
+- **Dual Output**: Compact for LoRa (180 chars), detailed for Telegram
+
+**Usage:**
+```
+/neighbors               → All neighbors (compact)
+/neighbors tigro         → Filter by node name
+/neighbors F547F         → Filter by node ID
+```
+
+**Database Schema:**
+- Table: `neighbors`
+- Columns: node_id, neighbor_id, snr, last_rx_time, node_broadcast_interval, timestamp
+- Indexes: timestamp, node_id, composite (node_id, neighbor_id, timestamp)
+- Cleanup: Automatic with 48h retention
+
+**Map Integration:**
+- `export_neighbors_from_db.py` - Database-based export script
+- `infoup_db.sh` - Updated map generation workflow
+- Eliminates TCP connection conflicts
+- Compatible with existing HTML maps
+
+**Implementation:**
+- `traffic_persistence.py::save_neighbor_info()` - Save to database
+- `traffic_persistence.py::load_neighbors()` - Query with time filters
+- `traffic_persistence.py::export_neighbors_to_json()` - JSON export
+- `traffic_monitor.py::_extract_neighbor_info()` - Packet parsing
+- `traffic_monitor.py::get_neighbors_report()` - Format for display
+- `network_commands.py::handle_neighbors()` - Command handler
+
+**Benefits:**
+1. ✅ No TCP session conflicts (map vs bot)
+2. ✅ Historical neighbor data
+3. ✅ User-accessible topology info
+4. ✅ Automatic data collection
+5. ✅ Compatible with existing maps
+
+See `map/README_NEIGHBORS.md` for detailed documentation and migration guide.
+
 ### Database Management System (November 2025)
 
 New unified `/db` command for database operations:
@@ -2458,6 +2505,7 @@ if info and monitor.should_alert(info):
 |---------|---------|---------|
 | `/bot <question>` | `ai_commands.py` | Query AI |
 | `/nodes [page]` | `network_commands.py` | List nodes |
+| `/neighbors [node]` | `network_commands.py` | Mesh neighbors (NEW) |
 | `/my` | `network_commands.py` | Your signal |
 | `/trace [node]` | `network_commands.py` | Trace sender or specific node |
 | `/sys` | `system_commands.py` | System info |
@@ -2505,6 +2553,8 @@ if info and monitor.should_alert(info):
 | `node_stats` | Per-node aggregated stats |
 | `global_stats` | Overall network stats |
 | `network_stats` | Routing & signal metrics |
+| `neighbors` | Mesh neighbor relationships (NEW) |
+| `weather_cache` | Weather API cache |
 
 ### Logging Functions
 
@@ -2528,9 +2578,22 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-11-23
+**Last updated**: 2025-12-02
 **Updated by**: Claude (AI Assistant)
-**Changes in this update (2025-11-23)**:
+**Changes in this update (2025-12-02)**:
+- **NEW: Mesh Neighbors Feature** - Display and export mesh network topology
+  - Added `neighbors` table to SQLite database with indexes
+  - Automatic extraction from NEIGHBORINFO_APP packets
+  - New `/neighbors [node]` command for querying topology
+  - Database-based JSON export eliminates TCP connection conflicts
+  - Created `map/export_neighbors_from_db.py` for database-based export
+  - Created `map/infoup_db.sh` to replace TCP-based workflow
+  - Added `map/README_NEIGHBORS.md` with migration guide
+  - Methods: `save_neighbor_info()`, `load_neighbors()`, `export_neighbors_to_json()`
+  - Dual output format: compact (LoRa 180 chars) and detailed (Telegram)
+  - Benefits: No TCP conflicts, historical data, user-accessible topology
+
+**Previous changes (2025-11-23)**:
 - **BREAKING: Vigilance Module Replacement** - Replaced broken vigilancemeteo package with web scraping
   - Created `vigilance_scraper.py` - BeautifulSoup4-based web scraper for Météo-France
   - Scrapes https://vigilance.meteofrance.fr/fr/{departement} directly
