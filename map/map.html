@@ -188,6 +188,15 @@
         .popup-info strong {
             color: #202124;
         }
+        
+        .node-label {
+            font-size: 8px;
+            font-weight: bold;
+            color: #000;
+            text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+            white-space: nowrap;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -228,8 +237,8 @@
         </div>
         
         <div class="filter-buttons">
-            <button class="filter-btn active" onclick="setTimeFilter('all')">Tout</button>
-            <button class="filter-btn" onclick="setTimeFilter('24')">24h</button>
+            <button class="filter-btn" onclick="setTimeFilter('all')">Tout</button>
+            <button class="filter-btn active" onclick="setTimeFilter('24')">24h</button>
             <button class="filter-btn" onclick="setTimeFilter('48')">48h</button>
             <button class="filter-btn" onclick="setTimeFilter('72')">72h</button>
         </div>
@@ -239,8 +248,9 @@
     <script>
         let map;
         let markers = {};
+        let labelMarkers = {};
         let meshData = null;
-        let currentFilter = 'all';
+        let currentFilter = '24';
         let currentView = 'nodes';
         let myNodeId = '!a2e175ac';
         let linkLayerGroup = L.layerGroup();
@@ -573,7 +583,9 @@
             console.log('Nombre de nœuds à traiter:', Object.keys(nodes).length);
             
             Object.values(markers).forEach(marker => map.removeLayer(marker));
+            Object.values(labelMarkers).forEach(marker => map.removeLayer(marker));
             markers = {};
+            labelMarkers = {};
             
             let visibleCount = 0;
             let lastHeardTime = 0;
@@ -621,6 +633,31 @@
                         fillOpacity: 0.8,
                         title: node.user?.shortName || id
                     });
+                    
+                    // Add tooltip with longName that shows on hover
+                    const longName = node.user?.longName || 'Nœud inconnu';
+                    marker.bindTooltip(longName, {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'node-tooltip'
+                    });
+                    
+                    // Create a divIcon with text label for the 4 hex digits from node ID
+                    // Extract last 4 hex digits from ID (e.g., "!16fad3dc" -> "d3dc")
+                    const hexLabel = id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4);
+                    const labelIcon = L.divIcon({
+                        html: `<div class="node-label">${hexLabel}</div>`,
+                        className: '',
+                        iconSize: [0, 0],
+                        iconAnchor: [0, id === myNodeId ? -25 : -17]
+                    });
+                    
+                    const labelMarker = L.marker([lat, lon], {
+                        icon: labelIcon,
+                        interactive: false
+                    });
+                    labelMarker.addTo(map);
+                    labelMarkers[id] = labelMarker;
                     
                     marker.on('mouseover', function() {
                         this.setStyle({ fillOpacity: 1 });
