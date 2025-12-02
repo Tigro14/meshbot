@@ -601,6 +601,11 @@ class UtilityCommands:
           /neighbors tigro → Voisins d'un nœud spécifique
         • /fullnodes [jours] - Liste alphabétique complète
           Défaut: 30j, max 365j, tri par longName
+          Exemples:
+            /fullnodes → Tous les nœuds (30j)
+            /fullnodes 7 → Tous les nœuds (7j)
+            /fullnodes tigro → Nœuds contenant "tigro" (30j)
+            /fullnodes 7 tigro → Nœuds contenant "tigro" (7j)
 
         📊 ANALYSE TRAFIC
         • /stats [cmd] [params] - Système unifié de statistiques

@@ -588,8 +588,18 @@ class RemoteNodesClient:
         except Exception as e:
             return f"Erreur {REMOTE_NODE_NAME}: {str(e)[:30]}"
 
-    def get_all_nodes_alphabetical(self, days_limit=30):
-        """Récupérer tous les nœuds triés alphabétiquement avec filtre temporel"""
+    def get_all_nodes_alphabetical(self, days_limit=30, search_expr=None):
+        """
+        Récupérer tous les nœuds triés alphabétiquement avec filtre temporel
+        
+        Args:
+            days_limit: Nombre de jours pour le filtre temporel (défaut: 30)
+            search_expr: Expression de recherche pour filtrer les nœuds par nom (optionnel)
+                        Recherche insensible à la casse dans shortname et longname
+        
+        Returns:
+            str: Liste formatée des nœuds ou message d'erreur
+        """
         try:
             # Vérifier que REMOTE_NODE_HOST est configuré
             if not REMOTE_NODE_HOST:
@@ -603,6 +613,22 @@ class RemoteNodesClient:
             if not remote_nodes:
                 return f"Aucun nœud trouvé sur {REMOTE_NODE_NAME} (<{days_limit}j)"
             
+            # Filtrage par search_expr si fourni
+            if search_expr:
+                search_lower = search_expr.lower()
+                filtered_nodes = []
+                
+                for node in remote_nodes:
+                    name = node.get('name', 'Unknown')
+                    # Rechercher dans le nom complet (qui contient shortname et longname)
+                    if search_lower in name.lower():
+                        filtered_nodes.append(node)
+                
+                remote_nodes = filtered_nodes
+                
+                if not remote_nodes:
+                    return f"❌ Aucun nœud trouvé avec '{search_expr}' (<{days_limit}j)"
+            
             # Fonction de tri
             def get_sort_key(node):
                 name = node.get('name', 'Unknown')
@@ -613,7 +639,13 @@ class RemoteNodesClient:
             
             remote_nodes.sort(key=get_sort_key)
             
-            lines = [f"📡 TOUS les nœuds de {REMOTE_NODE_NAME} (<{days_limit}j) - {len(remote_nodes)} nœuds:\n"]
+            # Header avec info de recherche si applicable
+            if search_expr:
+                header = f"📡 Nœuds '{search_expr}' sur {REMOTE_NODE_NAME} (<{days_limit}j) - {len(remote_nodes)} nœuds:\n"
+            else:
+                header = f"📡 TOUS les nœuds de {REMOTE_NODE_NAME} (<{days_limit}j) - {len(remote_nodes)} nœuds:\n"
+            
+            lines = [header]
             
             for node in remote_nodes:
                 name = node.get('name', 'Unknown')

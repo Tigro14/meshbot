@@ -98,17 +98,30 @@ class NetworkCommands(TelegramCommandBase):
 
     async def fullnodes_command(
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /fullnodes - Liste complète alphabétique des nœuds"""
+        """
+        Commande /fullnodes - Liste complète alphabétique des nœuds
+        
+        Usage:
+            /fullnodes [days] [search_expr]
+            
+        Examples:
+            /fullnodes                    -> Tous les nœuds (30 derniers jours)
+            /fullnodes 7                  -> Tous les nœuds (7 derniers jours)
+            /fullnodes tigro              -> Nœuds contenant 'tigro' (30j)
+            /fullnodes 7 tigro            -> Nœuds contenant 'tigro' (7j)
+        """
         user = update.effective_user
         if not self.check_authorization(user.id):
             await update.effective_message.reply_text("Non autorisé")
             return
 
-        # Extraire le nombre de jours (optionnel, défaut 30)
+        # Extraire les arguments: [days] [search_expr]
         days = 30
         max_days = 365  # ✅ Limite raisonnable : 1 an
+        search_expr = None
 
         if context.args and len(context.args) > 0:
+            # Premier argument: soit un nombre de jours, soit une recherche
             try:
                 requested_days = int(context.args[0])
                 if requested_days > max_days:
@@ -119,15 +132,21 @@ class NetworkCommands(TelegramCommandBase):
                     days = max_days
                 else:
                     days = max(1, requested_days)
+                
+                # Si il y a un second argument, c'est la recherche
+                if len(context.args) > 1:
+                    search_expr = ' '.join(context.args[1:])
             except ValueError:
+                # Ce n'est pas un nombre, donc c'est directement une recherche
+                search_expr = ' '.join(context.args)
                 days = 30
 
-        info_print(f"Telegram /fullnodes ({days}j): {user.username}")
+        info_print(f"Telegram /fullnodes ({days}j, search='{search_expr}'): {user.username}")
 
         def get_full_nodes():
             try:
                 return self.message_handler.remote_nodes_client.get_all_nodes_alphabetical(
-                    days)
+                    days, search_expr=search_expr)
             except Exception as e:
                 error_print(f"Erreur get_full_nodes: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
