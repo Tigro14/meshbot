@@ -895,6 +895,63 @@ class TrafficPersistence:
         except Exception as e:
             logger.error(f"Erreur lors du nettoyage du cache météo : {e}")
 
+    def export_neighbors_to_json(self, hours: int = 48):
+        """
+        Exporter les données de voisinage au format JSON pour les cartes HTML.
+        Compatible avec le format attendu par map/export_neighbors.py
+        
+        Args:
+            hours: Nombre d'heures de données à exporter
+            
+        Returns:
+            dict: Structure JSON avec les informations de voisinage
+        """
+        try:
+            from datetime import datetime
+            import json
+            
+            neighbors_data = self.load_neighbors(hours=hours)
+            
+            # Structure de sortie compatible avec export_neighbors.py
+            output_data = {
+                'export_time': datetime.now().isoformat(),
+                'source': 'meshbot_database',
+                'total_nodes': len(neighbors_data),
+                'nodes': {}
+            }
+            
+            # Convertir les données pour chaque nœud
+            for node_id, neighbors in neighbors_data.items():
+                # Convertir node_id en format !xxxxxxxx si nécessaire
+                if not node_id.startswith('!'):
+                    node_id_formatted = f"!{node_id}"
+                else:
+                    node_id_formatted = node_id
+                
+                output_data['nodes'][node_id_formatted] = {
+                    'neighbors_extracted': neighbors,
+                    'neighbor_count': len(neighbors),
+                    'export_timestamp': datetime.now().isoformat()
+                }
+            
+            # Statistiques
+            total_neighbors = sum(len(n) for n in neighbors_data.values())
+            nodes_with_neighbors = len([n for n in neighbors_data.values() if len(n) > 0])
+            
+            output_data['statistics'] = {
+                'nodes_with_neighbors': nodes_with_neighbors,
+                'total_neighbor_entries': total_neighbors,
+                'average_neighbors': total_neighbors / len(neighbors_data) if neighbors_data else 0
+            }
+            
+            return output_data
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'export JSON des voisins : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
+
     def close(self):
         """Ferme la connexion à la base de données."""
         if self.conn:
