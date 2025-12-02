@@ -246,6 +246,7 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("fullnodes", self.network_commands.fullnodes_command))
         self.application.add_handler(CommandHandler("nodeinfo", self.network_commands.nodeinfo_command))
         self.application.add_handler(CommandHandler("rx", self.network_commands.rx_command))
+        self.application.add_handler(CommandHandler("neighbors", self.network_commands.neighbors_command))
 
         # Commandes statistiques
         self.application.add_handler(CommandHandler("stats", self.stats_commands.stats_command))

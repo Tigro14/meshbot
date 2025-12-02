@@ -223,3 +223,79 @@ class NetworkCommands(TelegramCommandBase):
                 await asyncio.sleep(0.5)
         else:
             await update.effective_message.reply_text(response)
+
+    async def neighbors_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /neighbors [filter] - Afficher les voisins mesh
+        
+        Usage:
+            /neighbors                    -> Tous les voisins
+            /neighbors tigro              -> Filtrer par nom de nœud
+            /neighbors !16fad3dc          -> Filtrer par ID de nœud
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le filtre optionnel depuis context.args
+        node_filter = None
+        if context.args and len(context.args) > 0:
+            node_filter = ' '.join(context.args)
+        
+        # Logger la requête
+        if node_filter:
+            info_print(f"📱 Telegram /neighbors {node_filter}: {user.username}")
+        else:
+            info_print(f"📱 Telegram /neighbors: {user.username}")
+        
+        def get_neighbors():
+            try:
+                # Vérifier que traffic_monitor est disponible (defensive)
+                if not self.message_handler.traffic_monitor:
+                    return "⚠️ Traffic monitor non disponible"
+                
+                # Appeler get_neighbors_report avec compact=False pour Telegram
+                return self.message_handler.traffic_monitor.get_neighbors_report(
+                    node_filter=node_filter,
+                    compact=False
+                )
+            except Exception as e:
+                error_print(f"Erreur get_neighbors: {e or 'Unknown error'}")
+                error_print(traceback.format_exc())
+                # Retourner un message d'erreur tronqué
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        # Exécuter dans un thread pour ne pas bloquer
+        response = await asyncio.to_thread(get_neighbors)
+        
+        # Chunking similaire à fullnodes_command (4000 caractères)
+        if len(response) > 4000:
+            # Découper en plusieurs messages
+            chunks = []
+            lines = response.split('\n')
+            current_chunk = []
+            current_length = 0
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 pour le \n
+                if current_length + line_length > 4000:
+                    chunks.append('\n'.join(current_chunk))
+                    current_chunk = [line]
+                    current_length = line_length
+                else:
+                    current_chunk.append(line)
+                    current_length += line_length
+            
+            if current_chunk:
+                chunks.append('\n'.join(current_chunk))
+            
+            # Envoyer les chunks
+            for i, chunk in enumerate(chunks):
+                if i > 0:
+                    await asyncio.sleep(1)  # Éviter rate limiting
+                await update.effective_message.reply_text(chunk)
+        else:
+            await update.effective_message.reply_text(response)
