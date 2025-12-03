@@ -1095,6 +1095,22 @@ class MeshBot:
             info_print("♻️ Interface partagée avec RemoteNodesClient")
             
             # ========================================
+            # CHARGEMENT INITIAL DES VOISINS
+            # ========================================
+            # Populate neighbor database from interface at startup
+            # This provides an initial complete view of the network topology
+            # Passive collection will continue via NEIGHBORINFO_APP packets
+            try:
+                total_neighbors = self.traffic_monitor.populate_neighbors_from_interface(self.interface)
+                if total_neighbors > 0:
+                    info_print(f"👥 Base de voisinage initialisée avec {total_neighbors} relations")
+                else:
+                    info_print("ℹ️  Aucun voisin trouvé au démarrage (collection continue en tâche de fond)")
+            except Exception as e:
+                error_print(f"⚠️  Erreur lors du chargement initial des voisins: {e}")
+                info_print("   → Collection continue via NEIGHBORINFO_APP packets")
+            
+            # ========================================
             # ABONNEMENT AUX MESSAGES (CRITIQUE!)
             # ========================================
             # DOIT être fait immédiatement après la création de l'interface

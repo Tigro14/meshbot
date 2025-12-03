@@ -155,6 +155,109 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
+    def populate_neighbors_from_interface(self, interface, wait_time=10):
+        """
+        Populate neighbor database from Meshtastic interface at startup.
+        
+        This provides an initial complete view of the network topology by querying
+        the node's database directly, then passive collection continues via
+        NEIGHBORINFO_APP packets.
+        
+        Args:
+            interface: Meshtastic interface (serial or TCP)
+            wait_time: Seconds to wait for node data to load (default: 10)
+        
+        Returns:
+            int: Number of neighbor relationships found
+        """
+        try:
+            info_print(f"👥 Chargement initial des voisins depuis l'interface ({wait_time}s)...")
+            time.sleep(wait_time)
+            
+            if not hasattr(interface, 'nodes') or not interface.nodes:
+                info_print("⚠️  Aucun nœud disponible dans l'interface")
+                return 0
+            
+            total_neighbors = 0
+            nodes_with_neighbors = 0
+            
+            for node_id, node_info in interface.nodes.items():
+                # Normalize node_id
+                if isinstance(node_id, str):
+                    if node_id.startswith('!'):
+                        node_id_int = int(node_id[1:], 16)
+                    else:
+                        node_id_int = int(node_id, 16)
+                else:
+                    node_id_int = node_id
+                
+                # Extract neighbors from node
+                neighbors = []
+                try:
+                    # Check for neighborinfo attribute
+                    neighborinfo = None
+                    if hasattr(node_info, 'neighborinfo'):
+                        neighborinfo = node_info.neighborinfo
+                    elif isinstance(node_info, dict) and 'neighborinfo' in node_info:
+                        neighborinfo = node_info['neighborinfo']
+                    
+                    if neighborinfo:
+                        # Get neighbors list
+                        neighbor_list = None
+                        if hasattr(neighborinfo, 'neighbors'):
+                            neighbor_list = neighborinfo.neighbors
+                        elif isinstance(neighborinfo, dict) and 'neighbors' in neighborinfo:
+                            neighbor_list = neighborinfo['neighbors']
+                        
+                        if neighbor_list:
+                            for neighbor in neighbor_list:
+                                neighbor_data = {}
+                                
+                                # Extract node_id
+                                if hasattr(neighbor, 'node_id'):
+                                    neighbor_data['node_id'] = neighbor.node_id
+                                elif isinstance(neighbor, dict) and 'node_id' in neighbor:
+                                    neighbor_data['node_id'] = neighbor['node_id']
+                                else:
+                                    continue  # Skip if no node_id
+                                
+                                # Extract SNR
+                                if hasattr(neighbor, 'snr'):
+                                    neighbor_data['snr'] = neighbor.snr
+                                elif isinstance(neighbor, dict) and 'snr' in neighbor:
+                                    neighbor_data['snr'] = neighbor['snr']
+                                
+                                # Extract last_rx_time
+                                if hasattr(neighbor, 'last_rx_time'):
+                                    neighbor_data['last_rx_time'] = neighbor.last_rx_time
+                                elif isinstance(neighbor, dict) and 'last_rx_time' in neighbor:
+                                    neighbor_data['last_rx_time'] = neighbor['last_rx_time']
+                                
+                                # Extract node_broadcast_interval
+                                if hasattr(neighbor, 'node_broadcast_interval'):
+                                    neighbor_data['node_broadcast_interval'] = neighbor.node_broadcast_interval
+                                elif isinstance(neighbor, dict) and 'node_broadcast_interval' in neighbor:
+                                    neighbor_data['node_broadcast_interval'] = neighbor['node_broadcast_interval']
+                                
+                                neighbors.append(neighbor_data)
+                
+                except Exception as e:
+                    logger.debug(f"Erreur extraction voisins pour {node_id_int:08x}: {e}")
+                
+                # Save neighbors to database if any found
+                if neighbors:
+                    self.persistence.save_neighbor_info(node_id_int, neighbors)
+                    total_neighbors += len(neighbors)
+                    nodes_with_neighbors += 1
+            
+            info_print(f"✅ Chargement initial terminé: {nodes_with_neighbors} nœuds, {total_neighbors} voisins")
+            return total_neighbors
+            
+        except Exception as e:
+            error_print(f"Erreur lors du chargement initial des voisins: {e}")
+            error_print(traceback.format_exc())
+            return 0
+    
     def add_packet(self, packet, source='unknown', my_node_id=None):
         """
         Enregistrer TOUT type de paquet avec statistiques complètes

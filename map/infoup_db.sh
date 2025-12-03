@@ -16,12 +16,29 @@ JSON_LINKS_FILE="/home/dietpi/bot/map/info_neighbors.json"
 DB_PATH="/home/dietpi/bot/traffic_history.db"
 NODE_NAMES_FILE="/home/dietpi/bot/node_names.json"
 
+# HYBRID MODE CONFIGURATION
+# Set to enable TCP query for complete neighbor data (may conflict with bot)
+# Recommended: Set TCP_QUERY_HOST only if bot uses a different node or is stopped
+# Leave empty for database-only mode (safe, no conflicts)
+TCP_QUERY_HOST=""  # Example: "192.168.1.38"
+TCP_QUERY_PORT="4403"
+
 cd /home/dietpi/bot/map
 
-echo "🗄️  Export des voisins depuis la base de données..."
-# Exporter d'abord les voisins dans un fichier séparé
+# Build export command based on mode
+if [ -n "$TCP_QUERY_HOST" ]; then
+    echo "🔌 Mode HYBRIDE: database + requête TCP vers $TCP_QUERY_HOST:$TCP_QUERY_PORT"
+    echo "⚠️  ATTENTION: Peut causer des conflits si le bot utilise ce nœud!"
+    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py --tcp-query $TCP_QUERY_HOST:$TCP_QUERY_PORT $DB_PATH 48"
+else
+    echo "🗄️  Mode DATABASE UNIQUEMENT (sûr, pas de conflits TCP)"
+    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py $DB_PATH 48"
+fi
+
+echo "📊 Export des voisins..."
+# Exporter les voisins dans un fichier séparé
 # Logs vont sur stderr, JSON va sur stdout
-/home/dietpi/bot/map/export_neighbors_from_db.py "$DB_PATH" 48 > $JSON_LINKS_FILE
+$EXPORT_CMD > $JSON_LINKS_FILE
 
 echo "📡 Récupération des infos nœuds depuis la base de données..."
 # Exporter les infos de nœuds (avec hopsAway mais sans neighbors)

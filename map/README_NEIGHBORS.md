@@ -122,28 +122,57 @@ If you have a cron job running `infoup.sh`, update it to use `infoup_db.sh`:
 
 ### Benefits
 
-✅ **No TCP conflicts** - bot and maps can both access data simultaneously
+✅ **No TCP conflicts** - bot and maps can both access data simultaneously (database-only mode)
 ✅ **Historical data** - 48 hours of neighbor relationships and node metrics
 ✅ **Automatic updates** - data collected continuously by bot
 ✅ **Simplified architecture** - single data source (bot's files)
 ✅ **Complete replacement** - no need for `meshtastic --host --info` TCP connection
+✅ **Hybrid mode available** - optional TCP query for complete neighbor data (see HYBRID_MODE_GUIDE.md)
+
+## Hybrid Mode (New Feature)
+
+If you need complete neighbor data (all nodes, not just packets bot received), you can use hybrid mode:
+
+```bash
+# Stop bot first to avoid conflicts
+sudo systemctl stop meshbot
+
+# Run hybrid mode (queries TCP node + merges with database)
+./export_neighbors_from_db.py --tcp-query 192.168.1.38 > info_neighbors.json
+
+# Restart bot
+sudo systemctl start meshbot
+```
+
+**See `HYBRID_MODE_GUIDE.md` for:**
+- Detailed explanation of database-only vs hybrid modes
+- Configuration via `infoup_db.sh`
+- Recommended usage patterns
+- Troubleshooting tips
 
 ## Troubleshooting
 
 ### No neighbor data in database
 
-**Problem:** `export_neighbors_from_db.py` returns empty JSON
+**Problem:** `export_neighbors_from_db.py` returns empty JSON or very few nodes (e.g., 42 instead of 500)
+
+**Root Cause:** Database-based collection only captures NEIGHBORINFO_APP packets bot receives
 
 **Solutions:**
-1. Check if nodes have neighbor_info enabled:
+1. **Wait longer:** Nodes broadcast every 15-30 minutes, allow 1-2 hours for data collection
+2. **Check neighbor_info enabled:**
    ```bash
    meshtastic --host 192.168.1.38 --get neighbor_info
    ```
-2. Verify bot is collecting NEIGHBORINFO_APP packets:
+3. **Verify bot is collecting packets:**
    ```bash
    sqlite3 ../traffic_history.db "SELECT COUNT(*) FROM neighbors;"
    ```
-3. Wait for neighbor broadcasts (typically every 15-30 minutes)
+4. **Use hybrid mode for complete data:**
+   ```bash
+   # See HYBRID_MODE_GUIDE.md for details
+   ./export_neighbors_from_db.py --tcp-query 192.168.1.38
+   ```
 
 ### Database locked error
 
@@ -172,6 +201,8 @@ If you have a cron job running `infoup.sh`, update it to use `infoup_db.sh`:
 
 ## See Also
 
+- `HYBRID_MODE_GUIDE.md` - Complete guide for hybrid mode (database + TCP query)
 - `/neighbors` command - Display neighbors via mesh/Telegram
 - `CLAUDE.md` - Full architecture documentation
 - `traffic_persistence.py` - Database schema
+- Issue #97 - Map visualization and neighbor data discussion
