@@ -11,6 +11,7 @@ IMPORTANT: Logs go to stderr, JSON goes to stdout (same as export_neighbors_from
 import json
 import sys
 import os
+import traceback
 from datetime import datetime
 
 # Helper to log on stderr (doesn't pollute JSON on stdout)
@@ -47,9 +48,11 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         
         log(f"✅ {len(node_names_data)} nœuds trouvés dans node_names.json")
         
-        # Enrich with SQLite data (SNR, last heard)
+        # Enrich with SQLite data (SNR, last heard, hops, neighbors)
         snr_data = {}
         last_heard_data = {}
+        hops_data = {}
+        neighbors_data = {}
         
         if os.path.exists(db_path):
             log(f"📊 Enrichissement avec données SQLite...")
@@ -87,12 +90,48 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                     from_id_str = str(row[0])
                     last_heard_data[from_id_str] = int(row[1])
                 
+                # Get minimum hop count for each node (hopsAway)
+                cursor.execute("""
+                    SELECT from_id, MIN(hops) as min_hops
+                    FROM packets
+                    WHERE timestamp > ? AND hops IS NOT NULL
+                    GROUP BY from_id
+                """, (cutoff,))
+                
+                for row in cursor.fetchall():
+                    from_id_str = str(row[0])
+                    hops_data[from_id_str] = row[1]
+                
+                # Get neighbor data from neighbors table
+                neighbors_raw = persistence.load_neighbors(hours=hours)
+                
+                # Format neighbor data for map compatibility
+                for node_id_str, neighbor_list in neighbors_raw.items():
+                    formatted_neighbors = []
+                    for neighbor in neighbor_list:
+                        # neighbor is a dict with: node_id, snr, last_rx_time, node_broadcast_interval
+                        neighbor_id = neighbor.get('node_id')
+                        if neighbor_id:
+                            # Neighbor ID is stored in database as TEXT in format "!xxxxxxxx"
+                            # The database already stores it with ! prefix
+                            formatted_neighbors.append({
+                                'nodeId': neighbor_id,  # Already has ! prefix from database
+                                'snr': neighbor.get('snr'),
+                            })
+                    if formatted_neighbors:
+                        # Remove ! prefix from node_id_str for consistency with node_names.json keys
+                        node_key = node_id_str.lstrip('!')
+                        neighbors_data[node_key] = formatted_neighbors
+                
                 persistence.close()
                 log(f"   • SNR disponible pour {len(snr_data)} nœuds")
                 log(f"   • Last heard pour {len(last_heard_data)} nœuds")
+                log(f"   • Hops disponible pour {len(hops_data)} nœuds")
+                log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
+                log(traceback.format_exc())
         else:
             log(f"⚠️  Base de données SQLite introuvable: {db_path}")
             log(f"💡 Export uniquement depuis node_names.json")
@@ -145,6 +184,14 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 if node_id_str in last_heard_data:
                     node_entry["lastHeard"] = last_heard_data[node_id_str]
                 
+                # Add hopsAway if available from SQLite
+                if node_id_str in hops_data:
+                    node_entry["hopsAway"] = hops_data[node_id_str]
+                
+                # Add neighbors array if available from SQLite
+                if node_id_str in neighbors_data:
+                    node_entry["neighbors"] = neighbors_data[node_id_str]
+                
                 output_nodes[node_id_hex] = node_entry
                 
             except Exception as e:
@@ -169,12 +216,15 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         log(f"   • Nœuds avec SNR: {nodes_with_snr}")
         nodes_with_last_heard = sum(1 for n in output_nodes.values() if 'lastHeard' in n)
         log(f"   • Nœuds avec lastHeard: {nodes_with_last_heard}")
+        nodes_with_hops = sum(1 for n in output_nodes.values() if 'hopsAway' in n)
+        log(f"   • Nœuds avec hopsAway: {nodes_with_hops}")
+        nodes_with_neighbors = sum(1 for n in output_nodes.values() if 'neighbors' in n)
+        log(f"   • Nœuds avec neighbors: {nodes_with_neighbors}")
         
         return True
         
     except Exception as e:
         log(f"✗ Erreur : {e}")
-        import traceback
         log(traceback.format_exc())
         return False
 

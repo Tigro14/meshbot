@@ -2,6 +2,13 @@
 # Met à jour les fichiers JSON depuis la base de données MeshBot
 # Version améliorée: utilise la base de données SQLite au lieu d'une connexion TCP
 # Évite les conflits de connexion TCP unique
+#
+# Ce script génère un fichier info.json unifié contenant:
+# - Informations des nœuds (depuis node_names.json + traffic_history.db)
+# - Données de voisinage (depuis neighbors table dans traffic_history.db)
+# Les deux sont fusionnés pour que map.html puisse afficher:
+# - Couleurs des nœuds selon la distance (hopsAway)
+# - Liens entre voisins avec qualité du signal (SNR)
 
 # Configuration
 JSON_FILE="/home/dietpi/bot/map/info.json"
@@ -12,14 +19,19 @@ NODE_NAMES_FILE="/home/dietpi/bot/node_names.json"
 cd /home/dietpi/bot/map
 
 echo "🗄️  Export des voisins depuis la base de données..."
-# Utiliser le nouveau script qui lit depuis la DB au lieu de se connecter en TCP
+# Exporter d'abord les voisins dans un fichier séparé
 # Logs vont sur stderr, JSON va sur stdout
 /home/dietpi/bot/map/export_neighbors_from_db.py "$DB_PATH" 48 > $JSON_LINKS_FILE
 
 echo "📡 Récupération des infos nœuds depuis la base de données..."
-# Utiliser le nouveau script qui lit depuis node_names.json et la DB au lieu de se connecter en TCP
+# Exporter les infos de nœuds (avec hopsAway mais sans neighbors)
 # Logs vont sur stderr, JSON va sur stdout
-/home/dietpi/bot/map/export_nodes_from_db.py "$NODE_NAMES_FILE" "$DB_PATH" 48 > $JSON_FILE
+/home/dietpi/bot/map/export_nodes_from_db.py "$NODE_NAMES_FILE" "$DB_PATH" 48 > /tmp/info_temp.json
+
+echo "🔀 Fusion des données de voisinage dans info.json..."
+# Fusionner info_neighbors.json dans info.json pour avoir tout en un seul fichier
+# Cela permet à map.html d'afficher les liens et les couleurs des nœuds
+/home/dietpi/bot/map/merge_neighbor_data.py /tmp/info_temp.json $JSON_LINKS_FILE $JSON_FILE
 
 echo "📤 Envoi vers le serveur web..."
 # Envoie les JSON vers le serveur qui héberge map.html et meshlink.html

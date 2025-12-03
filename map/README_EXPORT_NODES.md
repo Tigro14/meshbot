@@ -10,9 +10,10 @@ This script **replaces** the TCP-based `meshtastic --host <ip> --info` command, 
 
 - ✅ **No TCP connection needed** - Reads from local files maintained by the bot
 - ✅ **Compatible output** - Generates JSON in the same format as `meshtastic --info`
-- ✅ **Data enrichment** - Combines node names, GPS positions, SNR, and lastHeard
+- ✅ **Data enrichment** - Combines node names, GPS positions, SNR, lastHeard, hopsAway, and neighbors
 - ✅ **Graceful degradation** - Works even if database is unavailable
 - ✅ **Clean output** - JSON on stdout, logs on stderr
+- ✅ **Map visualization** - Includes hopsAway for node coloring and neighbors for link drawing
 
 ## Data Sources
 
@@ -25,8 +26,10 @@ Maintained by `NodeManager` in the bot, contains:
 
 ### Secondary Source: `traffic_history.db` (optional)
 SQLite database maintained by `TrafficPersistence`, provides enrichment:
-- SNR (Signal-to-Noise Ratio) from recent direct packets
-- lastHeard (timestamp of most recent packet)
+- **SNR** (Signal-to-Noise Ratio) from recent direct packets
+- **lastHeard** (timestamp of most recent packet)
+- **hopsAway** (minimum hop count from packets table) - enables node color-coding on map
+- **neighbors** (neighbor relationships from neighbors table) - enables link drawing on map
 
 ## Usage
 
@@ -74,7 +77,14 @@ The output is compatible with `meshtastic --info` format:
         "altitude": 350
       },
       "snr": 9.75,
-      "lastHeard": 1733175600
+      "lastHeard": 1733175600,
+      "hopsAway": 0,
+      "neighbors": [
+        {
+          "nodeId": "!075bcd15",
+          "snr": 8.5
+        }
+      ]
     }
   }
 }
@@ -93,6 +103,14 @@ The output is compatible with `meshtastic --info` format:
   - `altitude`: Meters above sea level (optional)
 - `snr`: Signal quality in dB (only if in database)
 - `lastHeard`: Unix timestamp of last packet (only if in database)
+- `hopsAway`: Minimum hop count to reach this node (only if in database) - **NEW**
+  - 0 = direct connection
+  - 1+ = relay through other nodes
+  - Used by map.html to color-code nodes by distance
+- `neighbors`: Array of neighbor nodes (only if in database) - **NEW**
+  - `nodeId`: Neighbor node ID in hex format with `!` prefix
+  - `snr`: Signal quality to neighbor in dB
+  - Used by map.html to draw connection lines between nodes
 
 ## Integration with infoup_db.sh
 
