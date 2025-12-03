@@ -4,13 +4,15 @@
 
 The MQTT Neighbor Collector extends the bot's ability to map mesh network topology by subscribing to a Meshtastic MQTT server. This allows the bot to collect `NEIGHBORINFO_APP` packets from nodes beyond its direct radio range, creating a more complete picture of the network.
 
+**Update:** The collector now supports **Protobuf ServiceEnvelope** format, which is the standard format used by Meshtastic MQTT servers (not JSON).
+
 ## Problem Statement
 
 When relying solely on direct radio reception, the bot can only collect neighbor information from nodes within range. This limits network visibility and topology mapping. Many nodes in the mesh may be out of range but are still publishing their neighbor lists to MQTT.
 
 ## Solution
 
-By subscribing to a Meshtastic MQTT server, the bot can:
+By subscribing to a Meshtastic MQTT server using the **ServiceEnvelope protobuf format**, the bot can:
 1. Receive neighbor info from ALL nodes in the network (that publish to MQTT)
 2. Build a complete network topology map
 3. Complement direct radio-based neighbor collection
@@ -40,20 +42,21 @@ By subscribing to a Meshtastic MQTT server, the bot can:
 │  ┌───────────┴────────────────────────┐    │  │
 │  │   MQTTNeighborCollector            │    │  │
 │  │   - Subscribes to MQTT topics      │────┘  │
-│  │   - Parses NEIGHBORINFO_APP JSON   │       │
+│  │   - Parses Protobuf ServiceEnvelope│       │
 │  │   - Background thread with retry   │       │
 │  └────────────────────────────────────┘       │
 │              ▲                                 │
 └──────────────┼─────────────────────────────────┘
                │
-        MQTT Connection
+        MQTT Connection (Protobuf)
                │
                ▼
 ┌──────────────────────────────────────────────┐
 │    Meshtastic MQTT Server                   │
 │    (e.g., serveurperso.com:1883)            │
 │                                              │
-│  Topics: msh/+/+/2/json/+/NEIGHBORINFO_APP  │
+│  Topic: msh/+/+/2/e/+                       │
+│  Format: ServiceEnvelope (Protobuf)         │
 └──────────────────────────────────────────────┘
 ```
 
@@ -76,42 +79,66 @@ MQTT_NEIGHBOR_TOPIC_ROOT = "msh"  # MQTT topic root (default: "msh")
 The collector subscribes to:
 
 ```
-msh/+/+/2/json/+/NEIGHBORINFO_APP
+msh/+/+/2/e/+
 ```
 
-This wildcard pattern matches:
+This wildcard pattern matches ServiceEnvelope protobuf messages:
 - `msh` - Meshtastic topic root
-- `+` - Any region (e.g., "eu_868", "us", "FR")
-- `+` - Any channel (e.g., "LongFast", custom channels)
+- `+` - Any region (e.g., "EU_868", "US")
+- `+` - Any channel (e.g., "LongFast", "MediumFast")
 - `2` - Protocol version
-- `json` - JSON format (not protobuf)
-- `+` - Any node ID
-- `NEIGHBORINFO_APP` - Neighbor info packet type
+- `e` - ServiceEnvelope format (protobuf)
+- `+` - Any gateway ID
+
+**Example topic:** `msh/EU_868/MediumFast/2/e/MyGateway`
 
 ## Message Format
 
-MQTT messages are in JSON format:
+MQTT messages use **Protobuf ServiceEnvelope** format (not JSON):
 
-```json
-{
-  "from": 305419896,
-  "to": 4294967295,
-  "channel": 0,
-  "type": "NEIGHBORINFO_APP",
-  "sender": "!12345678",
-  "payload": {
-    "neighborinfo": {
-      "nodeId": 305419896,
-      "neighbors": [
-        {
-          "nodeId": 305419897,
-          "snr": 8.5,
-          "lastRxTime": 1234567890,
-          "nodeBroadcastInterval": 900
-        }
-      ]
+### ServiceEnvelope Structure
+
+```
+ServiceEnvelope {
+  packet: MeshPacket
+  channel_id: string
+  gateway_id: string
+}
+```
+
+### MeshPacket Structure
+
+```
+MeshPacket {
+  from: uint32 (node ID)
+  to: uint32 (destination)
+  decoded: Data (if not encrypted)
+  encrypted: bytes (if encrypted)
+}
+```
+
+### Data Structure (for NEIGHBORINFO_APP)
+
+```
+Data {
+  portnum: NEIGHBORINFO_APP (71)
+  payload: bytes (NeighborInfo protobuf)
+}
+```
+
+### NeighborInfo Structure
+
+```
+NeighborInfo {
+  node_id: uint32
+  neighbors: [
+    {
+      node_id: uint32
+      snr: float
+      last_rx_time: uint32
+      node_broadcast_interval_secs: uint32
     }
-  }
+  ]
 }
 ```
 

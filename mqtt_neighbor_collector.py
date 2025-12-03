@@ -5,6 +5,8 @@ Ce module se connecte à un serveur MQTT Meshtastic pour recevoir
 les paquets NEIGHBORINFO_APP de tous les nœuds du réseau, permettant
 de construire une topologie complète au-delà de la portée radio directe.
 
+Supporte le format Protobuf ServiceEnvelope (msh/<region>/<channel>/2/e/<gateway>)
+
 Configuration required in config.py:
 - MQTT_NEIGHBOR_SERVER: MQTT server address
 - MQTT_NEIGHBOR_USER: MQTT username
@@ -12,7 +14,6 @@ Configuration required in config.py:
 """
 
 import time
-import json
 import threading
 from collections import deque
 from typing import Optional, Dict, List, Any
@@ -25,6 +26,14 @@ try:
 except ImportError as e:
     error_print(f"MQTT Neighbor Collector: paho-mqtt manquant: {e}")
     MQTT_AVAILABLE = False
+
+# Import Meshtastic protobuf
+try:
+    from meshtastic.protobuf import mesh_pb2, portnums_pb2
+    PROTOBUF_AVAILABLE = True
+except ImportError as e:
+    error_print(f"MQTT Neighbor Collector: meshtastic protobuf manquant: {e}")
+    PROTOBUF_AVAILABLE = False
 
 
 class MQTTNeighborCollector:
@@ -81,6 +90,10 @@ class MQTTNeighborCollector:
         if not MQTT_AVAILABLE:
             error_print("👥 MQTT Neighbor Collector: paho-mqtt non disponible")
             return
+        
+        if not PROTOBUF_AVAILABLE:
+            error_print("👥 MQTT Neighbor Collector: meshtastic protobuf non disponible")
+            return
             
         if not persistence:
             error_print("👥 MQTT Neighbor Collector: persistence non fournie")
@@ -99,16 +112,12 @@ class MQTTNeighborCollector:
             self.connected = True
             info_print(f"👥 Connecté au serveur MQTT Meshtastic")
             
-            # S'abonner aux topics de neighbor info
-            # Format: msh/+/+/2/json/+/NEIGHBORINFO_APP
-            # Wildcard + pour region, channel, et node_id
-            topic_pattern = f"{self.mqtt_topic_root}/+/+/2/json/+/NEIGHBORINFO_APP"
+            # S'abonner au topic ServiceEnvelope (protobuf)
+            # Format: msh/<region>/<channel>/2/e/<gateway>
+            # Wildcard + pour capturer tous les régions/channels/gateways
+            topic_pattern = f"{self.mqtt_topic_root}/+/+/2/e/+"
             client.subscribe(topic_pattern)
-            info_print(f"   Abonné à: {topic_pattern}")
-            
-            # Optionnel: s'abonner aussi au format protobuf si nécessaire
-            # topic_protobuf = f"{self.mqtt_topic_root}/+/+/2/c/+/NEIGHBORINFO_APP"
-            # client.subscribe(topic_protobuf)
+            info_print(f"   Abonné à: {topic_pattern} (ServiceEnvelope protobuf)")
             
         else:
             error_print(f"👥 Échec connexion MQTT: code {rc}")
@@ -126,50 +135,69 @@ class MQTTNeighborCollector:
         """
         Callback de réception de message MQTT
         
-        Format attendu (JSON):
-        {
-          "from": 305419896,
-          "to": 4294967295,
-          "channel": 0,
-          "type": "NEIGHBORINFO_APP",
-          "sender": "!12345678",
-          "payload": {
-            "neighborinfo": {
-              "nodeId": 305419896,
-              "neighbors": [
-                {
-                  "nodeId": 305419897,
-                  "snr": 8.5,
-                  "lastRxTime": 1234567890,
-                  "nodeBroadcastInterval": 900
-                }
-              ]
-            }
-          }
-        }
+        Format attendu (Protobuf ServiceEnvelope):
+        ServiceEnvelope contient:
+        - packet: MeshPacket (from, to, decoded/encrypted)
+        - channel_id: string
+        - gateway_id: string
+        
+        MeshPacket.decoded contient:
+        - portnum: PortNum enum (NEIGHBORINFO_APP = 71)
+        - payload: bytes (NeighborInfo protobuf)
+        
+        NeighborInfo contient:
+        - node_id: uint32
+        - neighbors: repeated Neighbor
+          - node_id: uint32
+          - snr: float
+          - last_rx_time: uint32
+          - node_broadcast_interval_secs: uint32
         """
         try:
             self.stats['messages_received'] += 1
             
-            # Parser le JSON
-            data = json.loads(msg.payload.decode('utf-8'))
-            
-            # Vérifier que c'est bien un NEIGHBORINFO_APP
-            if data.get('type') != 'NEIGHBORINFO_APP':
+            # Parser le ServiceEnvelope protobuf
+            try:
+                envelope = mesh_pb2.ServiceEnvelope()
+                envelope.ParseFromString(msg.payload)
+            except Exception as e:
+                debug_print(f"👥 Erreur parsing ServiceEnvelope: {e}")
                 return
             
-            # Extraire les informations
-            from_id = data.get('from')
-            sender = data.get('sender')  # Format "!xxxxxxxx"
-            payload = data.get('payload', {})
-            
-            if not payload or 'neighborinfo' not in payload:
-                debug_print(f"👥 Payload neighborinfo manquant dans message MQTT")
+            # Vérifier qu'il y a un packet
+            if not envelope.HasField('packet'):
                 return
             
-            neighborinfo = payload['neighborinfo']
-            node_id = neighborinfo.get('nodeId', from_id)
-            neighbors_list = neighborinfo.get('neighbors', [])
+            packet = envelope.packet
+            
+            # Vérifier qu'il y a des données décodées (pas chiffrées)
+            if not packet.HasField('decoded'):
+                # Paquet chiffré, on ne peut pas le traiter
+                return
+            
+            decoded = packet.decoded
+            
+            # Vérifier que c'est un paquet NEIGHBORINFO_APP
+            if decoded.portnum != portnums_pb2.PortNum.NEIGHBORINFO_APP:
+                return
+            
+            # Parser le payload NeighborInfo
+            try:
+                neighbor_info = mesh_pb2.NeighborInfo()
+                neighbor_info.ParseFromString(decoded.payload)
+            except Exception as e:
+                debug_print(f"👥 Erreur parsing NeighborInfo: {e}")
+                return
+            
+            # Extraire l'ID du nœud qui rapporte ses voisins
+            # Utiliser node_id de NeighborInfo, ou packet.from en fallback
+            node_id = neighbor_info.node_id if neighbor_info.node_id else packet.from_
+            
+            if not node_id:
+                return
+            
+            # Extraire la liste des voisins
+            neighbors_list = neighbor_info.neighbors
             
             if not neighbors_list:
                 return
@@ -178,20 +206,17 @@ class MQTTNeighborCollector:
             formatted_neighbors = []
             for neighbor in neighbors_list:
                 neighbor_data = {
-                    'node_id': neighbor.get('nodeId'),
-                    'snr': neighbor.get('snr'),
-                    'last_rx_time': neighbor.get('lastRxTime'),
-                    'node_broadcast_interval': neighbor.get('nodeBroadcastInterval')
+                    'node_id': neighbor.node_id,
+                    'snr': neighbor.snr,
+                    'last_rx_time': neighbor.last_rx_time,
+                    'node_broadcast_interval': neighbor.node_broadcast_interval_secs
                 }
                 formatted_neighbors.append(neighbor_data)
             
             # Sauvegarder dans la base de données
             if formatted_neighbors:
-                # Normaliser l'ID du nœud (int ou string "!xxxxxxxx")
-                if isinstance(node_id, int):
-                    node_id_str = f"!{node_id:08x}"
-                else:
-                    node_id_str = node_id if node_id.startswith('!') else f"!{node_id}"
+                # Normaliser l'ID du nœud (int vers string "!xxxxxxxx")
+                node_id_str = f"!{node_id:08x}"
                 
                 self.persistence.save_neighbor_info(node_id_str, formatted_neighbors)
                 
@@ -211,8 +236,6 @@ class MQTTNeighborCollector:
                 
                 debug_print(f"👥 MQTT: {len(formatted_neighbors)} voisins pour {node_id_str}")
         
-        except json.JSONDecodeError as e:
-            error_print(f"👥 Erreur parsing JSON MQTT: {e}")
         except Exception as e:
             error_print(f"👥 Erreur traitement message MQTT: {e}")
             import traceback
