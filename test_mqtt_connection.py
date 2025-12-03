@@ -125,6 +125,9 @@ def on_message(client, userdata, msg):
         if packet.HasField('encrypted'):
             stats['messages_encrypted'] += 1
             print(f"🔒 Message chiffré de {from_id_str} sur {msg.topic}")
+            print(f"   Note: Les messages chiffrés ne peuvent pas être parsés.")
+            print(f"   Le bot ne peut collecter les NEIGHBORINFO que depuis des paquets non-chiffrés.")
+            print()
             return
         
         if not packet.HasField('decoded'):
@@ -174,6 +177,8 @@ def on_message(client, userdata, msg):
 
 def main():
     """Point d'entrée du script"""
+    global MQTT_PASSWORD
+    
     print("="*60)
     print("🔍 TEST CONNEXION MQTT MESHTASTIC")
     print("="*60)
@@ -189,7 +194,6 @@ def main():
         print()
         MQTT_PASSWORD_input = input("Entrez le mot de passe MQTT (ou Enter pour continuer sans): ")
         if MQTT_PASSWORD_input:
-            global MQTT_PASSWORD
             MQTT_PASSWORD = MQTT_PASSWORD_input
     
     # Configurer le handler de signal pour Ctrl+C
