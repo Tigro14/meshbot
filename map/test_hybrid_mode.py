@@ -20,7 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def create_test_database():
     """Create a test database with sample neighbor data."""
-    db_path = tempfile.mktemp(suffix='.db')
+    # Use NamedTemporaryFile for secure temporary file creation
+    import tempfile
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)  # Close the file descriptor, we'll use sqlite3 to access it
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
@@ -181,11 +185,9 @@ def test_merge_logic():
         }
     }
     
-    # Import merge function from export script
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
-    # Manually implement merge logic for testing
+    # Merge logic (same as in export_neighbors_from_db.py)
+    # Note: We duplicate the logic here for testing independence
+    # If the implementation changes, this test should be updated accordingly
     merged_data = {
         'export_time': datetime.now().isoformat(),
         'source': 'hybrid_db+tcp',

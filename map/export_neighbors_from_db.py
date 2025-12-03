@@ -44,8 +44,12 @@ def query_tcp_neighbors(host, port=4403):
             portNumber=port
         )
         
+        # Wait for node data to load
+        # Note: 10 seconds is a heuristic based on typical network conditions.
+        # May need adjustment for slow networks or very large node databases.
+        # Alternative: Implement polling with timeout, but adds complexity.
         log("⏳ Chargement des données (10 secondes)...")
-        time.sleep(10)  # Wait for node data to load
+        time.sleep(10)
         
         nodes = interface.nodes
         log(f"📊 {len(nodes)} nœuds trouvés via TCP")
