@@ -248,6 +248,51 @@ class MQTTNeighborCollector:
         self._seen_packets[dedup_key] = current_time
         return False
     
+    def _process_nodeinfo(self, packet, decoded, from_id):
+        """
+        Traiter un paquet NODEINFO pour extraire et sauvegarder le nom du nœud
+        
+        Args:
+            packet: Paquet MeshPacket protobuf
+            decoded: Données décodées (Data protobuf)
+            from_id: ID de l'émetteur
+        """
+        try:
+            # Parser le payload User
+            user = mesh_pb2.User()
+            user.ParseFromString(decoded.payload)
+            
+            # Extraire les noms
+            long_name = user.long_name.strip() if user.long_name else ""
+            short_name = user.short_name.strip() if user.short_name else ""
+            
+            # Utiliser longName en priorité, sinon shortName
+            name = long_name or short_name
+            
+            if name and self.node_manager:
+                # Mettre à jour le node_manager avec ce nom
+                if from_id not in self.node_manager.node_names:
+                    self.node_manager.node_names[from_id] = {
+                        'name': name,
+                        'lat': None,
+                        'lon': None,
+                        'alt': None,
+                        'last_update': time.time()
+                    }
+                    debug_print(f"👥 [MQTT] Nouveau nœud: {name} (!{from_id:08x})")
+                else:
+                    old_name = self.node_manager.node_names[from_id]['name']
+                    if old_name != name:
+                        self.node_manager.node_names[from_id]['name'] = name
+                        debug_print(f"👥 [MQTT] Nœud renommé: {old_name} → {name} (!{from_id:08x})")
+                
+                # Sauvegarder les noms de nœuds (différé pour éviter trop d'écritures)
+                import threading
+                threading.Timer(10.0, lambda: self.node_manager.save_node_names()).start()
+                
+        except Exception as e:
+            debug_print(f"👥 Erreur traitement NODEINFO: {e}")
+    
     def _on_mqtt_message(self, client, userdata, msg):
         """
         Callback de réception de message MQTT
@@ -319,11 +364,12 @@ class MQTTNeighborCollector:
                 # Ni decoded ni encrypted (ou crypto non disponible)
                 return
             
-            # Filtrer les paquets à logger: seulement POSITION, TELEMETRY et NEIGHBORINFO
-            # POSITION_APP = 3, TELEMETRY_APP = 67, NEIGHBORINFO_APP = 71
+            # Filtrer les paquets à logger: POSITION, TELEMETRY, NEIGHBORINFO et NODEINFO
+            # POSITION_APP = 3, NODEINFO_APP = 4, TELEMETRY_APP = 67, NEIGHBORINFO_APP = 71
             portnum = decoded.portnum
             is_loggable = portnum in [
                 portnums_pb2.PortNum.POSITION_APP,
+                portnums_pb2.PortNum.NODEINFO_APP,
                 portnums_pb2.PortNum.TELEMETRY_APP,
                 portnums_pb2.PortNum.NEIGHBORINFO_APP
             ]
@@ -331,11 +377,17 @@ class MQTTNeighborCollector:
             if is_loggable:
                 portnum_names = {
                     portnums_pb2.PortNum.POSITION_APP: "POSITION",
+                    portnums_pb2.PortNum.NODEINFO_APP: "NODEINFO",
                     portnums_pb2.PortNum.TELEMETRY_APP: "TELEMETRY",
                     portnums_pb2.PortNum.NEIGHBORINFO_APP: "NEIGHBORINFO"
                 }
                 portnum_name = portnum_names.get(portnum, f"UNKNOWN({portnum})")
                 debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
+            
+            # Traiter les paquets NODEINFO pour mettre à jour les noms de nœuds
+            if decoded.portnum == portnums_pb2.PortNum.NODEINFO_APP:
+                self._process_nodeinfo(packet, decoded, from_id)
+                return
             
             # Vérifier que c'est un paquet NEIGHBORINFO_APP
             if decoded.portnum != portnums_pb2.PortNum.NEIGHBORINFO_APP:
