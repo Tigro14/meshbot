@@ -320,9 +320,9 @@ class BlitzMonitor:
                 # Configurer automatic reconnection
                 self.mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)
 
-                # Se connecter au serveur avec timeout
+                # Se connecter au serveur de manière asynchrone (non-bloquant)
                 info_print(f"⚡ Connexion à {self.MQTT_HOST}:{self.MQTT_PORT}...")
-                self.mqtt_client.connect(
+                self.mqtt_client.connect_async(
                     self.MQTT_HOST,
                     self.MQTT_PORT,
                     self.MQTT_KEEPALIVE
@@ -336,7 +336,7 @@ class BlitzMonitor:
                 )
                 self.mqtt_thread.start()
 
-                info_print("⚡ Thread MQTT démarré avec auto-reconnect")
+                info_print("⚡ Thread MQTT démarré avec auto-reconnect (non-bloquant)")
                 
                 # Succès - sortir de la boucle de retry
                 return
