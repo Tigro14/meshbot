@@ -302,8 +302,6 @@ class MQTTNeighborCollector:
                 decoded = packet.decoded
             elif packet.HasField('encrypted') and CRYPTO_AVAILABLE:
                 # Paquet chiffré - tenter de déchiffrer avec la clé par défaut du canal 0
-                debug_print(f"👥 Message chiffré détecté de {from_id:08x}, tentative de déchiffrement...")
-                
                 encrypted_data = packet.encrypted
                 decrypted_data = self._decrypt_packet(encrypted_data, packet_id, from_id)
                 
@@ -315,13 +313,29 @@ class MQTTNeighborCollector:
                 try:
                     decoded = mesh_pb2.Data()
                     decoded.ParseFromString(decrypted_data)
-                    debug_print(f"👥 Déchiffrement réussi! Portnum: {decoded.portnum}")
                 except Exception as e:
-                    debug_print(f"👥 Erreur parsing données déchiffrées: {e}")
                     return
             else:
                 # Ni decoded ni encrypted (ou crypto non disponible)
                 return
+            
+            # Filtrer les paquets à logger: seulement POSITION, TELEMETRY et NEIGHBORINFO
+            # POSITION_APP = 3, TELEMETRY_APP = 67, NEIGHBORINFO_APP = 71
+            portnum = decoded.portnum
+            is_loggable = portnum in [
+                portnums_pb2.PortNum.POSITION_APP,
+                portnums_pb2.PortNum.TELEMETRY_APP,
+                portnums_pb2.PortNum.NEIGHBORINFO_APP
+            ]
+            
+            if is_loggable:
+                portnum_names = {
+                    portnums_pb2.PortNum.POSITION_APP: "POSITION",
+                    portnums_pb2.PortNum.TELEMETRY_APP: "TELEMETRY",
+                    portnums_pb2.PortNum.NEIGHBORINFO_APP: "NEIGHBORINFO"
+                }
+                portnum_name = portnum_names.get(portnum, f"UNKNOWN({portnum})")
+                debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
             
             # Vérifier que c'est un paquet NEIGHBORINFO_APP
             if decoded.portnum != portnums_pb2.PortNum.NEIGHBORINFO_APP:
