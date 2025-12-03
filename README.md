@@ -57,10 +57,11 @@ graph TD
 
 - **Chat IA** : Intégration Llama via `/bot <question>`
 - **Monitoring système** : `/sys` pour température CPU, RAM, uptime
-- **Analyse réseau** : `/nodes` pour les nœuds directx entendus, `/my` pour signaux personnels
+- **Analyse réseau** : `/nodes` pour les nœuds directx entendus, `/my` pour signaux personnels, `/neighbors` pour topologie mesh
 - **Stats réseau** : `/histo` pour la répartition en histogramme des paquets entendus, `/stats` ou `/packets` ou `/top` pour d'autres stats
 - **Données ESPHome** : `/power` pour télémétrie solaire/batterie
 - **Administration** : Commandes cachées pour gestion à distance
+- **Collecte MQTT** : Collection automatique de topologie réseau via MQTT (au-delà de la portée radio)
 
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 

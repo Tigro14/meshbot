@@ -599,6 +599,10 @@ class UtilityCommands:
         • /neighbors [node] - Voisins mesh (topology réseau)
           /neighbors → Tous les voisins (format compact)
           /neighbors tigro → Voisins d'un nœud spécifique
+        • /rx [node] - Voisins & stats MQTT collecteur
+          /rx → Statistiques collecteur MQTT
+          /rx tigro → Voisins du nœud (via MQTT/radio)
+          Collecte données réseau au-delà portée radio
         • /fullnodes [jours] - Liste alphabétique complète
           Défaut: 30j, max 365j, tri par longName
           Exemples:

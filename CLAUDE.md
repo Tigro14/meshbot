@@ -2467,6 +2467,100 @@ if info and monitor.should_alert(info):
 
 ---
 
+### Meshtastic MQTT (Neighbor Collection)
+
+**Protocol**: MQTT (paho-mqtt client)
+**Server**: Configurable (e.g., serveurperso.com)
+**Purpose**: Collect neighbor topology from entire network
+
+#### Topic Structure
+
+```
+msh/<region>/<channel>/2/json/<node_id>/NEIGHBORINFO_APP
+```
+
+Wildcard subscription: `msh/+/+/2/json/+/NEIGHBORINFO_APP`
+
+#### Message Format (JSON)
+
+```json
+{
+  "from": 305419896,
+  "to": 4294967295,
+  "type": "NEIGHBORINFO_APP",
+  "sender": "!12345678",
+  "payload": {
+    "neighborinfo": {
+      "nodeId": 305419896,
+      "neighbors": [
+        {
+          "nodeId": 305419897,
+          "snr": 8.5,
+          "lastRxTime": 1234567890,
+          "nodeBroadcastInterval": 900
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Client Code
+
+`mqtt_neighbor_collector.py::MQTTNeighborCollector`
+- Connects to Meshtastic MQTT server
+- Subscribes to NEIGHBORINFO_APP topics
+- Parses JSON neighbor data
+- Saves to SQLite `neighbors` table via `TrafficPersistence`
+- Background thread with auto-reconnect
+- Statistics and status reporting
+
+#### Usage
+
+```python
+from mqtt_neighbor_collector import MQTTNeighborCollector
+
+collector = MQTTNeighborCollector(
+    mqtt_server="serveurperso.com",
+    mqtt_port=1883,
+    mqtt_user="meshdev",
+    mqtt_password="password",
+    mqtt_topic_root="msh",
+    persistence=traffic_persistence
+)
+
+collector.start_monitoring()
+
+# Get stats
+stats = collector.get_stats()
+print(f"Nodes discovered: {stats['nodes_discovered']}")
+
+# Get status report
+report = collector.get_status_report(compact=False)
+```
+
+#### Configuration
+
+```python
+# config.py
+MQTT_NEIGHBOR_ENABLED = True
+MQTT_NEIGHBOR_SERVER = "serveurperso.com"
+MQTT_NEIGHBOR_PORT = 1883
+MQTT_NEIGHBOR_USER = "meshdev"
+MQTT_NEIGHBOR_PASSWORD = "password"
+MQTT_NEIGHBOR_TOPIC_ROOT = "msh"
+```
+
+#### Benefits
+
+1. **Extended Visibility**: Collect neighbor data from nodes beyond radio range
+2. **Network Topology**: Build complete mesh network map
+3. **Automatic Collection**: Passive listening to MQTT stream
+4. **Database Integration**: Shares same `neighbors` table as radio-based collection
+5. **Redundancy**: Complements direct NEIGHBORINFO_APP packet reception
+
+---
+
 ## Appendix: Quick Reference
 
 ### Key File Locations
@@ -2494,6 +2588,7 @@ if info and monitor.should_alert(info):
 | Lightning monitor | `blitz_monitor.py` | Real-time lightning detection |
 | Vigilance monitor | `vigilance_monitor.py` | Weather vigilance alerts |
 | Vigilance scraper | `vigilance_scraper.py` | Météo-France web scraper |
+| MQTT neighbor collector | `mqtt_neighbor_collector.py` | MQTT-based neighbor collection |
 | Map generation | `map/generate_mesh_map.py` | Network topology maps |
 | Configuration | `config.py.sample` | Main config template |
 | Platform config | `platform_config.py` | Platform-specific configs |
@@ -2578,9 +2673,22 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-12-02
-**Updated by**: Claude (AI Assistant)
-**Changes in this update (2025-12-02)**:
+**Last updated**: 2025-12-03
+**Updated by**: GitHub Copilot
+**Changes in this update (2025-12-03)**:
+- **NEW: MQTT Neighbor Collection** - Enhanced network topology visibility
+  - Added `mqtt_neighbor_collector.py` - Collect neighbor data from MQTT server
+  - Subscribe to Meshtastic MQTT topics for NEIGHBORINFO_APP packets
+  - Extend neighbor visibility beyond direct radio range
+  - Configuration: MQTT_NEIGHBOR_ENABLED, MQTT_NEIGHBOR_SERVER, credentials
+  - Integration with existing `neighbors` table in SQLite
+  - Benefits: Complete network topology, redundant data collection
+  - Server: serveurperso.com (user: meshdev, password in config)
+  - Topic pattern: `msh/+/+/2/json/+/NEIGHBORINFO_APP`
+  - Background thread with auto-reconnect and retry logic
+  - Statistics tracking and status reporting
+
+**Previous changes (2025-12-02)**:
 - **NEW: Mesh Neighbors Feature** - Display and export mesh network topology
   - Added `neighbors` table to SQLite database with indexes
   - Automatic extraction from NEIGHBORINFO_APP packets

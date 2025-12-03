@@ -16,7 +16,7 @@ class MessageHandler:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
                  bot_start_time=None, blitz_monitor=None, vigilance_monitor=None,
-                 broadcast_tracker=None):
+                 broadcast_tracker=None, mqtt_neighbor_collector=None):
 
         # Créer le router qui gère tout
         self.router = MessageRouter(
@@ -42,6 +42,7 @@ class MessageHandler:
         self.interface = interface
         self.traffic_monitor = traffic_monitor
         self.blitz_monitor = blitz_monitor
+        self.mqtt_neighbor_collector = mqtt_neighbor_collector
     
     def process_text_message(self, packet, decoded, message):
         """Déléguer au router"""

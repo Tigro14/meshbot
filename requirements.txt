@@ -36,6 +36,10 @@ paho-mqtt>=2.1.0
 # Geohash encoding for geographic filtering
 pygeohash>=3.2.0
 
+# === Encryption/Decryption ===
+# AES encryption for decrypting Meshtastic packets
+cryptography>=41.0.0
+
 # === Optional Dependencies ===
 # For development/debugging
 # ipython>=8.0.0
