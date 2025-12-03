@@ -143,8 +143,10 @@ def on_message(client, userdata, msg):
             return
         
         packet = envelope.packet
-        from_id = packet.from_
-        to_id = packet.to
+        
+        # Accéder au champ 'from' (mot-clé réservé Python, utiliser getattr)
+        from_id = getattr(packet, 'from', 0)
+        to_id = getattr(packet, 'to', 0)
         
         # Formater l'ID du nœud
         from_id_str = f"!{from_id:08x}"

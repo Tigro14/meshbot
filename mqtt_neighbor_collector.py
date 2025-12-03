@@ -208,7 +208,8 @@ class MQTTNeighborCollector:
             
             # Extraire l'ID du nœud qui rapporte ses voisins
             # Utiliser node_id de NeighborInfo, ou packet.from en fallback
-            node_id = neighbor_info.node_id if neighbor_info.node_id else packet.from_
+            # Note: 'from' est un mot-clé Python, utiliser getattr
+            node_id = neighbor_info.node_id if neighbor_info.node_id else getattr(packet, 'from', 0)
             
             if not node_id:
                 return
