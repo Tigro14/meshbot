@@ -248,6 +248,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.tilelayer.wmts@1.0.8/leaflet-tilelayer-wmts.js"></script>
     <script>
         let map;
         let markers = {};
@@ -349,10 +350,31 @@
         async function initMap() {
             map = L.map('map').setView([48.8566, 2.3522], 11);
             
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // OpenStreetMap layer
+            const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19
-            }).addTo(map);
+            });
+            
+            // IGN Géoportail Orthophoto layer (WMTS)
+            const orthoGeoportail = L.tileLayer.wmts('https://data.geopf.fr/wmts', {
+                layer: 'ORTHOIMAGERY.ORTHOPHOTOS',
+                tilematrixSet: 'PM',
+                format: 'image/jpeg',
+                style: 'normal',
+                attribution: '© IGN - Géoportail',
+                maxZoom: 19
+            });
+            
+            // Add default layer (OpenStreetMap)
+            osmLayer.addTo(map);
+            
+            // Add layer control
+            const baseLayers = {
+                "OpenStreetMap": osmLayer,
+                "Orthophoto": orthoGeoportail
+            };
+            L.control.layers(baseLayers, null, {position: 'topleft'}).addTo(map);
             
             const legend = L.control({position: 'bottomright'});
             
