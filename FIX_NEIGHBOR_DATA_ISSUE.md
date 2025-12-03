@@ -42,25 +42,39 @@ Export anytime:
 
 ### Benefits
 
-✅ **Complete data from startup** - Database populated with all nodes at boot
+✅ **Attempts to load cached data** - May populate database if node has cached neighborinfo
 ✅ **No export conflicts** - No TCP query needed during export
-✅ **Automatic updates** - NEIGHBORINFO_APP packets keep data fresh
-✅ **One-time startup cost** - 10-second delay at boot for complete data
+✅ **Automatic passive collection** - NEIGHBORINFO_APP packets populate data over time
+✅ **Graceful degradation** - Works even if startup returns 0 neighbors
 ✅ **Backward compatible** - Hybrid mode still available as fallback
 
 ## How It Works
 
 ### At Bot Startup
 
+**IMPORTANT NOTE (December 2025):**
+
+The startup population feature is **best-effort** and may return 0 neighbors. This is EXPECTED and NORMAL because:
+
+- Neighborinfo is NOT part of the initial database sync from the Meshtastic node
+- Neighborinfo is ONLY populated when NEIGHBORINFO_APP packets are received
+- At startup, nodes may not have broadcast NEIGHBORINFO_APP yet (they broadcast every 15-30 minutes)
+- The node's cached neighborinfo may be empty if it was recently rebooted
+
+**Expected Behavior:**
+- **First startup**: Usually returns 0 neighbors (passive collection begins)
+- **After running for hours**: May return cached neighbors if node has received broadcasts
+- **Passive collection**: Continues automatically via NEIGHBORINFO_APP packets
+
 ```python
 # In main_bot.py::start()
 # After interface creation and stabilization:
 
 self.traffic_monitor.populate_neighbors_from_interface(self.interface)
-# → Queries interface.nodes
-# → Extracts all neighbor relationships
+# → Queries interface.nodes for any cached neighborinfo
+# → Extracts neighbor relationships if available (may be 0)
 # → Saves to SQLite database
-# Result: Complete neighbor database (500+ nodes)
+# Result: 0-500+ nodes depending on cached data (0 is normal)
 ```
 
 ### During Operation

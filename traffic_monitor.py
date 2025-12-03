@@ -157,11 +157,22 @@ class TrafficMonitor:
     
     def populate_neighbors_from_interface(self, interface, wait_time=None, max_wait_time=None, poll_interval=None):
         """
-        Populate neighbor database from Meshtastic interface at startup.
+        Attempt to populate neighbor database from Meshtastic interface at startup.
         
-        This provides an initial complete view of the network topology by querying
-        the node's database directly, then passive collection continues via
-        NEIGHBORINFO_APP packets.
+        IMPORTANT: This is a BEST-EFFORT operation that may return 0 neighbors.
+        
+        Neighborinfo is NOT part of the initial database sync (nodeinfo, position, etc.).
+        It is ONLY populated when NEIGHBORINFO_APP packets are received, which happens:
+        - When nodes broadcast (every 15-30 minutes typically)
+        - If the connecting node has cached neighborinfo from previous broadcasts
+        
+        In most cases at startup, this will return 0 neighbors because:
+        - The node's cached neighborinfo may be empty
+        - No NEIGHBORINFO_APP broadcasts have arrived yet
+        - This is EXPECTED and NORMAL behavior
+        
+        Passive collection via NEIGHBORINFO_APP packets continues after startup.
+        Over time (hours/days), the database will populate as broadcasts arrive.
         
         Uses polling mechanism to wait for interface.nodes to fully load, especially
         important for TCP interfaces which may take 30-60+ seconds with large node databases.
@@ -173,7 +184,7 @@ class TrafficMonitor:
             poll_interval: Seconds between progress checks (default: from config or 5)
         
         Returns:
-            int: Number of neighbor relationships found
+            int: Number of neighbor relationships found (may be 0, which is normal)
         """
         try:
             # Use config values if not specified
@@ -337,11 +348,21 @@ class TrafficMonitor:
                 info_print(f"   • Moyenne voisins/nœud: {avg_neighbors:.1f}")
             
             # Report nodes without neighborinfo
+            # NOTE: This is EXPECTED at startup - neighborinfo is only populated when
+            # NEIGHBORINFO_APP packets are received, not from initial database sync
             if nodes_without_neighborinfo > 0:
-                info_print(f"   ⚠️  Nœuds sans neighborinfo: {nodes_without_neighborinfo}")
+                info_print(f"   ℹ️  Nœuds sans donnée voisinage en cache: {nodes_without_neighborinfo}/{final_node_count}")
                 if sample_nodes_without_neighborinfo:
                     info_print(f"      Exemples: {', '.join(sample_nodes_without_neighborinfo)}")
-                info_print(f"      Note: Ces nœuds n'ont pas encore broadcast de NEIGHBORINFO_APP")
+                
+                # Explain expected behavior
+                if nodes_without_neighborinfo == final_node_count:
+                    info_print(f"      ✓ Normal au démarrage: les données de voisinage ne sont pas incluses")
+                    info_print(f"        dans la base initiale du nœud (seulement NODEINFO, POSITION, etc.)")
+                    info_print(f"      → Collection passive via NEIGHBORINFO_APP broadcasts (15-30 min)")
+                else:
+                    info_print(f"      Note: Données de voisinage partielles au démarrage")
+                    info_print(f"      → Collection continue via NEIGHBORINFO_APP packets")
             
             return total_neighbors
             
