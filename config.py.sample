@@ -78,6 +78,12 @@ ESPHOME_TELEMETRY_INTERVAL = 3600  # Intervalle en secondes (3600s = 1h)
 NODE_NAMES_FILE = "node_names.json"
 NODE_UPDATE_INTERVAL = 300  # 5 minutes
 
+# Configuration chargement initial des voisins au démarrage
+# Polling mechanism pour attendre que interface.nodes se charge complètement
+NEIGHBOR_LOAD_INITIAL_WAIT = 10    # Attente initiale avant première vérification (secondes)
+NEIGHBOR_LOAD_MAX_WAIT = 60        # Timeout maximum pour chargement complet (secondes)
+NEIGHBOR_LOAD_POLL_INTERVAL = 5    # Intervalle entre vérifications de progression (secondes)
+
 # Configuration affichage des métriques de signal
 SHOW_RSSI = False  # Afficher les valeurs RSSI (-85dB)
 SHOW_SNR = False   # Afficher les valeurs SNR (SNR:8.5)

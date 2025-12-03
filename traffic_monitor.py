@@ -155,7 +155,7 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
-    def populate_neighbors_from_interface(self, interface, wait_time=10):
+    def populate_neighbors_from_interface(self, interface, wait_time=None, max_wait_time=None, poll_interval=None):
         """
         Populate neighbor database from Meshtastic interface at startup.
         
@@ -163,23 +163,79 @@ class TrafficMonitor:
         the node's database directly, then passive collection continues via
         NEIGHBORINFO_APP packets.
         
+        Uses polling mechanism to wait for interface.nodes to fully load, especially
+        important for TCP interfaces which may take 30-60+ seconds with large node databases.
+        
         Args:
             interface: Meshtastic interface (serial or TCP)
-            wait_time: Seconds to wait for node data to load (default: 10)
+            wait_time: Initial wait time before first check (default: from config or 10)
+            max_wait_time: Maximum total time to wait for nodes to load (default: from config or 60)
+            poll_interval: Seconds between progress checks (default: from config or 5)
         
         Returns:
             int: Number of neighbor relationships found
         """
         try:
-            info_print(f"👥 Chargement initial des voisins depuis l'interface ({wait_time}s)...")
+            # Use config values if not specified
+            # Access via globals() for backward compatibility with optional config values
+            if wait_time is None:
+                wait_time = globals().get('NEIGHBOR_LOAD_INITIAL_WAIT', 10)
+            if max_wait_time is None:
+                max_wait_time = globals().get('NEIGHBOR_LOAD_MAX_WAIT', 60)
+            if poll_interval is None:
+                poll_interval = globals().get('NEIGHBOR_LOAD_POLL_INTERVAL', 5)
+            
+            info_print(f"👥 Chargement initial des voisins depuis l'interface...")
+            info_print(f"   Attente initiale: {wait_time}s, maximum: {max_wait_time}s, vérification tous les {poll_interval}s")
+            
+            # Initial wait
             time.sleep(wait_time)
             
-            if not hasattr(interface, 'nodes') or not interface.nodes:
-                info_print("⚠️  Aucun nœud disponible dans l'interface")
+            # Check if interface has nodes attribute
+            if not hasattr(interface, 'nodes'):
+                info_print("⚠️  Interface n'a pas d'attribut 'nodes'")
                 return 0
+            
+            # Polling mechanism: wait for nodes to stabilize
+            elapsed_time = wait_time
+            previous_node_count = 0
+            stable_count = 0
+            required_stable_checks = 2  # Need 2 consecutive checks with same count
+            
+            while elapsed_time < max_wait_time:
+                current_node_count = len(interface.nodes) if interface.nodes else 0
+                
+                if current_node_count == 0:
+                    info_print(f"   ⏳ {elapsed_time}s: Aucun nœud chargé, attente...")
+                elif current_node_count == previous_node_count:
+                    stable_count += 1
+                    info_print(f"   ⏳ {elapsed_time}s: {current_node_count} nœuds (stable {stable_count}/{required_stable_checks})")
+                    if stable_count >= required_stable_checks:
+                        info_print(f"   ✅ Chargement stabilisé à {current_node_count} nœuds après {elapsed_time}s")
+                        break
+                else:
+                    stable_count = 0  # Reset stability counter
+                    info_print(f"   📈 {elapsed_time}s: {current_node_count} nœuds chargés (+{current_node_count - previous_node_count})")
+                
+                previous_node_count = current_node_count
+                time.sleep(poll_interval)
+                elapsed_time += poll_interval
+            
+            if not interface.nodes or len(interface.nodes) == 0:
+                info_print("⚠️  Aucun nœud disponible dans l'interface après attente")
+                return 0
+            
+            final_node_count = len(interface.nodes)
+            info_print(f"📊 Début extraction voisins de {final_node_count} nœuds...")
             
             total_neighbors = 0
             nodes_with_neighbors = 0
+            nodes_without_neighbors = 0
+            nodes_without_neighborinfo = 0  # Track nodes missing neighborinfo completely
+            
+            # Sample first few nodes without neighborinfo for debugging
+            sample_nodes_without_neighborinfo = []
+            max_samples = 3
             
             for node_id, node_info in interface.nodes.items():
                 # Normalize node_id
@@ -193,13 +249,16 @@ class TrafficMonitor:
                 
                 # Extract neighbors from node
                 neighbors = []
+                has_neighborinfo = False
                 try:
                     # Check for neighborinfo attribute
                     neighborinfo = None
                     if hasattr(node_info, 'neighborinfo'):
                         neighborinfo = node_info.neighborinfo
+                        has_neighborinfo = True
                     elif isinstance(node_info, dict) and 'neighborinfo' in node_info:
                         neighborinfo = node_info['neighborinfo']
+                        has_neighborinfo = True
                     
                     if neighborinfo:
                         # Get neighbors list
@@ -244,13 +303,46 @@ class TrafficMonitor:
                 except Exception as e:
                     logger.debug(f"Erreur extraction voisins pour {node_id_int:08x}: {e}")
                 
+                # Track nodes without neighborinfo attribute
+                if not has_neighborinfo:
+                    nodes_without_neighborinfo += 1
+                    if len(sample_nodes_without_neighborinfo) < max_samples:
+                        # Get node name for debugging
+                        node_name = "Unknown"
+                        if hasattr(node_info, 'user'):
+                            user = node_info.user
+                            if hasattr(user, 'longName'):
+                                node_name = user.longName
+                        elif isinstance(node_info, dict) and 'user' in node_info:
+                            user = node_info['user']
+                            node_name = user.get('longName', 'Unknown')
+                        sample_nodes_without_neighborinfo.append(f"{node_name} (0x{node_id_int:08x})")
+                
                 # Save neighbors to database if any found
                 if neighbors:
                     self.persistence.save_neighbor_info(node_id_int, neighbors)
                     total_neighbors += len(neighbors)
                     nodes_with_neighbors += 1
+                else:
+                    nodes_without_neighbors += 1
             
-            info_print(f"✅ Chargement initial terminé: {nodes_with_neighbors} nœuds, {total_neighbors} voisins")
+            info_print(f"✅ Chargement initial terminé:")
+            info_print(f"   • Nœuds totaux: {final_node_count}")
+            info_print(f"   • Nœuds avec voisins: {nodes_with_neighbors}")
+            info_print(f"   • Nœuds sans voisins: {nodes_without_neighbors}")
+            info_print(f"   • Relations de voisinage: {total_neighbors}")
+            
+            if nodes_with_neighbors > 0:
+                avg_neighbors = total_neighbors / nodes_with_neighbors
+                info_print(f"   • Moyenne voisins/nœud: {avg_neighbors:.1f}")
+            
+            # Report nodes without neighborinfo
+            if nodes_without_neighborinfo > 0:
+                info_print(f"   ⚠️  Nœuds sans neighborinfo: {nodes_without_neighborinfo}")
+                if sample_nodes_without_neighborinfo:
+                    info_print(f"      Exemples: {', '.join(sample_nodes_without_neighborinfo)}")
+                info_print(f"      Note: Ces nœuds n'ont pas encore broadcast de NEIGHBORINFO_APP")
+            
             return total_neighbors
             
         except Exception as e:
