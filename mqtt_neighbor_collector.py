@@ -29,7 +29,7 @@ except ImportError as e:
 
 # Import Meshtastic protobuf
 try:
-    from meshtastic.protobuf import mesh_pb2, portnums_pb2
+    from meshtastic.protobuf import mesh_pb2, portnums_pb2, mqtt_pb2
     PROTOBUF_AVAILABLE = True
 except ImportError as e:
     error_print(f"MQTT Neighbor Collector: meshtastic protobuf manquant: {e}")
@@ -175,7 +175,7 @@ class MQTTNeighborCollector:
             
             # Parser le ServiceEnvelope protobuf
             try:
-                envelope = mesh_pb2.ServiceEnvelope()
+                envelope = mqtt_pb2.ServiceEnvelope()
                 envelope.ParseFromString(msg.payload)
             except Exception as e:
                 debug_print(f"👥 Erreur parsing ServiceEnvelope: {e}")

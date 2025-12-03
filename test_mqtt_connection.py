@@ -27,7 +27,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from meshtastic.protobuf import mesh_pb2, portnums_pb2
+    from meshtastic.protobuf import mesh_pb2, portnums_pb2, mqtt_pb2
     print("✅ meshtastic protobuf disponible")
 except ImportError:
     print("❌ meshtastic protobuf manquant. Installer avec: pip install meshtastic")
@@ -134,7 +134,7 @@ def on_message(client, userdata, msg):
     
     try:
         # Parser le ServiceEnvelope protobuf
-        envelope = mesh_pb2.ServiceEnvelope()
+        envelope = mqtt_pb2.ServiceEnvelope()
         envelope.ParseFromString(msg.payload)
         stats['messages_parseable'] += 1
         
