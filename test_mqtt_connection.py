@@ -33,6 +33,15 @@ except ImportError:
     print("❌ meshtastic protobuf manquant. Installer avec: pip install meshtastic")
     sys.exit(1)
 
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    print("✅ cryptography disponible (déchiffrement activé)")
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    print("⚠️  cryptography manquant (déchiffrement désactivé). Installer avec: pip install cryptography")
+    CRYPTO_AVAILABLE = False
+
 # Configuration MQTT (à adapter selon config.py)
 MQTT_SERVER = "serveurperso.com"
 MQTT_PORT = 1883
@@ -47,6 +56,8 @@ stats = {
     'messages_parseable': 0,
     'messages_neighborinfo': 0,
     'messages_encrypted': 0,
+    'messages_decrypted': 0,
+    'messages_decryption_failed': 0,
     'messages_other_type': defaultdict(int),
     'nodes_seen': set(),
     'topics_seen': set()
@@ -61,6 +72,9 @@ def signal_handler(sig, frame):
     print(f"Messages parseables (ServiceEnvelope): {stats['messages_parseable']}")
     print(f"Messages NEIGHBORINFO_APP: {stats['messages_neighborinfo']}")
     print(f"Messages chiffrés (encrypted): {stats['messages_encrypted']}")
+    if CRYPTO_AVAILABLE:
+        print(f"Messages déchiffrés avec succès: {stats['messages_decrypted']}")
+        print(f"Échecs de déchiffrement: {stats['messages_decryption_failed']}")
     print(f"Nœuds uniques vus: {len(stats['nodes_seen'])}")
     print(f"Topics uniques vus: {len(stats['topics_seen'])}")
     
@@ -74,6 +88,46 @@ def signal_handler(sig, frame):
         print(f"  {topic}")
     
     sys.exit(0)
+
+def decrypt_packet(encrypted_data, packet_id, from_id):
+    """
+    Déchiffrer un paquet avec la clé par défaut du canal 0 de Meshtastic
+    
+    Args:
+        encrypted_data: Données chiffrées (bytes)
+        packet_id: ID du paquet (int)
+        from_id: ID de l'émetteur (int)
+        
+    Returns:
+        Données déchiffrées (bytes) ou None si échec
+    """
+    if not CRYPTO_AVAILABLE:
+        return None
+    
+    try:
+        # Clé par défaut du canal 0 (AQ== en base64, soit b'\x01')
+        psk = b'\x01'
+        
+        # Construire le nonce: packet_id (8 octets LE) + from_id (4 octets LE) + padding (4 zéros)
+        nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
+        nonce = nonce_bytes + b'\x00' * (16 - len(nonce_bytes))
+        
+        # Créer le déchiffreur AES-CTR
+        cipher = Cipher(
+            algorithms.AES(psk),
+            modes.CTR(nonce),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        
+        # Déchiffrer
+        decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
+        
+        return decrypted
+        
+    except Exception as e:
+        print(f"❌ Erreur déchiffrement: {e}")
+        return None
 
 def on_connect(client, userdata, flags, rc, properties=None):
     """Callback de connexion MQTT"""
@@ -145,6 +199,7 @@ def on_message(client, userdata, msg):
         packet = envelope.packet
         
         # Accéder au champ 'from' (mot-clé réservé Python, utiliser getattr)
+        packet_id = getattr(packet, 'id', 0)
         from_id = getattr(packet, 'from', 0)
         to_id = getattr(packet, 'to', 0)
         
@@ -153,18 +208,44 @@ def on_message(client, userdata, msg):
         stats['nodes_seen'].add(from_id_str)
         
         # Vérifier si chiffré ou décodé
-        if packet.HasField('encrypted'):
+        if packet.HasField('decoded'):
+            # Paquet déjà décodé (non chiffré)
+            decoded = packet.decoded
+        elif packet.HasField('encrypted'):
+            # Paquet chiffré - tenter de déchiffrer
             stats['messages_encrypted'] += 1
             print(f"🔒 Message chiffré de {from_id_str} sur {msg.topic}")
-            print(f"   Note: Les messages chiffrés ne peuvent pas être parsés.")
-            print(f"   Le bot ne peut collecter les NEIGHBORINFO que depuis des paquets non-chiffrés.")
-            print()
+            
+            if not CRYPTO_AVAILABLE:
+                print(f"   ⚠️  Déchiffrement non disponible (installer cryptography)")
+                print()
+                return
+            
+            print(f"🔓 Tentative de déchiffrement avec clé par défaut canal 0...")
+            
+            encrypted_data = packet.encrypted
+            decrypted_data = decrypt_packet(encrypted_data, packet_id, from_id)
+            
+            if not decrypted_data:
+                stats['messages_decryption_failed'] += 1
+                print(f"   ❌ Échec du déchiffrement")
+                print()
+                return
+            
+            # Parser les données déchiffrées comme un Data protobuf
+            try:
+                decoded = mesh_pb2.Data()
+                decoded.ParseFromString(decrypted_data)
+                stats['messages_decrypted'] += 1
+                print(f"   ✅ Déchiffré avec succès! Type: {portnums_pb2.PortNum.Name(decoded.portnum)}")
+            except Exception as e:
+                stats['messages_decryption_failed'] += 1
+                print(f"   ❌ Erreur parsing données déchiffrées: {e}")
+                print()
+                return
+        else:
+            # Ni decoded ni encrypted
             return
-        
-        if not packet.HasField('decoded'):
-            return
-        
-        decoded = packet.decoded
         portnum = decoded.portnum
         portnum_name = portnums_pb2.PortNum.Name(portnum)
         

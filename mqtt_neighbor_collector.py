@@ -35,6 +35,15 @@ except ImportError as e:
     error_print(f"MQTT Neighbor Collector: meshtastic protobuf manquant: {e}")
     PROTOBUF_AVAILABLE = False
 
+# Import cryptography for decryption
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    CRYPTO_AVAILABLE = True
+except ImportError as e:
+    error_print(f"MQTT Neighbor Collector: cryptography manquant (déchiffrement désactivé): {e}")
+    CRYPTO_AVAILABLE = False
+
 
 class MQTTNeighborCollector:
     """
@@ -148,6 +157,50 @@ class MQTTNeighborCollector:
         else:
             debug_print("👥 Déconnexion MQTT normale")
     
+    def _decrypt_packet(self, encrypted_data, packet_id, from_id):
+        """
+        Déchiffrer un paquet avec la clé par défaut du canal 0 de Meshtastic
+        
+        Meshtastic utilise AES-256-CTR avec:
+        - Clé: PSK du canal (défaut canal 0: b'\x01', soit "AQ==" en base64)
+        - Nonce: packet_id (8 octets LE) + from_id (4 octets LE) + padding (4 octets zero)
+        
+        Args:
+            encrypted_data: Données chiffrées (bytes)
+            packet_id: ID du paquet (int)
+            from_id: ID de l'émetteur (int)
+            
+        Returns:
+            Données déchiffrées (bytes) ou None si échec
+        """
+        if not CRYPTO_AVAILABLE:
+            return None
+        
+        try:
+            # Clé par défaut du canal 0 de Meshtastic (AQ== en base64, soit b'\x01')
+            psk = b'\x01'
+            
+            # Construire le nonce: packet_id (8 octets LE) + from_id (4 octets LE) + padding (4 zéros)
+            nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
+            nonce = nonce_bytes + b'\x00' * (16 - len(nonce_bytes))  # Pad à 16 octets
+            
+            # Créer le déchiffreur AES-256-CTR
+            cipher = Cipher(
+                algorithms.AES(psk),
+                modes.CTR(nonce),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            # Déchiffrer
+            decrypted = decryptor.update(encrypted_data) + decryptor.finalize()
+            
+            return decrypted
+            
+        except Exception as e:
+            debug_print(f"👥 Erreur déchiffrement: {e}")
+            return None
+    
     def _on_mqtt_message(self, client, userdata, msg):
         """
         Callback de réception de message MQTT
@@ -187,12 +240,36 @@ class MQTTNeighborCollector:
             
             packet = envelope.packet
             
-            # Vérifier qu'il y a des données décodées (pas chiffrées)
-            if not packet.HasField('decoded'):
-                # Paquet chiffré, on ne peut pas le traiter
-                return
+            # Extraire l'ID du paquet et de l'émetteur pour le déchiffrement
+            packet_id = getattr(packet, 'id', 0)
+            from_id = getattr(packet, 'from', 0)
             
-            decoded = packet.decoded
+            # Vérifier qu'il y a des données décodées OU chiffrées
+            if packet.HasField('decoded'):
+                # Paquet déjà décodé (non chiffré)
+                decoded = packet.decoded
+            elif packet.HasField('encrypted') and CRYPTO_AVAILABLE:
+                # Paquet chiffré - tenter de déchiffrer avec la clé par défaut du canal 0
+                debug_print(f"👥 Message chiffré détecté de {from_id:08x}, tentative de déchiffrement...")
+                
+                encrypted_data = packet.encrypted
+                decrypted_data = self._decrypt_packet(encrypted_data, packet_id, from_id)
+                
+                if not decrypted_data:
+                    # Échec du déchiffrement
+                    return
+                
+                # Parser les données déchiffrées comme un Data protobuf
+                try:
+                    decoded = mesh_pb2.Data()
+                    decoded.ParseFromString(decrypted_data)
+                    debug_print(f"👥 Déchiffrement réussi! Portnum: {decoded.portnum}")
+                except Exception as e:
+                    debug_print(f"👥 Erreur parsing données déchiffrées: {e}")
+                    return
+            else:
+                # Ni decoded ni encrypted (ou crypto non disponible)
+                return
             
             # Vérifier que c'est un paquet NEIGHBORINFO_APP
             if decoded.portnum != portnums_pb2.PortNum.NEIGHBORINFO_APP:
