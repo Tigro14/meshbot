@@ -60,8 +60,13 @@ stats = {
     'messages_decryption_failed': 0,
     'messages_other_type': defaultdict(int),
     'nodes_seen': set(),
-    'topics_seen': set()
+    'topics_seen': set(),
+    'duplicates_filtered': 0
 }
+
+# Déduplication: {(packet_id, from_id): timestamp}
+seen_packets = {}
+DEDUP_WINDOW = 20  # secondes
 
 def signal_handler(sig, frame):
     """Gestion de Ctrl+C pour afficher les stats avant de quitter"""
@@ -75,6 +80,7 @@ def signal_handler(sig, frame):
     if CRYPTO_AVAILABLE:
         print(f"Messages déchiffrés avec succès: {stats['messages_decrypted']}")
         print(f"Échecs de déchiffrement: {stats['messages_decryption_failed']}")
+    print(f"Duplicatas filtrés: {stats['duplicates_filtered']}")
     print(f"Nœuds uniques vus: {len(stats['nodes_seen'])}")
     print(f"Topics uniques vus: {len(stats['topics_seen'])}")
     
@@ -176,6 +182,8 @@ def on_message(client, userdata, msg):
     Callback de réception de message MQTT
     Parse les ServiceEnvelope protobuf et affiche les informations
     """
+    global seen_packets
+    
     stats['messages_total'] += 1
     stats['topics_seen'].add(msg.topic)
     
@@ -206,6 +214,29 @@ def on_message(client, userdata, msg):
         packet_id = getattr(packet, 'id', 0)
         from_id = getattr(packet, 'from', 0)
         to_id = getattr(packet, 'to', 0)
+        
+        # Déduplication: vérifier si ce paquet a déjà été traité
+        current_time = time.time()
+        
+        # Nettoyer les anciennes entrées (> 20 secondes)
+        expired_keys = []
+        for key, timestamp in seen_packets.items():
+            if current_time - timestamp > DEDUP_WINDOW:
+                expired_keys.append(key)
+        
+        for key in expired_keys:
+            del seen_packets[key]
+        
+        # Vérifier si ce paquet a déjà été vu
+        dedup_key = (packet_id, from_id)
+        
+        if dedup_key in seen_packets:
+            # Duplicate trouvé - le filtrer
+            stats['duplicates_filtered'] += 1
+            return
+        
+        # Nouveau paquet, l'enregistrer
+        seen_packets[dedup_key] = current_time
         
         # Formater l'ID du nœud
         from_id_str = f"!{from_id:08x}"

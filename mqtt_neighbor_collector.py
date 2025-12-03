@@ -91,11 +91,18 @@ class MQTTNeighborCollector:
         # État interne
         self.connected = False
         self.neighbor_updates = deque(maxlen=100)
+        
+        # Déduplication: dictionnaire {(packet_id, from_id): timestamp}
+        # Les mêmes paquets sont répétés par plusieurs gateways
+        self._seen_packets = {}
+        self._dedup_window = 20  # secondes
+        
         self.stats = {
             'messages_received': 0,
             'neighbor_packets': 0,
             'nodes_discovered': set(),
-            'last_update': None
+            'last_update': None,
+            'duplicates_filtered': 0
         }
         
         # Client MQTT
@@ -205,6 +212,42 @@ class MQTTNeighborCollector:
             debug_print(f"👥 Erreur déchiffrement: {e}")
             return None
     
+    def _is_duplicate_packet(self, packet_id, from_id):
+        """
+        Vérifier si un paquet a déjà été vu récemment (déduplication)
+        
+        Les paquets MQTT sont répétés par plusieurs gateways sur le réseau,
+        il faut filtrer les duplicatas sur une fenêtre de 20 secondes.
+        
+        Args:
+            packet_id: ID du paquet
+            from_id: ID de l'émetteur
+            
+        Returns:
+            True si duplicate, False sinon
+        """
+        current_time = time.time()
+        
+        # Nettoyer les anciennes entrées (> 20 secondes)
+        expired_keys = []
+        for key, timestamp in self._seen_packets.items():
+            if current_time - timestamp > self._dedup_window:
+                expired_keys.append(key)
+        
+        for key in expired_keys:
+            del self._seen_packets[key]
+        
+        # Vérifier si ce paquet a déjà été vu
+        dedup_key = (packet_id, from_id)
+        
+        if dedup_key in self._seen_packets:
+            # Duplicate trouvé
+            return True
+        
+        # Nouveau paquet, l'enregistrer
+        self._seen_packets[dedup_key] = current_time
+        return False
+    
     def _on_mqtt_message(self, client, userdata, msg):
         """
         Callback de réception de message MQTT
@@ -244,9 +287,14 @@ class MQTTNeighborCollector:
             
             packet = envelope.packet
             
-            # Extraire l'ID du paquet et de l'émetteur pour le déchiffrement
+            # Extraire l'ID du paquet et de l'émetteur pour déduplication et déchiffrement
             packet_id = getattr(packet, 'id', 0)
             from_id = getattr(packet, 'from', 0)
+            
+            # Déduplication: vérifier si ce paquet a déjà été traité
+            if self._is_duplicate_packet(packet_id, from_id):
+                self.stats['duplicates_filtered'] += 1
+                return
             
             # Vérifier qu'il y a des données décodées OU chiffrées
             if packet.HasField('decoded'):
