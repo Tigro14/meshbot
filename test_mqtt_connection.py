@@ -79,16 +79,30 @@ def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         print(f"✅ Connecté au serveur MQTT: {MQTT_SERVER}:{MQTT_PORT}")
         
-        # S'abonner au topic ServiceEnvelope
+        # S'abonner au topic ServiceEnvelope avec pattern wildcard
         topic_pattern = f"{MQTT_TOPIC_ROOT}/+/+/2/e/+"
-        client.subscribe(topic_pattern)
-        print(f"✅ Abonné à: {topic_pattern}")
+        result, mid = client.subscribe(topic_pattern)
+        
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            print(f"✅ Abonné à: {topic_pattern}")
+            print(f"   (Pattern wildcard pour recevoir tous les messages ServiceEnvelope)")
+        else:
+            print(f"❌ Échec abonnement au topic: {topic_pattern}")
+            print(f"   Code d'erreur: {result}")
+        
         print("\n" + "="*60)
         print("🎧 EN ÉCOUTE - Appuyez sur Ctrl+C pour arrêter")
-        print("="*60 + "\n")
+        print("="*60)
+        print("⏱️  Attendez quelques secondes pour voir les messages arriver...")
+        print()
     else:
         print(f"❌ Échec connexion MQTT: code {rc}")
         sys.exit(1)
+
+def on_subscribe(client, userdata, mid, granted_qos, properties=None):
+    """Callback de confirmation d'abonnement"""
+    print(f"✅ Abonnement confirmé par le serveur (QoS: {granted_qos})")
+    print()
 
 def on_disconnect(client, userdata, rc, properties=None):
     """Callback de déconnexion MQTT"""
@@ -102,6 +116,17 @@ def on_message(client, userdata, msg):
     """
     stats['messages_total'] += 1
     stats['topics_seen'].add(msg.topic)
+    
+    # Afficher chaque message reçu (debug premier message)
+    if stats['messages_total'] == 1:
+        print(f"📬 Premier message reçu!")
+        print(f"   Topic: {msg.topic}")
+        print(f"   Taille payload: {len(msg.payload)} octets")
+        print()
+    
+    # Afficher tous les 10 messages
+    if stats['messages_total'] % 10 == 0:
+        print(f"📊 {stats['messages_total']} messages reçus jusqu'à présent...")
     
     try:
         # Parser le ServiceEnvelope protobuf
@@ -209,6 +234,7 @@ def main():
     
     # Configurer les callbacks
     client.on_connect = on_connect
+    client.on_subscribe = on_subscribe
     client.on_disconnect = on_disconnect
     client.on_message = on_message
     
