@@ -618,3 +618,72 @@ class MQTTNeighborCollector:
                 lines.append(f"• Dernière MAJ: {last_update_str}")
             
             return "\n".join(lines)
+    
+    def get_directly_heard_nodes(self, hours: int = 48) -> List[Dict[str, Any]]:
+        """
+        Obtenir la liste des nœuds qui ont été entendus directement via MQTT
+        (nœuds qui ont envoyé des paquets NEIGHBORINFO via MQTT)
+        
+        Args:
+            hours: Nombre d'heures à considérer (défaut: 48h)
+            
+        Returns:
+            Liste de dictionnaires avec node_id, longname, et last_heard
+            Triée par last_heard (plus récent d'abord)
+        """
+        if not self.persistence:
+            return []
+        
+        try:
+            # Récupérer les données de voisinage depuis la persistance
+            neighbors_data = self.persistence.load_neighbors(hours=hours)
+            
+            if not neighbors_data:
+                return []
+            
+            # Créer un dictionnaire pour suivre le last_heard de chaque nœud
+            # Un nœud est "directly heard" s'il apparaît comme node_id (émetteur de NEIGHBORINFO)
+            nodes_heard = {}
+            
+            for node_id, neighbors_list in neighbors_data.items():
+                # Le node_id est celui qui a envoyé le NEIGHBORINFO
+                # Trouver le timestamp le plus récent parmi ses voisins
+                if neighbors_list:
+                    latest_timestamp = max(n.get('timestamp', 0) for n in neighbors_list)
+                    
+                    # Mettre à jour ou ajouter le nœud
+                    if node_id not in nodes_heard or latest_timestamp > nodes_heard[node_id]:
+                        nodes_heard[node_id] = latest_timestamp
+            
+            # Convertir en liste avec longname
+            result = []
+            for node_id, last_heard in nodes_heard.items():
+                # Obtenir le nom du nœud via node_manager
+                longname = node_id  # Par défaut, utiliser l'ID
+                if self.node_manager:
+                    try:
+                        # Convertir !xxxxxxxx en int pour get_node_name
+                        if node_id.startswith('!'):
+                            node_id_int = int(node_id[1:], 16)
+                            longname = self.node_manager.get_node_name(node_id_int)
+                        else:
+                            longname = self.node_manager.get_node_name(node_id)
+                    except Exception as e:
+                        debug_print(f"Erreur récupération nom pour {node_id}: {e}")
+                
+                result.append({
+                    'node_id': node_id,
+                    'longname': longname,
+                    'last_heard': last_heard
+                })
+            
+            # Trier par last_heard (plus récent d'abord)
+            result.sort(key=lambda x: x['last_heard'], reverse=True)
+            
+            return result
+            
+        except Exception as e:
+            error_print(f"Erreur récupération nœuds MQTT: {e}")
+            import traceback
+            debug_print(traceback.format_exc())
+            return []

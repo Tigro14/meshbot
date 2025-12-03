@@ -40,6 +40,7 @@ class BasicCommands(TelegramCommandBase):
             f"• /power - Batterie/solaire\n"
             f"• /weather - Météo Paris\n"
             f"• /rx [page]\n"
+            f"• /mqtt [heures] - Nœuds MQTT\n"
             f"• /sys\n"
             f"• /echo <msg>\n"
             f"• /nodes\n"

@@ -346,3 +346,101 @@ class NetworkCommands(TelegramCommandBase):
                 await update.effective_message.reply_text(chunk)
         else:
             await update.effective_message.reply_text(response)
+
+    async def mqtt_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /mqtt - Afficher tous les nœuds entendus directement via MQTT
+        
+        Liste les nœuds qui ont envoyé des paquets NEIGHBORINFO via MQTT,
+        avec leur LongName et leur dernière heure d'écoute.
+        
+        Usage:
+            /mqtt          -> Tous les nœuds MQTT (48h)
+            /mqtt 24       -> Nœuds MQTT des 24 dernières heures
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le nombre d'heures optionnel
+        hours = 48  # Défaut: 48 heures
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))  # Entre 1h et 7 jours
+            except ValueError:
+                await update.effective_message.reply_text("❌ Usage: /mqtt [heures]\nExemple: /mqtt 24")
+                return
+        
+        # Logger la requête
+        info_print(f"📱 Telegram /mqtt ({hours}h): {user.username}")
+        
+        def get_mqtt_nodes():
+            try:
+                # Vérifier si le collecteur MQTT est disponible
+                mqtt_collector = self.message_handler.mqtt_neighbor_collector
+                
+                if not mqtt_collector or not mqtt_collector.enabled:
+                    return "❌ Collecteur MQTT de voisins non disponible ou désactivé.\n\nPour l'activer, configurez dans config.py:\n```\nMQTT_NEIGHBOR_ENABLED = True\nMQTT_NEIGHBOR_SERVER = \"serveurperso.com\"\nMQTT_NEIGHBOR_USER = \"meshdev\"\nMQTT_NEIGHBOR_PASSWORD = \"...\"\n```"
+                
+                # Récupérer la liste des nœuds entendus via MQTT
+                nodes = mqtt_collector.get_directly_heard_nodes(hours=hours)
+                
+                if not nodes:
+                    return f"ℹ️ Aucun nœud MQTT entendu dans les {hours} dernières heures.\n\nLe collecteur MQTT est actif mais n'a pas encore reçu de paquets NEIGHBORINFO."
+                
+                # Formater la réponse
+                lines = [
+                    f"📡 **Nœuds MQTT entendus directement** ({len(nodes)} nœuds, {hours}h)\n"
+                ]
+                
+                # Statut de connexion
+                status = "Connecté 🟢" if mqtt_collector.connected else "Déconnecté 🔴"
+                lines.append(f"Statut MQTT: {status}\n")
+                
+                # Liste des nœuds
+                for i, node in enumerate(nodes, 1):
+                    node_id = node['node_id']
+                    longname = node['longname']
+                    last_heard = node['last_heard']
+                    
+                    # Calculer le temps écoulé depuis la dernière écoute
+                    elapsed = int(time.time() - last_heard) if last_heard > 0 else 0
+                    if elapsed < 60:
+                        time_str = f"{elapsed}s"
+                    elif elapsed < 3600:
+                        time_str = f"{elapsed // 60}m"
+                    elif elapsed < 86400:
+                        time_str = f"{elapsed // 3600}h"
+                    else:
+                        time_str = f"{elapsed // 86400}j"
+                    
+                    # Icône basée sur le temps écoulé
+                    if elapsed < 3600:  # < 1h
+                        icon = "🟢"
+                    elif elapsed < 86400:  # < 24h
+                        icon = "🟡"
+                    else:
+                        icon = "🟠"
+                    
+                    # Formatter: numéro, icône, nom, ID court, temps
+                    # Extraire l'ID court (derniers 4 caractères hex)
+                    short_id = node_id[-4:] if node_id.startswith('!') else node_id
+                    
+                    lines.append(f"{i}. {icon} **{longname}** `{short_id}` ({time_str})")
+                
+                return "\n".join(lines)
+                
+            except Exception as e:
+                error_print(f"Erreur /mqtt: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:200]}"
+        
+        # Exécuter dans un thread pour ne pas bloquer
+        response = await asyncio.to_thread(get_mqtt_nodes)
+        
+        # Envoyer la réponse (avec support Markdown pour les noms en gras)
+        await update.effective_message.reply_text(response, parse_mode='Markdown')
