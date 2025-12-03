@@ -93,6 +93,8 @@ def decrypt_packet(encrypted_data, packet_id, from_id):
     """
     Déchiffrer un paquet avec la clé par défaut du canal 0 de Meshtastic
     
+    Référence: https://github.com/liamcottle/meshtastic-map/blob/main/src/mqtt.js#L658
+    
     Args:
         encrypted_data: Données chiffrées (bytes)
         packet_id: ID du paquet (int)
@@ -105,14 +107,16 @@ def decrypt_packet(encrypted_data, packet_id, from_id):
         return None
     
     try:
-        # Clé par défaut du canal 0 (AQ== en base64, soit b'\x01')
-        psk = b'\x01'
+        # Clé par défaut du canal 0 de Meshtastic (16 bytes pour AES-128)
+        # "1PG7OiApB1nwvP+rz05pAQ==" en base64
+        import base64
+        psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
         
-        # Construire le nonce: packet_id (8 octets LE) + from_id (4 octets LE) + padding (4 zéros)
+        # Construire le nonce: packet_id (8 octets LE) + from_id (4 octets LE) + block_counter (4 zéros)
         nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
-        nonce = nonce_bytes + b'\x00' * (16 - len(nonce_bytes))
+        nonce = nonce_bytes + b'\x00' * 4  # block_counter = 0
         
-        # Créer le déchiffreur AES-CTR
+        # Créer le déchiffreur AES-128-CTR
         cipher = Cipher(
             algorithms.AES(psk),
             modes.CTR(nonce),
