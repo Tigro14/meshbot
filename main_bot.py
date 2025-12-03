@@ -31,6 +31,7 @@ from safe_tcp_connection import SafeTCPConnection
 from tcp_interface_patch import OptimizedTCPInterface
 from vigilance_monitor import VigilanceMonitor
 from blitz_monitor import BlitzMonitor
+from mqtt_neighbor_collector import MQTTNeighborCollector
 from mesh_traceroute_manager import MeshTracerouteManager
 
 # Import du nouveau gestionnaire multi-plateforme
@@ -83,6 +84,9 @@ class MeshBot:
 
         # Moniteur d'éclairs Blitzortung (initialisé après interface dans start())
         self.blitz_monitor = None
+
+        # Collecteur de voisins MQTT (initialisé après traffic_monitor dans start())
+        self.mqtt_neighbor_collector = None
 
         # Gestionnaire de traceroute mesh (initialisé après message_handler dans start())
         self.mesh_traceroute = None
@@ -1197,6 +1201,37 @@ class MeshBot:
                     error_print(f"Erreur initialisation blitz monitor: {e}")
                     self.blitz_monitor = None
 
+            # Initialiser le collecteur MQTT de voisins (si activé)
+            if globals().get('MQTT_NEIGHBOR_ENABLED', False):
+                try:
+                    info_print("👥 Initialisation du collecteur MQTT de voisins...")
+                    
+                    mqtt_server = globals().get('MQTT_NEIGHBOR_SERVER', 'serveurperso.com')
+                    mqtt_port = globals().get('MQTT_NEIGHBOR_PORT', 1883)
+                    mqtt_user = globals().get('MQTT_NEIGHBOR_USER')
+                    mqtt_password = globals().get('MQTT_NEIGHBOR_PASSWORD')
+                    mqtt_topic_root = globals().get('MQTT_NEIGHBOR_TOPIC_ROOT', 'msh')
+                    
+                    self.mqtt_neighbor_collector = MQTTNeighborCollector(
+                        mqtt_server=mqtt_server,
+                        mqtt_port=mqtt_port,
+                        mqtt_user=mqtt_user,
+                        mqtt_password=mqtt_password,
+                        mqtt_topic_root=mqtt_topic_root,
+                        persistence=self.traffic_monitor.persistence
+                    )
+                    
+                    if self.mqtt_neighbor_collector.enabled:
+                        info_print("✅ Collecteur MQTT de voisins initialisé")
+                    else:
+                        info_print("⚠️ Collecteur MQTT de voisins désactivé (erreur config)")
+                except Exception as e:
+                    error_print(f"Erreur initialisation MQTT neighbor collector: {e}")
+                    error_print(traceback.format_exc())
+                    self.mqtt_neighbor_collector = None
+            else:
+                debug_print("ℹ️ Collecteur MQTT de voisins désactivé (MQTT_NEIGHBOR_ENABLED=False)")
+
             # ========================================
             # INITIALISATION DES GESTIONNAIRES
             # ========================================
@@ -1292,6 +1327,11 @@ class MeshBot:
                 if self.blitz_monitor and self.blitz_monitor.enabled:
                     self.blitz_monitor.start_monitoring()
                     info_print("⚡ Monitoring éclairs démarré (MQTT)")
+
+                # Démarrer le collecteur MQTT de voisins (si activé)
+                if self.mqtt_neighbor_collector and self.mqtt_neighbor_collector.enabled:
+                    self.mqtt_neighbor_collector.start_monitoring()
+                    info_print("👥 Collecteur MQTT de voisins démarré")
 
             except ImportError as e:
                 info_print(f"📱 Plateformes messagerie non disponibles: {e}")
@@ -1403,6 +1443,13 @@ class MeshBot:
                     self.blitz_monitor.stop_monitoring()
             except Exception as e:
                 error_print(f"⚠️ Erreur arrêt blitz_monitor: {e}")
+            
+            # 3b. Arrêter le collecteur MQTT de voisins
+            try:
+                if self.mqtt_neighbor_collector and self.mqtt_neighbor_collector.enabled:
+                    self.mqtt_neighbor_collector.stop_monitoring()
+            except Exception as e:
+                error_print(f"⚠️ Erreur arrêt mqtt_neighbor_collector: {e}")
 
             # 4. Arrêter toutes les plateformes (peut bloquer sur Telegram asyncio)
             try:
