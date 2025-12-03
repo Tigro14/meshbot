@@ -120,11 +120,14 @@ class MQTTNeighborCollector:
             info_print(f"👥 Connecté au serveur MQTT Meshtastic")
             
             # S'abonner au topic ServiceEnvelope (protobuf)
-            # Format: msh/<region>/<channel>/2/e/<gateway>
+            # Format: msh/<region>/<channel>/2/e/<gateway_id>
             # Utilise mqtt_topic_pattern si configuré, sinon wildcard par défaut
             if self.mqtt_topic_pattern:
                 # Topic spécifique configuré (ex: "msh/EU_868/2/e/MediumFast")
+                # Ajouter /# à la fin s'il n'y a pas déjà de wildcard pour capturer tous les gateway IDs
                 topic_pattern = self.mqtt_topic_pattern
+                if not topic_pattern.endswith('#') and not topic_pattern.endswith('+'):
+                    topic_pattern += '/#'  # Capturer tous les messages sous ce channel
                 info_print(f"   Abonné à: {topic_pattern} (topic spécifique)")
             else:
                 # Wildcard + pour capturer tous les régions/channels/gateways

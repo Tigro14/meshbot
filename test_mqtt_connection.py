@@ -39,7 +39,7 @@ MQTT_PORT = 1883
 MQTT_USER = "meshdev"
 MQTT_PASSWORD = ""  # À remplir depuis config.py
 MQTT_TOPIC_ROOT = "msh"
-MQTT_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast"  # Topic spécifique (wildcard ne fonctionne pas sur ce serveur)
+MQTT_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast/#"  # Topic spécifique avec wildcard pour capturer tous les gateways
 
 # Statistiques
 stats = {
