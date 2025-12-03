@@ -394,7 +394,7 @@ class NetworkCommands(TelegramCommandBase):
                 
                 # Formater la réponse
                 lines = [
-                    f"📡 **Nœuds MQTT entendus directement** ({len(nodes)} nœuds, {hours}h)\n"
+                    f"📡 Nœuds MQTT entendus directement ({len(nodes)} nœuds, {hours}h)\n"
                 ]
                 
                 # Statut de connexion
@@ -430,7 +430,7 @@ class NetworkCommands(TelegramCommandBase):
                     # Extraire l'ID court (derniers 4 caractères hex)
                     short_id = node_id[-4:] if node_id.startswith('!') else node_id
                     
-                    lines.append(f"{i}. {icon} **{longname}** `{short_id}` ({time_str})")
+                    lines.append(f"{i}. {icon} {longname} ({short_id}) - {time_str}")
                 
                 return "\n".join(lines)
                 
@@ -442,5 +442,5 @@ class NetworkCommands(TelegramCommandBase):
         # Exécuter dans un thread pour ne pas bloquer
         response = await asyncio.to_thread(get_mqtt_nodes)
         
-        # Envoyer la réponse (avec support Markdown pour les noms en gras)
-        await update.effective_message.reply_text(response, parse_mode='Markdown')
+        # Envoyer la réponse (sans Markdown pour éviter les erreurs de parsing)
+        await update.effective_message.reply_text(response)

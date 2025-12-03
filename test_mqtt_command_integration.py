@@ -71,14 +71,14 @@ class MockPersistence:
 def format_mqtt_response(nodes, mqtt_connected=True, hours=48):
     """
     Formater la réponse comme le ferait la vraie commande /mqtt
-    (copie de la logique de mqtt_command)
+    (copie de la logique de mqtt_command - SANS MARKDOWN)
     """
     if not nodes:
         return f"ℹ️ Aucun nœud MQTT entendu dans les {hours} dernières heures.\n\nLe collecteur MQTT est actif mais n'a pas encore reçu de paquets NEIGHBORINFO."
     
     # Formater la réponse
     lines = [
-        f"📡 **Nœuds MQTT entendus directement** ({len(nodes)} nœuds, {hours}h)\n"
+        f"📡 Nœuds MQTT entendus directement ({len(nodes)} nœuds, {hours}h)\n"
     ]
     
     # Statut de connexion
@@ -113,7 +113,7 @@ def format_mqtt_response(nodes, mqtt_connected=True, hours=48):
         # Formatter: numéro, icône, nom, ID court, temps
         short_id = node_id[-4:] if node_id.startswith('!') else node_id
         
-        lines.append(f"{i}. {icon} **{longname}** `{short_id}` ({time_str})")
+        lines.append(f"{i}. {icon} {longname} ({short_id}) - {time_str}")
     
     return "\n".join(lines)
 

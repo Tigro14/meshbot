@@ -24,51 +24,51 @@ def main():
     # Scenario 1: Normal operation with 5 nodes
     show_scenario(
         "Scenario 1: Normal Operation (5 MQTT nodes heard)",
-        """📡 **Nœuds MQTT entendus directement** (5 nœuds, 48h)
+        """📡 Nœuds MQTT entendus directement (5 nœuds, 48h)
 
 Statut MQTT: Connecté 🟢
 
-1. 🟢 **tigrobot** `5678` (2m)
-2. 🟢 **tigrog2** `4321` (30m)
-3. 🟡 **Paris-Gateway** `ef01` (5h)
-4. 🟡 **Unknown-Node** `beef` (10h)
-5. 🟠 **Lyon-Mesh-001** `d3dc` (1j)"""
+1. 🟢 tigrobot (5678) - 2m
+2. 🟢 tigrog2 (4321) - 30m
+3. 🟡 Paris-Gateway (ef01) - 5h
+4. 🟡 Unknown-Node (beef) - 10h
+5. 🟠 Lyon-Mesh-001 (d3dc) - 1j"""
     )
     
     # Scenario 2: Filtered to 24h
     show_scenario(
         "Scenario 2: Filtered to Last 24 Hours (/mqtt 24)",
-        """📡 **Nœuds MQTT entendus directement** (4 nœuds, 24h)
+        """📡 Nœuds MQTT entendus directement (4 nœuds, 24h)
 
 Statut MQTT: Connecté 🟢
 
-1. 🟢 **tigrobot** `5678` (2m)
-2. 🟢 **tigrog2** `4321` (30m)
-3. 🟡 **Paris-Gateway** `ef01` (5h)
-4. 🟡 **Unknown-Node** `beef` (10h)"""
+1. 🟢 tigrobot (5678) - 2m
+2. 🟢 tigrog2 (4321) - 30m
+3. 🟡 Paris-Gateway (ef01) - 5h
+4. 🟡 Unknown-Node (beef) - 10h"""
     )
     
     # Scenario 3: Only very recent nodes
     show_scenario(
         "Scenario 3: Only Very Recent Nodes (/mqtt 1)",
-        """📡 **Nœuds MQTT entendus directement** (2 nœuds, 1h)
+        """📡 Nœuds MQTT entendus directement (2 nœuds, 1h)
 
 Statut MQTT: Connecté 🟢
 
-1. 🟢 **tigrobot** `5678` (2m)
-2. 🟢 **tigrog2** `4321` (30m)"""
+1. 🟢 tigrobot (5678) - 2m
+2. 🟢 tigrog2 (4321) - 30m"""
     )
     
     # Scenario 4: MQTT disconnected
     show_scenario(
         "Scenario 4: MQTT Collector Disconnected",
-        """📡 **Nœuds MQTT entendus directement** (3 nœuds, 48h)
+        """📡 Nœuds MQTT entendus directement (3 nœuds, 48h)
 
 Statut MQTT: Déconnecté 🔴
 
-1. 🟢 **tigrobot** `5678` (45m)
-2. 🟡 **Paris-Gateway** `ef01` (12h)
-3. 🟠 **Lyon-Mesh-001** `d3dc` (2j)
+1. 🟢 tigrobot (5678) - 45m
+2. 🟡 Paris-Gateway (ef01) - 12h
+3. 🟠 Lyon-Mesh-001 (d3dc) - 2j
 
 ⚠️ Note: Le collecteur MQTT est déconnecté mais affiche les dernières données connues."""
     )
@@ -98,40 +98,40 @@ MQTT_NEIGHBOR_PASSWORD = "..."
     # Scenario 7: Large network (many nodes)
     show_scenario(
         "Scenario 7: Large Mesh Network (15 nodes)",
-        """📡 **Nœuds MQTT entendus directement** (15 nœuds, 48h)
+        """📡 Nœuds MQTT entendus directement (15 nœuds, 48h)
 
 Statut MQTT: Connecté 🟢
 
-1. 🟢 **tigrobot** `5678` (1m)
-2. 🟢 **tigrog2** `4321` (5m)
-3. 🟢 **Marseille-01** `abc1` (15m)
-4. 🟢 **Nice-Gateway** `def2` (45m)
-5. 🟡 **Lyon-001** `d3dc` (2h)
-6. 🟡 **Lyon-002** `d3dd` (3h)
-7. 🟡 **Toulouse-Hub** `cafe` (6h)
-8. 🟡 **Bordeaux-Mesh** `beef` (12h)
-9. 🟡 **Strasbourg-01** `feed` (18h)
-10. 🟡 **Lille-Gateway** `dead` (22h)
-11. 🟠 **Nantes-001** `1234` (1j)
-12. 🟠 **Rennes-Mesh** `5678` (1j)
-13. 🟠 **Montpellier-01** `9abc` (2j)
-14. 🟠 **Clermont-Hub** `def0` (2j)
-15. 🟠 **Dijon-Gateway** `1111` (2j)"""
+1. 🟢 tigrobot (5678) - 1m
+2. 🟢 tigrog2 (4321) - 5m
+3. 🟢 Marseille-01 (abc1) - 15m
+4. 🟢 Nice-Gateway (def2) - 45m
+5. 🟡 Lyon-001 (d3dc) - 2h
+6. 🟡 Lyon-002 (d3dd) - 3h
+7. 🟡 Toulouse-Hub (cafe) - 6h
+8. 🟡 Bordeaux-Mesh (beef) - 12h
+9. 🟡 Strasbourg-01 (feed) - 18h
+10. 🟡 Lille-Gateway (dead) - 22h
+11. 🟠 Nantes-001 (1234) - 1j
+12. 🟠 Rennes-Mesh (5678) - 1j
+13. 🟠 Montpellier-01 (9abc) - 2j
+14. 🟠 Clermont-Hub (def0) - 2j
+15. 🟠 Dijon-Gateway (1111) - 2j"""
     )
     
     # Scenario 8: Mixed known/unknown nodes
     show_scenario(
         "Scenario 8: Mix of Named and Unknown Nodes",
-        """📡 **Nœuds MQTT entendus directement** (6 nœuds, 48h)
+        """📡 Nœuds MQTT entendus directement (6 nœuds, 48h)
 
 Statut MQTT: Connecté 🟢
 
-1. 🟢 **tigrobot** `5678` (5m)
-2. 🟢 **!87654321** `4321` (30m)  ← Unknown node (no name in DB)
-3. 🟡 **Paris-Gateway** `ef01` (8h)
-4. 🟡 **!deadbeef** `beef` (10h)  ← Unknown node
-5. 🟠 **Lyon-Mesh-001** `d3dc` (1j)
-6. 🟠 **!12345678** `5678` (2j)  ← Unknown node"""
+1. 🟢 tigrobot (5678) - 5m
+2. 🟢 !87654321 (4321) - 30m  ← Unknown node (no name in DB)
+3. 🟡 Paris-Gateway (ef01) - 8h
+4. 🟡 !deadbeef (beef) - 10h  ← Unknown node
+5. 🟠 Lyon-Mesh-001 (d3dc) - 1j
+6. 🟠 !12345678 (5678) - 2j  ← Unknown node"""
     )
     
     # Command usage examples
