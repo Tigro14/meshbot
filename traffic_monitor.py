@@ -177,6 +177,7 @@ class TrafficMonitor:
         """
         try:
             # Use config values if not specified
+            # Access via globals() for backward compatibility with optional config values
             if wait_time is None:
                 wait_time = globals().get('NEIGHBOR_LOAD_INITIAL_WAIT', 10)
             if max_wait_time is None:
@@ -205,10 +206,10 @@ class TrafficMonitor:
                 current_node_count = len(interface.nodes) if interface.nodes else 0
                 
                 if current_node_count == 0:
-                    debug_print(f"   ⏳ {elapsed_time}s: Aucun nœud chargé, attente...")
+                    info_print(f"   ⏳ {elapsed_time}s: Aucun nœud chargé, attente...")
                 elif current_node_count == previous_node_count:
                     stable_count += 1
-                    debug_print(f"   ⏳ {elapsed_time}s: {current_node_count} nœuds (stable {stable_count}/{required_stable_checks})")
+                    info_print(f"   ⏳ {elapsed_time}s: {current_node_count} nœuds (stable {stable_count}/{required_stable_checks})")
                     if stable_count >= required_stable_checks:
                         info_print(f"   ✅ Chargement stabilisé à {current_node_count} nœuds après {elapsed_time}s")
                         break
@@ -220,7 +221,7 @@ class TrafficMonitor:
                 time.sleep(poll_interval)
                 elapsed_time += poll_interval
             
-            if not interface.nodes:
+            if not interface.nodes or len(interface.nodes) == 0:
                 info_print("⚠️  Aucun nœud disponible dans l'interface après attente")
                 return 0
             
