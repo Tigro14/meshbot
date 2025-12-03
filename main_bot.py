@@ -1247,7 +1247,8 @@ class MeshBot:
                 self.start_time,
                 self.blitz_monitor,
                 self.vigilance_monitor,
-                broadcast_tracker=self._track_broadcast  # Callback pour tracker les broadcasts
+                broadcast_tracker=self._track_broadcast,  # Callback pour tracker les broadcasts
+                mqtt_neighbor_collector=self.mqtt_neighbor_collector  # MQTT collector reference
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)

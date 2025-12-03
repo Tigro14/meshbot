@@ -35,16 +35,63 @@ class NetworkCommands(TelegramCommandBase):
         self.stats_commands = telegram_integration.stats_commands
 
     async def rx_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /rx [page]"""
+        """
+        Commande /rx [node_filter] - Afficher les voisins mesh et stats MQTT
+        
+        Usage:
+            /rx                    -> Stats du collecteur MQTT
+            /rx tigro              -> Voisins du nœud 'tigro' (via MQTT/radio)
+            /rx !16fad3dc          -> Voisins du nœud par ID
+        """
         user = update.effective_user
-        page = int(context.args[0]) if context.args else 1
-        info_print(f"📱 Telegram /rx {page}: {user.username}")
-
-        response = await asyncio.to_thread(
-            self.message_handler.remote_nodes_client.get_tigrog2_paginated,
-            page
-        )
-        await update.effective_message.reply_text(response)
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le filtre optionnel
+        node_filter = None
+        if context.args and len(context.args) > 0:
+            node_filter = ' '.join(context.args)
+        
+        # Logger la requête
+        if node_filter:
+            info_print(f"📱 Telegram /rx {node_filter}: {user.username}")
+        else:
+            info_print(f"📱 Telegram /rx (stats MQTT): {user.username}")
+        
+        def get_rx_info():
+            try:
+                # Cas 1: Pas d'argument -> Stats MQTT
+                if not node_filter:
+                    # Vérifier si le collecteur MQTT est disponible
+                    mqtt_collector = self.message_handler.mqtt_neighbor_collector
+                    
+                    if mqtt_collector and mqtt_collector.enabled:
+                        # Retourner le rapport détaillé du collecteur MQTT
+                        return mqtt_collector.get_status_report(compact=False)
+                    else:
+                        return "❌ Collecteur MQTT de voisins non disponible ou désactivé.\n\nPour l'activer, configurez dans config.py:\n```\nMQTT_NEIGHBOR_ENABLED = True\nMQTT_NEIGHBOR_SERVER = \"serveurperso.com\"\nMQTT_NEIGHBOR_USER = \"meshdev\"\nMQTT_NEIGHBOR_PASSWORD = \"...\"\n```"
+                
+                # Cas 2: Avec argument -> Voisins du nœud spécifié
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                # Utiliser la méthode existante get_neighbors_report
+                # avec compact=False pour format détaillé Telegram
+                return self.message_handler.traffic_monitor.get_neighbors_report(
+                    node_filter=node_filter,
+                    compact=False
+                )
+                
+            except Exception as e:
+                error_print(f"Erreur /rx: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:200]}"
+        
+        response = await asyncio.to_thread(get_rx_info)
+        await update.effective_message.reply_text(response, parse_mode='Markdown')
 
     async def nodes_command(self, update: Update,
                             context: ContextTypes.DEFAULT_TYPE):
