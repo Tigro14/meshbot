@@ -5,8 +5,10 @@ Ce module se connecte à un serveur MQTT Meshtastic pour recevoir
 les paquets NEIGHBORINFO_APP de tous les nœuds du réseau, permettant
 de construire une topologie complète au-delà de la portée radio directe.
 
-Server: serveurperso.com (configured in config.py)
-User: meshdev
+Configuration required in config.py:
+- MQTT_NEIGHBOR_SERVER: MQTT server address
+- MQTT_NEIGHBOR_USER: MQTT username
+- MQTT_NEIGHBOR_PASSWORD: MQTT password
 """
 
 import time
