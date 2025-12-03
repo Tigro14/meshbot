@@ -1218,7 +1218,8 @@ class MeshBot:
                         mqtt_user=mqtt_user,
                         mqtt_password=mqtt_password,
                         mqtt_topic_root=mqtt_topic_root,
-                        persistence=self.traffic_monitor.persistence
+                        persistence=self.traffic_monitor.persistence,
+                        node_manager=self.node_manager
                     )
                     
                     if self.mqtt_neighbor_collector.enabled:

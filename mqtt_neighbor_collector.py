@@ -51,7 +51,8 @@ class MQTTNeighborCollector:
                  mqtt_user: Optional[str] = None,
                  mqtt_password: Optional[str] = None,
                  mqtt_topic_root: str = "msh",
-                 persistence = None):
+                 persistence = None,
+                 node_manager = None):
         """
         Initialiser le collecteur MQTT
         
@@ -62,6 +63,7 @@ class MQTTNeighborCollector:
             mqtt_password: Mot de passe MQTT (optionnel)
             mqtt_topic_root: Racine des topics MQTT (défaut: "msh")
             persistence: Instance de TrafficPersistence pour sauvegarder les données
+            node_manager: Instance de NodeManager pour calculer les distances (optionnel)
         """
         # Initialiser tous les attributs d'abord (pour éviter AttributeError si désactivé)
         self.mqtt_server = mqtt_server
@@ -70,6 +72,7 @@ class MQTTNeighborCollector:
         self.mqtt_password = mqtt_password
         self.mqtt_topic_root = mqtt_topic_root
         self.persistence = persistence
+        self.node_manager = node_manager
         self.enabled = False
         
         # État interne
@@ -234,6 +237,52 @@ class MQTTNeighborCollector:
                 }
                 self.neighbor_updates.append(update_info)
                 
+                # Log DEBUG avec filtre de distance (<100km)
+                # Calculer la distance du nœud si node_manager disponible
+                should_log = True
+                distance_km = None
+                
+                if self.node_manager:
+                    try:
+                        # Obtenir la position du nœud
+                        node_data = self.node_manager.get_node_data(node_id)
+                        if node_data and 'latitude' in node_data and 'longitude' in node_data:
+                            node_lat = node_data['latitude']
+                            node_lon = node_data['longitude']
+                            
+                            # Obtenir la position de référence (bot)
+                            ref_pos = self.node_manager.get_reference_position()
+                            if ref_pos and ref_pos[0] != 0 and ref_pos[1] != 0:
+                                ref_lat, ref_lon = ref_pos
+                                distance_km = self.node_manager.haversine_distance(
+                                    ref_lat, ref_lon, node_lat, node_lon
+                                )
+                                
+                                # Filtrer: seulement afficher si <100km
+                                if distance_km >= 100:
+                                    should_log = False
+                    except Exception as e:
+                        # En cas d'erreur de calcul, on affiche quand même
+                        debug_print(f"👥 Erreur calcul distance pour {node_id_str}: {e}")
+                
+                # Afficher le log de debug si pas filtré
+                if should_log:
+                    # Obtenir le nom du nœud
+                    node_name = node_id_str
+                    if self.node_manager:
+                        try:
+                            node_name = self.node_manager.get_node_name(node_id)
+                        except:
+                            pass
+                    
+                    # Format du log similaire aux paquets mesh
+                    distance_str = ""
+                    if distance_km is not None:
+                        distance_str = f" [{distance_km:.1f}km]"
+                    
+                    debug_print(f"[MQTT] 👥 NEIGHBORINFO de {node_name}{distance_str}: {len(formatted_neighbors)} voisins")
+                
+                # Log original plus concis (toujours affiché si DEBUG_MODE=False)
                 debug_print(f"👥 MQTT: {len(formatted_neighbors)} voisins pour {node_id_str}")
         
         except Exception as e:
