@@ -553,6 +553,7 @@ class UtilityCommands:
             "/echo",
             "/nodes",
             "/neighbors",
+            "/mqtt",
             "/stats [cmd]",
             "/db [cmd]",
             "/trace",
@@ -599,6 +600,12 @@ class UtilityCommands:
         • /neighbors [node] - Voisins mesh (topology réseau)
           /neighbors → Tous les voisins (format compact)
           /neighbors tigro → Voisins d'un nœud spécifique
+        • /mqtt [heures] - Nœuds MQTT entendus directement
+          Liste nœuds ayant envoyé NEIGHBORINFO via MQTT
+          /mqtt → Tous les nœuds MQTT (48h)
+          /mqtt 24 → Nœuds des 24 dernières heures
+          Affiche: LongName, ID court, temps écoulé
+          Icônes: 🟢 <1h, 🟡 <24h, 🟠 >24h
         • /rx [node] - Voisins & stats MQTT collecteur
           /rx → Statistiques collecteur MQTT
           /rx tigro → Voisins du nœud (via MQTT/radio)
