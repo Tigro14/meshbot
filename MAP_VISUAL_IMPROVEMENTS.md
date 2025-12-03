@@ -22,7 +22,7 @@ This document describes the visual improvements made to the Meshtastic map inter
 **Issue Requirement:** Display 4 digits hexa short name on each node size: 8px
 
 **Implementation:**
-- Added CSS class `.node-label` with 8px font size
+- Added CSS class `.node-label` with font styling
 - Text labels show last 4 hex digits from node ID (e.g., "!16fad3dc" → "d3dc")
 - Labels positioned above circle markers
 - White text-shadow for readability against any background
@@ -45,10 +45,13 @@ iconSize: [null, null],  // Auto-size instead of [0, 0]
 // No iconAnchor needed
 ```
 
+**Font Size Update (Commit 640201d):**
+Updated from 8px to 10px for better readability based on user feedback.
+
 **CSS:**
 ```css
 .node-label {
-    font-size: 8px;
+    font-size: 10px;  /* Updated from 8px - 25% larger for better readability */
     font-weight: bold;
     color: #000;
     text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
@@ -60,7 +63,7 @@ iconSize: [null, null],  // Auto-size instead of [0, 0]
 }
 ```
 
-**Benefit:** Quick visual node identification without requiring clicks or popups.
+**Benefit:** Quick visual node identification without requiring clicks or popups. The 10px font size provides better readability while maintaining a clean map appearance.
 
 ### 3. Hover Tooltips with LongName ✅
 
@@ -143,14 +146,23 @@ labelMarkers = {};
    - Removed problematic `iconAnchor`
    - Added CSS positioning for label placement
 
+4. **817028c** - Update documentation
+   - Added label visibility fix details and visual examples
+
+5. **640201d** - Increase font size
+   - Updated label font size from 8px to 10px
+   - 25% larger for better readability
+   - Based on user feedback
+
 ## Testing
 
 The changes have been verified to:
 - ✅ Correctly display 24h filter as default
-- ✅ Show 4-digit hex labels (8px font) on all markers
+- ✅ Show 4-digit hex labels (10px font) on all markers
 - ✅ Display hover tooltips with long names
 - ✅ Properly cleanup markers when filters change
 - ✅ Maintain all existing functionality (popups, views, links)
+- ✅ Font size provides better readability without cluttering the map
 
 ## Label Visibility Issue & Fix
 
