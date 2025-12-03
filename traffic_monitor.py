@@ -155,7 +155,7 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
-    def populate_neighbors_from_interface(self, interface, wait_time=10, max_wait_time=60, poll_interval=5):
+    def populate_neighbors_from_interface(self, interface, wait_time=None, max_wait_time=None, poll_interval=None):
         """
         Populate neighbor database from Meshtastic interface at startup.
         
@@ -168,14 +168,22 @@ class TrafficMonitor:
         
         Args:
             interface: Meshtastic interface (serial or TCP)
-            wait_time: Initial wait time before first check (default: 10)
-            max_wait_time: Maximum total time to wait for nodes to load (default: 60)
-            poll_interval: Seconds between progress checks (default: 5)
+            wait_time: Initial wait time before first check (default: from config or 10)
+            max_wait_time: Maximum total time to wait for nodes to load (default: from config or 60)
+            poll_interval: Seconds between progress checks (default: from config or 5)
         
         Returns:
             int: Number of neighbor relationships found
         """
         try:
+            # Use config values if not specified
+            if wait_time is None:
+                wait_time = globals().get('NEIGHBOR_LOAD_INITIAL_WAIT', 10)
+            if max_wait_time is None:
+                max_wait_time = globals().get('NEIGHBOR_LOAD_MAX_WAIT', 60)
+            if poll_interval is None:
+                poll_interval = globals().get('NEIGHBOR_LOAD_POLL_INTERVAL', 5)
+            
             info_print(f"👥 Chargement initial des voisins depuis l'interface...")
             info_print(f"   Attente initiale: {wait_time}s, maximum: {max_wait_time}s, vérification tous les {poll_interval}s")
             
@@ -222,6 +230,11 @@ class TrafficMonitor:
             total_neighbors = 0
             nodes_with_neighbors = 0
             nodes_without_neighbors = 0
+            nodes_without_neighborinfo = 0  # Track nodes missing neighborinfo completely
+            
+            # Sample first few nodes without neighborinfo for debugging
+            sample_nodes_without_neighborinfo = []
+            max_samples = 3
             
             for node_id, node_info in interface.nodes.items():
                 # Normalize node_id
@@ -235,13 +248,16 @@ class TrafficMonitor:
                 
                 # Extract neighbors from node
                 neighbors = []
+                has_neighborinfo = False
                 try:
                     # Check for neighborinfo attribute
                     neighborinfo = None
                     if hasattr(node_info, 'neighborinfo'):
                         neighborinfo = node_info.neighborinfo
+                        has_neighborinfo = True
                     elif isinstance(node_info, dict) and 'neighborinfo' in node_info:
                         neighborinfo = node_info['neighborinfo']
+                        has_neighborinfo = True
                     
                     if neighborinfo:
                         # Get neighbors list
@@ -286,6 +302,21 @@ class TrafficMonitor:
                 except Exception as e:
                     logger.debug(f"Erreur extraction voisins pour {node_id_int:08x}: {e}")
                 
+                # Track nodes without neighborinfo attribute
+                if not has_neighborinfo:
+                    nodes_without_neighborinfo += 1
+                    if len(sample_nodes_without_neighborinfo) < max_samples:
+                        # Get node name for debugging
+                        node_name = "Unknown"
+                        if hasattr(node_info, 'user'):
+                            user = node_info.user
+                            if hasattr(user, 'longName'):
+                                node_name = user.longName
+                        elif isinstance(node_info, dict) and 'user' in node_info:
+                            user = node_info['user']
+                            node_name = user.get('longName', 'Unknown')
+                        sample_nodes_without_neighborinfo.append(f"{node_name} (0x{node_id_int:08x})")
+                
                 # Save neighbors to database if any found
                 if neighbors:
                     self.persistence.save_neighbor_info(node_id_int, neighbors)
@@ -303,6 +334,13 @@ class TrafficMonitor:
             if nodes_with_neighbors > 0:
                 avg_neighbors = total_neighbors / nodes_with_neighbors
                 info_print(f"   • Moyenne voisins/nœud: {avg_neighbors:.1f}")
+            
+            # Report nodes without neighborinfo
+            if nodes_without_neighborinfo > 0:
+                info_print(f"   ⚠️  Nœuds sans neighborinfo: {nodes_without_neighborinfo}")
+                if sample_nodes_without_neighborinfo:
+                    info_print(f"      Exemples: {', '.join(sample_nodes_without_neighborinfo)}")
+                info_print(f"      Note: Ces nœuds n'ont pas encore broadcast de NEIGHBORINFO_APP")
             
             return total_neighbors
             
