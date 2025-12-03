@@ -275,6 +275,11 @@ MQTT_NEIGHBOR_PORT = 1883  # Port MQTT (1883 standard, 8883 pour TLS)
 MQTT_NEIGHBOR_USER = "meshdev"  # Utilisateur MQTT
 MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password_here"  # Mot de passe MQTT
 MQTT_NEIGHBOR_TOPIC_ROOT = "msh"  # Racine des topics MQTT (défaut: "msh")
+MQTT_NEIGHBOR_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast"  # Topic spécifique (si wildcard ne fonctionne pas)
+# Note: MQTT_NEIGHBOR_TOPIC_PATTERN peut être:
+#   - Un pattern wildcard: "msh/+/+/2/e/+" (pour tous les messages ServiceEnvelope)
+#   - Un topic spécifique: "msh/EU_868/2/e/MediumFast" (si le serveur ne supporte pas les wildcards)
+#   - Plusieurs topics séparés par virgule: "msh/EU_868/2/e/MediumFast,msh/US_915/2/e/LongFast"
 # Note: Permet de collecter les informations de voisinage (NEIGHBORINFO_APP)
 #       de tous les nœuds du réseau, au-delà de la portée radio directe.
 #       Les données sont automatiquement sauvegardées dans la table 'neighbors'.

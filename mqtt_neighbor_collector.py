@@ -51,6 +51,7 @@ class MQTTNeighborCollector:
                  mqtt_user: Optional[str] = None,
                  mqtt_password: Optional[str] = None,
                  mqtt_topic_root: str = "msh",
+                 mqtt_topic_pattern: Optional[str] = None,
                  persistence = None,
                  node_manager = None):
         """
@@ -62,6 +63,8 @@ class MQTTNeighborCollector:
             mqtt_user: Utilisateur MQTT (optionnel)
             mqtt_password: Mot de passe MQTT (optionnel)
             mqtt_topic_root: Racine des topics MQTT (défaut: "msh")
+            mqtt_topic_pattern: Pattern de topic spécifique (optionnel, défaut: wildcard)
+                               Ex: "msh/EU_868/2/e/MediumFast" ou "msh/+/+/2/e/+"
             persistence: Instance de TrafficPersistence pour sauvegarder les données
             node_manager: Instance de NodeManager pour calculer les distances (optionnel)
         """
@@ -71,6 +74,7 @@ class MQTTNeighborCollector:
         self.mqtt_user = mqtt_user
         self.mqtt_password = mqtt_password
         self.mqtt_topic_root = mqtt_topic_root
+        self.mqtt_topic_pattern = mqtt_topic_pattern  # Peut être None (utilise wildcard par défaut)
         self.persistence = persistence
         self.node_manager = node_manager
         self.enabled = False
@@ -117,10 +121,17 @@ class MQTTNeighborCollector:
             
             # S'abonner au topic ServiceEnvelope (protobuf)
             # Format: msh/<region>/<channel>/2/e/<gateway>
-            # Wildcard + pour capturer tous les régions/channels/gateways
-            topic_pattern = f"{self.mqtt_topic_root}/+/+/2/e/+"
+            # Utilise mqtt_topic_pattern si configuré, sinon wildcard par défaut
+            if self.mqtt_topic_pattern:
+                # Topic spécifique configuré (ex: "msh/EU_868/2/e/MediumFast")
+                topic_pattern = self.mqtt_topic_pattern
+                info_print(f"   Abonné à: {topic_pattern} (topic spécifique)")
+            else:
+                # Wildcard + pour capturer tous les régions/channels/gateways
+                topic_pattern = f"{self.mqtt_topic_root}/+/+/2/e/+"
+                info_print(f"   Abonné à: {topic_pattern} (pattern wildcard)")
+            
             client.subscribe(topic_pattern)
-            info_print(f"   Abonné à: {topic_pattern} (ServiceEnvelope protobuf)")
             
         else:
             error_print(f"👥 Échec connexion MQTT: code {rc}")

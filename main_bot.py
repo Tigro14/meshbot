@@ -1211,6 +1211,7 @@ class MeshBot:
                     mqtt_user = globals().get('MQTT_NEIGHBOR_USER')
                     mqtt_password = globals().get('MQTT_NEIGHBOR_PASSWORD')
                     mqtt_topic_root = globals().get('MQTT_NEIGHBOR_TOPIC_ROOT', 'msh')
+                    mqtt_topic_pattern = globals().get('MQTT_NEIGHBOR_TOPIC_PATTERN')
                     
                     self.mqtt_neighbor_collector = MQTTNeighborCollector(
                         mqtt_server=mqtt_server,
@@ -1218,6 +1219,7 @@ class MeshBot:
                         mqtt_user=mqtt_user,
                         mqtt_password=mqtt_password,
                         mqtt_topic_root=mqtt_topic_root,
+                        mqtt_topic_pattern=mqtt_topic_pattern,
                         persistence=self.traffic_monitor.persistence,
                         node_manager=self.node_manager
                     )

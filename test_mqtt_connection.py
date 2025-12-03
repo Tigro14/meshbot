@@ -39,6 +39,7 @@ MQTT_PORT = 1883
 MQTT_USER = "meshdev"
 MQTT_PASSWORD = ""  # À remplir depuis config.py
 MQTT_TOPIC_ROOT = "msh"
+MQTT_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast"  # Topic spécifique (wildcard ne fonctionne pas sur ce serveur)
 
 # Statistiques
 stats = {
@@ -79,13 +80,16 @@ def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         print(f"✅ Connecté au serveur MQTT: {MQTT_SERVER}:{MQTT_PORT}")
         
-        # S'abonner au topic ServiceEnvelope avec pattern wildcard
-        topic_pattern = f"{MQTT_TOPIC_ROOT}/+/+/2/e/+"
+        # S'abonner au topic configuré (spécifique ou wildcard)
+        topic_pattern = MQTT_TOPIC_PATTERN
         result, mid = client.subscribe(topic_pattern)
         
         if result == mqtt.MQTT_ERR_SUCCESS:
             print(f"✅ Abonné à: {topic_pattern}")
-            print(f"   (Pattern wildcard pour recevoir tous les messages ServiceEnvelope)")
+            if "+" in topic_pattern:
+                print(f"   (Pattern wildcard pour recevoir plusieurs messages)")
+            else:
+                print(f"   (Topic spécifique - le serveur ne supporte pas les wildcards)")
         else:
             print(f"❌ Échec abonnement au topic: {topic_pattern}")
             print(f"   Code d'erreur: {result}")
@@ -209,7 +213,7 @@ def main():
     print("="*60)
     print(f"Serveur: {MQTT_SERVER}:{MQTT_PORT}")
     print(f"Utilisateur: {MQTT_USER}")
-    print(f"Topic root: {MQTT_TOPIC_ROOT}")
+    print(f"Topic: {MQTT_TOPIC_PATTERN}")
     print("="*60 + "\n")
     
     # Vérifier que le mot de passe est configuré
