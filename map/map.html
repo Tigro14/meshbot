@@ -196,6 +196,9 @@
             text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
             white-space: nowrap;
             pointer-events: none;
+            text-align: center;
+            position: relative;
+            top: -20px;
         }
     </style>
 </head>
@@ -648,8 +651,7 @@
                     const labelIcon = L.divIcon({
                         html: `<div class="node-label">${hexLabel}</div>`,
                         className: '',
-                        iconSize: [0, 0],
-                        iconAnchor: [0, id === myNodeId ? -25 : -17]
+                        iconSize: [null, null]
                     });
                     
                     const labelMarker = L.marker([lat, lon], {
