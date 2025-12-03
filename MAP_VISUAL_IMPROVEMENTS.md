@@ -28,16 +28,21 @@ This document describes the visual improvements made to the Meshtastic map inter
 - White text-shadow for readability against any background
 - Non-interactive (pointer-events: none)
 
-**Code:**
+**Fix Applied (Commit 4c43d91):**
+The initial implementation had a visibility issue due to incorrect Leaflet divIcon configuration.
+
+**Problem:**
 ```javascript
-// Extract last 4 hex digits from ID
-const hexLabel = id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4);
-const labelIcon = L.divIcon({
-    html: `<div class="node-label">${hexLabel}</div>`,
-    className: '',
-    iconSize: [0, 0],
-    iconAnchor: [0, id === myNodeId ? -25 : -17]
-});
+// Labels were not visible
+iconSize: [0, 0],
+iconAnchor: [0, -17]
+```
+
+**Solution:**
+```javascript
+// Labels now visible
+iconSize: [null, null],  // Auto-size instead of [0, 0]
+// No iconAnchor needed
 ```
 
 **CSS:**
@@ -49,6 +54,9 @@ const labelIcon = L.divIcon({
     text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
     white-space: nowrap;
     pointer-events: none;
+    text-align: center;
+    position: relative;
+    top: -20px;  /* Position above marker */
 }
 ```
 
@@ -120,6 +128,21 @@ labelMarkers = {};
 - Hover tooltip shows full node name
 - Click popup still available for detailed information
 
+## Commit History
+
+1. **2fc6db4** - Initial implementation
+   - 24h default filter
+   - Hex labels (initial version with visibility issue)
+   - Hover tooltips
+
+2. **f4e48c3** - Documentation
+   - Added this documentation file
+
+3. **4c43d91** - Fix label visibility
+   - Changed `iconSize: [0, 0]` to `iconSize: [null, null]`
+   - Removed problematic `iconAnchor`
+   - Added CSS positioning for label placement
+
 ## Testing
 
 The changes have been verified to:
@@ -128,6 +151,16 @@ The changes have been verified to:
 - ✅ Display hover tooltips with long names
 - ✅ Properly cleanup markers when filters change
 - ✅ Maintain all existing functionality (popups, views, links)
+
+## Label Visibility Issue & Fix
+
+![Label Fix](https://github.com/user-attachments/assets/167a61db-639f-43e4-baed-084235ceab82)
+
+The initial implementation had labels that were not visible. This was fixed by:
+1. Changing from `iconSize: [0, 0]` to `iconSize: [null, null]` for auto-sizing
+2. Removing `iconAnchor` which was causing positioning issues
+3. Using CSS `position: relative; top: -20px;` to position labels above markers
+4. Adding `text-align: center` for proper centering
 
 ## Compatibility
 
