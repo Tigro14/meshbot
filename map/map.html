@@ -356,9 +356,9 @@
         </div>
         
         <div class="view-buttons">
-            <button class="view-btn active" onclick="setView('nodes')">Nœuds</button>
+            <button class="view-btn" onclick="setView('nodes')">Nœuds</button>
             <button class="view-btn" onclick="setView('links')">Liens</button>
-            <button class="view-btn" onclick="setView('both')">Les deux</button>
+            <button class="view-btn active" onclick="setView('both')">Les deux</button>
         </div>
         
         <div class="stat-row">
@@ -369,7 +369,7 @@
             <span class="stat-label">Total nœuds</span>
             <span class="stat-value" id="totalNodes">0</span>
         </div>
-        <div class="stat-row" id="linksRow" style="display: none;">
+        <div class="stat-row" id="linksRow" style="display: flex;">
             <span class="stat-label">Liaisons</span>
             <span class="stat-value" id="totalLinks">0</span>
         </div>
@@ -382,6 +382,7 @@
         
         <div class="filter-buttons">
             <button class="filter-btn" onclick="setTimeFilter('all')">Tout</button>
+            <button class="filter-btn" onclick="setTimeFilter('2')">2h</button>
             <button class="filter-btn active" onclick="setTimeFilter('24')">24h</button>
             <button class="filter-btn" onclick="setTimeFilter('48')">48h</button>
             <button class="filter-btn" onclick="setTimeFilter('72')">72h</button>
@@ -412,7 +413,7 @@
         let labelMarkers = {};
         let meshData = null;
         let currentFilter = '24';
-        let currentView = 'nodes';
+        let currentView = 'both';  // Changed from 'nodes' to 'both' to show nodes + links by default
         let myNodeId = '!a2e175ac';
         let linkLayerGroup = L.layerGroup();
         let linkCount = 0;
@@ -461,7 +462,7 @@
 
         function getLinkWeight(snr) {
             if (snr === null || snr === undefined) return 3;
-            if (snr > 5) return 7;
+            if (snr > 5) return 4;  // Reduced from 7 to 4 for green links
             if (snr > 0) return 5;
             return 4;
         }
@@ -845,11 +846,10 @@
                         className: 'node-tooltip'
                     });
                     
-                    // Create a divIcon with text label for the 4 hex digits from node ID
-                    // Extract last 4 hex digits from ID (e.g., "!16fad3dc" -> "d3dc")
-                    const hexLabel = id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4);
+                    // Create a divIcon with text label using longName instead of hex ID
+                    const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
                     const labelIcon = L.divIcon({
-                        html: `<div class="node-label">${hexLabel}</div>`,
+                        html: `<div class="node-label">${labelText}</div>`,
                         className: '',
                         iconSize: [null, null]
                     });
