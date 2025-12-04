@@ -355,41 +355,65 @@ class UtilityCommands:
             #   Max tested: 28h (175 chars), using 24h for safety margin (~160 chars)
             # - ultra_compact=True: header court + 2 lignes graphe seulement
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
-            # - Cache SQLite 5min via traffic_monitor.persistence
+            # - Cache SQLite 1h via traffic_monitor.persistence
+            # - split_messages=True: retourne (sparkline, info) pour envoi en 2 messages
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
-            weather_data = get_rain_graph(
+            result = get_rain_graph(
                 location, 
                 days=days, 
-                max_hours=24,  # 24h de prévision (48 chars width, ~160 chars total)
+                max_hours=24,  # 24h de prévision (48 chars width)
                 compact_mode=True, 
                 persistence=persistence, 
                 start_at_current_time=True,
-                ultra_compact=True  # Header court + 2 lignes seulement
+                ultra_compact=True,  # Header court + 2 lignes seulement
+                split_messages=True  # Retourner (sparkline, info) pour 2 messages
             )
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
-            # Logger
-            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+            # Vérifier si on a un tuple (split_messages=True)
+            if isinstance(result, tuple):
+                sparkline, info = result
+                
+                # Logger les deux parties
+                full_text = f"{sparkline}\n{info}"
+                self.sender.log_conversation(sender_id, sender_info, cmd, full_text)
 
-            # Envoyer selon le mode (broadcast ou direct)
-            if is_broadcast:
-                # Broadcast public sans préfixe (utilisateur sait déjà qui il est)
-                # Pour rain, envoyer seulement le premier jour en broadcast (sinon trop long)
-                day_messages = weather_data.split('\n\n')
-                first_day = day_messages[0] if day_messages else weather_data
-                self._send_broadcast_via_tigrog2(first_day, sender_id, sender_info, cmd)
-            else:
-                # Réponse privée: découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
-                day_messages = weather_data.split('\n\n')
-                for i, day_msg in enumerate(day_messages):
-                    # Skip empty messages (safety check)
-                    if not day_msg.strip():
-                        continue
-                    self.sender.send_single(day_msg, sender_id, sender_info)
+                # Envoyer selon le mode (broadcast ou direct)
+                if is_broadcast:
+                    # Broadcast public: envoyer seulement la partie sparkline (compacte)
+                    self._send_broadcast_via_tigrog2(sparkline, sender_id, sender_info, cmd)
+                    # Puis la partie info
+                    import time
+                    time.sleep(0.5)  # Court délai
+                    self._send_broadcast_via_tigrog2(info, sender_id, sender_info, cmd)
+                else:
+                    # Réponse privée: envoyer les 2 parties séparément
+                    # Partie 1: Sparkline (3 lignes, max 220 chars)
+                    self.sender.send_single(sparkline, sender_id, sender_info)
+                    
                     # Petit délai entre les messages
-                    if i < len(day_messages) - 1:
-                        import time
-                        time.sleep(1)
+                    import time
+                    time.sleep(0.5)
+                    
+                    # Partie 2: Échelle horaire + info locale
+                    self.sender.send_single(info, sender_id, sender_info)
+            else:
+                # Fallback: mode ancien (backward compat si split_messages=False)
+                self.sender.log_conversation(sender_id, sender_info, cmd, result)
+                
+                if is_broadcast:
+                    day_messages = result.split('\n\n')
+                    first_day = day_messages[0] if day_messages else result
+                    self._send_broadcast_via_tigrog2(first_day, sender_id, sender_info, cmd)
+                else:
+                    day_messages = result.split('\n\n')
+                    for i, day_msg in enumerate(day_messages):
+                        if not day_msg.strip():
+                            continue
+                        self.sender.send_single(day_msg, sender_id, sender_info)
+                        if i < len(day_messages) - 1:
+                            import time
+                            time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
             # Cache SQLite 5min via traffic_monitor.persistence
