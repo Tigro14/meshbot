@@ -32,7 +32,7 @@ CACHE_DURATION = 300  # 5 minutes en secondes (fresh cache)
 CACHE_STALE_DURATION = 3600  # 1 heure (stale-while-revalidate window)
 CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
 
-# Cache spécifique pour le graphe de pluie (durée plus longue car wttr.in ne répond pas bien)
+# Cache spécifique pour le graphe de pluie (durée plus longue car wttr.in ne répond pas correctement)
 RAIN_CACHE_DURATION = 3600  # 1 heure (fresh cache)
 RAIN_CACHE_STALE_DURATION = 3600  # 1 heure - servir le cache dans cette fenêtre sans refresh
 WTTR_BASE_URL = "https://wttr.in"
@@ -760,7 +760,8 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
 
         # Clé de cache (inclut tous les paramètres qui affectent le résultat)
         # Si start_at_current_time=True, inclure l'heure dans la clé pour éviter cache périmé
-        # Note: split_messages n'affecte pas le contenu, donc pas dans la clé
+        # Note: split_messages n'affecte que le format de sortie, pas le contenu des données,
+        #       donc exclu de la clé de cache (le cache stocke toujours le format standard)
         if start_at_current_time:
             from datetime import datetime
             current_hour = datetime.now().hour

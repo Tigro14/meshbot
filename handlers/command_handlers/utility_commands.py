@@ -14,6 +14,9 @@ from utils_weather import get_weather_data, get_rain_graph, get_weather_astro
 from config import *
 from utils import *
 
+# Constantes pour les délais entre messages
+MESSAGE_DELAY_SECONDS = 0.5  # Délai entre les parties d'un message splitté
+
 class UtilityCommands:
     def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None, vigilance_monitor=None, broadcast_tracker=None):
         self.esphome_client = esphome_client
@@ -356,7 +359,7 @@ class UtilityCommands:
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
             # - Cache SQLite 1h via traffic_monitor.persistence (RAIN_CACHE_STALE_DURATION)
             # - split_messages=True: retourne (sparkline, info) pour envoi en 2 messages
-            #   * Partie 1: 3 lignes sparkline (~182 chars, max 220)
+            #   * Partie 1: 3 lignes sparkline (~169 chars, limite LoRa: 180 chars)
             #   * Partie 2: Échelle horaire + header local (~110 chars)
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
             result = get_rain_graph(
@@ -384,7 +387,7 @@ class UtilityCommands:
                     # Broadcast public: envoyer seulement la partie sparkline (compacte)
                     self._send_broadcast_via_tigrog2(sparkline, sender_id, sender_info, cmd)
                     # Puis la partie info
-                    time.sleep(0.5)  # Court délai
+                    time.sleep(MESSAGE_DELAY_SECONDS)
                     self._send_broadcast_via_tigrog2(info, sender_id, sender_info, cmd)
                 else:
                     # Réponse privée: envoyer les 2 parties séparément
@@ -392,7 +395,7 @@ class UtilityCommands:
                     self.sender.send_single(sparkline, sender_id, sender_info)
                     
                     # Petit délai entre les messages
-                    time.sleep(0.5)
+                    time.sleep(MESSAGE_DELAY_SECONDS)
                     
                     # Partie 2: Échelle horaire + info locale
                     self.sender.send_single(info, sender_id, sender_info)
