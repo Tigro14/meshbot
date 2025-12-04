@@ -355,50 +355,50 @@ class UtilityCommands:
         if subcommand == 'rain':
             # Graphe de précipitations en 2 parties pour meilleure lisibilité
             # - max_hours=20: 20 heures de prévision (40 chars de largeur)
-            # - compact_mode=True: 3 lignes sparkline (top, middle, bottom)
+            # - compact_mode=True: Utilisé pour backward compat (non-split mode)
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
             # - Cache SQLite 1h via traffic_monitor.persistence (RAIN_CACHE_STALE_DURATION)
-            # - split_messages=True: retourne (sparkline, info) pour envoi en 2 messages
-            #   * Partie 1: 3 lignes sparkline (~122 chars, limite LoRa: 180 chars)
-            #   * Partie 2: Échelle horaire + header local (~85 chars)
+            # - split_messages=True: retourne (graph, header) pour envoi en 2 messages
+            #   * Partie 1: 2 lignes sparkline + échelle horaire (~78 chars)
+            #   * Partie 2: Header local seulement (~50 chars)
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
             result = get_rain_graph(
                 location, 
                 days=days, 
-                max_hours=20,  # 20h de prévision (40 chars width, ~122 chars total pour 3 lignes)
-                compact_mode=True,  # 3 lignes sparkline (top, middle, bottom)
+                max_hours=20,  # 20h de prévision (40 chars width, ~78 chars graphe complet)
+                compact_mode=True,  # Backward compat pour mode non-split
                 persistence=persistence, 
                 start_at_current_time=True,
                 ultra_compact=False,  # Ne pas ultra-compacter maintenant qu'on split en 2 messages
-                split_messages=True  # Retourner (sparkline, info) pour 2 messages
+                split_messages=True  # Retourner (graph, header) pour 2 messages
             )
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
             # Vérifier si on a un tuple (split_messages=True)
             if isinstance(result, tuple):
-                sparkline, info = result
+                graph, header = result
                 
                 # Logger les deux parties
-                full_text = f"{sparkline}\n{info}"
+                full_text = f"{graph}\n{header}"
                 self.sender.log_conversation(sender_id, sender_info, cmd, full_text)
 
                 # Envoyer selon le mode (broadcast ou direct)
                 if is_broadcast:
-                    # Broadcast public: envoyer seulement la partie sparkline (compacte)
-                    self._send_broadcast_via_tigrog2(sparkline, sender_id, sender_info, cmd)
-                    # Puis la partie info
+                    # Broadcast public: envoyer le graphe complet (2 lignes + échelle)
+                    self._send_broadcast_via_tigrog2(graph, sender_id, sender_info, cmd)
+                    # Puis le header
                     time.sleep(MESSAGE_DELAY_SECONDS)
-                    self._send_broadcast_via_tigrog2(info, sender_id, sender_info, cmd)
+                    self._send_broadcast_via_tigrog2(header, sender_id, sender_info, cmd)
                 else:
                     # Réponse privée: envoyer les 2 parties séparément
-                    # Partie 1: Sparkline (3 lignes, max 220 chars)
-                    self.sender.send_single(sparkline, sender_id, sender_info)
+                    # Partie 1: Graphe complet (2 lignes sparkline + échelle)
+                    self.sender.send_single(graph, sender_id, sender_info)
                     
                     # Petit délai entre les messages
                     time.sleep(MESSAGE_DELAY_SECONDS)
                     
-                    # Partie 2: Échelle horaire + info locale
-                    self.sender.send_single(info, sender_id, sender_info)
+                    # Partie 2: Header local seulement
+                    self.sender.send_single(header, sender_id, sender_info)
             else:
                 # Fallback: mode ancien (backward compat si split_messages=False)
                 self.sender.log_conversation(sender_id, sender_info, cmd, result)

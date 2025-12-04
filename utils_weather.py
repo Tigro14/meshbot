@@ -629,52 +629,22 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
     Returns:
         str ou tuple: 
             - Si split_mode=False: String unique (backward compat)
-            - Si split_mode=True: (part1_sparkline, part2_info)
-                * part1_sparkline: 3 lignes de graphe sparkline (max 220 chars)
-                * part2_info: Échelle horaire + info locale
+            - Si split_mode=True: (part1_graph, part2_header)
+                * part1_graph: 2 lignes sparkline + échelle horaire (graphe complet)
+                * part2_header: Info locale seulement (location/date/max)
     """
-    # Partie 1: Lignes de graphe seulement (3 lignes sparkline)
-    sparkline_lines = []
-    
     # Sélection des lignes de graphe
-    if ultra_compact and len(truncated_lines) >= 5:
-        # Ultra compact: seulement 2 lignes (top + bottom) pour économiser espace
-        # Strip trailing spaces for both lines to minimize character count
-        sparkline_lines.append(truncated_lines[0].rstrip())  # Top
-        sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
-    elif compact_mode and len(truncated_lines) >= 5:
-        # Mode compact (Mesh): 3 lignes (top, middle, bottom)
-        # Strip trailing spaces to minimize character count
-        sparkline_lines.append(truncated_lines[0].rstrip())  # Top
-        sparkline_lines.append(truncated_lines[2].rstrip())  # Middle
-        sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
-    else:
-        # Mode normal (Telegram): toutes les 5 lignes
-        for line in truncated_lines:
-            sparkline_lines.append(line)
-
-    part1_sparkline = "\n".join(sparkline_lines)
-
-    # Partie 2: Échelle horaire + header info
-    info_lines = []
-    
-    # Créer l'échelle horaire
-    if ultra_compact:
-        # Ultra compact: échelle simplifiée avec espacement fixe toutes les 6h
-        hour_scale = []
-        for i in range(truncate_width):
-            actual_position = start_offset + i
-            hour = (actual_position // 2) % 24
-            point_in_hour = actual_position % 2
-            # Afficher l'heure toutes les 6h seulement
-            if point_in_hour == 0 and hour % 6 == 0:
-                hour_scale.append(str(hour))
-            else:
-                hour_scale.append(' ')
-        info_lines.append(''.join(hour_scale).rstrip())
-    else:
-        # Standard: marqueurs toutes les 3h
-        # Strip trailing spaces to reduce message size
+    # En mode split: toujours 2 lignes (top + bottom) pour économiser de l'espace
+    # En mode non-split: utiliser la logique originale
+    if split_mode:
+        # Mode split: 2 lignes sparkline (top + bottom) pour économiser espace
+        sparkline_lines = []
+        if len(truncated_lines) >= 5:
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        sparkline_str = "\n".join(sparkline_lines)
+        
+        # Créer l'échelle horaire (toujours standard en mode split)
         hour_scale = []
         for i in range(truncate_width):
             actual_position = start_offset + i
@@ -684,25 +654,73 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
-        info_lines.append(''.join(hour_scale).rstrip())
-
-    # Ajouter le header avec info locale
-    if ultra_compact:
-        # Ultra compact header: "🌧 Paris 28/11 (max:1.1mm)" 
-        # Extraire juste la date du date_label (ex: "aujourd'hui 28/11" -> "28/11")
-        date_only = date_label.split()[-1] if date_label else ""
-        info_lines.append(f"🌧 {location_name} {date_only} (max:{max_str})")
+        hour_scale_str = ''.join(hour_scale).rstrip()
+        
+        # Partie 1: Graphe complet (sparkline + échelle)
+        part1_graph = f"{sparkline_str}\n{hour_scale_str}"
+        
+        # Partie 2: Header seulement (location/date/max)
+        part2_header = f"🌧️ {location_name} {date_label} (max:{max_str})"
+        
+        return (part1_graph, part2_header)
+    
     else:
-        # Standard header
-        info_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+        # Mode non-split: logique originale pour backward compat
+        sparkline_lines = []
+        
+        if ultra_compact and len(truncated_lines) >= 5:
+            # Ultra compact: seulement 2 lignes (top + bottom)
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        elif compact_mode and len(truncated_lines) >= 5:
+            # Mode compact: 3 lignes (top, middle, bottom)
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[2].rstrip())  # Middle
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        else:
+            # Mode normal: toutes les 5 lignes
+            for line in truncated_lines:
+                sparkline_lines.append(line)
 
-    part2_info = "\n".join(info_lines)
+        part1_sparkline = "\n".join(sparkline_lines)
 
-    # Retour selon le mode
-    if split_mode:
-        return (part1_sparkline, part2_info)
-    else:
-        # Backward compat: retourner comme avant (une seule string)
+        # Échelle horaire + header info
+        info_lines = []
+        
+        if ultra_compact:
+            # Ultra compact: échelle simplifiée toutes les 6h
+            hour_scale = []
+            for i in range(truncate_width):
+                actual_position = start_offset + i
+                hour = (actual_position // 2) % 24
+                point_in_hour = actual_position % 2
+                if point_in_hour == 0 and hour % 6 == 0:
+                    hour_scale.append(str(hour))
+                else:
+                    hour_scale.append(' ')
+            info_lines.append(''.join(hour_scale).rstrip())
+        else:
+            # Standard: marqueurs toutes les 3h
+            hour_scale = []
+            for i in range(truncate_width):
+                actual_position = start_offset + i
+                hour = (actual_position // 2) % 24
+                point_in_hour = actual_position % 2
+                if point_in_hour == 0 and hour % 3 == 0:
+                    hour_scale.append(str(hour))
+                else:
+                    hour_scale.append(' ')
+            info_lines.append(''.join(hour_scale).rstrip())
+
+        # Header
+        if ultra_compact:
+            date_only = date_label.split()[-1] if date_label else ""
+            info_lines.append(f"🌧 {location_name} {date_only} (max:{max_str})")
+        else:
+            info_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+
+        part2_info = "\n".join(info_lines)
+        
         return f"{part1_sparkline}\n{part2_info}"
 
 
