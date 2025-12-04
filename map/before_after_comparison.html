@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Before/After: Collision Offset Algorithm</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #5f6368;
+            margin-bottom: 40px;
+            font-size: 1.2rem;
+            text-align: center;
+        }
+        
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin: 40px 0;
+        }
+        
+        .panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .panel.before {
+            border: 3px solid #e74c3c;
+        }
+        
+        .panel.after {
+            border: 3px solid #2ecc71;
+        }
+        
+        .panel-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+        
+        .panel.before .panel-title {
+            color: #e74c3c;
+        }
+        
+        .panel.after .panel-title {
+            color: #2ecc71;
+        }
+        
+        canvas {
+            border: 2px solid #dadce0;
+            border-radius: 8px;
+            background: white;
+            margin: 20px 0;
+        }
+        
+        .issues {
+            text-align: left;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .issue-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .issue-item:last-child {
+            border-bottom: none;
+        }
+        
+        .issue-item.problem {
+            color: #c62828;
+        }
+        
+        .issue-item.solution {
+            color: #2e7d32;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 40px;
+        }
+        
+        .stat-box {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #1a73e8;
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1a73e8;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #5f6368;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Before/After Comparison</h1>
+        <p class="subtitle">Visual demonstration of the collision offset algorithm impact</p>
+        
+        <div class="comparison">
+            <div class="panel before">
+                <div class="panel-title">❌ BEFORE: Overlapping Nodes</div>
+                <canvas id="beforeCanvas" width="500" height="400"></canvas>
+                <div class="issues">
+                    <div class="issue-item problem">⚠️ Only 1 node visible (Node 1)</div>
+                    <div class="issue-item problem">⚠️ 4 nodes completely hidden</div>
+                    <div class="issue-item problem">⚠️ Unable to click hidden nodes</div>
+                    <div class="issue-item problem">⚠️ No indication of collision</div>
+                    <div class="issue-item problem">⚠️ Lost network information</div>
+                </div>
+            </div>
+            
+            <div class="panel after">
+                <div class="panel-title">✅ AFTER: Spiral Offset Applied</div>
+                <canvas id="afterCanvas" width="500" height="400"></canvas>
+                <div class="issues">
+                    <div class="issue-item solution">✓ All 5 nodes visible</div>
+                    <div class="issue-item solution">✓ Each node individually clickable</div>
+                    <div class="issue-item solution">✓ Regular pentagon pattern</div>
+                    <div class="issue-item solution">✓ Minimal offset (~5 meters)</div>
+                    <div class="issue-item solution">✓ Complete network view</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-number">5m</div>
+                <div class="stat-label">Typical offset distance</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number">72°</div>
+                <div class="stat-label">Angle between nodes</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number">∞</div>
+                <div class="stat-label">Nodes supported (concentric circles)</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // BEFORE: All nodes at exact same position
+        const beforeCanvas = document.getElementById('beforeCanvas');
+        const beforeCtx = beforeCanvas.getContext('2d');
+        const centerX = beforeCanvas.width / 2;
+        const centerY = beforeCanvas.height / 2;
+        
+        // Draw grid
+        beforeCtx.strokeStyle = '#e0e0e0';
+        beforeCtx.lineWidth = 1;
+        for (let i = 0; i <= 500; i += 50) {
+            beforeCtx.beginPath();
+            beforeCtx.moveTo(i, 0);
+            beforeCtx.lineTo(i, 400);
+            beforeCtx.stroke();
+        }
+        for (let i = 0; i <= 400; i += 50) {
+            beforeCtx.beginPath();
+            beforeCtx.moveTo(0, i);
+            beforeCtx.lineTo(500, i);
+            beforeCtx.stroke();
+        }
+        
+        // Position label
+        beforeCtx.fillStyle = '#202124';
+        beforeCtx.font = 'bold 14px Arial';
+        beforeCtx.textAlign = 'center';
+        beforeCtx.fillText('Position GPS: (48.8566, 2.3522)', centerX, 30);
+        
+        // Draw all 5 nodes stacked (only top one visible)
+        const colors = ['#2ecc71', '#3498db', '#9b59b6', '#e67e22', '#f39c12'];
+        for (let i = 0; i < 5; i++) {
+            beforeCtx.fillStyle = colors[i];
+            beforeCtx.globalAlpha = i === 0 ? 1.0 : 0.3;  // Make hidden nodes barely visible
+            beforeCtx.beginPath();
+            beforeCtx.arc(centerX, centerY, 15, 0, 2 * Math.PI);
+            beforeCtx.fill();
+            beforeCtx.strokeStyle = '#fff';
+            beforeCtx.lineWidth = 2;
+            beforeCtx.stroke();
+        }
+        beforeCtx.globalAlpha = 1.0;
+        
+        // Only show top node label
+        beforeCtx.fillStyle = '#202124';
+        beforeCtx.font = '12px Arial';
+        beforeCtx.fillText('Node 1', centerX, centerY - 25);
+        beforeCtx.fillText('(4 hidden below)', centerX, centerY + 35);
+        
+        // Warning indicators
+        beforeCtx.fillStyle = '#e74c3c';
+        beforeCtx.font = 'bold 48px Arial';
+        beforeCtx.fillText('⚠️', centerX - 80, centerY + 10);
+        beforeCtx.fillText('⚠️', centerX + 80, centerY + 10);
+        
+        // AFTER: Nodes with spiral offset
+        const afterCanvas = document.getElementById('afterCanvas');
+        const afterCtx = afterCanvas.getContext('2d');
+        
+        // Draw grid
+        afterCtx.strokeStyle = '#e0e0e0';
+        afterCtx.lineWidth = 1;
+        for (let i = 0; i <= 500; i += 50) {
+            afterCtx.beginPath();
+            afterCtx.moveTo(i, 0);
+            afterCtx.lineTo(i, 400);
+            afterCtx.stroke();
+        }
+        for (let i = 0; i <= 400; i += 50) {
+            afterCtx.beginPath();
+            afterCtx.moveTo(0, i);
+            afterCtx.lineTo(500, i);
+            afterCtx.stroke();
+        }
+        
+        // Position label
+        afterCtx.fillStyle = '#202124';
+        afterCtx.font = 'bold 14px Arial';
+        afterCtx.textAlign = 'center';
+        afterCtx.fillText('Position GPS: (48.8566, 2.3522)', centerX, 30);
+        
+        // Draw original position marker (small)
+        afterCtx.fillStyle = '#e74c3c';
+        afterCtx.globalAlpha = 0.3;
+        afterCtx.beginPath();
+        afterCtx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
+        afterCtx.fill();
+        afterCtx.globalAlpha = 1.0;
+        
+        // Draw 5 nodes with spiral offset
+        const scale = 2000000;
+        const radius = 0.00005;
+        
+        for (let i = 0; i < 5; i++) {
+            const angle = i * (2 * Math.PI / 5);
+            const offsetLat = radius * Math.cos(angle);
+            const offsetLon = radius * Math.sin(angle);
+            
+            const x = centerX + (offsetLon * scale);
+            const y = centerY - (offsetLat * scale);
+            
+            // Draw connection line
+            afterCtx.strokeStyle = '#dadce0';
+            afterCtx.lineWidth = 1;
+            afterCtx.setLineDash([3, 3]);
+            afterCtx.beginPath();
+            afterCtx.moveTo(centerX, centerY);
+            afterCtx.lineTo(x, y);
+            afterCtx.stroke();
+            afterCtx.setLineDash([]);
+            
+            // Draw node
+            afterCtx.fillStyle = colors[i];
+            afterCtx.beginPath();
+            afterCtx.arc(x, y, 15, 0, 2 * Math.PI);
+            afterCtx.fill();
+            afterCtx.strokeStyle = '#fff';
+            afterCtx.lineWidth = 2;
+            afterCtx.stroke();
+            
+            // Label
+            afterCtx.fillStyle = '#202124';
+            afterCtx.font = '12px Arial';
+            afterCtx.textAlign = 'center';
+            afterCtx.fillText(`Node ${i + 1}`, x, y - 22);
+        }
+        
+        // Success indicators
+        afterCtx.fillStyle = '#2ecc71';
+        afterCtx.font = 'bold 48px Arial';
+        afterCtx.fillText('✓', centerX - 80, centerY + 10);
+        afterCtx.fillText('✓', centerX + 80, centerY + 10);
+        
+        console.log('=== Before/After Comparison ===');
+        console.log('BEFORE: All 5 nodes at exact same position - only 1 visible');
+        console.log('AFTER: All 5 nodes offset in pentagon pattern - all visible');
+        console.log('Offset distance: ~5.5 meters');
+        console.log('Pattern: Pentagon (72° between nodes)');
+    </script>
+</body>
+</html>

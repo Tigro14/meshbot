@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: Offset pour Nœuds à la Même Position</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f0f0f0;
+        }
+        #map { 
+            width: 100%; 
+            height: 100vh; 
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 350px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .info-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1a73e8;
+            margin-bottom: 15px;
+        }
+        
+        .info-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .info-section:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #5f6368;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            color: #202124;
+            margin-bottom: 8px;
+        }
+        
+        .node-label {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #1a73e8;
+            border: 1px solid rgba(26, 115, 232, 0.3);
+            white-space: nowrap;
+        }
+        
+        .popup-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a73e8;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 5px;
+        }
+        
+        .popup-info {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #5f6368;
+        }
+        
+        .code-block {
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info-panel">
+        <div class="info-title">🧪 Test: Offset Collisions</div>
+        
+        <div class="info-section">
+            <div class="info-label">Scénario de Test:</div>
+            <div class="info-value">
+                5 nœuds à la position exacte: <span class="code-block">48.8566, 2.3522</span> (Paris)
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-label">Algorithme:</div>
+            <div class="info-value">
+                • Pattern en spirale<br>
+                • 5 positions par cercle<br>
+                • Rayon: ~5m (0.00005°)<br>
+                • Cercles croissants si > 5 nœuds
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-label">Résultat Attendu:</div>
+            <div class="info-value">
+                ✅ Les 5 nœuds sont visibles<br>
+                ✅ Disposés en pentagone régulier<br>
+                ✅ Chaque nœud est cliquable<br>
+                ✅ Offset minimal (~5-10m)
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-label">Console:</div>
+            <div class="info-value">
+                Ouvrez la console du navigateur (F12) pour voir les logs d'offset détaillés.
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        // Initialize map centered on Paris
+        const map = L.map('map').setView([48.8566, 2.3522], 17);
+        
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        // Test data: 5 nodes at EXACTLY the same position
+        const testNodes = {
+            '!12345678': {
+                user: { longName: 'Node Alpha', shortName: 'Alpha' },
+                position: { latitude: 48.8566, longitude: 2.3522 },
+                hopsAway: 0,
+                snr: 12.5,
+                lastHeard: Date.now() / 1000
+            },
+            '!23456789': {
+                user: { longName: 'Node Beta', shortName: 'Beta' },
+                position: { latitude: 48.8566, longitude: 2.3522 },
+                hopsAway: 1,
+                snr: 10.2,
+                lastHeard: Date.now() / 1000
+            },
+            '!34567890': {
+                user: { longName: 'Node Gamma', shortName: 'Gamma' },
+                position: { latitude: 48.8566, longitude: 2.3522 },
+                hopsAway: 2,
+                snr: 8.7,
+                lastHeard: Date.now() / 1000
+            },
+            '!45678901': {
+                user: { longName: 'Node Delta', shortName: 'Delta' },
+                position: { latitude: 48.8566, longitude: 2.3522 },
+                hopsAway: 2,
+                snr: 7.3,
+                lastHeard: Date.now() / 1000
+            },
+            '!56789012': {
+                user: { longName: 'Node Epsilon', shortName: 'Epsilon' },
+                position: { latitude: 48.8566, longitude: 2.3522 },
+                hopsAway: 3,
+                snr: 5.9,
+                lastHeard: Date.now() / 1000
+            }
+        };
+        
+        // Color by hop count
+        function getNodeColorByHop(hops) {
+            const colors = ['#2ecc71', '#3498db', '#9b59b6', '#e67e22', '#95a5a6'];
+            return colors[Math.min(hops, colors.length - 1)];
+        }
+        
+        // Position validation
+        function isValidPosition(lat, lon) {
+            return lat !== undefined && lon !== undefined && 
+                   lat !== null && lon !== null &&
+                   lat !== 0 && lon !== 0 &&
+                   !isNaN(lat) && !isNaN(lon) &&
+                   lat >= -90 && lat <= 90 &&
+                   lon >= -180 && lon <= 180;
+        }
+        
+        // Create markers with collision detection
+        function createMarkers(nodes) {
+            console.log('=== Creating markers with collision detection ===');
+            
+            const markers = {};
+            const labelMarkers = {};
+            const now = Date.now() / 1000;
+            
+            // Track position collisions to apply offsets
+            const positionMap = new Map();
+            const validNodes = [];
+            
+            // First pass: collect all valid nodes and group by position
+            Object.entries(nodes).forEach(([id, node]) => {
+                if (!isValidPosition(node.position?.latitude, node.position?.longitude)) {
+                    return;
+                }
+                
+                validNodes.push([id, node]);
+                
+                // Group nodes by position
+                const posKey = `${node.position.latitude},${node.position.longitude}`;
+                if (!positionMap.has(posKey)) {
+                    positionMap.set(posKey, []);
+                }
+                positionMap.get(posKey).push(id);
+            });
+            
+            console.log(`Found ${validNodes.length} valid nodes`);
+            console.log('Position groups:', Array.from(positionMap.entries()).map(([pos, ids]) => 
+                `${pos}: ${ids.length} nodes`
+            ));
+            
+            // Second pass: render markers with offsets for collisions
+            validNodes.forEach(([id, node]) => {
+                try {
+                    const lat = node.position.latitude;
+                    const lon = node.position.longitude;
+                    
+                    // Check if this position has multiple nodes
+                    const posKey = `${lat},${lon}`;
+                    const nodesAtPosition = positionMap.get(posKey);
+                    let offsetLat = 0;
+                    let offsetLon = 0;
+                    
+                    if (nodesAtPosition.length > 1) {
+                        // Multiple nodes at same position - apply spiral offset
+                        const index = nodesAtPosition.indexOf(id);
+                        // Small offset in degrees (approximately 5-10 meters at mid-latitudes)
+                        // Using spiral pattern: radius increases, angle increments
+                        const angle = index * (2 * Math.PI / 5); // 5 positions per circle
+                        const radius = 0.00005 * (1 + Math.floor(index / 5)); // ~5m base radius
+                        offsetLat = radius * Math.cos(angle);
+                        offsetLon = radius * Math.sin(angle);
+                        console.log(`✨ Node ${node.user.longName} at collision position ${posKey}:`);
+                        console.log(`   Index: ${index}, Angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+                        console.log(`   Offset: lat=${offsetLat.toFixed(6)}, lon=${offsetLon.toFixed(6)}`);
+                    }
+                    
+                    // Apply offset to coordinates for display
+                    const displayLat = lat + offsetLat;
+                    const displayLon = lon + offsetLon;
+                    
+                    const color = getNodeColorByHop(node.hopsAway);
+                    
+                    // Create circle marker
+                    const marker = L.circleMarker([displayLat, displayLon], {
+                        radius: 12,
+                        fillColor: color,
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8,
+                        title: node.user?.shortName || id
+                    });
+                    
+                    // Add tooltip
+                    marker.bindTooltip(node.user?.longName || 'Unknown node', {
+                        permanent: false,
+                        direction: 'top',
+                        className: 'node-tooltip'
+                    });
+                    
+                    // Create label
+                    const labelIcon = L.divIcon({
+                        html: `<div class="node-label">${node.user?.longName || id}</div>`,
+                        className: '',
+                        iconSize: [null, null]
+                    });
+                    
+                    const labelMarker = L.marker([displayLat, displayLon], {
+                        icon: labelIcon,
+                        interactive: false
+                    });
+                    
+                    // Add popup with info
+                    let popupContent = `<div class="popup-title">${node.user?.longName || 'Unknown'}</div>`;
+                    popupContent += `<div class="popup-info">`;
+                    popupContent += `<strong>ID:</strong> ${node.user?.shortName || id}<br>`;
+                    popupContent += `<strong>Hops:</strong> ${node.hopsAway}<br>`;
+                    popupContent += `<strong>SNR:</strong> ${node.snr.toFixed(1)} dB<br>`;
+                    popupContent += `<strong>Position originale:</strong><br>`;
+                    popupContent += `Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}<br>`;
+                    if (offsetLat !== 0 || offsetLon !== 0) {
+                        popupContent += `<strong>Offset appliqué:</strong><br>`;
+                        popupContent += `ΔLat: ${offsetLat.toFixed(6)}, ΔLon: ${offsetLon.toFixed(6)}<br>`;
+                        popupContent += `<em>Distance: ~${(Math.sqrt(offsetLat*offsetLat + offsetLon*offsetLon) * 111000).toFixed(1)}m</em>`;
+                    }
+                    popupContent += `</div>`;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.addTo(map);
+                    labelMarker.addTo(map);
+                    
+                    markers[id] = marker;
+                    labelMarkers[id] = labelMarker;
+                    
+                } catch (error) {
+                    console.error(`Error creating marker for ${id}:`, error);
+                }
+            });
+            
+            console.log(`Created ${Object.keys(markers).length} markers`);
+            return { markers, labelMarkers };
+        }
+        
+        // Create the test markers
+        const result = createMarkers(testNodes);
+        
+        console.log('=== Test complete ===');
+        console.log('✅ All nodes should be visible and clickable');
+        console.log('✅ Check that they form a pentagon pattern');
+        console.log('✅ Click on each marker to see position details');
+    </script>
+</body>
+</html>

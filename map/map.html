@@ -809,6 +809,12 @@
             
             const now = Date.now() / 1000;
             
+            // Track position collisions to apply offsets
+            // Key: "lat,lon" -> Array of node IDs at that position
+            const positionMap = new Map();
+            
+            // First pass: collect all valid nodes and group by position
+            const validNodes = [];
             Object.entries(nodes).forEach(([id, node]) => {
                 if (!isValidPosition(node.position?.latitude, node.position?.longitude)) {
                     return;
@@ -829,9 +835,48 @@
                     lastHeardNode = node;
                 }
                 
+                // Track this node for rendering
+                validNodes.push([id, node]);
+                
+                // Group nodes by position
+                const posKey = `${node.position.latitude},${node.position.longitude}`;
+                if (!positionMap.has(posKey)) {
+                    positionMap.set(posKey, []);
+                }
+                positionMap.get(posKey).push(id);
+            });
+            
+            // Second pass: render markers with offsets for collisions
+            validNodes.forEach(([id, node]) => {
                 try {
                     const lat = node.position.latitude;
                     const lon = node.position.longitude;
+                    
+                    // Check if this position has multiple nodes
+                    const posKey = `${lat},${lon}`;
+                    const nodesAtPosition = positionMap.get(posKey);
+                    let offsetLat = 0;
+                    let offsetLon = 0;
+                    
+                    if (nodesAtPosition.length > 1) {
+                        // Multiple nodes at same position - apply spiral offset
+                        const index = nodesAtPosition.indexOf(id);
+                        // Small offset in degrees (approximately 5-10 meters at mid-latitudes)
+                        // Using spiral pattern: radius increases, angle increments
+                        const angle = index * (2 * Math.PI / 5); // 5 positions per circle
+                        const radius = 0.00005 * (1 + Math.floor(index / 5)); // ~5m base radius
+                        offsetLat = radius * Math.cos(angle);
+                        offsetLon = radius * Math.sin(angle);
+                        console.log(`Node ${id} at collision position ${posKey}: offset by ${offsetLat.toFixed(6)}, ${offsetLon.toFixed(6)}`);
+                    }
+                    
+                    // Apply offset to coordinates for display
+                    const displayLat = lat + offsetLat;
+                    const displayLon = lon + offsetLon;
+                    
+                    // Calculate time since last heard for popup
+                    const lastHeard = node.lastHeard || 0;
+                    const hoursAgo = (now - lastHeard) / 3600;
                     
                     let color;
                     if (id === myNodeId) {
@@ -840,7 +885,7 @@
                         color = getNodeColorByHop(node.hopsAway);
                     }
                     
-                    const marker = L.circleMarker([lat, lon], {
+                    const marker = L.circleMarker([displayLat, displayLon], {
                         radius: id === myNodeId ? 20 : 12,
                         fillColor: color,
                         color: '#fff',
@@ -866,7 +911,7 @@
                         iconSize: [null, null]
                     });
                     
-                    const labelMarker = L.marker([lat, lon], {
+                    const labelMarker = L.marker([displayLat, displayLon], {
                         icon: labelIcon,
                         interactive: false
                     });
@@ -908,7 +953,7 @@
                     
                     // Add yellow hi-viz circle for MQTT-active nodes
                     if (node.mqttActive) {
-                        const hivizCircle = L.circleMarker([lat, lon], {
+                        const hivizCircle = L.circleMarker([displayLat, displayLon], {
                             radius: id === myNodeId ? 28 : 20,
                             fillColor: 'transparent',
                             color: '#FFD700',  // Bright yellow/gold
