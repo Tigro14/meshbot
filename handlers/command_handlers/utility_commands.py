@@ -362,10 +362,10 @@ class UtilityCommands:
                 location, 
                 days=days, 
                 max_hours=24,  # 24h de prévision (48 chars width)
-                compact_mode=True, 
+                compact_mode=True,  # 3 lignes sparkline (top, middle, bottom)
                 persistence=persistence, 
                 start_at_current_time=True,
-                ultra_compact=True,  # Header court + 2 lignes seulement
+                ultra_compact=False,  # Ne pas ultra-compacter maintenant qu'on split en 2 messages
                 split_messages=True  # Retourner (sparkline, info) pour 2 messages
             )
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
