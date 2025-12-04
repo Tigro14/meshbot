@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Démonstration: Légende des Liens Mesh</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 16px;
+            font-size: 2rem;
+        }
+        
+        h2 {
+            color: #202124;
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+        
+        .description {
+            color: #5f6368;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        
+        .legend-section {
+            margin-bottom: 32px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        
+        .legend-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .legend-line {
+            width: 60px;
+            height: 4px;
+            margin-right: 16px;
+            border-radius: 2px;
+        }
+        
+        .legend-text {
+            flex: 1;
+            color: #202124;
+            font-weight: 500;
+        }
+        
+        .legend-description {
+            color: #5f6368;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+        
+        .section-title {
+            font-weight: 600;
+            color: #202124;
+            margin-bottom: 16px;
+            font-size: 1.1rem;
+        }
+        
+        .feature-badge {
+            display: inline-block;
+            background: #1a73e8;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .example-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 24px;
+        }
+        
+        .example-card {
+            flex: 1;
+            min-width: 250px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .example-card h3 {
+            color: #1a73e8;
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+        
+        .example-visual {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 16px 0;
+        }
+        
+        .example-line {
+            width: 100%;
+            height: 5px;
+            border-radius: 2px;
+        }
+        
+        .dashed {
+            background-image: linear-gradient(to right, currentColor 50%, transparent 50%);
+            background-size: 10px 100%;
+            background-repeat: repeat-x;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🗺️ Légende des Liens Mesh <span class="feature-badge">NOUVELLE FONCTIONNALITÉ</span></h1>
+            <p class="description">
+                La carte réseau Meshtastic affiche maintenant des informations détaillées sur l'origine et la qualité 
+                de chaque liaison entre les nœuds. Cette amélioration permet de distinguer visuellement les liens mesurés 
+                directement par radio, ceux collectés via MQTT, et ceux inférés par topologie.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>📊 Qualité du Signal (SNR)</h2>
+            <div class="legend-section">
+                <p class="description">La couleur des liens indique la qualité du signal basée sur le rapport Signal/Bruit (SNR).</p>
+                
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #00ff00;"></div>
+                    <div>
+                        <div class="legend-text">Excellente (SNR > 5 dB)</div>
+                        <div class="legend-description">Liaison très stable, excellente qualité</div>
+                    </div>
+                </div>
+                
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #ffff00;"></div>
+                    <div>
+                        <div class="legend-text">Bonne (SNR 0-5 dB)</div>
+                        <div class="legend-description">Liaison stable, qualité correcte</div>
+                    </div>
+                </div>
+                
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #ff6600;"></div>
+                    <div>
+                        <div class="legend-text">Faible (SNR < 0 dB)</div>
+                        <div class="legend-description">Liaison instable, portée limite</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📡 Source des Liens</h2>
+            <div class="legend-section">
+                <p class="description">
+                    Le style des liens révèle leur origine : mesure radio directe, collecte MQTT distante, ou inférence topologique.
+                </p>
+                
+                <div class="section-title">🔵 Radio (Mesure Directe)</div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #00ff00;"></div>
+                    <div>
+                        <div class="legend-text">Liens Radio</div>
+                        <div class="legend-description">
+                            Données NEIGHBORINFO reçues directement via radio du nœud local. 
+                            Couleurs vives (vert/jaune/orange) selon SNR.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-title">🌐 MQTT (Collecteur Distant)</div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #00ffff;"></div>
+                    <div>
+                        <div class="legend-text">Liens MQTT</div>
+                        <div class="legend-description">
+                            Données NEIGHBORINFO collectées via MQTT d'un serveur distant. 
+                            Teintes cyan/bleu selon SNR. Permet de voir au-delà de la portée radio locale.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-title">🔍 Inférée (Topologie)</div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
+                    <div>
+                        <div class="legend-text">Liens Inférés</div>
+                        <div class="legend-description">
+                            Calculés automatiquement basés sur la distance en hops quand les données NEIGHBORINFO 
+                            ne sont pas disponibles. Gris, pointillés, transparents.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🎨 Exemples Visuels</h2>
+            <div class="example-links">
+                <div class="example-card">
+                    <h3>Radio - Excellent</h3>
+                    <div class="example-visual">
+                        <div class="example-line" style="background-color: #00ff00;"></div>
+                    </div>
+                    <p class="legend-description">SNR > 5 dB, source: radio</p>
+                </div>
+                
+                <div class="example-card">
+                    <h3>MQTT - Bon</h3>
+                    <div class="example-visual">
+                        <div class="example-line" style="background-color: #1e90ff;"></div>
+                    </div>
+                    <p class="legend-description">SNR 0-5 dB, source: mqtt</p>
+                </div>
+                
+                <div class="example-card">
+                    <h3>Inféré</h3>
+                    <div class="example-visual">
+                        <div class="example-line dashed" style="color: #888888; opacity: 0.5;"></div>
+                    </div>
+                    <p class="legend-description">Basé sur topologie</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>✨ Avantages</h2>
+            <ul style="line-height: 2; color: #5f6368; padding-left: 24px;">
+                <li><strong>Transparence totale :</strong> Identifiez instantanément l'origine de chaque lien</li>
+                <li><strong>Visibilité étendue :</strong> Les liens MQTT révèlent la topologie au-delà de votre portée radio</li>
+                <li><strong>Diagnostic amélioré :</strong> Distinguez les mesures réelles des inférences</li>
+                <li><strong>Planification réseau :</strong> Optimisez le placement des nœuds avec des données précises</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
