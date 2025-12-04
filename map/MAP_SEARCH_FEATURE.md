@@ -22,15 +22,30 @@ The search form is located in the stats panel on the right side of the map, belo
 ### 2. Search Button
 - Click to execute search
 - Alternatively, press Enter in the input field
+- **Layout**: Positioned on same row as "Effacer" button (fixed in v1.1)
 
 ### 3. Clear Button
 - Clears the search input
 - Removes highlight from previously found node
 - Closes any open popup
+- Hides results listbox if visible
 - Returns map to default view (owner node or Paris center)
+- **Layout**: Shares row with "Chercher" button using equal flex sizing
 
-### 4. Result Messages
-- **Success** (Green): "✓ Trouvé: [Node Name]"
+### 4. Multiple Results Listbox (New in v1.1)
+- **Appears when**: Multiple nodes match the search term
+- **Features**:
+  - Shows all matching nodes with long name and ID
+  - Scrollable list (max height 150px)
+  - Clickable items to zoom to specific node
+  - Filtered nodes shown with red "(filtré)" tag and disabled
+  - Auto-hides when result is selected or search is cleared
+- **Visual Design**: White background with rounded borders, hover effects
+
+### 5. Result Messages
+- **Success** (Green): 
+  - Single match: "✓ Trouvé: [Node Name]"
+  - Multiple matches: "[N] nœuds trouvés"
 - **Errors** (Red):
   - Empty input: "Veuillez entrer un nom de nœud"
   - Node not found: "Aucun nœud trouvé pour [search term]"
@@ -39,28 +54,41 @@ The search form is located in the stats panel on the right side of the map, belo
 
 ## User Workflow
 
-### Basic Search
+### Basic Search - Single Result
 1. Type node name or ID in the search field
 2. Click "Chercher" or press Enter
-3. Map zooms to the node (zoom level 15)
+3. If only one match: Map zooms to the node (zoom level 15)
 4. Node pulses 3 times with highlight animation
 5. Popup opens showing node details
+
+### Basic Search - Multiple Results (New in v1.1)
+1. Type partial node name or ID that matches multiple nodes
+2. Click "Chercher" or press Enter
+3. Results listbox appears showing all matches
+4. Click on desired node in the list
+5. Map zooms to selected node
+6. Results listbox hides automatically
 
 ### Clear Search
 1. Click "Effacer" button
 2. Search input is cleared
 3. Highlight is removed
 4. Popup closes
-5. Map returns to default view
+5. Results listbox hides
+6. Map returns to default view
 
 ## Technical Details
 
 ### Search Algorithm
 ```javascript
 // Searches across three fields (case-insensitive)
+// Returns ALL matching nodes (not just first match)
 - node.user.shortName
 - node.user.longName
 - node ID
+
+// Single match: zoom directly
+// Multiple matches: show listbox
 ```
 
 ### Zoom Behavior
@@ -81,17 +109,25 @@ The search form is located in the stats panel on the right side of the map, belo
 
 ## CSS Classes
 
-### New Classes Added
+### New Classes Added (v1.0)
 - `.search-container`: Container for entire search section
 - `.search-label`: "🔍 Rechercher un nœud" label
-- `.search-box`: Flex container for input/buttons
+- `.search-input-container`: Wrapper for input field only (v1.1)
 - `.search-input`: Text input field
+- `.search-buttons`: Flex container for both buttons (v1.1)
 - `.search-btn`: Blue search button
 - `.clear-btn`: Gray clear button
 - `.search-result`: Message area
 - `.search-result.success`: Green success message
 - `.search-result.error`: Red error message
 - `.highlighted-marker`: Pulse animation class
+
+### New Classes Added (v1.1)
+- `.search-results-list`: Scrollable results container (hidden by default)
+- `.search-results-list.visible`: Shows listbox when active
+- `.search-result-item`: Individual result item
+- `.search-result-item .node-name`: Bold blue node name
+- `.search-result-item .node-id`: Gray node ID text
 
 ### Animation
 ```css
@@ -104,8 +140,9 @@ The search form is located in the stats panel on the right side of the map, belo
 ## JavaScript Functions
 
 ### Public Functions
-- `searchNode()`: Executes search based on input value
-- `clearSearch()`: Resets search state
+- `searchNode()`: Executes search, finds all matching nodes
+- `zoomToNode(nodeId, node, resultDiv)`: Helper to zoom to specific node (v1.1)
+- `clearSearch()`: Resets search state and hides results list
 - `handleSearchKeyPress(event)`: Handles Enter key in input field
 
 ### Internal Variables
@@ -131,7 +168,17 @@ Input: "a2e175ac"
 Result: Finds node with ID "!a2e175ac"
 ```
 
-### Example 4: Node not visible due to filter
+### Example 4: Multiple nodes with partial match (New in v1.1)
+```
+Input: "tigro"
+Result: Shows listbox with all nodes containing "tigro"
+  - Tigro G2 PV (ID: a2e175ac)
+  - Tigro Bot (ID: 16fad3dc)
+  - Tigro Old Node (filtré) - not clickable
+Action: Click on desired node to zoom
+```
+
+### Example 5: Node not visible due to filter
 ```
 Input: "oldnode"
 Time Filter: 24h
@@ -163,13 +210,14 @@ Compatible with:
 ## Future Enhancements
 
 Potential improvements for future versions:
+- [x] **Multi-node selection** (Implemented in v1.1)
 - [ ] Autocomplete suggestions while typing
 - [ ] Search history
-- [ ] Multi-node selection
 - [ ] Regular expression support
 - [ ] Search by hop count or SNR range
 - [ ] Export search results
 - [ ] URL parameter support (e.g., ?search=tigro)
+- [ ] Keyboard navigation in results listbox (arrow keys)
 
 ## Troubleshooting
 
@@ -199,6 +247,14 @@ Potential improvements for future versions:
 
 ## Version History
 
+- **v1.1** (2024-12-04): Layout fixes and multiple results
+  - Fixed button layout: "Chercher" and "Effacer" on same row
+  - Added results listbox for multiple matches
+  - Refactored search logic to find all matches (not just first)
+  - Added `zoomToNode()` helper function
+  - Visual feedback for filtered nodes in results
+  - Improved button sizing with equal flex layout
+  
 - **v1.0** (2024-12-03): Initial implementation
   - Search by shortName, longName, and ID
   - Zoom and highlight functionality
