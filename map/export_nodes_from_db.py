@@ -108,13 +108,21 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 
                 # Track MQTT-active nodes (nodes that have sent NEIGHBORINFO via MQTT)
                 mqtt_active_nodes = set()
+                mqtt_last_heard_data = {}  # Track when node was last heard via MQTT
                 
                 # Format neighbor data for map compatibility
                 for node_id_str, neighbor_list in neighbors_raw.items():
                     formatted_neighbors = []
+                    max_timestamp = 0
                     for neighbor in neighbor_list:
-                        # neighbor is a dict with: node_id, snr, last_rx_time, node_broadcast_interval
+                        # neighbor is a dict with: node_id, snr, last_rx_time, node_broadcast_interval, timestamp
                         neighbor_id = neighbor.get('node_id')
+                        neighbor_timestamp = neighbor.get('timestamp', 0)
+                        
+                        # Track the most recent timestamp for this node's MQTT activity
+                        if neighbor_timestamp > max_timestamp:
+                            max_timestamp = neighbor_timestamp
+                        
                         if neighbor_id:
                             # Neighbor ID is stored in database as TEXT in format "!xxxxxxxx"
                             # The database already stores it with ! prefix
@@ -128,10 +136,14 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         neighbors_data[node_key] = formatted_neighbors
                         # This node sent NEIGHBORINFO, so it's MQTT-active
                         mqtt_active_nodes.add(node_key)
+                        # Store MQTT last heard timestamp
+                        if max_timestamp > 0:
+                            mqtt_last_heard_data[node_key] = int(max_timestamp)
                 
                 persistence.close()
                 log(f"   • SNR disponible pour {len(snr_data)} nœuds")
                 log(f"   • Last heard pour {len(last_heard_data)} nœuds")
+                log(f"   • MQTT last heard pour {len(mqtt_last_heard_data)} nœuds")
                 log(f"   • Hops disponible pour {len(hops_data)} nœuds")
                 log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
                 log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
@@ -187,9 +199,17 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 if node_id_str in snr_data:
                     node_entry["snr"] = round(snr_data[node_id_str][0], 2)
                 
-                # Add lastHeard if available from SQLite
+                # Add lastHeard if available from SQLite (mesh packets)
                 if node_id_str in last_heard_data:
                     node_entry["lastHeard"] = last_heard_data[node_id_str]
+                elif node_id_str in mqtt_last_heard_data:
+                    # Fallback: Use MQTT timestamp if no mesh packets
+                    # This ensures MQTT-only nodes are not filtered out by time
+                    node_entry["lastHeard"] = mqtt_last_heard_data[node_id_str]
+                
+                # Add MQTT last heard timestamp (always add for MQTT-active nodes)
+                if node_id_str in mqtt_last_heard_data:
+                    node_entry["mqttLastHeard"] = mqtt_last_heard_data[node_id_str]
                 
                 # Add hopsAway if available from SQLite
                 if node_id_str in hops_data:
@@ -227,6 +247,8 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         log(f"   • Nœuds avec SNR: {nodes_with_snr}")
         nodes_with_last_heard = sum(1 for n in output_nodes.values() if 'lastHeard' in n)
         log(f"   • Nœuds avec lastHeard: {nodes_with_last_heard}")
+        nodes_with_mqtt_last_heard = sum(1 for n in output_nodes.values() if 'mqttLastHeard' in n)
+        log(f"   • Nœuds avec mqttLastHeard: {nodes_with_mqtt_last_heard}")
         nodes_with_hops = sum(1 for n in output_nodes.values() if 'hopsAway' in n)
         log(f"   • Nœuds avec hopsAway: {nodes_with_hops}")
         nodes_with_neighbors = sum(1 for n in output_nodes.values() if 'neighbors' in n)
