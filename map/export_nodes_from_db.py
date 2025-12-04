@@ -53,6 +53,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         last_heard_data = {}
         hops_data = {}
         neighbors_data = {}
+        mqtt_active_nodes = set()  # Track MQTT-active nodes
         
         if os.path.exists(db_path):
             log(f"📊 Enrichissement avec données SQLite...")
@@ -105,6 +106,9 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 # Get neighbor data from neighbors table
                 neighbors_raw = persistence.load_neighbors(hours=hours)
                 
+                # Track MQTT-active nodes (nodes that have sent NEIGHBORINFO via MQTT)
+                mqtt_active_nodes = set()
+                
                 # Format neighbor data for map compatibility
                 for node_id_str, neighbor_list in neighbors_raw.items():
                     formatted_neighbors = []
@@ -122,12 +126,15 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         # Remove ! prefix from node_id_str for consistency with node_names.json keys
                         node_key = node_id_str.lstrip('!')
                         neighbors_data[node_key] = formatted_neighbors
+                        # This node sent NEIGHBORINFO, so it's MQTT-active
+                        mqtt_active_nodes.add(node_key)
                 
                 persistence.close()
                 log(f"   • SNR disponible pour {len(snr_data)} nœuds")
                 log(f"   • Last heard pour {len(last_heard_data)} nœuds")
                 log(f"   • Hops disponible pour {len(hops_data)} nœuds")
                 log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
+                log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
@@ -192,6 +199,10 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 if node_id_str in neighbors_data:
                     node_entry["neighbors"] = neighbors_data[node_id_str]
                 
+                # Add MQTT active flag if this node sent NEIGHBORINFO
+                if node_id_str in mqtt_active_nodes:
+                    node_entry["mqttActive"] = True
+                
                 output_nodes[node_id_hex] = node_entry
                 
             except Exception as e:
@@ -220,6 +231,8 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         log(f"   • Nœuds avec hopsAway: {nodes_with_hops}")
         nodes_with_neighbors = sum(1 for n in output_nodes.values() if 'neighbors' in n)
         log(f"   • Nœuds avec neighbors: {nodes_with_neighbors}")
+        nodes_mqtt_active = sum(1 for n in output_nodes.values() if 'mqttActive' in n)
+        log(f"   • Nœuds MQTT actifs: {nodes_mqtt_active}")
         
         return True
         

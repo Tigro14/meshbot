@@ -524,6 +524,10 @@
                             <div class="color-box" style="background-color:#95a5a6"></div>
                             <span>Hop 5+</span>
                         </div>
+                        <div class="legend-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1);">
+                            <div style="width: 20px; height: 20px; border-radius: 50%; border: 5px solid #FFD700; margin-right: 8px;"></div>
+                            <span>🌐 MQTT actif</span>
+                        </div>
                     </div>
                     <div id="linksLegend" style="display:none;">
                         <div class="legend-item">
@@ -720,7 +724,13 @@
             console.log('=== DEBUT createMarkers ===');
             console.log('Nombre de nœuds à traiter:', Object.keys(nodes).length);
             
-            Object.values(markers).forEach(marker => map.removeLayer(marker));
+            Object.values(markers).forEach(marker => {
+                map.removeLayer(marker);
+                // Also remove hiviz circle if it exists
+                if (marker.hivizCircle) {
+                    map.removeLayer(marker.hivizCircle);
+                }
+            });
             Object.values(labelMarkers).forEach(marker => map.removeLayer(marker));
             markers = {};
             labelMarkers = {};
@@ -818,6 +828,9 @@
                         const neighborCount = (node.neighbors || node.neighbours).length;
                         popupContent += `<strong>Voisins directs:</strong> ${neighborCount}<br>`;
                     }
+                    if (node.mqttActive) {
+                        popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
+                    }
                     popupContent += `<strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
                     popupContent += `<em>${hoursAgoText}</em>`;
                     popupContent += `</div>`;
@@ -825,6 +838,26 @@
                     marker.bindPopup(popupContent);
                     marker.addTo(map);
                     markers[id] = marker;
+                    
+                    // Add yellow hi-viz circle for MQTT-active nodes
+                    if (node.mqttActive) {
+                        const hivizCircle = L.circleMarker([lat, lon], {
+                            radius: id === myNodeId ? 28 : 20,
+                            fillColor: 'transparent',
+                            color: '#FFD700',  // Bright yellow/gold
+                            weight: 5,
+                            opacity: 1,
+                            fillOpacity: 0,
+                            className: 'mqtt-active-hiviz',
+                            interactive: false
+                        });
+                        hivizCircle.addTo(map);
+                        // Store reference to hiviz circle for cleanup
+                        if (!markers[id].hivizCircle) {
+                            markers[id].hivizCircle = hivizCircle;
+                        }
+                    }
+                    
                     visibleCount++;
                 } catch (error) {
                     console.error(`Erreur création marqueur ${id}:`, error);

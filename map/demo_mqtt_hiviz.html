@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Hi-Viz Circle - Visual Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .subtitle {
+            color: #5f6368;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .demo-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+        
+        .demo-title {
+            font-size: 1.3rem;
+            color: #202124;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        
+        .nodes-display {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 40px;
+            margin-top: 20px;
+        }
+        
+        .node-demo {
+            text-align: center;
+        }
+        
+        .node-container {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin: 20px auto;
+        }
+        
+        /* Yellow hi-viz circle */
+        .mqtt-hiviz {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border: 5px solid #FFD700;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+        }
+        
+        /* Node marker */
+        .node-marker {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 2;
+        }
+        
+        .node-label {
+            margin-top: 10px;
+            font-weight: 600;
+            color: #202124;
+        }
+        
+        .node-status {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #5f6368;
+        }
+        
+        .mqtt-badge {
+            display: inline-block;
+            background: #FFD700;
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        
+        .features {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #FFD700;
+        }
+        
+        .feature-icon {
+            font-size: 1.5rem;
+            margin-right: 15px;
+        }
+        
+        .feature-text h3 {
+            color: #202124;
+            margin-bottom: 5px;
+            font-size: 1.1rem;
+        }
+        
+        .feature-text p {
+            color: #5f6368;
+            line-height: 1.6;
+        }
+        
+        .legend {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .legend-title {
+            font-size: 1.2rem;
+            color: #202124;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 12px 0;
+        }
+        
+        .legend-symbol {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            position: relative;
+        }
+        
+        .legend-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        
+        .legend-hiviz {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border: 5px solid #FFD700;
+            border-radius: 50%;
+        }
+        
+        .code-section {
+            background: #282c34;
+            color: #abb2bf;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        .code-section pre {
+            margin: 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .code-keyword { color: #c678dd; }
+        .code-string { color: #98c379; }
+        .code-number { color: #d19a66; }
+        .code-comment { color: #5c6370; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 MQTT Hi-Viz Circle Feature</h1>
+        <p class="subtitle">Visual indicator for MQTT-active nodes on the Meshtastic network map</p>
+        
+        <div class="demo-section">
+            <div class="demo-title">Visual Demonstration</div>
+            <div class="nodes-display">
+                <div class="node-demo">
+                    <div class="node-container">
+                        <div class="node-marker" style="background-color: #e74c3c;"></div>
+                    </div>
+                    <div class="node-label">Normal Node</div>
+                    <div class="node-status">LoRa only</div>
+                </div>
+                
+                <div class="node-demo">
+                    <div class="node-container">
+                        <div class="mqtt-hiviz"></div>
+                        <div class="node-marker" style="background-color: #3498db;"></div>
+                    </div>
+                    <div class="node-label">MQTT Active Node</div>
+                    <div class="node-status">Sending NEIGHBORINFO</div>
+                    <div class="mqtt-badge">🌐 MQTT Active</div>
+                </div>
+                
+                <div class="node-demo">
+                    <div class="node-container">
+                        <div class="mqtt-hiviz"></div>
+                        <div class="node-marker" style="background-color: #27ae60;"></div>
+                    </div>
+                    <div class="node-label">MQTT Active Node</div>
+                    <div class="node-status">Sending NEIGHBORINFO</div>
+                    <div class="mqtt-badge">🌐 MQTT Active</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="features">
+            <h2 style="color: #1a73e8; margin-bottom: 20px;">✨ Key Features</h2>
+            
+            <div class="feature-item">
+                <div class="feature-icon">🎯</div>
+                <div class="feature-text">
+                    <h3>High Visibility</h3>
+                    <p>Thick yellow (#FFD700) circle with 5px weight makes MQTT-active nodes immediately recognizable on the map.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">📡</div>
+                <div class="feature-text">
+                    <h3>MQTT Detection</h3>
+                    <p>Automatically identifies nodes that have sent NEIGHBORINFO packets via MQTT in the configured time window.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">💾</div>
+                <div class="feature-text">
+                    <h3>Database Integration</h3>
+                    <p>Export script queries the neighbors table to identify MQTT-active nodes and marks them with "mqttActive: true" flag.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">ℹ️</div>
+                <div class="feature-text">
+                    <h3>Enhanced Popup</h3>
+                    <p>Node popups show "🌐 MQTT: Actif" indicator for MQTT-active nodes with gold highlighting.</p>
+                </div>
+            </div>
+            
+            <div class="feature-item">
+                <div class="feature-icon">🗺️</div>
+                <div class="feature-text">
+                    <h3>Legend Integration</h3>
+                    <p>Map legend includes MQTT-active indicator explanation for better user understanding.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-title">Map Legend</div>
+            
+            <div class="legend-item">
+                <div class="legend-symbol">
+                    <div class="legend-circle" style="background-color: #e74c3c;"></div>
+                </div>
+                <div>
+                    <strong>Normal Node</strong><br>
+                    <span style="color: #5f6368;">Standard Meshtastic node (LoRa only)</span>
+                </div>
+            </div>
+            
+            <div class="legend-item">
+                <div class="legend-symbol">
+                    <div class="legend-hiviz"></div>
+                    <div class="legend-circle" style="background-color: #3498db;"></div>
+                </div>
+                <div>
+                    <strong>🌐 MQTT Active Node</strong><br>
+                    <span style="color: #5f6368;">Node actively sending NEIGHBORINFO via MQTT</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="code-section">
+            <pre><code><span class="code-comment">// Add yellow hi-viz circle for MQTT-active nodes</span>
+<span class="code-keyword">if</span> (node.mqttActive) {
+    <span class="code-keyword">const</span> hivizCircle = L.circleMarker([lat, lon], {
+        radius: <span class="code-number">20</span>,
+        fillColor: <span class="code-string">'transparent'</span>,
+        color: <span class="code-string">'#FFD700'</span>,  <span class="code-comment">// Bright yellow/gold</span>
+        weight: <span class="code-number">5</span>,
+        opacity: <span class="code-number">1</span>,
+        fillOpacity: <span class="code-number">0</span>,
+        interactive: <span class="code-keyword">false</span>
+    });
+    hivizCircle.addTo(map);
+}</code></pre>
+        </div>
+        
+        <div style="margin-top: 30px; padding: 20px; background: #e8f5e9; border-radius: 12px; border-left: 4px solid #4caf50;">
+            <h3 style="color: #2e7d32; margin-bottom: 10px;">✅ Implementation Complete</h3>
+            <p style="color: #1b5e20; line-height: 1.6;">
+                The yellow hi-viz circle feature has been successfully implemented in both the export script 
+                (<code>export_nodes_from_db.py</code>) and the map visualization (<code>map.html</code>). 
+                MQTT-active nodes are now clearly visible with a thick yellow border that stands out on the map.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

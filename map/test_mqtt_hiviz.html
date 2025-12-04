@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test MQTT Hi-Viz Circle</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+        #map { width: 100%; height: 100vh; }
+        
+        .info-box {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            max-width: 400px;
+        }
+        
+        .info-box h2 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .info-box p {
+            margin: 8px 0;
+            color: #5f6368;
+            line-height: 1.6;
+        }
+        
+        .info-box .highlight {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #FFD700;
+            margin-top: 12px;
+        }
+        
+        .legend {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .legend h4 {
+            margin: 0 0 12px 0;
+            color: #202124;
+            font-size: 1rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 0.9rem;
+        }
+        
+        .color-box {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-box">
+        <h2>🧪 Test MQTT Hi-Viz Circle</h2>
+        <p>Cette page démontre la nouvelle fonctionnalité:</p>
+        <ul style="margin-left: 20px; color: #5f6368;">
+            <li>Cercle jaune épais autour des nœuds MQTT-actifs</li>
+            <li>Indicateur "🌐 MQTT: Actif" dans les popups</li>
+            <li>Légende mise à jour</li>
+        </ul>
+        <div class="highlight">
+            <strong>Nœuds de test:</strong><br>
+            • Rouge: Nœud normal<br>
+            • Bleu: Nœud avec MQTT actif (cercle jaune)
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        // Initialize map centered on Paris
+        const map = L.map('map').setView([48.8566, 2.3522], 12);
+        
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Add legend
+        const legend = L.control({position: 'bottomright'});
+        
+        legend.onAdd = () => {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = `
+                <h4>Légende</h4>
+                <div class="legend-item">
+                    <div class="color-box" style="background-color:#e74c3c"></div>
+                    <span>Nœud normal</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-box" style="background-color:#3498db"></div>
+                    <span>Nœud normal</span>
+                </div>
+                <div class="legend-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1);">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; border: 5px solid #FFD700; margin-right: 10px;"></div>
+                    <span>🌐 MQTT actif</span>
+                </div>
+            `;
+            return div;
+        };
+        
+        legend.addTo(map);
+        
+        // Create test nodes
+        const testNodes = [
+            {
+                lat: 48.8566,
+                lon: 2.3522,
+                name: "Test Normal Node",
+                color: '#e74c3c',
+                mqttActive: false
+            },
+            {
+                lat: 48.8600,
+                lon: 2.3400,
+                name: "MQTT Active Node 1",
+                color: '#3498db',
+                mqttActive: true
+            },
+            {
+                lat: 48.8520,
+                lon: 2.3650,
+                name: "MQTT Active Node 2",
+                color: '#27ae60',
+                mqttActive: true
+            },
+            {
+                lat: 48.8480,
+                lon: 2.3480,
+                name: "Test Normal Node 2",
+                color: '#f39c12',
+                mqttActive: false
+            }
+        ];
+        
+        // Add markers
+        testNodes.forEach(node => {
+            const marker = L.circleMarker([node.lat, node.lon], {
+                radius: 12,
+                fillColor: node.color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+            
+            let popupContent = `<div style="font-weight: bold; color: #1a73e8; margin-bottom: 8px;">${node.name}</div>`;
+            popupContent += `<div style="color: #5f6368;">`;
+            if (node.mqttActive) {
+                popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
+            }
+            popupContent += `Cliquez pour voir les détails`;
+            popupContent += `</div>`;
+            
+            marker.bindPopup(popupContent);
+            marker.addTo(map);
+            
+            // Add yellow hi-viz circle for MQTT-active nodes
+            if (node.mqttActive) {
+                const hivizCircle = L.circleMarker([node.lat, node.lon], {
+                    radius: 20,
+                    fillColor: 'transparent',
+                    color: '#FFD700',  // Bright yellow/gold
+                    weight: 5,
+                    opacity: 1,
+                    fillOpacity: 0,
+                    interactive: false
+                });
+                hivizCircle.addTo(map);
+            }
+        });
+    </script>
+</body>
+</html>
