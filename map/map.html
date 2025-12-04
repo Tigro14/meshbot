@@ -496,6 +496,28 @@
             return 'Liaison radio (mesure directe)';
         }
         
+        function updateLinkSourceLegend(linkTypes) {
+            // Get legend elements
+            const legendRadio = document.getElementById('legendRadio');
+            const legendMqtt = document.getElementById('legendMqtt');
+            const legendInferred = document.getElementById('legendInferred');
+            const linkSourcesSection = document.getElementById('linkSourcesSection');
+            
+            // Safety check
+            if (!legendRadio || !legendMqtt || !legendInferred || !linkSourcesSection) {
+                return;
+            }
+            
+            // Show/hide legend items based on what's actually present
+            legendRadio.style.display = linkTypes.radio ? 'flex' : 'none';
+            legendMqtt.style.display = linkTypes.mqtt ? 'flex' : 'none';
+            legendInferred.style.display = linkTypes.inferred ? 'flex' : 'none';
+            
+            // Hide the entire "Source des liens" section if no links exist
+            const hasAnyLinks = linkTypes.radio || linkTypes.mqtt || linkTypes.inferred;
+            linkSourcesSection.style.display = hasAnyLinks ? 'block' : 'none';
+        }
+        
         function setView(view) {
             currentView = view;
             document.querySelectorAll('.view-btn').forEach(btn => {
@@ -650,16 +672,16 @@
                             <span>Faible (SNR < 0)</span>
                         </div>
                         
-                        <div style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124;">Source des liens:</div>
-                        <div class="legend-item">
+                        <div id="linkSourcesSection" style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124;">Source des liens:</div>
+                        <div id="legendRadio" class="legend-item" style="display:none;">
                             <div class="legend-line" style="background-color: #00ff00;"></div>
                             <span>Radio (mesure directe)</span>
                         </div>
-                        <div class="legend-item">
+                        <div id="legendMqtt" class="legend-item" style="display:none;">
                             <div class="legend-line" style="background-color: #00ffff;"></div>
                             <span>MQTT (collecteur distant)</span>
                         </div>
-                        <div class="legend-item">
+                        <div id="legendInferred" class="legend-item" style="display:none;">
                             <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
                             <span style="opacity: 0.7;">Inférée (topologie)</span>
                         </div>
@@ -746,6 +768,13 @@
             linkCount = 0;
             const drawnLinks = new Set();
 
+            // Track which link types are present
+            const linkTypes = {
+                radio: false,
+                mqtt: false,
+                inferred: false
+            };
+
             // Convertir en tableau si nécessaire
             const nodesArray = Array.isArray(nodes) ? nodes : Object.values(nodes);
             
@@ -772,6 +801,13 @@
                         const toLatLng = markers[neighborId].getLatLng();
                         const snr = neighbor.snr || neighbor.SNR || null;
                         const source = neighbor.source || 'radio';  // Default to radio if not specified
+                        
+                        // Track link type
+                        if (source === 'mqtt') {
+                            linkTypes.mqtt = true;
+                        } else {
+                            linkTypes.radio = true;
+                        }
                         
                         const line = L.polyline([fromLatLng, toLatLng], {
                             color: getLinkColor(snr, source),
@@ -824,6 +860,9 @@
                             if (!drawnLinks.has(linkKey)) {
                                 drawnLinks.add(linkKey);
                                 
+                                // Track inferred link type
+                                linkTypes.inferred = true;
+                                
                                 const fromLatLng = markers[nodeId].getLatLng();
                                 const toLatLng = markers[parentId].getLatLng();
                                 
@@ -850,6 +889,9 @@
             }
 
             document.getElementById('totalLinks').textContent = linkCount;
+            
+            // Update legend to show only active link types
+            updateLinkSourceLegend(linkTypes);
         }
         
         function createMarkers(nodes) {
