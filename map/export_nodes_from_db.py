@@ -153,7 +153,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 
                 for node_key in mqtt_active_nodes:
                     # node_key is now always decimal string (e.g., '385503196')
-                    # converted from hex at line 139-143 to match node_names.json keys
+                    # derived by stripping ! prefix at lines 136-153
                     # packets table also uses decimal string from_id (e.g., '385503196')
                     node_id_str = node_key
                     

@@ -85,7 +85,7 @@ PYEOF
 
 # Step 3: Run export script
 echo ""
-echo "�� Step 3: Exporting nodes from database..."
+echo "Step 3: Exporting nodes from database..."
 OUTPUT_FILE="$TEST_DIR/info.json"
 "$SCRIPT_DIR/export_nodes_from_db.py" "$TEST_DIR/node_names.json" "$DB_FILE" 48 > "$OUTPUT_FILE" 2>"$TEST_DIR/export.log"
 
