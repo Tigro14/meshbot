@@ -8,17 +8,10 @@ Gère les requêtes de traceroute et les réponses
 from telegram import Update
 from telegram.ext import ContextTypes
 from utils import info_print, error_print, debug_print
-from safe_tcp_connection import SafeTCPConnection
 import time
 import asyncio
 import traceback
 import threading
-
-# Import optionnel de REMOTE_NODE_HOST avec fallback
-try:
-    from config import REMOTE_NODE_HOST
-except ImportError:
-    REMOTE_NODE_HOST = None
 
 # Import Meshtastic protobuf pour traceroute natif
 try:
@@ -463,17 +456,6 @@ class TracerouteManager:
     def _execute_active_trace(self, target_short_name, chat_id, username):
         """Traceroute avec timeout approprié"""
         try:
-            # Vérifier que REMOTE_NODE_HOST est configuré
-            if not REMOTE_NODE_HOST:
-                asyncio.run_coroutine_threadsafe(
-                    self.telegram.application.bot.send_message(
-                        chat_id=chat_id,
-                        text="❌ REMOTE_NODE_HOST non configuré dans config.py"
-                    ),
-                    self.telegram.loop
-                ).result(timeout=5)
-                return
-
             info_print("=" * 60)
             info_print("🚀 Traceroute NATIF Meshtastic démarré")
             info_print(f"   Target: {target_short_name}")
@@ -527,11 +509,33 @@ class TracerouteManager:
                 'full_name': f"{target_short_name} (!{target_node_id:08x})"
             }
 
-            # Lancer le traceroute avec timeout plus long
-            with SafeTCPConnection(REMOTE_NODE_HOST, wait_time=2, timeout=45) as remote_interface:
-                trace_msg = f"/trace !{target_node_id:08x}"
-                remote_interface.sendText(trace_msg)
+            # Récupérer l'interface Meshtastic du bot
+            interface = self.telegram.message_handler.interface
+            
+            if not interface:
+                error_print("❌ Interface Meshtastic non disponible")
+                asyncio.run_coroutine_threadsafe(
+                    self.telegram.application.bot.send_message(
+                        chat_id=chat_id,
+                        text="❌ Interface Meshtastic non disponible"
+                    ),
+                    self.telegram.loop
+                ).result(timeout=5)
+                return
 
+            # Envoyer un paquet TRACEROUTE_APP natif (pas de broadcast text)
+            # Cela utilise le protocole approprié sans créer de connexion TCP supplémentaire
+            try:
+                interface.sendData(
+                    data=b'',  # Paquet vide pour initier traceroute
+                    destinationId=target_node_id,
+                    portNum='TRACEROUTE_APP',
+                    wantAck=False,  # Pas besoin d'ACK, on attend la réponse
+                    wantResponse=True  # On veut une réponse
+                )
+                
+                info_print(f"✅ Paquet TRACEROUTE_APP envoyé vers 0x{target_node_id:08x}")
+                
                 # Message de confirmation
                 asyncio.run_coroutine_threadsafe(
                     self.telegram.application.bot.send_message(
@@ -541,6 +545,26 @@ class TracerouteManager:
                     ),
                     self.telegram.loop
                 ).result(timeout=5)
+                
+            except BrokenPipeError as e:
+                # Erreur réseau normale - connexion temporairement cassée
+                debug_print(f"⚠️ Connexion réseau perdue lors de l'envoi traceroute: {e}")
+                debug_print("Le bot reconnectera automatiquement lors de la prochaine vérification périodique")
+                
+                # Message d'erreur à l'utilisateur
+                asyncio.run_coroutine_threadsafe(
+                    self.telegram.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"❌ Erreur: Interface Meshtastic déconnectée\n💡 Vérifiez la connexion mesh"
+                    ),
+                    self.telegram.loop
+                ).result(timeout=5)
+                
+                # Cleanup
+                if target_node_id in self.pending_traces:
+                    del self.pending_traces[target_node_id]
+                
+                return
 
         except Exception as e:
             error_print(f"Erreur trace active: {e or 'Unknown error'}")
