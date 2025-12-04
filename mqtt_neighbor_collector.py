@@ -156,11 +156,11 @@ class MQTTNeighborCollector:
             error_print(f"👥 Échec connexion MQTT: code {rc}")
             self.connected = False
     
-    def _on_mqtt_disconnect(self, client, userdata, rc, properties=None):
+    def _on_mqtt_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """Callback de déconnexion MQTT"""
         self.connected = False
-        if rc != 0:
-            error_print(f"👥 Déconnexion MQTT inattendue: code {rc}")
+        if reason_code != 0:
+            error_print(f"👥 Déconnexion MQTT inattendue: code {reason_code}")
         else:
             debug_print("👥 Déconnexion MQTT normale")
     
