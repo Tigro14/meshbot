@@ -20,6 +20,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from traffic_persistence import TrafficPersistence
 
+# Test node IDs (chosen to verify hex-to-decimal conversion)
+# These specific values test different hex patterns
+TEST_NODE_TIGRO = 385503196   # !16fa4fdc - Real node from problem statement
+TEST_NODE_EXAMPLE = 305419896  # !12345678 - Simple hex pattern
+TEST_NODE_HIGH = 587202560     # !23000000 - High value test
+
 def test_mqtt_active_flag_fix():
     """Test that MQTT active flags are correctly set after hex to decimal conversion."""
     
@@ -35,11 +41,11 @@ def test_mqtt_active_flag_fix():
         # Create test data
         persistence = TrafficPersistence(db_path)
         
-        # Test node IDs (decimal)
+        # Use named test constants for clarity
         test_nodes = [
-            385503196,  # !16fa4fdc
-            305419896,  # !12345678  
-            587202560,  # !23000000
+            TEST_NODE_TIGRO,    # Real node from problem statement
+            TEST_NODE_EXAMPLE,  # Simple hex pattern
+            TEST_NODE_HIGH,     # High value test
         ]
         
         print("\n1. Creating test neighbor data...")
@@ -93,10 +99,9 @@ def test_mqtt_active_flag_fix():
                     })
             
             if formatted_neighbors:
-                # ORIGINAL (BROKEN) CODE:
-                # node_key_decimal = node_id_str.lstrip('!')  # Just strip !, no conversion needed
-                
-                # FIXED CODE:
+                # Test hex to decimal conversion
+                # Database stores: '!16fa4fdc' (hex with ! prefix)
+                # Need to convert to: '385503196' (decimal string)
                 node_id_hex_stripped = node_id_str.lstrip('!')  # Strip ! prefix
                 node_id_int = int(node_id_hex_stripped, 16)  # Convert hex to decimal
                 node_key_decimal = str(node_id_int)  # Convert to string for dict key

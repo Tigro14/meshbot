@@ -15,11 +15,18 @@ import sys
 import tempfile
 import subprocess
 import time
+import shutil
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from traffic_persistence import TrafficPersistence
+
+# Shared test constants (same as test_mqtt_active_fix.py for consistency)
+TEST_NODE_TIGRO = 385503196    # !16fa4fdc - Real node from problem statement
+TEST_NODE_EXAMPLE = 305419896  # !12345678 - Simple hex pattern
+TEST_NODE_HIGH = 587202560     # !23000000 - High value test
+TEST_NODE_EXTRA = 123456789    # !75bcd15 - Additional test node
 
 def test_export_nodes_integration():
     """Integration test for export_nodes_from_db.py with MQTT active fix."""
@@ -37,12 +44,12 @@ def test_export_nodes_integration():
         node_names_file = os.path.join(temp_dir, 'node_names.json')
         db_path = os.path.join(temp_dir, 'traffic_history.db')
         
-        # Test data
+        # Test data using shared constants
         test_nodes = [
-            {'id': 385503196, 'name': 'TestNode1', 'lat': 47.123, 'lon': 6.456, 'alt': 500},
-            {'id': 305419896, 'name': 'TestNode2', 'lat': 47.234, 'lon': 6.567, 'alt': 600},
-            {'id': 587202560, 'name': 'TestNode3', 'lat': 47.345, 'lon': 6.678, 'alt': 700},
-            {'id': 123456789, 'name': 'TestNode4', 'lat': 47.456, 'lon': 6.789, 'alt': 800},
+            {'id': TEST_NODE_TIGRO, 'name': 'TestNode1', 'lat': 47.123, 'lon': 6.456, 'alt': 500},
+            {'id': TEST_NODE_EXAMPLE, 'name': 'TestNode2', 'lat': 47.234, 'lon': 6.567, 'alt': 600},
+            {'id': TEST_NODE_HIGH, 'name': 'TestNode3', 'lat': 47.345, 'lon': 6.678, 'alt': 700},
+            {'id': TEST_NODE_EXTRA, 'name': 'TestNode4', 'lat': 47.456, 'lon': 6.789, 'alt': 800},
         ]
         
         # 1. Create node_names.json
@@ -88,7 +95,10 @@ def test_export_nodes_integration():
         
         # 3. Run export_nodes_from_db.py
         print("\n3. Running export_nodes_from_db.py...")
-        script_path = os.path.join(os.path.dirname(__file__), 'map', 'export_nodes_from_db.py')
+        
+        # Find script path relative to test file location
+        script_dir = os.path.join(os.path.dirname(__file__), 'map')
+        script_path = os.path.join(script_dir, 'export_nodes_from_db.py')
         
         result = subprocess.run(
             ['python3', script_path, node_names_file, db_path, '48'],
@@ -169,7 +179,6 @@ def test_export_nodes_integration():
         
     finally:
         # Cleanup
-        import shutil
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             print(f"\n🗑️  Cleaned up test directory: {temp_dir}")
