@@ -615,11 +615,12 @@ class TracerouteManager:
         try:
             from_id = packet.get('from', 0)
 
-            info_print(f"🔍 Traitement TRACEROUTE_APP de 0x{from_id:08x}")
+            debug_print(f"🔍 [Telegram] Traitement TRACEROUTE_APP de 0x{from_id:08x}")
 
-            # Vérifier si c'est une réponse attendue
+            # Vérifier si c'est une réponse attendue (pour Telegram)
+            # Note: Les réponses mesh/CLI sont gérées par mesh_traceroute_manager
             if from_id not in self.pending_traces:
-                info_print(f"⚠️  Traceroute de 0x{from_id:08x} non attendu")
+                debug_print(f"⚠️  [Telegram] Traceroute de 0x{from_id:08x} non destiné à Telegram (probablement CLI/mesh)")
                 return
 
             trace_data = self.pending_traces[from_id]
