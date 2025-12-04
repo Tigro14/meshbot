@@ -85,7 +85,7 @@ Any `node_id` that appears in this table is considered MQTT-active (they sent NE
 
 ### JSON Format
 
-Example node with MQTT active flag:
+Example node with MQTT active flag and timestamps:
 
 ```json
 {
@@ -100,11 +100,20 @@ Example node with MQTT active flag:
       "latitude": 47.2496,
       "longitude": 6.0248
     },
+    "lastHeard": 1733175600,
+    "mqttLastHeard": 1733175650,
     "neighbors": [...],
     "mqttActive": true
   }
 }
 ```
+
+**Important fields:**
+- `mqttActive`: true if node sent NEIGHBORINFO via MQTT
+- `mqttLastHeard`: timestamp when node was last heard via MQTT (from neighbor data)
+- `lastHeard`: timestamp when node was last heard (from mesh packets, or falls back to mqttLastHeard if no mesh packets)
+
+**Critical fix:** For MQTT-only nodes (nodes heard via MQTT but not directly via mesh), `lastHeard` now uses `mqttLastHeard` as a fallback. This prevents these nodes from being filtered out by time-based filters on the map.
 
 ### Map Legend
 
@@ -145,6 +154,41 @@ No configuration needed! The feature automatically:
 - **No performance impact**: The MQTT detection is part of the existing neighbor data query
 - **Minimal visual overhead**: Only adds one extra circle marker per MQTT-active node
 - **Efficient cleanup**: Hi-viz circles are properly removed when markers are recreated
+
+## Troubleshooting
+
+### Yellow circles not appearing on map
+
+If MQTT-active nodes are not showing yellow circles:
+
+1. **Check time filters**: Nodes need a `lastHeard` timestamp to pass time-based filters (6h, 24h, etc.)
+   - Solution: The export script now uses `mqttLastHeard` as a fallback for nodes without mesh packets
+   
+2. **Verify JSON export**: Check that nodes have both fields:
+   ```bash
+   cd map
+   ./export_nodes_from_db.py > /tmp/info.json 2>&1
+   grep -A 5 "mqttActive" /tmp/info.json
+   ```
+   
+3. **Check neighbor data in database**:
+   ```sql
+   sqlite3 ../traffic_history.db "SELECT node_id, COUNT(*) FROM neighbors GROUP BY node_id"
+   ```
+
+4. **Run test suite**:
+   ```bash
+   cd map
+   ./test_mqtt_lastheard.sh  # Verifies lastHeard fallback
+   ./test_mqtt_active.sh     # Verifies mqttActive flag
+   ```
+
+### Understanding the timestamp logic
+
+- **Mesh-only nodes**: `lastHeard` from packets table
+- **MQTT-only nodes**: `lastHeard` fallback from neighbor timestamps (NEW)
+- **Mesh+MQTT nodes**: `lastHeard` from packets, `mqttLastHeard` from neighbors
+- **No data nodes**: No `lastHeard`, filtered out by time filters
 
 ## Future Enhancements
 

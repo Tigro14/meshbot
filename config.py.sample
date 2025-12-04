@@ -287,21 +287,9 @@ MQTT_NEIGHBOR_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast/#"  # Topic spécifique
 # Format topic: msh/<region>/<channel>/2/json/<node_id>/NEIGHBORINFO_APP
 # Dépendance: paho-mqtt (déjà installé pour Blitzortung)
 
-# ========================================
-# COMMANDES DE REDÉMARRAGE
-# ========================================
-# Configuration pour les commandes de redémarrage des nœuds
-# Commandes disponibles:
-#   - /rebootpi <password> : Redémarrer le Raspberry Pi (hôte du bot)
-#   - /rebootnode <node_name> <password> : Redémarrer n'importe quel nœud Meshtastic
-#
-# Sécurité:
-#   - REBOOT_COMMANDS_ENABLED : Active/désactive toutes les commandes de redémarrage
-#   - REBOOT_AUTHORIZED_USERS : Liste des IDs autorisés (Telegram ou Mesh)
-#   - REBOOT_PASSWORD : Mot de passe requis pour toutes les commandes de redémarrage
-#
-# Note: /rebootnode utilise l'interface Meshtastic Python pour envoyer la commande
-#       /reboot directement au nœud cible (fonctionne en TCP ou serial)
+# Distance maximale (km) pour afficher les voisins MQTT dans /neighbors
+# Les nœuds situés à plus de cette distance du bot seront filtrés (nœuds étrangers)
+NEIGHBORS_MAX_DISTANCE_KM = 100  # Défaut: 100km
 
 REBOOT_AUTHORIZED_USERS = [
     11234530,    # trusted Telegram ID
