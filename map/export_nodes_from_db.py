@@ -132,39 +132,30 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                                 'snr': neighbor.get('snr'),
                             })
                     if formatted_neighbors:
-                        # Remove ! prefix from node_id_str for consistency with node_names.json keys
-                        node_key = node_id_str.lstrip('!')
-                        neighbors_data[node_key] = formatted_neighbors
+                        # Remove ! prefix from node_id_str
+                        # node_id_str format from database: '!385503196' (decimal with !)
+                        # node_names.json keys are decimal strings: '385503196'
+                        node_key_decimal = node_id_str.lstrip('!')  # Just strip !, no conversion needed
+                        
+                        # Store neighbors with decimal key (matches node_names.json)
+                        neighbors_data[node_key_decimal] = formatted_neighbors
+                        
                         # This node sent NEIGHBORINFO, so it's MQTT-active
-                        mqtt_active_nodes.add(node_key)
+                        mqtt_active_nodes.add(node_key_decimal)
+                        
                         # Store MQTT last heard timestamp
                         if max_timestamp > 0:
-                            mqtt_last_heard_data[node_key] = int(max_timestamp)
+                            mqtt_last_heard_data[node_key_decimal] = int(max_timestamp)
                 
                 # Query packets table for position and name data for MQTT-active nodes
                 # This is critical for MQTT-only nodes that aren't in node_names.json
                 mqtt_node_data = {}  # {node_id_str: {name, lat, lon, alt}}
                 
                 for node_key in mqtt_active_nodes:
-                    # node_key can be:
-                    # 1. Hex string (production): '16fa4fdc' from '!16fa4fdc'.lstrip('!')
-                    # 2. Decimal string (test/legacy): '123456789' from '!123456789'.lstrip('!')
-                    # packets table uses decimal string from_id (e.g., '385503196')
-                    
-                    # Try to determine if node_key is hex or decimal
-                    # Hex IDs are always 8 chars (e.g., '16fa4fdc')
-                    # Decimal IDs are variable length (e.g., '123456789')
-                    if len(node_key) == 8 and all(c in '0123456789abcdefABCDEF' for c in node_key):
-                        # Looks like hex - convert to decimal
-                        try:
-                            node_id_int = int(node_key, 16)
-                            node_id_str = str(node_id_int)
-                        except ValueError:
-                            # Shouldn't happen, but fallback to as-is
-                            node_id_str = node_key
-                    else:
-                        # Looks like decimal already - use as-is
-                        node_id_str = node_key
+                    # node_key is now always decimal string (e.g., '385503196')
+                    # converted from hex at line 139-143 to match node_names.json keys
+                    # packets table also uses decimal string from_id (e.g., '385503196')
+                    node_id_str = node_key
                     
                     # Get latest position data from packets
                     cursor.execute("""
@@ -351,16 +342,13 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                     node_entry["hopsAway"] = hops_data[node_id_str]
                 
                 # Add neighbors if available
-                # neighbors_data is keyed by hex (node_key = node_id_str.lstrip('!'))
-                # We need to check both decimal (node_id_str) and hex (node_id_hex.lstrip('!'))
-                node_key_hex = node_id_hex.lstrip('!')
+                # neighbors_data is now keyed by decimal (e.g., '385503196')
                 if node_id_str in neighbors_data:
                     node_entry["neighbors"] = neighbors_data[node_id_str]
-                elif node_key_hex in neighbors_data:
-                    node_entry["neighbors"] = neighbors_data[node_key_hex]
                 
                 # Mark as MQTT active
-                if node_id_str in mqtt_active_nodes or node_key_hex in mqtt_active_nodes:
+                # mqtt_active_nodes is now keyed by decimal (e.g., '385503196')
+                if node_id_str in mqtt_active_nodes:
                     node_entry["mqttActive"] = True
                 
                 output_nodes[node_id_hex] = node_entry
