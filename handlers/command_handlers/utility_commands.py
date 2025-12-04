@@ -885,24 +885,31 @@ class UtilityCommands:
 
     def _send_broadcast_via_tigrog2(self, message, sender_id, sender_info, command):
         """
-        Envoyer un message en broadcast via tigrog2
+        Envoyer un message en broadcast via l'interface partagée
 
-        Note: Exécuté dans un thread séparé pour ne pas bloquer
+        Note: Utilise l'interface existante au lieu de créer une nouvelle connexion TCP.
+        Cela évite les conflits de socket avec la connexion principale.
         """
-        def send_broadcast():
-            from safe_tcp_connection import broadcast_message
-
+        try:
+            # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
+            interface = self.sender._get_interface()
+            
+            if interface is None:
+                error_print(f"❌ Interface non disponible pour broadcast {command}")
+                return
+            
             # Tracker le broadcast AVANT l'envoi pour éviter boucle
             if self.broadcast_tracker:
                 self.broadcast_tracker(message)
-
-            debug_print(f"📡 Broadcast {command} via {REMOTE_NODE_NAME}...")
-            success, msg = broadcast_message(REMOTE_NODE_HOST, message)
-
-            if success:
-                info_print(f"✅ Broadcast {command} diffusé")
-                self.sender.log_conversation(sender_id, sender_info, command, message)
-            else:
-                error_print(f"❌ Échec broadcast {command}: {msg}")
-
-        threading.Thread(target=send_broadcast, daemon=True, name="BroadcastAnnonce").start()            
+            
+            debug_print(f"📡 Broadcast {command} via interface partagée...")
+            
+            # Utiliser l'interface partagée - PAS de nouvelle connexion TCP!
+            interface.sendText(message)
+            
+            info_print(f"✅ Broadcast {command} diffusé")
+            self.sender.log_conversation(sender_id, sender_info, command, message)
+            
+        except Exception as e:
+            error_print(f"❌ Échec broadcast {command}: {e}")
+            error_print(traceback.format_exc())            
