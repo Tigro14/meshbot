@@ -1123,7 +1123,7 @@
                 if (!isVisible) {
                     const filteredSpan = document.createElement('span');
                     filteredSpan.className = 'filtered-tag';
-                    filteredSpan.textContent = ' (filtré)';
+                    filteredSpan.textContent = ' (filtré - sera affiché)';
                     nameDiv.appendChild(filteredSpan);
                 }
                 
@@ -1135,16 +1135,11 @@
                 item.appendChild(nameDiv);
                 item.appendChild(idDiv);
                 
-                // Only allow clicking if node is visible
-                if (isVisible) {
-                    item.onclick = () => {
-                        zoomToNode(id, node, resultDiv);
-                        resultsListDiv.classList.remove('visible');
-                    };
-                } else {
-                    item.style.cursor = 'not-allowed';
-                    item.style.opacity = '0.5';
-                }
+                // Allow clicking on all nodes, even if filtered
+                item.onclick = () => {
+                    zoomToNode(id, node, resultDiv);
+                    resultsListDiv.classList.remove('visible');
+                };
                 
                 resultsListDiv.appendChild(item);
             });
@@ -1152,12 +1147,144 @@
             resultsListDiv.classList.add('visible');
         }
         
+        function createSingleMarker(id, node, isSearchResult = false) {
+            // Don't recreate if marker already exists
+            if (markers[id] && !isSearchResult) {
+                return markers[id];
+            }
+            
+            // Remove existing marker if recreating
+            if (markers[id]) {
+                map.removeLayer(markers[id]);
+                if (markers[id].hivizCircle) {
+                    map.removeLayer(markers[id].hivizCircle);
+                }
+            }
+            if (labelMarkers[id]) {
+                map.removeLayer(labelMarkers[id]);
+            }
+            
+            const lat = node.position.latitude;
+            const lon = node.position.longitude;
+            
+            const now = Date.now() / 1000;
+            const lastHeard = node.lastHeard || 0;
+            const hoursAgo = (now - lastHeard) / 3600;
+            
+            let color;
+            if (id === myNodeId) {
+                color = '#e74c3c';
+            } else {
+                color = getNodeColorByHop(node.hopsAway);
+            }
+            
+            // For search results, add a distinctive border
+            const markerOptions = {
+                radius: id === myNodeId ? 20 : 12,
+                fillColor: color,
+                color: isSearchResult ? '#FF00FF' : '#fff',  // Magenta border for searched nodes
+                weight: isSearchResult ? 4 : 2,
+                opacity: 1,
+                fillOpacity: 0.8,
+                title: node.user?.shortName || id
+            };
+            
+            const marker = L.circleMarker([lat, lon], markerOptions);
+            
+            // Add tooltip with longName that shows on hover
+            const longName = node.user?.longName || 'Nœud inconnu';
+            marker.bindTooltip(longName, {
+                permanent: false,
+                direction: 'top',
+                className: 'node-tooltip'
+            });
+            
+            // Create a divIcon with text label using longName instead of hex ID
+            const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
+            const labelIcon = L.divIcon({
+                html: `<div class="node-label">${labelText}</div>`,
+                className: '',
+                iconSize: [null, null]
+            });
+            
+            const labelMarker = L.marker([lat, lon], {
+                icon: labelIcon,
+                interactive: false
+            });
+            labelMarker.addTo(map);
+            labelMarkers[id] = labelMarker;
+            
+            marker.on('mouseover', function() {
+                this.setStyle({ fillOpacity: 1 });
+            });
+            
+            marker.on('mouseout', function() {
+                this.setStyle({ fillOpacity: 0.8 });
+            });
+            
+            const lastHeardDate = new Date(lastHeard * 1000);
+            const hoursAgoText = hoursAgo < 1 ? 
+                `Il y a ${Math.floor(hoursAgo * 60)} minutes` : 
+                `Il y a ${Math.floor(hoursAgo)} heures`;
+            
+            let popupContent = `<div class="popup-title">${node.user?.longName || 'Nœud inconnu'}</div>`;
+            popupContent += `<div class="popup-info">`;
+            popupContent += `<strong>ID:</strong> ${node.user?.shortName || id}<br>`;
+            popupContent += `<strong>Hops:</strong> ${node.hopsAway !== undefined ? node.hopsAway : 'N/A'}<br>`;
+            popupContent += `<strong>SNR:</strong> ${node.snr !== undefined ? node.snr.toFixed(1) + ' dB' : 'N/A'}<br>`;
+            if (node.neighbors || node.neighbours) {
+                const neighborCount = (node.neighbors || node.neighbours).length;
+                popupContent += `<strong>Voisins directs:</strong> ${neighborCount}<br>`;
+            }
+            if (node.mqttActive) {
+                popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
+            }
+            popupContent += `<strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
+            popupContent += `<em>${hoursAgoText}</em>`;
+            if (isSearchResult) {
+                popupContent += `<br><strong style="color: #FF00FF;">⚠ Affiché via recherche (hors filtre temps)</strong>`;
+            }
+            popupContent += `</div>`;
+            
+            marker.bindPopup(popupContent);
+            marker.addTo(map);
+            markers[id] = marker;
+            
+            // Add yellow hi-viz circle for MQTT-active nodes
+            if (node.mqttActive) {
+                const hivizCircle = L.circleMarker([lat, lon], {
+                    radius: id === myNodeId ? 28 : 20,
+                    fillColor: 'transparent',
+                    color: '#FFD700',  // Bright yellow/gold
+                    weight: 5,
+                    opacity: 1,
+                    fillOpacity: 0,
+                    className: 'mqtt-active-hiviz',
+                    interactive: false
+                });
+                hivizCircle.addTo(map);
+                markers[id].hivizCircle = hivizCircle;
+            }
+            
+            return marker;
+        }
+        
         function zoomToNode(nodeId, node, resultDiv) {
-            // Check if marker exists (node might be filtered out by time)
+            // If marker doesn't exist (filtered by time), create it temporarily for search
             if (!markers[nodeId]) {
-                resultDiv.textContent = `Nœud "${node.user?.longName || nodeId}" trouvé mais pas visible (filtre de temps)`;
-                resultDiv.className = 'search-result error';
-                return;
+                // Check if node has valid position
+                if (!isValidPosition(node.position?.latitude, node.position?.longitude)) {
+                    resultDiv.textContent = `Nœud "${node.user?.longName || nodeId}" trouvé mais sans position GPS valide`;
+                    resultDiv.className = 'search-result error';
+                    return;
+                }
+                
+                // Create temporary marker for this searched node
+                createSingleMarker(nodeId, node, true);
+                
+                // Update visible count
+                const currentVisible = parseInt(document.getElementById('visibleNodes').textContent) || 0;
+                document.getElementById('visibleNodes').textContent = currentVisible + 1;
             }
             
             // Success - zoom to node and highlight
