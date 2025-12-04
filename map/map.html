@@ -422,6 +422,10 @@
         const ID_PREFIX_LENGTH = 1;  // Length of '!' prefix in node IDs
         const MAX_ID_DISPLAY_LENGTH = 8;  // Show first 8 hex characters of node ID
         
+        // URL parameter auto-search configuration
+        const AUTO_SEARCH_DELAY = 500;  // Delay in ms before triggering auto-search from URL parameter
+        let autoSearchNodeParam = null;  // Stores node parameter from URL for deferred search
+        
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
                    lat !== null && lon !== null &&
@@ -621,6 +625,14 @@
                 
                 createMarkers(meshData.nodes);
                 updateMapView();
+                
+                // If node parameter was provided in URL, search for it
+                if (autoSearchNodeParam) {
+                    setTimeout(() => {
+                        searchNode();
+                        autoSearchNodeParam = null;
+                    }, AUTO_SEARCH_DELAY);
+                }
             } catch (error) {
                 console.error('Erreur chargement données:', error);
                 document.getElementById('lastHeard').textContent = 'Erreur: ' + error.message;
@@ -1125,6 +1137,7 @@
         function initFromURLParams() {
             const urlParams = new URLSearchParams(window.location.search);
             const viewParam = urlParams.get('view');
+            const nodeParam = urlParams.get('node');
             
             if (viewParam && ['nodes', 'links', 'both'].includes(viewParam)) {
                 currentView = viewParam;
@@ -1149,6 +1162,18 @@
                 if (linksRow && (viewParam === 'links' || viewParam === 'both')) {
                     linksRow.style.display = 'flex';
                 }
+            }
+            
+            // Handle node parameter for automatic search and zoom
+            if (nodeParam) {
+                // Set the search input value
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) {
+                    searchInput.value = nodeParam;
+                }
+                
+                // Store parameter for deferred search after map data loads
+                autoSearchNodeParam = nodeParam;
             }
         }
         
