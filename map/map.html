@@ -235,6 +235,10 @@
             font-size: 0.8rem;
         }
         
+        .filtered-tag {
+            color: #d93025;
+        }
+        
         .search-result {
             font-size: 0.85rem;
             color: #5f6368;
@@ -1000,16 +1004,34 @@
                 item.className = 'search-result-item';
                 
                 const displayName = node.user?.longName || node.user?.shortName || id;
-                const nodeIdShort = id.startsWith('!') ? id.substring(1, 9) : id.substring(0, 8);
+                const ID_PREFIX_LENGTH = 1;  // Length of '!' prefix
+                const MAX_ID_DISPLAY_LENGTH = 8;  // Show first 8 hex characters
+                const nodeIdShort = id.startsWith('!') ? 
+                    id.substring(ID_PREFIX_LENGTH, ID_PREFIX_LENGTH + MAX_ID_DISPLAY_LENGTH) : 
+                    id.substring(0, MAX_ID_DISPLAY_LENGTH);
                 
                 // Check if node is visible (filtered by time)
                 const isVisible = markers[id] !== undefined;
-                const visibilityTag = isVisible ? '' : ' <span style="color: #d93025;">(filtré)</span>';
                 
-                item.innerHTML = `
-                    <div class="node-name">${displayName}${visibilityTag}</div>
-                    <div class="node-id">ID: ${nodeIdShort}</div>
-                `;
+                // Create node name element
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'node-name';
+                nameDiv.textContent = displayName;
+                
+                if (!isVisible) {
+                    const filteredSpan = document.createElement('span');
+                    filteredSpan.className = 'filtered-tag';
+                    filteredSpan.textContent = ' (filtré)';
+                    nameDiv.appendChild(filteredSpan);
+                }
+                
+                // Create node ID element
+                const idDiv = document.createElement('div');
+                idDiv.className = 'node-id';
+                idDiv.textContent = `ID: ${nodeIdShort}`;
+                
+                item.appendChild(nameDiv);
+                item.appendChild(idDiv);
                 
                 // Only allow clicking if node is visible
                 if (isVisible) {
