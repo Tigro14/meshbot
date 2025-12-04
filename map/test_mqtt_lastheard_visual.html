@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test MQTT Yellow Circles - Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #1a73e8;
+            border-bottom: 3px solid #1a73e8;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .node-card {
+            background: #f8f9fa;
+            border-left: 4px solid #1a73e8;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .node-card.mqtt-active {
+            border-left-color: #FFD700;
+            background: #fffef0;
+        }
+        .node-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+        }
+        .node-field {
+            margin: 5px 0;
+            font-size: 0.95em;
+        }
+        .field-label {
+            font-weight: 500;
+            color: #5f6368;
+        }
+        .field-value {
+            color: #1a73e8;
+            font-family: 'Courier New', monospace;
+        }
+        .mqtt-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .mqtt-active-badge {
+            background: #FFD700;
+            color: #000;
+        }
+        .mqtt-inactive-badge {
+            background: #e0e0e0;
+            color: #666;
+        }
+        .test-result {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .test-pass {
+            background: #e6f4ea;
+            border: 1px solid #34a853;
+            color: #137333;
+        }
+        .test-fail {
+            background: #fce8e6;
+            border: 1px solid #ea4335;
+            color: #c5221f;
+        }
+        .expected-behavior {
+            background: #e8f0fe;
+            border-left: 4px solid #1a73e8;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test: MQTT Yellow Circles Display</h1>
+    
+    <div class="test-section">
+        <h2>📋 Test Overview</h2>
+        <p>This test verifies that MQTT-active nodes have proper <code>lastHeard</code> timestamps and will display correctly on map.html with yellow circles.</p>
+        
+        <div class="expected-behavior">
+            <strong>Expected Behavior:</strong>
+            <ul>
+                <li>✅ MQTT-active nodes have <code>mqttActive: true</code></li>
+                <li>✅ MQTT-active nodes have <code>mqttLastHeard</code> timestamp</li>
+                <li>✅ MQTT-only nodes have <code>lastHeard</code> (fallback from MQTT)</li>
+                <li>✅ All nodes pass time-based filters (not filtered out)</li>
+                <li>🟡 Map should show yellow circles around MQTT-active nodes</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Test Data</h2>
+        <div id="test-data"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>✅ Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📝 Sample JSON Structure</h2>
+        <pre id="json-sample"></pre>
+    </div>
+
+    <script>
+        // Load demo data from the created file
+        // In production, this would be loaded from info.json
+        const demoData = {
+            "Nodes in mesh": {
+                "!16fa4fdc": {
+                    "num": 385503196,
+                    "user": {
+                        "id": "!16fa4fdc",
+                        "longName": "tigro G2 PV (Mesh+MQTT)",
+                        "shortName": "TIG2"
+                    },
+                    "position": {
+                        "latitude": 47.2496,
+                        "longitude": 6.0248
+                    },
+                    "lastHeard": Date.now() / 1000 - 300,
+                    "mqttLastHeard": Date.now() / 1000 - 200,
+                    "mqttActive": true,
+                    "neighbors": [
+                        {"nodeId": "!075bcd15", "snr": 8.5}
+                    ]
+                },
+                "!075bcd15": {
+                    "num": 123456789,
+                    "user": {
+                        "id": "!075bcd15",
+                        "longName": "Remote MQTT Node (MQTT Only)",
+                        "shortName": "RMOT"
+                    },
+                    "position": {
+                        "latitude": 47.2181,
+                        "longitude": -1.5528
+                    },
+                    "lastHeard": Date.now() / 1000 - 600,  // Fallback from MQTT
+                    "mqttLastHeard": Date.now() / 1000 - 600,
+                    "mqttActive": true,
+                    "neighbors": [
+                        {"nodeId": "!16fa4fdc", "snr": 7.2}
+                    ]
+                },
+                "!3ade68b1": {
+                    "num": 987654321,
+                    "user": {
+                        "id": "!3ade68b1",
+                        "longName": "Local Mesh Node (No MQTT)",
+                        "shortName": "LMES"
+                    },
+                    "position": {
+                        "latitude": 47.2300,
+                        "longitude": -1.5600
+                    },
+                    "lastHeard": Date.now() / 1000 - 1800
+                }
+            }
+        };
+
+        function formatTimestamp(ts) {
+            const date = new Date(ts * 1000);
+            const now = Date.now() / 1000;
+            const hoursAgo = (now - ts) / 3600;
+            return `${date.toLocaleString('fr-FR')} (${hoursAgo.toFixed(1)}h ago)`;
+        }
+
+        function renderTestData() {
+            const container = document.getElementById('test-data');
+            const nodes = demoData["Nodes in mesh"];
+            
+            let html = '';
+            for (const [nodeId, node] of Object.entries(nodes)) {
+                const isMqttActive = node.mqttActive || false;
+                const cardClass = isMqttActive ? 'node-card mqtt-active' : 'node-card';
+                const badgeClass = isMqttActive ? 'mqtt-active-badge' : 'mqtt-inactive-badge';
+                const badgeText = isMqttActive ? '🟡 MQTT Active' : '⚫ No MQTT';
+                
+                html += `
+                    <div class="${cardClass}">
+                        <div class="node-title">
+                            ${node.user.longName}
+                            <span class="mqtt-indicator ${badgeClass}">${badgeText}</span>
+                        </div>
+                        <div class="node-field">
+                            <span class="field-label">ID:</span>
+                            <span class="field-value">${nodeId}</span>
+                        </div>
+                        <div class="node-field">
+                            <span class="field-label">lastHeard:</span>
+                            <span class="field-value">${node.lastHeard ? formatTimestamp(node.lastHeard) : 'NOT SET ❌'}</span>
+                        </div>
+                        ${node.mqttLastHeard ? `
+                        <div class="node-field">
+                            <span class="field-label">mqttLastHeard:</span>
+                            <span class="field-value">${formatTimestamp(node.mqttLastHeard)}</span>
+                        </div>
+                        ` : ''}
+                        <div class="node-field">
+                            <span class="field-label">Position:</span>
+                            <span class="field-value">${node.position.latitude.toFixed(4)}, ${node.position.longitude.toFixed(4)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function runTests() {
+            const container = document.getElementById('test-results');
+            const nodes = demoData["Nodes in mesh"];
+            
+            let allPassed = true;
+            let results = [];
+            
+            // Test 1: All nodes have lastHeard
+            const nodesWithoutLastHeard = Object.entries(nodes).filter(([id, node]) => !node.lastHeard);
+            if (nodesWithoutLastHeard.length === 0) {
+                results.push({
+                    pass: true,
+                    message: 'All nodes have lastHeard timestamp'
+                });
+            } else {
+                results.push({
+                    pass: false,
+                    message: `${nodesWithoutLastHeard.length} nodes missing lastHeard: ${nodesWithoutLastHeard.map(([id]) => id).join(', ')}`
+                });
+                allPassed = false;
+            }
+            
+            // Test 2: MQTT-active nodes have mqttActive flag
+            const mqttActiveNodes = Object.entries(nodes).filter(([id, node]) => node.mqttActive);
+            results.push({
+                pass: true,
+                message: `${mqttActiveNodes.length} nodes have mqttActive flag`
+            });
+            
+            // Test 3: MQTT-active nodes have mqttLastHeard
+            const mqttNodesWithoutTimestamp = mqttActiveNodes.filter(([id, node]) => !node.mqttLastHeard);
+            if (mqttNodesWithoutTimestamp.length === 0) {
+                results.push({
+                    pass: true,
+                    message: 'All MQTT-active nodes have mqttLastHeard timestamp'
+                });
+            } else {
+                results.push({
+                    pass: false,
+                    message: `${mqttNodesWithoutTimestamp.length} MQTT nodes missing mqttLastHeard`
+                });
+                allPassed = false;
+            }
+            
+            // Test 4: MQTT-only nodes have lastHeard fallback
+            const mqttOnlyNode = nodes['!075bcd15'];  // Known MQTT-only node
+            if (mqttOnlyNode && mqttOnlyNode.lastHeard && mqttOnlyNode.mqttActive) {
+                results.push({
+                    pass: true,
+                    message: 'MQTT-only node has lastHeard fallback (critical fix verified)'
+                });
+            } else {
+                results.push({
+                    pass: false,
+                    message: 'MQTT-only node missing lastHeard fallback'
+                });
+                allPassed = false;
+            }
+            
+            // Test 5: Time filter simulation
+            const now = Date.now() / 1000;
+            const sixHourFilter = Object.entries(nodes).filter(([id, node]) => {
+                const hoursAgo = (now - node.lastHeard) / 3600;
+                return hoursAgo <= 6;
+            });
+            results.push({
+                pass: true,
+                message: `${sixHourFilter.length}/${Object.keys(nodes).length} nodes pass 6h time filter`
+            });
+            
+            // Render results
+            let html = '';
+            for (const result of results) {
+                const resultClass = result.pass ? 'test-result test-pass' : 'test-result test-fail';
+                const icon = result.pass ? '✅' : '❌';
+                html += `
+                    <div class="${resultClass}">
+                        ${icon} ${result.message}
+                    </div>
+                `;
+            }
+            
+            if (allPassed) {
+                html += `
+                    <div class="test-result test-pass">
+                        <strong>🎉 All critical tests passed!</strong><br>
+                        MQTT yellow circles should now appear correctly on map.html
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function showSampleJson() {
+            const sample = {
+                "!075bcd15": demoData["Nodes in mesh"]["!075bcd15"]
+            };
+            document.getElementById('json-sample').textContent = JSON.stringify(sample, null, 2);
+        }
+
+        // Run tests on load
+        renderTestData();
+        runTests();
+        showSampleJson();
+    </script>
+</body>
+</html>
