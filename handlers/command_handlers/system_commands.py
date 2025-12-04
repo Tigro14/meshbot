@@ -131,8 +131,8 @@ class SystemCommands:
         
         Args:
             from_id: Node ID demandeur
-            command_name: '/rebootpi' ou '/rebootg2'
-            message_parts: ['/rebootpi', 'password']
+            command_name: '/rebootpi' ou '/rebootnode'
+            message_parts: ['/rebootpi', 'password'] ou ['/rebootnode', 'node', 'password']
         
         Returns:
             tuple: (authorized: bool, error_message: str or None)
@@ -201,64 +201,6 @@ class SystemCommands:
             
         except Exception as e:
             error_print(f"Erreur reboot: {e}")
-            return f"❌ Erreur: {str(e)[:50]}"
-
-    def handle_rebootg2_command(self, from_id, message_parts):
-        """
-        Traiter /rebootg2 de manière sécurisée
-        
-        Args:
-            from_id: Node ID demandeur
-            message_parts: ['/rebootg2', 'password'] (liste)
-        
-        Returns:
-            str: Message de réponse
-        """
-        # Vérifier autorisation
-        authorized, error_msg = self._check_reboot_authorization_mesh(
-            from_id,
-            '/rebootg2',
-            message_parts
-        )
-        
-        if not authorized:
-            return error_msg
-        
-        # Exécuter le reboot
-        try:
-            import meshtastic.tcp_interface
-            try:
-                from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
-            except ImportError:
-                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
-            
-            if not REMOTE_NODE_HOST:
-                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
-            
-            node_name = self.node_manager.get_node_name(from_id, self._get_interface())
-            info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
-            
-            #remote_interface = meshtastic.tcp_interface.TCPInterface(
-            #    hostname=REMOTE_NODE_HOST,
-            #    portNumber=4403
-            #)
-            #time.sleep(3)
-            
-            #remote_interface.sendText("/reboot")
-            from safe_tcp_connection import send_text_to_remote
-            success, msg = send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
-            if not success:
-                return msg
-            info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
-            
-            time.sleep(2)
-            remote_interface.close()
-            
-            return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
-            
-        except Exception as e:
-            node_name = REMOTE_NODE_NAME if 'REMOTE_NODE_NAME' in dir() else 'node distant'
-            error_print(f"Erreur reboot {node_name}: {e}")
             return f"❌ Erreur: {str(e)[:50]}"
 
     def handle_rebootnode_command(self, from_id, message_parts):

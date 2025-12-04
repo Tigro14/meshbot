@@ -685,6 +685,7 @@ class UtilityCommands:
 
         🔧 ADMINISTRATION (si autorisé)
         • /rebootpi [mdp] - Redémarrage Pi5
+        • /rebootnode [nom] [mdp] - Redémarrage nœud distant
         • /cpu - Monitoring CPU temps réel (10s)
 
         📋 LIMITES & INFORMATIONS

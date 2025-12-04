@@ -239,7 +239,7 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("sys", self.system_commands.sys_command))
         self.application.add_handler(CommandHandler("cpu", self.system_commands.cpu_command))
         self.application.add_handler(CommandHandler("rebootpi", self.system_commands.rebootpi_command))
-        self.application.add_handler(CommandHandler("rebootg2", self.system_commands.rebootg2_command))
+        self.application.add_handler(CommandHandler("rebootnode", self.system_commands.rebootnode_command))
 
         # Commandes réseau
         self.application.add_handler(CommandHandler("nodes", self.network_commands.nodes_command))
