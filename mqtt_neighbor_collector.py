@@ -382,7 +382,18 @@ class MQTTNeighborCollector:
                     portnums_pb2.PortNum.NEIGHBORINFO_APP: "NEIGHBORINFO"
                 }
                 portnum_name = portnum_names.get(portnum, f"UNKNOWN({portnum})")
-                debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
+                # Get longname if available from node_manager
+                longname = None
+                if self.node_manager:
+                    longname = self.node_manager.get_node_name(from_id)
+                    # If get_node_name returns "Unknown" or a hex ID, don't use it
+                    if longname and (longname == "Unknown" or longname.startswith("!")):
+                        longname = None
+                
+                if longname:
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x} ({longname})")
+                else:
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
             
             # Traiter les paquets NODEINFO pour mettre à jour les noms de nœuds
             if decoded.portnum == portnums_pb2.PortNum.NODEINFO_APP:
