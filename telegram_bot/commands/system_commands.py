@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Commandes système Telegram : sys, cpu, rebootpi, rebootg2
+Commandes système Telegram : sys, cpu, rebootpi, rebootnode
 """
 
 from telegram import Update
@@ -150,12 +150,12 @@ class SystemCommands(TelegramCommandBase):
         response = await asyncio.to_thread(get_cpu_monitoring)
         await self.send_message(update, response)
 
-    async def rebootg2_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Commande /rebootg2 - Redémarrage du node distant (legacy)"""
+    async def rebootnode_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Commande /rebootnode - Redémarrage d'un node distant"""
         user = update.effective_user
 
         info_print("=" * 60)
-        info_print("🔥 rebootg2_command() APPELÉ !")
+        info_print("🔥 rebootnode_command() APPELÉ !")
         info_print(f"   User Telegram: {user.username}")
         info_print(f"   User ID Telegram: {user.id}")
         info_print(f"   Arguments: {context.args}")
@@ -165,9 +165,14 @@ class SystemCommands(TelegramCommandBase):
             await update.effective_message.reply_text("❌ Non autorisé")
             return
 
-        # Parser les arguments (mot de passe)
-        password = context.args[0] if context.args else ""
-        message_parts = ["/rebootg2", password] if password else ["/rebootg2"]
+        # Parser les arguments (node_name et mot de passe)
+        if len(context.args) < 2:
+            await update.effective_message.reply_text("⚠️ Usage: /rebootnode <node_name> <password>")
+            return
+        
+        node_name = context.args[0]
+        password = context.args[1]
+        message_parts = ["/rebootnode", node_name, password]
 
         info_print(f"📝 message_parts construit: {message_parts}")
 
@@ -191,14 +196,14 @@ class SystemCommands(TelegramCommandBase):
 
         info_print("=" * 60)
 
-        def reboot_g2():
+        def reboot_node():
             try:
-                info_print(f"📞 Appel handle_rebootg2_command avec:")
+                info_print(f"📞 Appel handle_rebootnode_command avec:")
                 info_print(f"   sender_id: 0x{sender_id:08x}")
                 info_print(f"   message_parts: {message_parts}")
 
-                # ✅ FIX : Appeler via le router.system_handler
-                response = self.message_handler.router.system_handler.handle_rebootg2_command(
+                # ✅ Appeler via le router.system_handler
+                response = self.message_handler.router.system_handler.handle_rebootnode_command(
                     sender_id,
                     message_parts
                 )
@@ -206,11 +211,11 @@ class SystemCommands(TelegramCommandBase):
                 info_print(f"📬 Réponse reçue: {response}")
                 return response
             except Exception as e:
-                error_print(f"Erreur dans reboot_g2: {e or 'Unknown error'}")
+                error_print(f"Erreur dans reboot_node: {e or 'Unknown error'}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:100]}"
 
-        response = await asyncio.to_thread(reboot_g2)
+        response = await asyncio.to_thread(reboot_node)
         info_print(f"📤 Envoi réponse à Telegram: {response}")
         await self.send_message(update, response)
 

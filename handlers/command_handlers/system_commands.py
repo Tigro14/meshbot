@@ -131,8 +131,8 @@ class SystemCommands:
         
         Args:
             from_id: Node ID demandeur
-            command_name: '/rebootpi' ou '/rebootg2'
-            message_parts: ['/rebootpi', 'password']
+            command_name: '/rebootpi' ou '/rebootnode'
+            message_parts: ['/rebootpi', 'password'] ou ['/rebootnode', 'node', 'password']
         
         Returns:
             tuple: (authorized: bool, error_message: str or None)
@@ -203,60 +203,110 @@ class SystemCommands:
             error_print(f"Erreur reboot: {e}")
             return f"❌ Erreur: {str(e)[:50]}"
 
-    def handle_rebootg2_command(self, from_id, message_parts):
+    def handle_rebootnode_command(self, from_id, message_parts):
         """
-        Traiter /rebootg2 de manière sécurisée
+        Traiter /rebootnode <node_name> <password> de manière sécurisée
+        
+        Permet de redémarrer n'importe quel nœud Meshtastic via la commande /reboot
+        envoyée directement au nœud cible via l'interface Python (TCP ou serial).
         
         Args:
             from_id: Node ID demandeur
-            message_parts: ['/rebootg2', 'password'] (liste)
+            message_parts: ['/rebootnode', 'target_node', 'password'] (liste)
         
         Returns:
             str: Message de réponse
         """
-        # Vérifier autorisation
+        # Vérifier qu'il y a au moins 3 arguments (/rebootnode target password)
+        if len(message_parts) < 3:
+            return "⚠️ Usage: /rebootnode <node_name> <password>"
+        
+        # Vérifier autorisation (utilise password de message_parts[2])
+        # Créer une liste modifiée pour la vérification d'auth
+        auth_parts = [message_parts[0], message_parts[2]]  # ['/rebootnode', 'password']
         authorized, error_msg = self._check_reboot_authorization_mesh(
             from_id,
-            '/rebootg2',
-            message_parts
+            '/rebootnode',
+            auth_parts
         )
         
         if not authorized:
             return error_msg
         
-        # Exécuter le reboot
+        # Extraire le nom du nœud cible
+        target_node_name = message_parts[1]
+        requester_name = self.node_manager.get_node_name(from_id, self._get_interface())
+        
         try:
-            import meshtastic.tcp_interface
-            try:
-                from config import REMOTE_NODE_HOST, REMOTE_NODE_NAME
-            except ImportError:
-                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+            # Chercher le node_id du nœud cible
+            # Utilise le même pattern que /trace: chercher d'abord dans node_manager
+            matching_nodes = []
+            exact_matches = []
+            target_search = target_node_name.lower()
             
-            if not REMOTE_NODE_HOST:
-                return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+            # PRIORITÉ 1: Chercher dans node_manager.node_names (SQLite DB)
+            if self.node_manager and hasattr(self.node_manager, 'node_names'):
+                for node_id, node_data in self.node_manager.node_names.items():
+                    node_name = node_data.get('name', '').lower()
+                    node_id_hex = f"{node_id:x}".lower()
+                    
+                    # Vérifier correspondance exacte d'abord
+                    if target_search == node_name or target_search == node_id_hex:
+                        exact_matches.append({
+                            'id': node_id,
+                            'name': node_data.get('name', f"Node-{node_id:08x}")
+                        })
+                    # Sinon correspondance partielle
+                    elif target_search in node_name or target_search in node_id_hex:
+                        matching_nodes.append({
+                            'id': node_id,
+                            'name': node_data.get('name', f"Node-{node_id:08x}")
+                        })
             
-            node_name = self.node_manager.get_node_name(from_id, self._get_interface())
-            info_print(f"🔄 REBOOT G2: {node_name} (0x{from_id:08x})")
+            # Déterminer le nœud cible
+            target_node_id = None
+            target_name = None
             
-            #remote_interface = meshtastic.tcp_interface.TCPInterface(
-            #    hostname=REMOTE_NODE_HOST,
-            #    portNumber=4403
-            #)
-            #time.sleep(3)
+            if len(exact_matches) == 1:
+                # Une seule correspondance exacte: utiliser directement
+                target_node_id = exact_matches[0]['id']
+                target_name = exact_matches[0]['name']
+            elif len(exact_matches) > 1:
+                # Plusieurs correspondances exactes: ambiguïté
+                names = ', '.join([f"{n['name']} ({n['id']:08x})" for n in exact_matches[:3]])
+                return f"❌ Plusieurs nœuds trouvés: {names}"
+            elif len(matching_nodes) == 1:
+                # Une seule correspondance partielle: utiliser directement
+                target_node_id = matching_nodes[0]['id']
+                target_name = matching_nodes[0]['name']
+            elif len(matching_nodes) > 1:
+                # Plusieurs correspondances partielles: ambiguïté
+                names = ', '.join([f"{n['name']} ({n['id']:08x})" for n in matching_nodes[:3]])
+                return f"❌ Plusieurs nœuds trouvés: {names}"
+            else:
+                # Aucune correspondance
+                return f"❌ Nœud '{target_node_name}' introuvable"
             
-            #remote_interface.sendText("/reboot")
-            from safe_tcp_connection import send_text_to_remote
-            success, msg = send_text_to_remote(REMOTE_NODE_HOST, "/reboot")
-            if not success:
-                return msg
-            info_print(f"✅ Commande envoyée à {REMOTE_NODE_NAME}")
+            # Envoyer la commande /reboot au nœud cible
+            info_print(f"🔄 REBOOT NODE: {requester_name} (0x{from_id:08x}) -> {target_name} (0x{target_node_id:08x})")
             
-            time.sleep(2)
-            remote_interface.close()
+            interface = self._get_interface()
+            if not interface:
+                return "❌ Interface Meshtastic non disponible"
             
-            return f"✅ Redémarrage {REMOTE_NODE_NAME} lancé"
+            # Envoyer /reboot au nœud cible via sendText avec destinationId
+            # Note: destinationId peut être nodeNum (int) ou nodeId (str comme "!abc123")
+            interface.sendText(
+                text="/reboot",
+                destinationId=target_node_id,  # Node ID (int)
+                wantAck=True  # Demander accusé de réception
+            )
+            
+            info_print(f"✅ Commande /reboot envoyée à {target_name} (0x{target_node_id:08x})")
+            return f"✅ Redémarrage {target_name} lancé"
             
         except Exception as e:
-            node_name = REMOTE_NODE_NAME if 'REMOTE_NODE_NAME' in dir() else 'node distant'
-            error_print(f"Erreur reboot {node_name}: {e}")
+            error_print(f"Erreur rebootnode {target_node_name}: {e}")
+            import traceback
+            error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"

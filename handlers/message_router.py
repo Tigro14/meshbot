@@ -130,10 +130,10 @@ class MessageRouter:
             self.sender.send_single(response, sender_id, sender_info)
             self.sender.log_conversation(sender_id, sender_info, message, response)
         
-        elif message.startswith('/rebootg2'):
+        elif message.startswith('/rebootnode'):
             # ✅ Parser les arguments et appeler avec vérification d'auth
-            parts = message.split()  # ['/rebootg2', 'password']
-            response = self.system_handler.handle_rebootg2_command(from_id, parts)
+            parts = message.split()  # ['/rebootnode', 'node_name', 'password']
+            response = self.system_handler.handle_rebootnode_command(from_id, parts)
             self.sender.send_single(response, sender_id, sender_info)
             self.sender.log_conversation(sender_id, sender_info, message, response)
 
