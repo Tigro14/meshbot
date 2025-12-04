@@ -621,6 +621,14 @@
                 
                 createMarkers(meshData.nodes);
                 updateMapView();
+                
+                // If node parameter was provided in URL, search for it
+                if (window.nodeParamToSearch) {
+                    setTimeout(() => {
+                        searchNode();
+                        delete window.nodeParamToSearch;
+                    }, 500);
+                }
             } catch (error) {
                 console.error('Erreur chargement données:', error);
                 document.getElementById('lastHeard').textContent = 'Erreur: ' + error.message;
@@ -1125,6 +1133,7 @@
         function initFromURLParams() {
             const urlParams = new URLSearchParams(window.location.search);
             const viewParam = urlParams.get('view');
+            const nodeParam = urlParams.get('node');
             
             if (viewParam && ['nodes', 'links', 'both'].includes(viewParam)) {
                 currentView = viewParam;
@@ -1149,6 +1158,19 @@
                 if (linksRow && (viewParam === 'links' || viewParam === 'both')) {
                     linksRow.style.display = 'flex';
                 }
+            }
+            
+            // Handle node parameter for automatic search and zoom
+            if (nodeParam) {
+                // Set the search input value
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) {
+                    searchInput.value = nodeParam;
+                }
+                
+                // Trigger search after map and data are loaded
+                // We'll call this after initMap() completes
+                window.nodeParamToSearch = nodeParam;
             }
         }
         

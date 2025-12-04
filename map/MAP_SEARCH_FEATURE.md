@@ -186,6 +186,51 @@ Result: "Nœud oldnode trouvé mais pas visible (filtre de temps)"
 Action: Change time filter to "Tout" (All) and search again
 ```
 
+## URL Parameters (New in v1.2)
+
+The map now supports URL parameters for automatic search and zoom on page load.
+
+### `node` Parameter
+
+Automatically searches for and zooms to a specific node when the page loads.
+
+**Syntax:**
+```
+map.html?node=<search-term>
+```
+
+**Examples:**
+```
+# Search by short name
+map.html?node=tigro
+
+# Search by long name
+map.html?node=G2%20PV
+
+# Search by node ID
+map.html?node=a2e175ac
+
+# Combine with view parameter
+map.html?view=both&node=tigro
+
+# URL-encoded search with spaces
+map.html?node=Tigro%20G2%20PV
+```
+
+**Behavior:**
+- Populates the search input field with the search term
+- Automatically triggers a search 500ms after page load
+- If single match: zooms directly to node
+- If multiple matches: displays results listbox
+- Respects active time filters (default is 24h)
+- Shows error message if node not found or filtered out
+
+**Use Cases:**
+- Direct links to specific nodes in documentation
+- Sharing node locations with team members
+- Bookmarking favorite nodes for quick access
+- Integration with external systems (e.g., dashboards, monitoring tools)
+
 ## Browser Compatibility
 
 The search feature uses standard web APIs:
@@ -211,12 +256,12 @@ Compatible with:
 
 Potential improvements for future versions:
 - [x] **Multi-node selection** (Implemented in v1.1)
+- [x] **URL parameter support** (Implemented in v1.2)
 - [ ] Autocomplete suggestions while typing
 - [ ] Search history
 - [ ] Regular expression support
 - [ ] Search by hop count or SNR range
 - [ ] Export search results
-- [ ] URL parameter support (e.g., ?search=tigro)
 - [ ] Keyboard navigation in results listbox (arrow keys)
 
 ## Troubleshooting
@@ -247,6 +292,13 @@ Potential improvements for future versions:
 
 ## Version History
 
+- **v1.2** (2024-12-04): URL parameter support
+  - Added `node` URL parameter for automatic search on page load
+  - Example: `map.html?node=tigro` will automatically search and zoom to "tigro"
+  - Works with short names, long names, and node IDs
+  - Compatible with existing `view` parameter (e.g., `?view=both&node=tigro`)
+  - Respects time filters when searching from URL parameters
+  
 - **v1.1** (2024-12-04): Layout fixes and multiple results
   - Fixed button layout: "Chercher" and "Effacer" on same row
   - Added results listbox for multiple matches
