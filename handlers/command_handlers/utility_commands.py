@@ -14,6 +14,9 @@ from utils_weather import get_weather_data, get_rain_graph, get_weather_astro
 from config import *
 from utils import *
 
+# Constantes pour les délais entre messages
+MESSAGE_DELAY_SECONDS = 0.5  # Délai entre les parties d'un message splitté
+
 class UtilityCommands:
     def __init__(self, esphome_client, traffic_monitor, sender, node_manager=None, blitz_monitor=None, vigilance_monitor=None, broadcast_tracker=None):
         self.esphome_client = esphome_client
@@ -350,46 +353,68 @@ class UtilityCommands:
 
         # Traiter selon la sous-commande
         if subcommand == 'rain':
-            # Graphe de précipitations pour LoRa (ultra-compact pour <180 chars)
-            # - max_hours=24: 24 heures de prévision (48 chars de largeur)
-            #   Max tested: 28h (175 chars), using 24h for safety margin (~160 chars)
-            # - ultra_compact=True: header court + 2 lignes graphe seulement
+            # Graphe de précipitations en 2 parties pour meilleure lisibilité
+            # - max_hours=20: 20 heures de prévision (40 chars de largeur)
+            # - compact_mode=True: Utilisé pour backward compat (non-split mode)
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
-            # - Cache SQLite 5min via traffic_monitor.persistence
+            # - Cache SQLite 1h via traffic_monitor.persistence (RAIN_CACHE_STALE_DURATION)
+            # - split_messages=True: retourne (graph, header) pour envoi en 2 messages
+            #   * Partie 1: 2 lignes sparkline + échelle horaire (~78 chars)
+            #   * Partie 2: Header local seulement (~50 chars)
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
-            weather_data = get_rain_graph(
+            result = get_rain_graph(
                 location, 
                 days=days, 
-                max_hours=24,  # 24h de prévision (48 chars width, ~160 chars total)
-                compact_mode=True, 
+                max_hours=20,  # 20h de prévision (40 chars width, ~78 chars graphe complet)
+                compact_mode=True,  # Backward compat pour mode non-split
                 persistence=persistence, 
                 start_at_current_time=True,
-                ultra_compact=True  # Header court + 2 lignes seulement
+                ultra_compact=False,  # Ne pas ultra-compacter maintenant qu'on split en 2 messages
+                split_messages=True  # Retourner (graph, header) pour 2 messages
             )
             cmd = f"/weather rain {location} {days}" if location else f"/weather rain {days}"
 
-            # Logger
-            self.sender.log_conversation(sender_id, sender_info, cmd, weather_data)
+            # Vérifier si on a un tuple (split_messages=True)
+            if isinstance(result, tuple):
+                graph, header = result
+                
+                # Logger les deux parties
+                full_text = f"{graph}\n{header}"
+                self.sender.log_conversation(sender_id, sender_info, cmd, full_text)
 
-            # Envoyer selon le mode (broadcast ou direct)
-            if is_broadcast:
-                # Broadcast public sans préfixe (utilisateur sait déjà qui il est)
-                # Pour rain, envoyer seulement le premier jour en broadcast (sinon trop long)
-                day_messages = weather_data.split('\n\n')
-                first_day = day_messages[0] if day_messages else weather_data
-                self._send_broadcast_via_tigrog2(first_day, sender_id, sender_info, cmd)
-            else:
-                # Réponse privée: découper et envoyer jour par jour (peut être 1 ou 3 messages selon 'days')
-                day_messages = weather_data.split('\n\n')
-                for i, day_msg in enumerate(day_messages):
-                    # Skip empty messages (safety check)
-                    if not day_msg.strip():
-                        continue
-                    self.sender.send_single(day_msg, sender_id, sender_info)
+                # Envoyer selon le mode (broadcast ou direct)
+                if is_broadcast:
+                    # Broadcast public: envoyer le graphe complet (2 lignes + échelle)
+                    self._send_broadcast_via_tigrog2(graph, sender_id, sender_info, cmd)
+                    # Puis le header
+                    time.sleep(MESSAGE_DELAY_SECONDS)
+                    self._send_broadcast_via_tigrog2(header, sender_id, sender_info, cmd)
+                else:
+                    # Réponse privée: envoyer les 2 parties séparément
+                    # Partie 1: Graphe complet (2 lignes sparkline + échelle)
+                    self.sender.send_single(graph, sender_id, sender_info)
+                    
                     # Petit délai entre les messages
-                    if i < len(day_messages) - 1:
-                        import time
-                        time.sleep(1)
+                    time.sleep(MESSAGE_DELAY_SECONDS)
+                    
+                    # Partie 2: Header local seulement
+                    self.sender.send_single(header, sender_id, sender_info)
+            else:
+                # Fallback: mode ancien (backward compat si split_messages=False)
+                self.sender.log_conversation(sender_id, sender_info, cmd, result)
+                
+                if is_broadcast:
+                    day_messages = result.split('\n\n')
+                    first_day = day_messages[0] if day_messages else result
+                    self._send_broadcast_via_tigrog2(first_day, sender_id, sender_info, cmd)
+                else:
+                    day_messages = result.split('\n\n')
+                    for i, day_msg in enumerate(day_messages):
+                        if not day_msg.strip():
+                            continue
+                        self.sender.send_single(day_msg, sender_id, sender_info)
+                        if i < len(day_messages) - 1:
+                            time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
             # Cache SQLite 5min via traffic_monitor.persistence

@@ -31,6 +31,10 @@ CACHE_DIR = "/tmp"
 CACHE_DURATION = 300  # 5 minutes en secondes (fresh cache)
 CACHE_STALE_DURATION = 3600  # 1 heure (stale-while-revalidate window)
 CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
+
+# Cache spécifique pour le graphe de pluie (durée plus longue car wttr.in ne répond pas correctement)
+RAIN_CACHE_DURATION = 3600  # 1 heure (fresh cache)
+RAIN_CACHE_STALE_DURATION = 3600  # 1 heure - servir le cache dans cette fenêtre sans refresh
 WTTR_BASE_URL = "https://wttr.in"
 DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
 CURL_TIMEOUT = 25  # secondes (increased from 10s for better reliability on slow networks)
@@ -603,7 +607,7 @@ def get_weather_data(location=None, persistence=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
-def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode, ultra_compact=False):
+def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode, ultra_compact=False, split_mode=False):
     """
     Formater le graphe pour un seul jour
 
@@ -619,56 +623,28 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
                       - Seulement 2 lignes de graphe
                       - Header court
                       - Échelle horaire minimale
+        split_mode: Si True, retourne tuple (part1_sparkline, part2_info)
+                   Sinon retourne string unique (backward compat)
 
     Returns:
-        str: Graphe formaté pour ce jour
+        str ou tuple: 
+            - Si split_mode=False: String unique (backward compat)
+            - Si split_mode=True: (part1_graph, part2_header)
+                * part1_graph: 2 lignes sparkline + échelle horaire (graphe complet)
+                * part2_header: Info locale seulement (location/date/max)
     """
-    result_lines = []
-    
-    # Header format selon le mode
-    if ultra_compact:
-        # Ultra compact header: "🌧 28/11 1.1mm" (~15-18 chars)
-        # Extraire juste la date du date_label (ex: "aujourd'hui 28/11" -> "28/11")
-        date_only = date_label.split()[-1] if date_label else ""
-        result_lines.append(f"🌧 {date_only} {max_str}")
-    else:
-        # Standard header
-        result_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
-
     # Sélection des lignes de graphe
-    if ultra_compact and len(truncated_lines) >= 5:
-        # Ultra compact: seulement 2 lignes (top + bottom) pour économiser espace
-        # Strip trailing spaces for both lines to minimize character count
-        result_lines.append(truncated_lines[0].rstrip())  # Top
-        result_lines.append(truncated_lines[4].rstrip())  # Bottom
-    elif compact_mode and len(truncated_lines) >= 5:
-        # Mode compact (Mesh): seulement 3 lignes (top, middle, bottom)
-        # Strip trailing spaces to minimize character count
-        result_lines.append(truncated_lines[0].rstrip())  # Top
-        result_lines.append(truncated_lines[2].rstrip())  # Middle
-        result_lines.append(truncated_lines[4].rstrip())  # Bottom
-    else:
-        # Mode normal (Telegram): toutes les 5 lignes
-        for line in truncated_lines:
-            result_lines.append(line)
-
-    # Créer l'échelle horaire
-    if ultra_compact:
-        # Ultra compact: échelle simplifiée avec espacement fixe toutes les 6h
-        hour_scale = []
-        for i in range(truncate_width):
-            actual_position = start_offset + i
-            hour = (actual_position // 2) % 24
-            point_in_hour = actual_position % 2
-            # Afficher l'heure toutes les 6h seulement
-            if point_in_hour == 0 and hour % 6 == 0:
-                hour_scale.append(str(hour))
-            else:
-                hour_scale.append(' ')
-        result_lines.append(''.join(hour_scale).rstrip())
-    else:
-        # Standard: marqueurs toutes les 3h
-        # Strip trailing spaces to reduce message size
+    # En mode split: toujours 2 lignes (top + bottom) pour économiser de l'espace
+    # En mode non-split: utiliser la logique originale
+    if split_mode:
+        # Mode split: 2 lignes sparkline (top + bottom) pour économiser espace
+        sparkline_lines = []
+        if len(truncated_lines) >= 5:
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        sparkline_str = "\n".join(sparkline_lines)
+        
+        # Créer l'échelle horaire (toujours standard en mode split)
         hour_scale = []
         for i in range(truncate_width):
             actual_position = start_offset + i
@@ -678,12 +654,77 @@ def _format_single_day_graph(truncated_lines, location_name, date_label, max_str
                 hour_scale.append(str(hour))
             else:
                 hour_scale.append(' ')
-        result_lines.append(''.join(hour_scale).rstrip())
+        hour_scale_str = ''.join(hour_scale).rstrip()
+        
+        # Partie 1: Graphe complet (sparkline + échelle)
+        part1_graph = f"{sparkline_str}\n{hour_scale_str}"
+        
+        # Partie 2: Header seulement (location/date/max)
+        part2_header = f"🌧️ {location_name} {date_label} (max:{max_str})"
+        
+        return (part1_graph, part2_header)
+    
+    else:
+        # Mode non-split: logique originale pour backward compat
+        sparkline_lines = []
+        
+        if ultra_compact and len(truncated_lines) >= 5:
+            # Ultra compact: seulement 2 lignes (top + bottom)
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        elif compact_mode and len(truncated_lines) >= 5:
+            # Mode compact: 3 lignes (top, middle, bottom)
+            sparkline_lines.append(truncated_lines[0].rstrip())  # Top
+            sparkline_lines.append(truncated_lines[2].rstrip())  # Middle
+            sparkline_lines.append(truncated_lines[4].rstrip())  # Bottom
+        else:
+            # Mode normal: toutes les 5 lignes
+            for line in truncated_lines:
+                sparkline_lines.append(line)
 
-    return "\n".join(result_lines)
+        part1_sparkline = "\n".join(sparkline_lines)
+
+        # Échelle horaire + header info
+        info_lines = []
+        
+        if ultra_compact:
+            # Ultra compact: échelle simplifiée toutes les 6h
+            hour_scale = []
+            for i in range(truncate_width):
+                actual_position = start_offset + i
+                hour = (actual_position // 2) % 24
+                point_in_hour = actual_position % 2
+                if point_in_hour == 0 and hour % 6 == 0:
+                    hour_scale.append(str(hour))
+                else:
+                    hour_scale.append(' ')
+            info_lines.append(''.join(hour_scale).rstrip())
+        else:
+            # Standard: marqueurs toutes les 3h
+            hour_scale = []
+            for i in range(truncate_width):
+                actual_position = start_offset + i
+                hour = (actual_position // 2) % 24
+                point_in_hour = actual_position % 2
+                if point_in_hour == 0 and hour % 3 == 0:
+                    hour_scale.append(str(hour))
+                else:
+                    hour_scale.append(' ')
+            info_lines.append(''.join(hour_scale).rstrip())
+
+        # Header
+        if ultra_compact:
+            date_only = date_label.split()[-1] if date_label else ""
+            info_lines.append(f"🌧 {location_name} {date_only} (max:{max_str})")
+        else:
+            info_lines.append(f"🌧️ {location_name} {date_label} (max:{max_str})")
+
+        part2_info = "\n".join(info_lines)
+        
+        return f"{part1_sparkline}\n{part2_info}"
 
 
-def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False, ultra_compact=False):
+def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, persistence=None, start_at_current_time=False, ultra_compact=False, split_messages=False):
     """
     Récupérer le graphe ASCII des précipitations (compact sparkline)
 
@@ -707,10 +748,15 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                       - Header court sans nom de ville
                       - Échelle horaire simplifiée (toutes les 6h)
                       Recommandé: max_hours=15 avec ultra_compact=True
+        split_messages: Si True, retourne tuple (sparkline, info) pour envoi en 2 messages
+                       Si False, retourne string unique (backward compat)
 
     Returns:
-        str: Graphe sparkline compact des précipitations (2, 3 ou 5 lignes vertical)
-             Pour days > 1: plusieurs graphes séparés par '\n\n'
+        str ou tuple: 
+            - Si split_messages=False: Graphe sparkline compact (str)
+            - Si split_messages=True et days=1: tuple (sparkline_str, info_str)
+            - Si split_messages=True et days>1: tuple ([sparklines], [infos])
+              Pour days > 1: plusieurs graphes séparés
 
     Exemples:
         >>> rain = get_rain_graph("Paris")  # Aujourd'hui depuis maintenant
@@ -718,6 +764,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         >>> rain = get_rain_graph("Paris", days=3)  # Aujourd'hui + demain + J+2 (3 graphes)
         >>> rain = get_rain_graph("Paris", max_hours=22, compact_mode=True)  # Mesh compact
         >>> rain = get_rain_graph("Paris", max_hours=15, ultra_compact=True)  # LoRa ultra compact
+        >>> sparkline, info = get_rain_graph("Paris", split_messages=True)  # 2 messages séparés
     """
     # Initialize cache variables at function level for exception handlers
     cache_key = None
@@ -730,11 +777,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             location = DEFAULT_LOCATION
 
         # Clé de cache (inclut tous les paramètres qui affectent le résultat)
-        # Si start_at_current_time=True, inclure l'heure dans la clé pour éviter cache périmé
+        # Note: split_messages n'affecte que le format de sortie, pas le contenu des données,
+        #       donc exclu de la clé de cache (le cache stocke toujours le format standard)
+        # Note: Inclure l'heure arrondie pour créer des buckets de cache horaires
+        #       Ex: requêtes à 7:15, 7:30, 7:45 → cache "hour7"
+        #           requête à 8:00 → nouveau cache "hour8"
+        #       Cela aligne le cache avec start_at_current_time tout en permettant
+        #       la réutilisation durant la même heure
         if start_at_current_time:
             from datetime import datetime
             current_hour = datetime.now().hour
-            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}_now{current_hour}"
+            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}_hour{current_hour}"
         else:
             cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}"
 
@@ -749,12 +802,12 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 cache_age_seconds = age_hours * 3600
 
                 # Fresh cache (<5 min): return immediately
-                if cache_age_seconds < CACHE_DURATION:
+                if cache_age_seconds < RAIN_CACHE_DURATION:
                     info_print(f"✅ Cache SQLite rain FRESH (age: {cache_age_seconds}s)")
                     return cached_data
 
                 # Stale but valid (<1 hour): return immediately
-                elif cache_age_seconds < CACHE_STALE_DURATION:
+                elif cache_age_seconds < RAIN_CACHE_STALE_DURATION:
                     info_print(f"⚡ Cache SQLite rain STALE mais valide (age: {cache_age_seconds}s)")
                     return cached_data
 
@@ -780,17 +833,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 error_msg = "❌ Erreur récupération graphe pluie"
                 error_print(f"{error_msg} (curl returncode: {result.returncode})")
 
-                # Fallback: use cached data if available
+                # Fallback: use cached data if available with STALLED indicator
                 if cached_data:
-                    age_hours = int(cache_age_seconds / 3600)
-                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                    return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+                    age_hours = cache_age_seconds / 3600
+                    error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+                    return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
                 # Fallback: cache SQLite périmé
                 stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
                 if stale_data:
                     error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                    return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                    return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
                 return error_msg
 
@@ -990,18 +1043,41 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                     start_offset,
                     day_truncate_width,
                     compact_mode,
-                    ultra_compact
+                    ultra_compact,
+                    split_mode=split_messages
                 )
+                
                 result_parts.append(day_result)
 
-            # Joindre les graphes avec double saut de ligne
-            result = "\n\n".join(result_parts)
+            # Construire le résultat selon le mode
+            if split_messages:
+                # Séparer sparklines et infos
+                sparklines = [part[0] for part in result_parts]
+                infos = [part[1] for part in result_parts]
+                
+                # Joindre chaque partie
+                combined_sparklines = "\n\n".join(sparklines)
+                combined_infos = "\n\n".join(infos)
+                
+                # Construire le format standard pour le cache (combiner chaque tuple en string)
+                standard_parts = [f"{sparkline}\n{info}" for sparkline, info in result_parts]
+                result = "\n\n".join(standard_parts)
+                
+                # Sauvegarder en cache SQLite (format standard)
+                if persistence:
+                    persistence.set_weather_cache(cache_key, 'rain', result)
+                
+                # Retourner les parties séparées
+                return (combined_sparklines, combined_infos)
+            else:
+                # Joindre les graphes avec double saut de ligne
+                result = "\n\n".join(result_parts)
 
-            # Sauvegarder en cache SQLite
-            if persistence:
-                persistence.set_weather_cache(cache_key, 'rain', result)
+                # Sauvegarder en cache SQLite
+                if persistence:
+                    persistence.set_weather_cache(cache_key, 'rain', result)
 
-            return result
+                return result
 
         # Cas simple: un seul jour (days=1)
         start_offset = 0
@@ -1032,31 +1108,47 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             start_offset,
             truncate_width,
             compact_mode,
-            ultra_compact
+            ultra_compact,
+            split_mode=split_messages
         )
 
-        # Sauvegarder en cache SQLite
-        if persistence:
-            persistence.set_weather_cache(cache_key, 'rain', result)
+        if split_messages:
+            # En mode split, result est tuple (sparkline, info)
+            sparkline, info = result
+            
+            # Construire le format standard pour le cache
+            combined = f"{sparkline}\n{info}"
+            
+            # Sauvegarder en cache SQLite (format standard)
+            if persistence:
+                persistence.set_weather_cache(cache_key, 'rain', combined)
+            
+            # Retourner les parties séparées
+            return result
+        else:
+            # En mode normal, result est une string
+            # Sauvegarder en cache SQLite
+            if persistence:
+                persistence.set_weather_cache(cache_key, 'rain', result)
 
-        return result
+            return result
 
     except FileNotFoundError:
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
 
-        # Fallback: use cached data if available
+        # Fallback: use cached data if available with STALLED indicator
         if cached_data:
-            age_hours = int(cache_age_seconds / 3600)
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+            age_hours = cache_age_seconds / 3600
+            error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+            return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
         # Fallback: cache SQLite périmé
         if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
         return error_msg
 
@@ -1065,20 +1157,57 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         import traceback
         error_print(traceback.format_exc())
 
-        # Fallback: use cached data if available
+        # Fallback: use cached data if available with STALLED indicator
         if cached_data:
-            age_hours = int(cache_age_seconds / 3600)
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+            age_hours = cache_age_seconds / 3600
+            error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+            return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
         # Fallback: cache SQLite périmé
         if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
         return f"❌ Erreur: {str(e)[:50]}"
+
+
+def _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages=False):
+    """
+    Ajouter un indicateur STALLED au graphe de pluie en cache
+    
+    Args:
+        cached_data: Données en cache (string ou tuple si split_messages)
+        age_hours: Age du cache en heures
+        split_messages: Si True, cached_data est un tuple (sparkline, info)
+    
+    Returns:
+        Données avec indicateur STALLED ajouté au header
+    """
+    stale_text = f"STALLED for {int(age_hours)}h"
+    
+    if isinstance(cached_data, tuple):
+        # Mode split: modifier seulement la partie info (sparkline, info)
+        sparkline, info = cached_data
+        # Chercher la ligne avec le header (contient 🌧 ou 🌧️)
+        info_lines = info.split('\n')
+        for i, line in enumerate(info_lines):
+            if '🌧' in line:
+                # Ajouter STALLED après la date
+                info_lines[i] = line + f" - {stale_text}"
+                break
+        modified_info = '\n'.join(info_lines)
+        return (sparkline, modified_info)
+    else:
+        # Mode string: modifier la ligne avec le header
+        lines = cached_data.split('\n')
+        for i, line in enumerate(lines):
+            if '🌧' in line:
+                # Ajouter STALLED après la date
+                lines[i] = line + f" - {stale_text}"
+                break
+        return '\n'.join(lines)
 
 
 def get_moon_emoji(moon_illumination):
