@@ -338,12 +338,20 @@ class MeshBot:
 
             # Traiter les réponses TRACEROUTE_APP (avant TEXT_MESSAGE_APP)
             if portnum == 'TRACEROUTE_APP':
+                info_print(f"🔍 Réponse TRACEROUTE_APP de 0x{from_id:08x}")
+                
+                # Traiter pour mesh traceroute (commandes /trace depuis mesh)
+                mesh_handled = False
                 if self.mesh_traceroute:
-                    info_print(f"🔍 Réponse TRACEROUTE_APP de 0x{from_id:08x}")
-                    handled = self.mesh_traceroute.handle_traceroute_response(packet)
-                    if handled:
-                        info_print("✅ Réponse traceroute traitée")
-                        return
+                    mesh_handled = self.mesh_traceroute.handle_traceroute_response(packet)
+                    if mesh_handled:
+                        info_print("✅ Réponse traceroute mesh traitée")
+                
+                # Également notifier les plateformes (Telegram /trace)
+                if self.platform_manager:
+                    self.platform_manager.handle_traceroute_response(packet, decoded)
+                    info_print("✅ Réponse traceroute envoyée aux plateformes")
+                
                 return  # Ne pas traiter comme TEXT_MESSAGE
 
             if portnum == 'TEXT_MESSAGE_APP':
