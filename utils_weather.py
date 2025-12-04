@@ -759,15 +759,11 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
             location = DEFAULT_LOCATION
 
         # Clé de cache (inclut tous les paramètres qui affectent le résultat)
-        # Si start_at_current_time=True, inclure l'heure dans la clé pour éviter cache périmé
         # Note: split_messages n'affecte que le format de sortie, pas le contenu des données,
         #       donc exclu de la clé de cache (le cache stocke toujours le format standard)
-        if start_at_current_time:
-            from datetime import datetime
-            current_hour = datetime.now().hour
-            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}_now{current_hour}"
-        else:
-            cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}"
+        # Note: start_at_current_time n'est pas dans la clé car on veut un cache d'1 heure
+        #       Le graphe peut démarrer à une heure légèrement antérieure mais reste utile
+        cache_key = f"{location or 'default'}_{days}_{max_hours}_{compact_mode}_{ultra_compact}"
 
         # ----------------------------------------------------------------
         # "Serve first" pattern: always return cached data if available
