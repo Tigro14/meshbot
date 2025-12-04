@@ -607,6 +607,72 @@ def get_weather_data(location=None, persistence=None):
         return f"❌ Erreur: {str(e)[:50]}"
 
 
+def _convert_cached_data_to_split(cached_data):
+    """
+    Convert cached rain data (standard format) to split format (graph, header).
+    
+    Args:
+        cached_data: Cached rain graph in standard format (all lines together)
+    
+    Returns:
+        tuple: (part1_graph, part2_header)
+            - part1_graph: 2 sparkline lines + hour scale
+            - part2_header: Location/date/max header
+    """
+    lines = cached_data.strip().split('\n')
+    
+    # Try to identify components
+    # Standard format is typically:
+    # Line 0: Top sparkline (or Line 0-1: top+middle in 3-line format)
+    # Line 1: Middle sparkline (in 3-line format) or Bottom sparkline (in 2-line format)
+    # Line 2: Bottom sparkline (in 3-line format) or Hour scale (in 2-line format)
+    # Line 3: Hour scale (in 3-line format) or Header (in 2-line format)
+    # Line 4: Header (in 3-line format)
+    
+    # Identify which lines are sparklines (contain sparkline chars)
+    sparkline_chars = '█▇▆▅▄▃▂▁_'
+    sparkline_indices = [i for i, line in enumerate(lines) if any(c in line for c in sparkline_chars)]
+    
+    # Identify header line (contains 🌧 or 🌧️)
+    header_idx = None
+    for i, line in enumerate(lines):
+        if '🌧' in line:
+            header_idx = i
+            break
+    
+    # If we can't find proper structure, return as-is with minimal splitting
+    if not sparkline_indices or header_idx is None:
+        # Fallback: just split at last line
+        if len(lines) >= 2:
+            return ('\n'.join(lines[:-1]), lines[-1])
+        return (cached_data, "")
+    
+    # Identify hour scale (line right before header, contains numbers)
+    hour_scale_idx = header_idx - 1 if header_idx > 0 else None
+    
+    # Build split format
+    # For 3-line cached format: take top and bottom sparklines
+    # For 2-line cached format: take both sparklines
+    if len(sparkline_indices) >= 3:
+        # 3-line format: take first and last sparkline
+        part1_lines = [lines[sparkline_indices[0]], lines[sparkline_indices[-1]]]
+    elif len(sparkline_indices) >= 2:
+        # 2-line format: take both
+        part1_lines = [lines[sparkline_indices[0]], lines[sparkline_indices[1]]]
+    else:
+        # Only 1 sparkline line? Use it twice (shouldn't happen)
+        part1_lines = [lines[sparkline_indices[0]], lines[sparkline_indices[0]]]
+    
+    # Add hour scale to part1
+    if hour_scale_idx is not None and hour_scale_idx < len(lines):
+        part1_lines.append(lines[hour_scale_idx])
+    
+    part1_graph = '\n'.join(part1_lines)
+    part2_header = lines[header_idx]
+    
+    return (part1_graph, part2_header)
+
+
 def _format_single_day_graph(truncated_lines, location_name, date_label, max_str, start_offset, truncate_width, compact_mode, ultra_compact=False, split_mode=False):
     """
     Formater le graphe pour un seul jour
@@ -804,11 +870,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 # Fresh cache (<5 min): return immediately
                 if cache_age_seconds < RAIN_CACHE_DURATION:
                     info_print(f"✅ Cache SQLite rain FRESH (age: {cache_age_seconds}s)")
+                    # Convert to split format if needed
+                    if split_messages:
+                        return _convert_cached_data_to_split(cached_data)
                     return cached_data
 
                 # Stale but valid (<1 hour): return immediately
                 elif cache_age_seconds < RAIN_CACHE_STALE_DURATION:
                     info_print(f"⚡ Cache SQLite rain STALE mais valide (age: {cache_age_seconds}s)")
+                    # Convert to split format if needed
+                    if split_messages:
+                        return _convert_cached_data_to_split(cached_data)
                     return cached_data
 
                 # Very stale (>1h): try to refresh, fallback to cached
