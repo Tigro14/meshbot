@@ -134,14 +134,12 @@
             margin-bottom: 6px;
         }
         
-        .search-box {
-            display: flex;
-            gap: 6px;
+        .search-input-container {
             margin-bottom: 6px;
         }
         
         .search-input {
-            flex: 1;
+            width: 100%;
             padding: 8px 12px;
             border: 1px solid #dadce0;
             border-radius: 6px;
@@ -155,7 +153,14 @@
             box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
         }
         
+        .search-buttons {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        
         .search-btn {
+            flex: 1;
             padding: 8px 16px;
             border: 1px solid #1a73e8;
             background: #1a73e8;
@@ -173,6 +178,7 @@
         }
         
         .clear-btn {
+            flex: 1;
             padding: 8px 16px;
             border: 1px solid #dadce0;
             background: white;
@@ -187,6 +193,46 @@
         .clear-btn:hover {
             background: #f8f9fa;
             border-color: #1a73e8;
+        }
+        
+        .search-results-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #dadce0;
+            border-radius: 6px;
+            background: white;
+            margin-bottom: 6px;
+            display: none;
+        }
+        
+        .search-results-list.visible {
+            display: block;
+        }
+        
+        .search-result-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: background 0.2s;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-result-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .search-result-item .node-name {
+            font-weight: 600;
+            color: #1a73e8;
+        }
+        
+        .search-result-item .node-id {
+            color: #5f6368;
+            font-size: 0.8rem;
         }
         
         .search-result {
@@ -339,15 +385,16 @@
         
         <div class="search-container">
             <div class="search-label">🔍 Rechercher un nœud</div>
-            <div class="search-box">
+            <div class="search-input-container">
                 <input type="text" 
                        id="searchInput" 
                        class="search-input" 
                        placeholder="Nom ou ID du nœud"
                        onkeypress="handleSearchKeyPress(event)">
-                <button class="search-btn" onclick="searchNode()">Chercher</button>
             </div>
-            <div class="search-box">
+            <div id="searchResultsList" class="search-results-list"></div>
+            <div class="search-buttons">
+                <button class="search-btn" onclick="searchNode()">Chercher</button>
                 <button class="clear-btn" onclick="clearSearch()">Effacer</button>
             </div>
             <div id="searchResult" class="search-result"></div>
@@ -893,6 +940,11 @@
         function searchNode() {
             const searchTerm = document.getElementById('searchInput').value.trim();
             const resultDiv = document.getElementById('searchResult');
+            const resultsListDiv = document.getElementById('searchResultsList');
+            
+            // Clear previous results
+            resultsListDiv.innerHTML = '';
+            resultsListDiv.classList.remove('visible');
             
             if (!searchTerm) {
                 resultDiv.textContent = 'Veuillez entrer un nom de nœud';
@@ -911,10 +963,9 @@
                 highlightedMarker.getElement()?.classList.remove('highlighted-marker');
             }
             
-            // Search in nodes (case-insensitive)
+            // Search for all matching nodes (case-insensitive)
             const searchLower = searchTerm.toLowerCase();
-            let foundNode = null;
-            let foundId = null;
+            let foundNodes = [];
             
             for (const [id, node] of Object.entries(meshData.nodes)) {
                 const shortName = node.user?.shortName?.toLowerCase() || '';
@@ -924,27 +975,69 @@
                 if (shortName.includes(searchLower) || 
                     longName.includes(searchLower) || 
                     nodeId.includes(searchLower)) {
-                    foundNode = node;
-                    foundId = id;
-                    break;
+                    foundNodes.push({ id, node });
                 }
             }
             
-            if (!foundNode) {
+            if (foundNodes.length === 0) {
                 resultDiv.textContent = `Aucun nœud trouvé pour "${searchTerm}"`;
                 resultDiv.className = 'search-result error';
                 return;
             }
             
+            // If only one result, zoom directly
+            if (foundNodes.length === 1) {
+                zoomToNode(foundNodes[0].id, foundNodes[0].node, resultDiv);
+                return;
+            }
+            
+            // Multiple results - show listbox
+            resultDiv.textContent = `${foundNodes.length} nœuds trouvés`;
+            resultDiv.className = 'search-result success';
+            
+            foundNodes.forEach(({ id, node }) => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                
+                const displayName = node.user?.longName || node.user?.shortName || id;
+                const nodeIdShort = id.startsWith('!') ? id.substring(1, 9) : id.substring(0, 8);
+                
+                // Check if node is visible (filtered by time)
+                const isVisible = markers[id] !== undefined;
+                const visibilityTag = isVisible ? '' : ' <span style="color: #d93025;">(filtré)</span>';
+                
+                item.innerHTML = `
+                    <div class="node-name">${displayName}${visibilityTag}</div>
+                    <div class="node-id">ID: ${nodeIdShort}</div>
+                `;
+                
+                // Only allow clicking if node is visible
+                if (isVisible) {
+                    item.onclick = () => {
+                        zoomToNode(id, node, resultDiv);
+                        resultsListDiv.classList.remove('visible');
+                    };
+                } else {
+                    item.style.cursor = 'not-allowed';
+                    item.style.opacity = '0.5';
+                }
+                
+                resultsListDiv.appendChild(item);
+            });
+            
+            resultsListDiv.classList.add('visible');
+        }
+        
+        function zoomToNode(nodeId, node, resultDiv) {
             // Check if marker exists (node might be filtered out by time)
-            if (!markers[foundId]) {
-                resultDiv.textContent = `Nœud "${foundNode.user?.longName || foundId}" trouvé mais pas visible (filtre de temps)`;
+            if (!markers[nodeId]) {
+                resultDiv.textContent = `Nœud "${node.user?.longName || nodeId}" trouvé mais pas visible (filtre de temps)`;
                 resultDiv.className = 'search-result error';
                 return;
             }
             
             // Success - zoom to node and highlight
-            const marker = markers[foundId];
+            const marker = markers[nodeId];
             const position = marker.getLatLng();
             
             // Zoom to node
@@ -963,14 +1056,22 @@
             }, 500);
             
             // Show success message
-            const displayName = foundNode.user?.longName || foundNode.user?.shortName || foundId;
+            const displayName = node.user?.longName || node.user?.shortName || nodeId;
             resultDiv.textContent = `✓ Trouvé: ${displayName}`;
             resultDiv.className = 'search-result success';
+            
+            // Hide results list
+            document.getElementById('searchResultsList').classList.remove('visible');
         }
         
         function clearSearch() {
             document.getElementById('searchInput').value = '';
             document.getElementById('searchResult').textContent = '';
+            
+            // Clear results list
+            const resultsListDiv = document.getElementById('searchResultsList');
+            resultsListDiv.innerHTML = '';
+            resultsListDiv.classList.remove('visible');
             
             // Remove highlight
             if (highlightedMarker) {
