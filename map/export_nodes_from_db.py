@@ -54,6 +54,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         hops_data = {}
         neighbors_data = {}
         mqtt_active_nodes = set()  # Track MQTT-active nodes
+        mqtt_node_data = {}  # Position/name data for MQTT-active nodes from packets table
         
         if os.path.exists(db_path):
             log(f"📊 Enrichissement avec données SQLite...")
@@ -140,6 +141,63 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         if max_timestamp > 0:
                             mqtt_last_heard_data[node_key] = int(max_timestamp)
                 
+                # Query packets table for position and name data for MQTT-active nodes
+                # This is critical for MQTT-only nodes that aren't in node_names.json
+                mqtt_node_data = {}  # {node_id_str: {name, lat, lon, alt}}
+                
+                for node_key in mqtt_active_nodes:
+                    # node_key can be:
+                    # 1. Hex string (production): '16fa4fdc' from '!16fa4fdc'.lstrip('!')
+                    # 2. Decimal string (test/legacy): '123456789' from '!123456789'.lstrip('!')
+                    # packets table uses decimal string from_id (e.g., '385503196')
+                    
+                    # Try to determine if node_key is hex or decimal
+                    # Hex IDs are always 8 chars (e.g., '16fa4fdc')
+                    # Decimal IDs are variable length (e.g., '123456789')
+                    if len(node_key) == 8 and all(c in '0123456789abcdefABCDEF' for c in node_key):
+                        # Looks like hex - convert to decimal
+                        try:
+                            node_id_int = int(node_key, 16)
+                            node_id_str = str(node_id_int)
+                        except ValueError:
+                            # Shouldn't happen, but fallback to as-is
+                            node_id_str = node_key
+                    else:
+                        # Looks like decimal already - use as-is
+                        node_id_str = node_key
+                    
+                    # Get latest position data from packets
+                    cursor.execute("""
+                        SELECT position, sender_name, timestamp
+                        FROM packets
+                        WHERE from_id = ? AND position IS NOT NULL
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    """, (node_id_str,))
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        position_json = row[0]
+                        sender_name = row[1]
+                        
+                        try:
+                            position_data = json.loads(position_json) if position_json else None
+                            if position_data:
+                                lat = position_data.get('latitude') or position_data.get('latitudeI', 0) / 1e7
+                                lon = position_data.get('longitude') or position_data.get('longitudeI', 0) / 1e7
+                                alt = position_data.get('altitude') or position_data.get('altitudeGeodesic')
+                                
+                                # Only store if position is valid
+                                if lat and lon and lat != 0 and lon != 0:
+                                    mqtt_node_data[node_id_str] = {
+                                        'name': sender_name or f"Node-{node_key}",
+                                        'lat': lat,
+                                        'lon': lon,
+                                        'alt': alt
+                                    }
+                        except Exception as e:
+                            log(f"⚠️  Erreur parsing position pour {node_key}: {e}")
+                
                 persistence.close()
                 log(f"   • SNR disponible pour {len(snr_data)} nœuds")
                 log(f"   • Last heard pour {len(last_heard_data)} nœuds")
@@ -147,6 +205,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 log(f"   • Hops disponible pour {len(hops_data)} nœuds")
                 log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
                 log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
+                log(f"   • MQTT nodes avec position (packets): {len(mqtt_node_data)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
@@ -229,6 +288,90 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 log(f"⚠️  Erreur traitement nœud {node_id_str}: {e}")
                 continue
         
+        # Phase 2: Add MQTT-only nodes that are not in node_names.json
+        # These are nodes heard via MQTT NEIGHBORINFO but never heard directly via mesh
+        log(f"\n🔍 Phase 2: Recherche de nœuds MQTT-only non présents dans node_names.json...")
+        mqtt_only_added = 0
+        
+        for node_id_str in mqtt_node_data.keys():
+            # Check if already processed from node_names.json
+            if node_id_str in node_names_data:
+                continue  # Already processed in phase 1
+            
+            try:
+                node_id = int(node_id_str)
+                node_id_hex = f"!{node_id:08x}"
+                
+                # Check if already in output (shouldn't be, but be safe)
+                if node_id_hex in output_nodes:
+                    continue
+                
+                # Get MQTT node data
+                node_info = mqtt_node_data[node_id_str]
+                name = node_info['name']
+                lat = node_info['lat']
+                lon = node_info['lon']
+                alt = node_info.get('alt')
+                
+                # Extract short name
+                short_name = name[:4].upper() if len(name) >= 4 else name.upper()
+                
+                log(f"   ➕ Ajout nœud MQTT-only: {name} ({node_id_hex}) @ {lat:.4f}, {lon:.4f}")
+                
+                # Build node entry
+                node_entry = {
+                    "num": node_id,
+                    "user": {
+                        "id": node_id_hex,
+                        "longName": name,
+                        "shortName": short_name,
+                        "hwModel": "UNKNOWN"
+                    },
+                    "position": {
+                        "latitude": lat,
+                        "longitude": lon
+                    }
+                }
+                
+                if alt is not None:
+                    node_entry["position"]["altitude"] = int(alt)
+                
+                # Add MQTT timestamp as lastHeard (critical for time filter)
+                # Use node_id_str which matches the keys in mqtt_last_heard_data, mqtt_active_nodes, etc.
+                if node_id_str in mqtt_last_heard_data:
+                    node_entry["lastHeard"] = mqtt_last_heard_data[node_id_str]
+                    node_entry["mqttLastHeard"] = mqtt_last_heard_data[node_id_str]
+                
+                # Add SNR if available
+                if node_id_str in snr_data:
+                    node_entry["snr"] = round(snr_data[node_id_str][0], 2)
+                
+                # Add hopsAway if available
+                if node_id_str in hops_data:
+                    node_entry["hopsAway"] = hops_data[node_id_str]
+                
+                # Add neighbors if available
+                # neighbors_data is keyed by hex (node_key = node_id_str.lstrip('!'))
+                # We need to check both decimal (node_id_str) and hex (node_id_hex.lstrip('!'))
+                node_key_hex = node_id_hex.lstrip('!')
+                if node_id_str in neighbors_data:
+                    node_entry["neighbors"] = neighbors_data[node_id_str]
+                elif node_key_hex in neighbors_data:
+                    node_entry["neighbors"] = neighbors_data[node_key_hex]
+                
+                # Mark as MQTT active
+                if node_id_str in mqtt_active_nodes or node_key_hex in mqtt_active_nodes:
+                    node_entry["mqttActive"] = True
+                
+                output_nodes[node_id_hex] = node_entry
+                mqtt_only_added += 1
+                
+            except Exception as e:
+                log(f"⚠️  Erreur ajout nœud MQTT-only {node_id_str}: {e}")
+                continue
+        
+        log(f"✅ Phase 2 terminée: {mqtt_only_added} nœuds MQTT-only ajoutés")
+        
         # Build final output structure
         output_data = {
             "Nodes in mesh": output_nodes
@@ -255,6 +398,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         log(f"   • Nœuds avec neighbors: {nodes_with_neighbors}")
         nodes_mqtt_active = sum(1 for n in output_nodes.values() if 'mqttActive' in n)
         log(f"   • Nœuds MQTT actifs: {nodes_mqtt_active}")
+        log(f"   • Nœuds MQTT-only ajoutés: {mqtt_only_added}")
         
         return True
         
