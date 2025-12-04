@@ -417,6 +417,10 @@
         let linkLayerGroup = L.layerGroup();
         let linkCount = 0;
         
+        // Search result display constants
+        const ID_PREFIX_LENGTH = 1;  // Length of '!' prefix in node IDs
+        const MAX_ID_DISPLAY_LENGTH = 8;  // Show first 8 hex characters of node ID
+        
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
                    lat !== null && lon !== null &&
@@ -1004,8 +1008,6 @@
                 item.className = 'search-result-item';
                 
                 const displayName = node.user?.longName || node.user?.shortName || id;
-                const ID_PREFIX_LENGTH = 1;  // Length of '!' prefix
-                const MAX_ID_DISPLAY_LENGTH = 8;  // Show first 8 hex characters
                 const nodeIdShort = id.startsWith('!') ? 
                     id.substring(ID_PREFIX_LENGTH, ID_PREFIX_LENGTH + MAX_ID_DISPLAY_LENGTH) : 
                     id.substring(0, MAX_ID_DISPLAY_LENGTH);
