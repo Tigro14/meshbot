@@ -175,6 +175,48 @@ class NodeManager:
             # Si c'est un int, formater en hex
             return f"Node-{node_id:08x}"
     
+    def get_node_data(self, node_id):
+        """
+        Récupérer les données complètes d'un nœud (position, nom, etc.)
+        
+        Args:
+            node_id: ID du nœud (int)
+            
+        Returns:
+            dict avec 'latitude', 'longitude', 'altitude', 'name', 'last_update'
+            ou None si le nœud n'existe pas ou n'a pas de position
+        """
+        if node_id not in self.node_names:
+            return None
+        
+        node_data = self.node_names[node_id]
+        
+        # Retourner None si pas de position GPS
+        if node_data.get('lat') is None or node_data.get('lon') is None:
+            return None
+        
+        # Mapper les clés internes (lat/lon) vers le format attendu (latitude/longitude)
+        return {
+            'latitude': node_data['lat'],
+            'longitude': node_data['lon'],
+            'altitude': node_data.get('alt'),
+            'name': node_data.get('name'),
+            'last_update': node_data.get('last_update')
+        }
+    
+    def get_reference_position(self):
+        """
+        Obtenir la position de référence (position du bot)
+        
+        Returns:
+            tuple (latitude, longitude) ou None si pas de position configurée
+        """
+        if self.bot_position is None:
+            return None
+        
+        # BOT_POSITION est déjà un tuple (lat, lon)
+        return self.bot_position
+    
     def get_node_distance(self, node_id, reference_lat=None, reference_lon=None):
         """
         Calculer la distance jusqu'à un nœud
