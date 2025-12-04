@@ -33,7 +33,7 @@ CACHE_STALE_DURATION = 3600  # 1 heure (stale-while-revalidate window)
 CACHE_MAX_AGE = 86400  # 24 heures = durée max pour servir cache périmé en cas d'erreur
 
 # Cache spécifique pour le graphe de pluie (durée plus longue car wttr.in ne répond pas bien)
-RAIN_CACHE_DURATION = 300  # 5 minutes (fresh cache)
+RAIN_CACHE_DURATION = 3600  # 1 heure (fresh cache)
 RAIN_CACHE_STALE_DURATION = 3600  # 1 heure - servir le cache dans cette fenêtre sans refresh
 WTTR_BASE_URL = "https://wttr.in"
 DEFAULT_LOCATION = ""  # Vide = géolocalisation par IP
@@ -1041,7 +1041,14 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 combined_sparklines = "\n\n".join(sparklines)
                 combined_infos = "\n\n".join(infos)
                 
-                # Ne pas sauvegarder en cache (format différent)
+                # Construire le format standard pour le cache
+                result = "\n\n".join(result_parts)
+                
+                # Sauvegarder en cache SQLite (format standard)
+                if persistence:
+                    persistence.set_weather_cache(cache_key, 'rain', result)
+                
+                # Retourner les parties séparées
                 return (combined_sparklines, combined_infos)
             else:
                 # Joindre les graphes avec double saut de ligne
@@ -1087,8 +1094,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         )
 
         if split_messages:
-            # En mode split, result est tuple (sparkline, info) - retourner directement
-            # Ne pas sauvegarder en cache (format différent)
+            # En mode split, result est tuple (sparkline, info)
+            sparkline, info = result
+            
+            # Construire le format standard pour le cache
+            combined = f"{sparkline}\n{info}"
+            
+            # Sauvegarder en cache SQLite (format standard)
+            if persistence:
+                persistence.set_weather_cache(cache_key, 'rain', combined)
+            
+            # Retourner les parties séparées
             return result
         else:
             # En mode normal, result est une string
