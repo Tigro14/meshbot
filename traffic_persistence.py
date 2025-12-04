@@ -195,9 +195,18 @@ class TrafficPersistence:
                     neighbor_id TEXT NOT NULL,
                     snr REAL,
                     last_rx_time INTEGER,
-                    node_broadcast_interval INTEGER
+                    node_broadcast_interval INTEGER,
+                    source TEXT DEFAULT 'radio'
                 )
             ''')
+            
+            # Migration : ajouter source si elle n'existe pas
+            try:
+                cursor.execute("SELECT source FROM neighbors LIMIT 1")
+            except sqlite3.OperationalError:
+                # La colonne n'existe pas, l'ajouter
+                logger.info("Migration DB : ajout de la colonne source aux neighbors")
+                cursor.execute("ALTER TABLE neighbors ADD COLUMN source TEXT DEFAULT 'radio'")
 
             # Index pour optimiser les requêtes sur les voisins
             cursor.execute('''
@@ -579,13 +588,14 @@ class TrafficPersistence:
             logger.error(f"Erreur lors du chargement des statistiques réseau : {e}")
             return None
 
-    def save_neighbor_info(self, node_id: str, neighbors: List[Dict]):
+    def save_neighbor_info(self, node_id: str, neighbors: List[Dict], source: str = 'radio'):
         """
         Sauvegarde les informations de voisinage pour un nœud.
 
         Args:
             node_id: ID du nœud (format !xxxxxxxx ou hex)
             neighbors: Liste des voisins avec leurs informations
+            source: Source des données ('radio' ou 'mqtt')
         """
         try:
             if not neighbors:
@@ -613,19 +623,20 @@ class TrafficPersistence:
                 cursor.execute('''
                     INSERT INTO neighbors (
                         timestamp, node_id, neighbor_id, snr,
-                        last_rx_time, node_broadcast_interval
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        last_rx_time, node_broadcast_interval, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     timestamp,
                     node_id_str,
                     neighbor_id_str,
                     neighbor.get('snr'),
                     neighbor.get('last_rx_time'),
-                    neighbor.get('node_broadcast_interval')
+                    neighbor.get('node_broadcast_interval'),
+                    source
                 ))
 
             self.conn.commit()
-            logger.debug(f"💾 Sauvegarde {len(neighbors)} voisins pour {node_id_str}")
+            logger.debug(f"💾 Sauvegarde {len(neighbors)} voisins pour {node_id_str} (source: {source})")
 
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde des voisins : {e}")
@@ -667,7 +678,8 @@ class TrafficPersistence:
                     'snr': row['snr'],
                     'last_rx_time': row['last_rx_time'],
                     'node_broadcast_interval': row['node_broadcast_interval'],
-                    'timestamp': row['timestamp']
+                    'timestamp': row['timestamp'],
+                    'source': row['source'] if 'source' in row.keys() else 'radio'  # Default for old data
                 }
                 neighbors_by_node[node_id].append(neighbor_data)
 

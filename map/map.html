@@ -450,25 +450,50 @@
             }
         }
         
-        function getLinkColor(snr) {
+        function getLinkColor(snr, source) {
+            // If source is MQTT, use a distinct color (cyan/blue tint)
+            if (source === 'mqtt') {
+                if (snr === null || snr === undefined) return '#00bfff'; // Deep sky blue for unknown SNR
+                if (snr > 5) return '#00ffff'; // Cyan - Excellent MQTT
+                if (snr > 0) return '#1e90ff';  // Dodger blue - Good MQTT
+                return '#4169e1';                // Royal blue - Weak MQTT
+            }
+            
+            // Radio links (default colors)
             if (snr === null || snr === undefined) return '#888888';
-            if (snr > 5) return '#00ff00'; // Vert - Excellent
-            if (snr > 0) return '#ffff00';  // Jaune - Bon
-            return '#ff6600';                // Orange - Faible
+            if (snr > 5) return '#00ff00'; // Green - Excellent
+            if (snr > 0) return '#ffff00';  // Yellow - Good
+            return '#ff6600';                // Orange - Weak
         }
 
-        function getLinkOpacity(snr) {
-            if (snr === null || snr === undefined) return 0.3;
-            if (snr > 5) return 0.9;
-            if (snr > 0) return 0.6;
-            return 0.4;
+        function getLinkOpacity(snr, source) {
+            // MQTT links slightly more transparent to distinguish them
+            const baseOpacity = source === 'mqtt' ? 0.7 : 1.0;
+            
+            if (snr === null || snr === undefined) return 0.3 * baseOpacity;
+            if (snr > 5) return 0.9 * baseOpacity;
+            if (snr > 0) return 0.6 * baseOpacity;
+            return 0.4 * baseOpacity;
         }
 
-        function getLinkWeight(snr) {
-            if (snr === null || snr === undefined) return 3;
-            if (snr > 5) return 4;  // Reduced from 7 to 4 for green links
-            if (snr > 0) return 5;
-            return 4;
+        function getLinkWeight(snr, source) {
+            // MQTT links slightly thinner
+            const baseWeight = source === 'mqtt' ? 0.8 : 1.0;
+            
+            if (snr === null || snr === undefined) return 3 * baseWeight;
+            if (snr > 5) return 4 * baseWeight;  // Reduced from 7 to 4 for green links
+            if (snr > 0) return 5 * baseWeight;
+            return 4 * baseWeight;
+        }
+        
+        function getLinkDescription(source, isInferred) {
+            if (isInferred) {
+                return 'Liaison inférée (topologie)';
+            }
+            if (source === 'mqtt') {
+                return 'Liaison MQTT (collecteur distant)';
+            }
+            return 'Liaison radio (mesure directe)';
         }
         
         function setView(view) {
@@ -590,6 +615,7 @@
                         </div>
                     </div>
                     <div id="linksLegend" style="display:none;">
+                        <div style="margin-bottom: 8px; font-weight: 600; color: #202124;">Qualité SNR:</div>
                         <div class="legend-item">
                             <div class="legend-line" style="background-color: #00ff00;"></div>
                             <span>Excellente (SNR > 5)</span>
@@ -601,6 +627,20 @@
                         <div class="legend-item">
                             <div class="legend-line" style="background-color: #ff6600;"></div>
                             <span>Faible (SNR < 0)</span>
+                        </div>
+                        
+                        <div style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124;">Source des liens:</div>
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #00ff00;"></div>
+                            <span>Radio (mesure directe)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #00ffff;"></div>
+                            <span>MQTT (collecteur distant)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
+                            <span style="opacity: 0.7;">Inférée (topologie)</span>
                         </div>
                     </div>
                 `;
@@ -710,17 +750,19 @@
                         const fromLatLng = markers[nodeId].getLatLng();
                         const toLatLng = markers[neighborId].getLatLng();
                         const snr = neighbor.snr || neighbor.SNR || null;
+                        const source = neighbor.source || 'radio';  // Default to radio if not specified
                         
                         const line = L.polyline([fromLatLng, toLatLng], {
-                            color: getLinkColor(snr),
-                            weight: getLinkWeight(snr),
-                            opacity: getLinkOpacity(snr),
+                            color: getLinkColor(snr, source),
+                            weight: getLinkWeight(snr, source),
+                            opacity: getLinkOpacity(snr, source),
                             dashArray: snr === null ? '5, 5' : null
                         });
 
-                        let popupContent = `<strong>Liaison directe</strong><br>`;
+                        let popupContent = `<strong>${getLinkDescription(source, false)}</strong><br>`;
                         popupContent += `${node.user.shortName || nodeId} ↔ ${markers[neighborId].options.title}<br>`;
-                        if (snr !== null) popupContent += `SNR: ${snr.toFixed(1)} dB`;
+                        if (snr !== null) popupContent += `SNR: ${snr.toFixed(1)} dB<br>`;
+                        popupContent += `Source: ${source === 'mqtt' ? 'MQTT' : 'Radio'}`;
                         
                         line.bindPopup(popupContent);
                         linkLayerGroup.addLayer(line);
@@ -765,16 +807,17 @@
                                 const toLatLng = markers[parentId].getLatLng();
                                 
                                 const line = L.polyline([fromLatLng, toLatLng], {
-                                    color: getLinkColor(node.snr),
-                                    weight: getLinkWeight(node.snr),
-                                    opacity: getLinkOpacity(node.snr) * 0.6,
+                                    color: getLinkColor(node.snr, 'radio'),  // Inferred links are always from radio topology
+                                    weight: getLinkWeight(node.snr, 'radio'),
+                                    opacity: getLinkOpacity(node.snr, 'radio') * 0.6,
                                     dashArray: '5, 5'
                                 });
 
-                                let popupContent = `<strong>Liaison inférée</strong><br>`;
+                                let popupContent = `<strong>${getLinkDescription('radio', true)}</strong><br>`;
                                 popupContent += `${node.user.shortName || nodeId} → ${parent.user.shortName || parentId}<br>`;
                                 popupContent += `Distance: ${node.hopsAway} hop(s)<br>`;
-                                if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB`;
+                                if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB<br>`;
+                                popupContent += `Source: Inféré (topologie)`;
                                 
                                 line.bindPopup(popupContent);
                                 linkLayerGroup.addLayer(line);

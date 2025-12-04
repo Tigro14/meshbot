@@ -331,7 +331,7 @@ class TrafficMonitor:
                 
                 # Save neighbors to database if any found
                 if neighbors:
-                    self.persistence.save_neighbor_info(node_id_int, neighbors)
+                    self.persistence.save_neighbor_info(node_id_int, neighbors, source='radio')
                     total_neighbors += len(neighbors)
                     nodes_with_neighbors += 1
                 else:
@@ -503,7 +503,7 @@ class TrafficMonitor:
                 neighbors = self._extract_neighbor_info(decoded, from_id)
                 if neighbors:
                     try:
-                        self.persistence.save_neighbor_info(from_id, neighbors)
+                        self.persistence.save_neighbor_info(from_id, neighbors, source='radio')
                         logger.debug(f"👥 {len(neighbors)} voisins enregistrés pour {from_id:08x}")
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde voisins: {e}")
