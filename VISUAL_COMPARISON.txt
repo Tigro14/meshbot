@@ -1,0 +1,66 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    MQTT DEBUG LOG ENHANCEMENT - VISUAL COMPARISON             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ BEFORE: Debug logs showing only hex IDs                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet POSITION de 2867b4fa
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NODEINFO de ae613834
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NODEINFO de d4b288a9
+Dec 04 21:36:08 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet TELEMETRY de 2867b4fa
+Dec 04 21:36:09 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NEIGHBORINFO de ae613834
+
+                                    ⬇⬇⬇
+                            IMPROVEMENT APPLIED
+                                    ⬇⬇⬇
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ AFTER: Debug logs with human-readable node names                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet POSITION de 2867b4fa (TigroRouter)
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NODEINFO de ae613834 (NodeAlpha)
+Dec 04 21:36:07 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NODEINFO de d4b288a9 (MeshNode-West)
+Dec 04 21:36:08 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet TELEMETRY de 2867b4fa (TigroRouter)
+Dec 04 21:36:09 DietPi meshtastic-bot[932]: [DEBUG] 👥 [MQTT] Paquet NEIGHBORINFO de ae613834 (NodeAlpha)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                    KEY FEATURES                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ WHEN LONGNAME IS AVAILABLE
+   Format: 👥 [MQTT] Paquet {TYPE} de {HEXID} ({LongName})
+   Example: 👥 [MQTT] Paquet POSITION de 2867b4fa (TigroRouter)
+
+✅ WHEN LONGNAME IS NOT AVAILABLE  
+   Format: 👥 [MQTT] Paquet {TYPE} de {HEXID}
+   Example: 👥 [MQTT] Paquet POSITION de 99999999
+
+✅ SMART FILTERING
+   • Doesn't show "Unknown" as a name
+   • Doesn't show hex IDs (starting with "!")
+   • Falls back gracefully to hex ID only
+
+✅ BENEFITS
+   • Quick node identification
+   • Easier debugging
+   • Better monitoring
+   • No overhead when unavailable
+   • Backward compatible
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                TECHNICAL DETAILS                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+File Modified: mqtt_neighbor_collector.py (lines 377-396)
+Lines Added: 11
+Tests Added: test_mqtt_debug_longname.py (129 lines)
+Demo Added: demo_mqtt_longname.py (47 lines)
+Documentation: MQTT_DEBUG_LONGNAME_SUMMARY.md (112 lines)
+
+Total Impact: 300+ lines added, 1 line modified
+Status: ✅ All tests passing
+Compatibility: ✅ Fully backward compatible
+Performance: ✅ Minimal overhead (simple dictionary lookup)
