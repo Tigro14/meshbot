@@ -431,7 +431,7 @@ class MQTTNeighborCollector:
                 # Normaliser l'ID du nœud (int vers string "!xxxxxxxx")
                 node_id_str = f"!{node_id:08x}"
                 
-                self.persistence.save_neighbor_info(node_id_str, formatted_neighbors)
+                self.persistence.save_neighbor_info(node_id_str, formatted_neighbors, source='mqtt')
                 
                 # Mettre à jour les statistiques
                 self.stats['neighbor_packets'] += 1
