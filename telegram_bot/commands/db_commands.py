@@ -72,6 +72,10 @@ class DBCommandsTelegram(TelegramCommandBase):
                     result = db_handler._vacuum_db('telegram')
                 elif subcommand in ['info', 'i']:
                     result = db_handler._get_db_info('telegram')
+                elif subcommand in ['nb', 'neighbors']:
+                    info_print("👥 Appel _get_neighbors_stats...")
+                    result = db_handler._get_neighbors_stats('telegram')
+                    info_print(f"✅ _get_neighbors_stats retourné: {len(result) if result else 0} chars")
                 else:
                     result = db_handler._get_help('telegram')
 
