@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: Légende Dynamique des Liens</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 16px;
+            font-size: 2rem;
+        }
+        
+        h2 {
+            color: #202124;
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+        
+        .description {
+            color: #5f6368;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        
+        .test-section {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        
+        .controls {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+        }
+        
+        .legend-preview {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.85);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: 1px solid #1a73e8;
+            background: #1a73e8;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #1557b0;
+            border-color: #1557b0;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 0.85rem;
+        }
+        
+        .legend-line {
+            width: 30px;
+            height: 3px;
+            margin-right: 8px;
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background: #1e8e3e;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .status {
+            background: #e8f5e9;
+            border-left: 4px solid #1e8e3e;
+            padding: 16px;
+            border-radius: 4px;
+            margin-top: 16px;
+        }
+        
+        .status h3 {
+            color: #1e8e3e;
+            margin-bottom: 8px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+            color: #202124;
+        }
+        
+        .status-icon {
+            margin-right: 8px;
+            font-weight: bold;
+        }
+        
+        .visible {
+            color: #1e8e3e;
+        }
+        
+        .hidden {
+            color: #d93025;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🧪 Test: Légende Dynamique des Liens <span class="success-badge">FIX</span></h1>
+            <p class="description">
+                Cette page teste la nouvelle fonctionnalité qui affiche uniquement les types de liens présents dans la légende.
+                Utilisez les boutons ci-dessous pour simuler différents scénarios de réseau.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>🎮 Scénarios de Test</h2>
+            <div class="test-section">
+                <div class="controls">
+                    <h3 style="margin-bottom: 16px; color: #202124;">Simuler les types de liens:</h3>
+                    <div class="button-group">
+                        <button onclick="simulateRadioOnly()">📡 Radio uniquement</button>
+                        <button onclick="simulateMqttOnly()">🌐 MQTT uniquement</button>
+                        <button onclick="simulateInferredOnly()">🔍 Inférées uniquement</button>
+                        <button onclick="simulateRadioAndMqtt()">📡+🌐 Radio + MQTT</button>
+                        <button onclick="simulateAll()">🌟 Tous les types</button>
+                        <button onclick="simulateNone()">❌ Aucun lien</button>
+                    </div>
+                </div>
+                
+                <div class="legend-preview">
+                    <h4 style="margin-bottom: 12px; color: #202124; font-size: 0.9rem; font-weight: 600;">
+                        Légende des Liaisons
+                    </h4>
+                    
+                    <div style="margin-bottom: 8px; font-weight: 600; color: #202124; font-size: 0.85rem;">
+                        Qualité SNR:
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line" style="background-color: #00ff00;"></div>
+                        <span>Excellente (SNR > 5)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line" style="background-color: #ffff00;"></div>
+                        <span>Bonne (SNR 0-5)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line" style="background-color: #ff6600;"></div>
+                        <span>Faible (SNR < 0)</span>
+                    </div>
+                    
+                    <div id="linkSourcesSection" style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124; font-size: 0.85rem;">
+                        Source des liens:
+                    </div>
+                    <div id="legendRadio" class="legend-item" style="display:none;">
+                        <div class="legend-line" style="background-color: #00ff00;"></div>
+                        <span>Radio (mesure directe)</span>
+                    </div>
+                    <div id="legendMqtt" class="legend-item" style="display:none;">
+                        <div class="legend-line" style="background-color: #00ffff;"></div>
+                        <span>MQTT (collecteur distant)</span>
+                    </div>
+                    <div id="legendInferred" class="legend-item" style="display:none;">
+                        <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
+                        <span style="opacity: 0.7;">Inférée (topologie)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="status">
+                <h3>📊 État actuel de la légende</h3>
+                <div id="statusDisplay"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>✅ Comportement Attendu</h2>
+            <div class="description">
+                <strong>Avant le fix:</strong>
+                <ul style="margin-left: 24px; line-height: 1.8; color: #5f6368;">
+                    <li>La légende affichait toujours les 3 types de liens (Radio, MQTT, Inférée)</li>
+                    <li>Même si aucun lien MQTT n'était présent, il était affiché dans la légende</li>
+                    <li>Cela créait de la confusion pour les utilisateurs</li>
+                </ul>
+                <br>
+                <strong>Après le fix:</strong>
+                <ul style="margin-left: 24px; line-height: 1.8; color: #5f6368;">
+                    <li>✓ La légende affiche uniquement les types de liens présents sur la carte</li>
+                    <li>✓ Si pas de liens MQTT, cette entrée est masquée</li>
+                    <li>✓ Si pas de liens inférées, cette entrée est masquée</li>
+                    <li>✓ Si aucun lien, toute la section "Source des liens" est masquée</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateLinkSourceLegend(linkTypes) {
+            // Get legend elements
+            const legendRadio = document.getElementById('legendRadio');
+            const legendMqtt = document.getElementById('legendMqtt');
+            const legendInferred = document.getElementById('legendInferred');
+            const linkSourcesSection = document.getElementById('linkSourcesSection');
+            
+            // Show/hide legend items based on what's actually present
+            legendRadio.style.display = linkTypes.radio ? 'flex' : 'none';
+            legendMqtt.style.display = linkTypes.mqtt ? 'flex' : 'none';
+            legendInferred.style.display = linkTypes.inferred ? 'flex' : 'none';
+            
+            // Hide the entire "Source des liens" section if no links exist
+            const hasAnyLinks = linkTypes.radio || linkTypes.mqtt || linkTypes.inferred;
+            linkSourcesSection.style.display = hasAnyLinks ? 'block' : 'none';
+            
+            // Update status display
+            updateStatus(linkTypes);
+        }
+        
+        function updateStatus(linkTypes) {
+            const statusDiv = document.getElementById('statusDisplay');
+            const items = [
+                { type: 'Radio', active: linkTypes.radio, icon: '📡' },
+                { type: 'MQTT', active: linkTypes.mqtt, icon: '🌐' },
+                { type: 'Inférée', active: linkTypes.inferred, icon: '🔍' }
+            ];
+            
+            let html = '';
+            items.forEach(item => {
+                const status = item.active ? 'visible' : 'hidden';
+                const text = item.active ? 'Visible' : 'Masqué';
+                html += `<div class="status-item">
+                    <span class="status-icon ${status}">${item.active ? '✓' : '✗'}</span>
+                    <span>${item.icon} ${item.type}: <strong class="${status}">${text}</strong></span>
+                </div>`;
+            });
+            
+            statusDiv.innerHTML = html;
+        }
+        
+        function simulateRadioOnly() {
+            updateLinkSourceLegend({ radio: true, mqtt: false, inferred: false });
+        }
+        
+        function simulateMqttOnly() {
+            updateLinkSourceLegend({ radio: false, mqtt: true, inferred: false });
+        }
+        
+        function simulateInferredOnly() {
+            updateLinkSourceLegend({ radio: false, mqtt: false, inferred: true });
+        }
+        
+        function simulateRadioAndMqtt() {
+            updateLinkSourceLegend({ radio: true, mqtt: true, inferred: false });
+        }
+        
+        function simulateAll() {
+            updateLinkSourceLegend({ radio: true, mqtt: true, inferred: true });
+        }
+        
+        function simulateNone() {
+            updateLinkSourceLegend({ radio: false, mqtt: false, inferred: false });
+        }
+        
+        // Initialize with no links
+        simulateNone();
+    </script>
+</body>
+</html>
