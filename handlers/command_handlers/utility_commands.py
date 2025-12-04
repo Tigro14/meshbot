@@ -354,18 +354,18 @@ class UtilityCommands:
         # Traiter selon la sous-commande
         if subcommand == 'rain':
             # Graphe de précipitations en 2 parties pour meilleure lisibilité
-            # - max_hours=24: 24 heures de prévision (48 chars de largeur)
+            # - max_hours=20: 20 heures de prévision (40 chars de largeur)
             # - compact_mode=True: 3 lignes sparkline (top, middle, bottom)
             # - Démarrage à l'heure actuelle pour maximiser l'info future utile
             # - Cache SQLite 1h via traffic_monitor.persistence (RAIN_CACHE_STALE_DURATION)
             # - split_messages=True: retourne (sparkline, info) pour envoi en 2 messages
-            #   * Partie 1: 3 lignes sparkline (~146 chars, limite LoRa: 180 chars)
-            #   * Partie 2: Échelle horaire + header local (~90 chars)
+            #   * Partie 1: 3 lignes sparkline (~122 chars, limite LoRa: 180 chars)
+            #   * Partie 2: Échelle horaire + header local (~85 chars)
             persistence = self.traffic_monitor.persistence if self.traffic_monitor else None
             result = get_rain_graph(
                 location, 
                 days=days, 
-                max_hours=24,  # 24h de prévision (48 chars width, ~146 chars total pour 3 lignes)
+                max_hours=20,  # 20h de prévision (40 chars width, ~122 chars total pour 3 lignes)
                 compact_mode=True,  # 3 lignes sparkline (top, middle, bottom)
                 persistence=persistence, 
                 start_at_current_time=True,
