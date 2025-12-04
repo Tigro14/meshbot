@@ -132,10 +132,12 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                                 'snr': neighbor.get('snr'),
                             })
                     if formatted_neighbors:
-                        # Remove ! prefix from node_id_str
-                        # node_id_str format from database: '!385503196' (decimal with !)
+                        # Convert node_id from hex to decimal
+                        # node_id_str format from database: '!16fa4fdc' (hex with ! prefix)
                         # node_names.json keys are decimal strings: '385503196'
-                        node_key_decimal = node_id_str.lstrip('!')  # Just strip !, no conversion needed
+                        node_id_hex_stripped = node_id_str.lstrip('!')  # Strip ! prefix
+                        node_id_int = int(node_id_hex_stripped, 16)  # Convert hex to decimal
+                        node_key_decimal = str(node_id_int)  # Convert to string for dict key
                         
                         # Store neighbors with decimal key (matches node_names.json)
                         neighbors_data[node_key_decimal] = formatted_neighbors
