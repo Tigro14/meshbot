@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo: Spiral Offset Algorithm for Overlapping Nodes</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .subtitle {
+            color: #5f6368;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .demo-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 20px 0;
+        }
+        
+        .canvas-container {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        canvas {
+            border: 2px solid #dadce0;
+            border-radius: 8px;
+            background: white;
+            cursor: crosshair;
+        }
+        
+        .info-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .info-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #202124;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 10px;
+        }
+        
+        .info-item {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #1a73e8;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #5f6368;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            color: #202124;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .code-block {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            margin: 15px 0;
+            line-height: 1.6;
+        }
+        
+        .highlight {
+            color: #ffab40;
+            font-weight: bold;
+        }
+        
+        .comment {
+            color: #80cbc4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Demo: Spiral Offset Algorithm</h1>
+        <p class="subtitle">Visualisation de l'algorithme d'offset pour les nœuds partageant la même position GPS</p>
+        
+        <div class="demo-section">
+            <div class="canvas-container">
+                <h3>Visualisation</h3>
+                <canvas id="demoCanvas" width="500" height="500"></canvas>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #e74c3c;"></div>
+                        <span>Position originale (centre)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #2ecc71;"></div>
+                        <span>Nœud avec offset (spiral pattern)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-panel">
+                <div class="info-title">📊 Statistiques</div>
+                
+                <div class="info-item">
+                    <div class="info-label">Nombre de nœuds:</div>
+                    <div class="info-value" id="nodeCount">5</div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">Pattern:</div>
+                    <div class="info-value">Spirale pentagonale</div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">Rayon de base:</div>
+                    <div class="info-value">0.00005° (~5 mètres)</div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">Positions par cercle:</div>
+                    <div class="info-value">5</div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">Angle entre nœuds:</div>
+                    <div class="info-value">72° (2π/5)</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="code-block">
+<span class="comment">// Algorithme d'offset spiral pour collisions de position</span>
+const positionMap = new Map();
+const validNodes = [];
+
+<span class="comment">// Première passe: regrouper les nœuds par position</span>
+Object.entries(nodes).forEach(([id, node]) => {
+    const posKey = `${node.position.latitude},${node.position.longitude}`;
+    if (!positionMap.has(posKey)) {
+        positionMap.set(posKey, []);
+    }
+    positionMap.get(posKey).push(id);
+});
+
+<span class="comment">// Deuxième passe: appliquer les offsets</span>
+validNodes.forEach(([id, node]) => {
+    const nodesAtPosition = positionMap.get(posKey);
+    let offsetLat = 0, offsetLon = 0;
+    
+    if (<span class="highlight">nodesAtPosition.length > 1</span>) {
+        const index = nodesAtPosition.indexOf(id);
+        <span class="comment">// Pattern en spirale</span>
+        const <span class="highlight">angle = index * (2 * Math.PI / 5)</span>;
+        const <span class="highlight">radius = 0.00005 * (1 + Math.floor(index / 5))</span>;
+        offsetLat = radius * Math.cos(angle);
+        offsetLon = radius * Math.sin(angle);
+    }
+    
+    const displayLat = lat + offsetLat;
+    const displayLon = lon + offsetLon;
+});
+        </div>
+        
+        <div class="info-panel" style="margin-top: 30px;">
+            <div class="info-title">✅ Avantages de cette Approche</div>
+            
+            <div class="info-item">
+                <div class="info-label">✨ Minimal Impact:</div>
+                <div class="info-value">Offset de ~5-10m seulement, imperceptible à grande échelle</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">🎯 Tous Visibles:</div>
+                <div class="info-value">Chaque nœud devient cliquable et distinguable</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">📐 Pattern Régulier:</div>
+                <div class="info-value">Disposition en pentagone pour une meilleure lisibilité</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">🔄 Extensible:</div>
+                <div class="info-value">Support de >5 nœuds avec cercles concentriques croissants</div>
+            </div>
+            
+            <div class="info-item">
+                <div class="info-label">🚀 Performance:</div>
+                <div class="info-value">Algorithme O(n) avec deux passes simples</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('demoCanvas');
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        
+        // Scale factor for visualization (1 degree = 100 pixels)
+        const scale = 2000000;
+        
+        // Draw background grid
+        ctx.strokeStyle = '#e0e0e0';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 500; i += 50) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i, 500);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, i);
+            ctx.lineTo(500, i);
+            ctx.stroke();
+        }
+        
+        // Draw original position (center, red)
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 15, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Add label
+        ctx.fillStyle = '#202124';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Position GPS originale', centerX, centerY - 25);
+        ctx.fillText('(48.8566, 2.3522)', centerX, centerY + 35);
+        
+        // Generate 5 nodes with spiral offset
+        const numNodes = 5;
+        const radius = 0.00005;
+        const colors = ['#2ecc71', '#3498db', '#9b59b6', '#e67e22', '#f39c12'];
+        
+        for (let i = 0; i < numNodes; i++) {
+            const angle = i * (2 * Math.PI / 5);
+            const offsetLat = radius * Math.cos(angle);
+            const offsetLon = radius * Math.sin(angle);
+            
+            const x = centerX + (offsetLon * scale);
+            const y = centerY - (offsetLat * scale); // Negative because canvas Y is inverted
+            
+            // Draw node
+            ctx.fillStyle = colors[i];
+            ctx.beginPath();
+            ctx.arc(x, y, 12, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw line from center
+            ctx.strokeStyle = '#dadce0';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Add node label
+            ctx.fillStyle = '#202124';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Node ${i + 1}`, x, y - 18);
+            
+            // Add offset info
+            ctx.font = '9px Courier';
+            ctx.fillStyle = '#5f6368';
+            ctx.fillText(`Δ${offsetLat.toFixed(6)}°`, x, y + 25);
+            ctx.fillText(`Δ${offsetLon.toFixed(6)}°`, x, y + 35);
+        }
+        
+        // Draw distance scale
+        ctx.strokeStyle = '#202124';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(20, canvas.height - 40);
+        ctx.lineTo(20 + (radius * scale), canvas.height - 40);
+        ctx.stroke();
+        
+        // Scale markers
+        ctx.beginPath();
+        ctx.moveTo(20, canvas.height - 45);
+        ctx.lineTo(20, canvas.height - 35);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(20 + (radius * scale), canvas.height - 45);
+        ctx.lineTo(20 + (radius * scale), canvas.height - 35);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#202124';
+        ctx.font = '11px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('~5 mètres', 20 + (radius * scale / 2), canvas.height - 50);
+        
+        console.log('=== Spiral Offset Algorithm Demo ===');
+        console.log('Number of nodes:', numNodes);
+        console.log('Base radius: 0.00005° (~5 meters)');
+        console.log('Pattern: Pentagon (5 positions per circle)');
+        console.log('\nNode positions:');
+        for (let i = 0; i < numNodes; i++) {
+            const angle = i * (2 * Math.PI / 5);
+            const offsetLat = radius * Math.cos(angle);
+            const offsetLon = radius * Math.sin(angle);
+            console.log(`Node ${i + 1}:`);
+            console.log(`  Angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+            console.log(`  Offset: (${offsetLat.toFixed(6)}°, ${offsetLon.toFixed(6)}°)`);
+            console.log(`  Distance from center: ~${(Math.sqrt(offsetLat**2 + offsetLon**2) * 111000).toFixed(1)}m`);
+        }
+    </script>
+</body>
+</html>
