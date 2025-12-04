@@ -57,6 +57,8 @@ class DBCommands:
                 response = self._get_db_info(channel)
             elif subcommand in ['purgeweather', 'pw']:
                 response = self._purge_weather_cache(channel)
+            elif subcommand in ['nb', 'neighbors']:
+                response = self._get_neighbors_stats(channel)
             else:
                 response = self._get_help(channel)
 
@@ -77,6 +79,7 @@ class DBCommands:
             return (
                 "🗄️ /db [cmd]\n"
                 "s=stats i=info\n"
+                "nb=neighbors\n"
                 "clean=nettoyage\n"
                 "v=vacuum pw=weather"
             )
@@ -86,15 +89,17 @@ class DBCommands:
 Sous-commandes:
 • stats - Statistiques DB
 • info - Informations détaillées
+• nb - Stats voisinage (neighbors)
 • clean [hours] - Nettoyer données anciennes
 • vacuum - Optimiser DB (VACUUM)
 
 Exemples:
 • /db stats - Stats DB
+• /db nb - Stats voisinage
 • /db clean 72 - Nettoyer > 72h
 • /db vacuum - Optimiser
 
-Raccourcis: s, i, v
+Raccourcis: s, i, v, nb
 """
 
     def _get_db_stats(self, channel='mesh'):
@@ -372,6 +377,141 @@ Raccourcis: s, i, v
 • Graphiques de pluie
 • Données astronomiques
 """
+
+        except Exception as e:
+            error_print(f"Erreur purge weather cache: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def _get_neighbors_stats(self, channel='mesh'):
+        """Obtenir les statistiques de la table neighbors"""
+        if not self.persistence:
+            return "❌ DB non disponible"
+
+        try:
+            cursor = self.persistence.conn.cursor()
+
+            # Vérifier si la table neighbors existe
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='neighbors'
+            """)
+            if not cursor.fetchone():
+                if channel == 'mesh':
+                    return "❌ Table neighbors inexistante"
+                else:
+                    return "❌ **Table neighbors inexistante**\n\nLa table de voisinage n'est pas disponible dans cette base de données."
+
+            # Compter les entrées totales
+            cursor.execute("SELECT COUNT(*) FROM neighbors")
+            total_entries = cursor.fetchone()[0]
+
+            if total_entries == 0:
+                if channel == 'mesh':
+                    return "👥 Aucune donnée voisinage"
+                else:
+                    return """👥 **AUCUNE DONNÉE DE VOISINAGE**
+
+La table neighbors est vide. Les données de voisinage sont collectées:
+• Depuis les paquets NEIGHBORINFO_APP reçus
+• Depuis le serveur MQTT (si activé)
+
+Vérifiez que:
+• Les nœuds mesh ont neighborinfo activé
+• Le bot reçoit bien les paquets
+• Le collecteur MQTT fonctionne (si configuré)
+"""
+
+            # Compter les nœuds uniques (qui ont des voisins)
+            cursor.execute("SELECT COUNT(DISTINCT node_id) FROM neighbors")
+            unique_nodes = cursor.fetchone()[0]
+
+            # Compter les relations uniques (node -> neighbor)
+            cursor.execute("""
+                SELECT COUNT(DISTINCT node_id || '-' || neighbor_id) 
+                FROM neighbors
+            """)
+            unique_relationships = cursor.fetchone()[0]
+
+            # Plage temporelle
+            cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM neighbors")
+            result = cursor.fetchone()
+            if result and result[0]:
+                min_ts, max_ts = result
+                from datetime import datetime
+                oldest = datetime.fromtimestamp(min_ts).strftime('%d/%m %H:%M')
+                newest = datetime.fromtimestamp(max_ts).strftime('%d/%m %H:%M')
+                span_hours = (max_ts - min_ts) / 3600
+            else:
+                oldest = newest = "N/A"
+                span_hours = 0
+
+            # Moyenne de voisins par nœud
+            avg_neighbors = unique_relationships / unique_nodes if unique_nodes > 0 else 0
+
+            # Top 5 des nœuds avec le plus de voisins (pour Telegram)
+            cursor.execute("""
+                SELECT node_id, COUNT(DISTINCT neighbor_id) as neighbor_count
+                FROM neighbors
+                GROUP BY node_id
+                ORDER BY neighbor_count DESC
+                LIMIT 5
+            """)
+            top_nodes = cursor.fetchall()
+
+            # Format selon canal
+            if channel == 'mesh':
+                lines = [
+                    f"👥 Voisinage:",
+                    f"{unique_nodes}nœuds {unique_relationships}liens",
+                    f"{total_entries}entrées",
+                    f"Moy:{avg_neighbors:.1f}v/nœud"
+                ]
+            else:  # telegram
+                lines = [
+                    "👥 **STATISTIQUES DE VOISINAGE**",
+                    "=" * 50,
+                    "",
+                    f"📊 **Données globales:**",
+                    f"• Total entrées: {total_entries:,}",
+                    f"• Nœuds avec voisins: {unique_nodes:,}",
+                    f"• Relations uniques: {unique_relationships:,}",
+                    f"• Moyenne voisins/nœud: {avg_neighbors:.2f}",
+                    "",
+                    f"⏰ **Plage temporelle:**",
+                    f"• Plus ancien: {oldest}",
+                    f"• Plus récent: {newest}",
+                    f"• Durée: {span_hours:.1f} heures",
+                ]
+
+                # Ajouter le top 5 pour Telegram
+                if top_nodes:
+                    lines.append("")
+                    lines.append("🏆 **Top 5 nœuds (plus de voisins):**")
+                    for node_id, count in top_nodes:
+                        # Convertir node_id en int pour get_node_name
+                        try:
+                            if node_id.startswith('!'):
+                                node_num = int(node_id[1:], 16)
+                            else:
+                                node_num = int(node_id, 16)
+                            
+                            # Obtenir le nom du nœud
+                            node_name = "Unknown"
+                            if self.traffic_monitor and self.traffic_monitor.node_manager:
+                                node_name = self.traffic_monitor.node_manager.get_node_name(node_num)
+                            
+                            lines.append(f"• {node_name} ({node_id}): {count} voisins")
+                        except (ValueError, AttributeError):
+                            lines.append(f"• {node_id}: {count} voisins")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur neighbors stats: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
 
         except Exception as e:
             error_print(f"Erreur purge weather cache: {e}")
