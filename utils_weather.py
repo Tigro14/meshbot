@@ -815,17 +815,17 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 error_msg = "❌ Erreur récupération graphe pluie"
                 error_print(f"{error_msg} (curl returncode: {result.returncode})")
 
-                # Fallback: use cached data if available
+                # Fallback: use cached data if available with STALLED indicator
                 if cached_data:
-                    age_hours = int(cache_age_seconds / 3600)
-                    error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                    return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+                    age_hours = cache_age_seconds / 3600
+                    error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+                    return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
                 # Fallback: cache SQLite périmé
                 stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
                 if stale_data:
                     error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                    return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                    return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
                 return error_msg
 
