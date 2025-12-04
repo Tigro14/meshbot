@@ -24,6 +24,14 @@ SERIAL_PORT = "/dev/ttyACM0"
 TCP_HOST = "192.168.1.38"
 TCP_PORT = 4403
 
+# Auto-reboot du nœud distant en cas d'échec de connexion TCP initial
+# Si True, le bot tentera automatiquement de rebooter le nœud distant
+# via 'meshtastic --host <IP> --reboot' en cas d'erreur de connexion
+# (ex: "No route to host", timeout, connexion refusée)
+TCP_AUTO_REBOOT_ON_FAILURE = True
+# Délai d'attente après reboot avant de retenter la connexion (secondes)
+TCP_REBOOT_WAIT_TIME = 45
+
 # ========================================
 # CONFIGURATION NŒUD DISTANT (OPTIONNEL)
 # ========================================

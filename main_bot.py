@@ -9,6 +9,7 @@ import gc
 import traceback
 import signal
 import sys
+import subprocess
 import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -546,6 +547,59 @@ class MeshBot:
             error_print(f"⚠️ Erreur envoi alerte déconnexion TCP: {e}")
             error_print(traceback.format_exc())
     
+    def _reboot_remote_node(self, tcp_host):
+        """
+        Redémarre le nœud Meshtastic distant via la commande CLI
+        
+        Args:
+            tcp_host: Adresse IP du nœud à redémarrer
+        
+        Returns:
+            bool: True si le reboot a été envoyé avec succès, False sinon
+        """
+        try:
+            info_print(f"🔄 Tentative de redémarrage du nœud distant {tcp_host}...")
+            
+            # Utiliser python3 -m meshtastic pour assurer la disponibilité
+            cmd = [
+                sys.executable, "-m", "meshtastic",
+                "--host", tcp_host,
+                "--reboot"
+            ]
+            
+            info_print(f"   Commande: {' '.join(cmd)}")
+            
+            # Exécuter la commande avec timeout
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30  # Timeout de 30 secondes
+            )
+            
+            if result.returncode == 0:
+                info_print(f"✅ Commande de redémarrage envoyée au nœud {tcp_host}")
+                if result.stdout:
+                    debug_print(f"   Output: {result.stdout.strip()}")
+                return True
+            else:
+                error_print(f"❌ Échec commande reboot (code {result.returncode})")
+                if result.stderr:
+                    error_print(f"   Erreur: {result.stderr.strip()}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            error_print(f"⏱️ Timeout lors du reboot du nœud {tcp_host}")
+            return False
+        except FileNotFoundError:
+            error_print("❌ Module meshtastic non trouvé - impossible de rebooter")
+            error_print("   Installer avec: pip install meshtastic")
+            return False
+        except Exception as e:
+            error_print(f"❌ Erreur reboot nœud distant: {e}")
+            error_print(traceback.format_exc())
+            return False
+    
     def _reconnect_tcp_interface(self):
         """
         Reconnecte l'interface TCP après une déconnexion
@@ -1053,15 +1107,80 @@ class MeshBot:
                 # ========================================
                 tcp_host = globals().get('TCP_HOST', '192.168.1.38')
                 tcp_port = globals().get('TCP_PORT', 4403)
+                auto_reboot = globals().get('TCP_AUTO_REBOOT_ON_FAILURE', True)
+                reboot_wait_time = globals().get('TCP_REBOOT_WAIT_TIME', 45)
                 
                 info_print(f"🌐 Mode TCP: Connexion à {tcp_host}:{tcp_port}")
                 
-                # Utiliser OptimizedTCPInterface pour économiser CPU
-                self.interface = OptimizedTCPInterface(
-                    hostname=tcp_host,
-                    portNumber=tcp_port
-                )
-                info_print("✅ Interface TCP créée")
+                # Tenter la connexion avec gestion d'erreurs et auto-reboot
+                max_connection_attempts = 2  # Tentative initiale + 1 retry après reboot
+                connection_successful = False
+                
+                for attempt in range(max_connection_attempts):
+                    try:
+                        # Utiliser OptimizedTCPInterface pour économiser CPU
+                        info_print(f"🔧 Initialisation OptimizedTCPInterface pour {tcp_host}:{tcp_port}")
+                        self.interface = OptimizedTCPInterface(
+                            hostname=tcp_host,
+                            portNumber=tcp_port
+                        )
+                        info_print("✅ Interface TCP créée")
+                        connection_successful = True
+                        break  # Connexion réussie, sortir de la boucle
+                        
+                    except OSError as e:
+                        # Erreurs réseau courantes
+                        error_print(f"❌ Erreur connexion TCP (tentative {attempt + 1}/{max_connection_attempts}): {e}")
+                        
+                        # Si c'est la première tentative ET que auto-reboot est activé
+                        if attempt == 0 and auto_reboot:
+                            import errno
+                            # Erreurs qui justifient un reboot:
+                            # - EHOSTUNREACH (113): No route to host
+                            # - ETIMEDOUT (110): Connection timed out
+                            # - ECONNREFUSED (111): Connection refused
+                            # - ENETUNREACH (101): Network is unreachable
+                            reboot_worthy_errors = (
+                                errno.EHOSTUNREACH,  # 113
+                                errno.ETIMEDOUT,     # 110
+                                errno.ECONNREFUSED,  # 111
+                                errno.ENETUNREACH,   # 101
+                            )
+                            
+                            if hasattr(e, 'errno') and e.errno in reboot_worthy_errors:
+                                info_print(f"🔄 Erreur réseau détectée (errno {e.errno})")
+                                info_print(f"   → Tentative de redémarrage automatique du nœud...")
+                                
+                                # Tenter de redémarrer le nœud distant
+                                if self._reboot_remote_node(tcp_host):
+                                    info_print(f"⏳ Attente de {reboot_wait_time}s pour le redémarrage du nœud...")
+                                    time.sleep(reboot_wait_time)
+                                    info_print("🔄 Nouvelle tentative de connexion après reboot...")
+                                    # La boucle continuera et retentera la connexion
+                                else:
+                                    error_print("❌ Échec du reboot automatique")
+                                    break  # Pas de retry si le reboot a échoué
+                            else:
+                                # Autre erreur OSError, pas de retry
+                                error_print(f"   Erreur non récupérable (errno {getattr(e, 'errno', 'unknown')})")
+                                break
+                        else:
+                            # Deuxième tentative ou auto-reboot désactivé
+                            if not auto_reboot:
+                                error_print("   Auto-reboot désactivé (TCP_AUTO_REBOOT_ON_FAILURE=False)")
+                            break  # Sortir de la boucle
+                    
+                    except Exception as e:
+                        # Autres exceptions (non-OSError)
+                        error_print(f"❌ Erreur inattendue lors de la connexion TCP: {e}")
+                        error_print(traceback.format_exc())
+                        break  # Pas de retry pour exceptions inattendues
+                
+                # Vérifier si la connexion a finalement réussi
+                if not connection_successful:
+                    error_print("❌ Impossible de se connecter au nœud TCP")
+                    error_print("   Le bot ne peut pas démarrer sans connexion Meshtastic")
+                    return False
                 
                 # Configurer le callback pour reconnexion immédiate quand le socket meurt
                 # Cela permet de ne pas attendre le health monitor (2 minutes)
