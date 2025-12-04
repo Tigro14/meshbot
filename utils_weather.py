@@ -1024,12 +1024,7 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                     split_mode=split_messages
                 )
                 
-                if split_messages:
-                    # En mode split, result est tuple (sparkline, info)
-                    result_parts.append(day_result)
-                else:
-                    # En mode normal, result est une string
-                    result_parts.append(day_result)
+                result_parts.append(day_result)
 
             # Construire le résultat selon le mode
             if split_messages:
@@ -1041,8 +1036,9 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
                 combined_sparklines = "\n\n".join(sparklines)
                 combined_infos = "\n\n".join(infos)
                 
-                # Construire le format standard pour le cache
-                result = "\n\n".join(result_parts)
+                # Construire le format standard pour le cache (combiner chaque tuple en string)
+                standard_parts = [f"{sparkline}\n{info}" for sparkline, info in result_parts]
+                result = "\n\n".join(standard_parts)
                 
                 # Sauvegarder en cache SQLite (format standard)
                 if persistence:

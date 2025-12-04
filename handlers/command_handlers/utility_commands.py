@@ -384,7 +384,6 @@ class UtilityCommands:
                     # Broadcast public: envoyer seulement la partie sparkline (compacte)
                     self._send_broadcast_via_tigrog2(sparkline, sender_id, sender_info, cmd)
                     # Puis la partie info
-                    import time
                     time.sleep(0.5)  # Court délai
                     self._send_broadcast_via_tigrog2(info, sender_id, sender_info, cmd)
                 else:
@@ -393,7 +392,6 @@ class UtilityCommands:
                     self.sender.send_single(sparkline, sender_id, sender_info)
                     
                     # Petit délai entre les messages
-                    import time
                     time.sleep(0.5)
                     
                     # Partie 2: Échelle horaire + info locale
@@ -413,7 +411,6 @@ class UtilityCommands:
                             continue
                         self.sender.send_single(day_msg, sender_id, sender_info)
                         if i < len(day_messages) - 1:
-                            import time
                             time.sleep(1)
         elif subcommand == 'astro':
             # Informations astronomiques
