@@ -50,7 +50,7 @@ echo ""
 
 # Test 4: Check for automatic search trigger
 echo "Test 4: Checking for automatic search trigger..."
-if grep -q "window.nodeParamToSearch" map.html; then
+if grep -q "autoSearchNodeParam" map.html; then
     echo "✓ PASS: Automatic search trigger found"
 else
     echo "❌ FAIL: Automatic search trigger not found"
@@ -60,7 +60,7 @@ echo ""
 
 # Test 5: Check for searchNode() call
 echo "Test 5: Checking for searchNode() call after data load..."
-if grep -A 5 "if (window.nodeParamToSearch)" map.html | grep -q "searchNode()"; then
+if grep -A 5 "if (autoSearchNodeParam)" map.html | grep -q "searchNode()"; then
     echo "✓ PASS: searchNode() call found"
 else
     echo "❌ FAIL: searchNode() call not found"
@@ -70,7 +70,7 @@ echo ""
 
 # Test 6: Verify cleanup of temporary variable
 echo "Test 6: Checking for cleanup of temporary variable..."
-if grep -A 5 "if (window.nodeParamToSearch)" map.html | grep -q "delete window.nodeParamToSearch"; then
+if grep -A 5 "if (autoSearchNodeParam)" map.html | grep -q "autoSearchNodeParam = null"; then
     echo "✓ PASS: Variable cleanup found"
 else
     echo "❌ FAIL: Variable cleanup not found"
@@ -88,6 +88,16 @@ else
 fi
 echo ""
 
+# Test 8: Check for AUTO_SEARCH_DELAY constant
+echo "Test 8: Checking for AUTO_SEARCH_DELAY constant..."
+if grep -q "const AUTO_SEARCH_DELAY" map.html; then
+    echo "✓ PASS: AUTO_SEARCH_DELAY constant found"
+else
+    echo "❌ FAIL: AUTO_SEARCH_DELAY constant not found"
+    exit 1
+fi
+echo ""
+
 # Summary
 echo "========================================="
 echo "All tests passed! ✓"
@@ -98,6 +108,8 @@ echo "- URL parameter ?node=<search-term> is supported"
 echo "- Automatically searches for node on page load"
 echo "- Works with node names, IDs, and partial matches"
 echo "- Compatible with existing ?view parameter"
+echo "- Uses named constant for delay (maintainability)"
+echo "- Module-scoped variable (no global pollution)"
 echo ""
 echo "Example URLs:"
 echo "  map.html?node=tigro"

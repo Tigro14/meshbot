@@ -422,6 +422,10 @@
         const ID_PREFIX_LENGTH = 1;  // Length of '!' prefix in node IDs
         const MAX_ID_DISPLAY_LENGTH = 8;  // Show first 8 hex characters of node ID
         
+        // URL parameter auto-search configuration
+        const AUTO_SEARCH_DELAY = 500;  // Delay in ms before triggering auto-search from URL parameter
+        let autoSearchNodeParam = null;  // Stores node parameter from URL for deferred search
+        
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
                    lat !== null && lon !== null &&
@@ -623,11 +627,11 @@
                 updateMapView();
                 
                 // If node parameter was provided in URL, search for it
-                if (window.nodeParamToSearch) {
+                if (autoSearchNodeParam) {
                     setTimeout(() => {
                         searchNode();
-                        delete window.nodeParamToSearch;
-                    }, 500);
+                        autoSearchNodeParam = null;
+                    }, AUTO_SEARCH_DELAY);
                 }
             } catch (error) {
                 console.error('Erreur chargement données:', error);
@@ -1168,9 +1172,8 @@
                     searchInput.value = nodeParam;
                 }
                 
-                // Trigger search after map and data are loaded
-                // We'll call this after initMap() completes
-                window.nodeParamToSearch = nodeParam;
+                // Store parameter for deferred search after map data loads
+                autoSearchNodeParam = nodeParam;
             }
         }
         
