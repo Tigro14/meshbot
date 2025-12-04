@@ -62,6 +62,7 @@ graph TD
 - **Données ESPHome** : `/power` pour télémétrie solaire/batterie
 - **Administration** : Commandes cachées pour gestion à distance
 - **Collecte MQTT** : Collection automatique de topologie réseau via MQTT (au-delà de la portée radio)
+- **Auto-récupération TCP** : Redémarrage automatique du node distant en cas d'échec de connexion (voir [TCP_AUTO_REBOOT.md](TCP_AUTO_REBOOT.md))
 
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
@@ -141,7 +142,13 @@ pip install meshtastic pypubsub requests python-telegram-bot \
      CONNECTION_MODE = 'tcp'
      TCP_HOST = "192.168.1.38"  # IP du node Meshtastic
      TCP_PORT = 4403            # Port TCP (défaut: 4403)
+     
+     # Auto-reboot en cas d'échec de connexion (recommandé)
+     TCP_AUTO_REBOOT_ON_FAILURE = True  # Redémarre le node si inaccessible
+     TCP_REBOOT_WAIT_TIME = 45          # Attente après reboot (secondes)
      ```
+     
+     **Note:** Le mode TCP inclut désormais un système de récupération automatique. Si le node distant est inaccessible au démarrage (erreur "No route to host"), le bot tente automatiquement de le redémarrer via `meshtastic --reboot`. Voir [TCP_AUTO_REBOOT.md](TCP_AUTO_REBOOT.md) pour plus de détails.
    
    **Autres paramètres importants :**
    - Token Telegram (`TELEGRAM_BOT_TOKEN`) si intégration Telegram
