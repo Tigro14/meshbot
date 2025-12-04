@@ -557,13 +557,34 @@
                     }
                 );
                 
+                // IGN Géoportail Worldwide Orthoimagery layer (ORTHOIMAGERY.ORTHO@WLD equivalent)
+                const orthoWorldwide = L.tileLayer(
+                    'https://wxs.ign.fr/essentiels/geoportail/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg',
+                    {
+                        attribution: '© IGN - Géoportail',
+                        maxZoom: 19
+                    }
+                );
+                
+                // IGN Géoportail Hillshade (terrain relief model)
+                const hillshadeLayer = L.tileLayer(
+                    'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.SLOPES.MOUNTAIN&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png',
+                    {
+                        attribution: '© IGN - Géoportail',
+                        maxZoom: 17,
+                        opacity: 0.8
+                    }
+                );
+                
                 // Add default layer (OpenStreetMap)
                 osmLayer.addTo(map);
                 
                 // Add layer control
                 const baseLayers = {
                     "OpenStreetMap": osmLayer,
-                    "Orthophoto": orthoGeoportail
+                    "Orthophoto France": orthoGeoportail,
+                    "Orthophoto Mondial": orthoWorldwide,
+                    "Relief (Hillshade)": hillshadeLayer
                 };
                 L.control.layers(baseLayers, null, {position: 'topleft'}).addTo(map);
             } catch (error) {
