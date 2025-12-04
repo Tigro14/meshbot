@@ -2268,23 +2268,86 @@ class TrafficMonitor:
             logger.error(f"Erreur lors de la récupération des stats de persistance : {e}")
             return f"❌ Erreur : {e}"
 
-    def get_neighbors_report(self, node_filter=None, compact=True):
+    def get_neighbors_report(self, node_filter=None, compact=True, max_distance_km=None):
         """
         Générer un rapport sur les voisins mesh
         
         Args:
             node_filter: Nom ou ID partiel du nœud à filtrer (optionnel)
             compact: Format compact pour LoRa (180 chars) ou détaillé pour Telegram
+            max_distance_km: Distance maximale en km pour filtrer les nœuds (défaut: config.NEIGHBORS_MAX_DISTANCE_KM ou 100)
             
         Returns:
             Rapport formaté des voisins
         """
         try:
+            # Utiliser la configuration ou la valeur par défaut
+            if max_distance_km is None:
+                try:
+                    from config import NEIGHBORS_MAX_DISTANCE_KM
+                    max_distance_km = NEIGHBORS_MAX_DISTANCE_KM
+                except ImportError:
+                    max_distance_km = 100  # Valeur par défaut si config non disponible
+            
             # Charger les données de voisinage depuis SQLite
             neighbors_data = self.persistence.load_neighbors(hours=48)
             
             if not neighbors_data:
                 return "❌ Aucune donnée de voisinage disponible. Les nœuds doivent avoir neighborinfo activé."
+            
+            # Filtrer par distance (supprimer les nœuds trop loin)
+            # Ceci filtre les nœuds étrangers du réseau MQTT public
+            filtered_by_distance = {}
+            nodes_filtered_count = 0
+            
+            # Obtenir la position de référence (bot)
+            ref_pos = self.node_manager.get_reference_position()
+            
+            if ref_pos and ref_pos[0] != 0 and ref_pos[1] != 0:
+                ref_lat, ref_lon = ref_pos
+                
+                for node_id, neighbors in neighbors_data.items():
+                    # Convertir node_id string (!xxxxxxxx) en int
+                    try:
+                        if node_id.startswith('!'):
+                            node_id_int = int(node_id[1:], 16)
+                        else:
+                            node_id_int = int(node_id, 16)
+                    except (ValueError, AttributeError):
+                        # Si conversion échoue, garder le nœud par défaut
+                        filtered_by_distance[node_id] = neighbors
+                        continue
+                    
+                    # Obtenir les données du nœud (position GPS)
+                    node_data = self.node_manager.get_node_data(node_id_int)
+                    
+                    if node_data and 'latitude' in node_data and 'longitude' in node_data:
+                        node_lat = node_data['latitude']
+                        node_lon = node_data['longitude']
+                        
+                        # Calculer la distance
+                        distance_km = self.node_manager.haversine_distance(
+                            ref_lat, ref_lon, node_lat, node_lon
+                        )
+                        
+                        # Filtrer si > max_distance_km
+                        if distance_km <= max_distance_km:
+                            filtered_by_distance[node_id] = neighbors
+                        else:
+                            nodes_filtered_count += 1
+                            debug_print(f"👥 Nœud filtré (>{max_distance_km}km): {node_id} à {distance_km:.1f}km")
+                    else:
+                        # Pas de position GPS - garder le nœud par défaut
+                        # (peut être un nœud local sans GPS)
+                        filtered_by_distance[node_id] = neighbors
+                
+                # Remplacer neighbors_data par les données filtrées
+                neighbors_data = filtered_by_distance
+                
+                if nodes_filtered_count > 0:
+                    debug_print(f"👥 {nodes_filtered_count} nœud(s) filtré(s) pour distance >{max_distance_km}km")
+            else:
+                debug_print("👥 Pas de position de référence - filtrage par distance désactivé")
             
             # Filtrer si nécessaire
             if node_filter:

@@ -287,6 +287,10 @@ MQTT_NEIGHBOR_TOPIC_PATTERN = "msh/EU_868/2/e/MediumFast/#"  # Topic spécifique
 # Format topic: msh/<region>/<channel>/2/json/<node_id>/NEIGHBORINFO_APP
 # Dépendance: paho-mqtt (déjà installé pour Blitzortung)
 
+# Distance maximale (km) pour afficher les voisins MQTT dans /neighbors
+# Les nœuds situés à plus de cette distance du bot seront filtrés (nœuds étrangers)
+NEIGHBORS_MAX_DISTANCE_KM = 100  # Défaut: 100km
+
 REBOOT_AUTHORIZED_USERS = [
     11234530,    # trusted Telegram ID
     0x16fad3dc    # trusted mesh id
