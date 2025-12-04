@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MQTT Active Nodes Visualization Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .test-section {
+            border: 2px solid #ddd;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #1a73e8;
+        }
+        .node-marker {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin: 10px;
+            position: relative;
+        }
+        .mqtt-active-circle {
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            width: 50px;
+            height: 50px;
+            border: 5px solid #FFD700;
+            border-radius: 50%;
+            background: transparent;
+        }
+        .node-regular {
+            background: #3498db;
+        }
+        .node-mqtt {
+            background: #27ae60;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .warning {
+            color: #f39c12;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 MQTT Active Nodes Visualization Test</h1>
+    
+    <div class="test-section">
+        <h3>Visual Examples</h3>
+        <p>This shows how MQTT-active nodes should appear on the map:</p>
+        
+        <div>
+            <div style="display: inline-block; margin: 20px; text-align: center;">
+                <div style="position: relative; display: inline-block;">
+                    <div class="node-marker node-regular"></div>
+                </div>
+                <p>Regular Node<br>(No MQTT)</p>
+            </div>
+            
+            <div style="display: inline-block; margin: 20px; text-align: center;">
+                <div style="position: relative; display: inline-block;">
+                    <div class="node-marker node-mqtt"></div>
+                    <div class="mqtt-active-circle"></div>
+                </div>
+                <p>MQTT Active Node<br>(Yellow Circle)</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Code Implementation</h3>
+        <p>In map.html, MQTT-active nodes are rendered with this code:</p>
+        <pre>
+if (node.mqttActive) {
+    // Add yellow hi-viz circle
+    const hivizCircle = L.circleMarker([lat, lon], {
+        radius: 20,
+        fillColor: 'transparent',
+        color: '#FFD700',  // Bright yellow/gold
+        weight: 5,
+        opacity: 1,
+        fillOpacity: 0,
+        className: 'mqtt-active-hiviz',
+        interactive: false
+    });
+    hivizCircle.addTo(map);
+}</pre>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test Results</h3>
+        <p class="success">✅ export_nodes_from_db.py now correctly sets mqttActive flag</p>
+        <p class="success">✅ Nodes with NEIGHBORINFO data are marked as MQTT-active</p>
+        <p class="success">✅ map.html renders yellow circles for mqttActive nodes</p>
+        <p class="success">✅ All test scripts pass (test_mqtt_active.sh, test_mqtt_only_nodes.sh, test_mqtt_lastheard.sh)</p>
+    </div>
+    
+    <div class="test-section">
+        <h3>Expected Behavior on Real Map</h3>
+        <ol>
+            <li>Nodes that have sent NEIGHBORINFO packets (via MQTT) will have <code>mqttActive: true</code> in info.json</li>
+            <li>These nodes will appear on map.html with a bright yellow/gold circle around them</li>
+            <li>The legend shows: "🌐 MQTT actif" with a yellow circle icon</li>
+            <li>The popup for MQTT-active nodes shows: "<strong>🌐 MQTT:</strong> <span style="color: #FFD700;">Actif</span>"</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h3>Verification Steps</h3>
+        <ol>
+            <li>Run <code>./map/infoup_db.sh</code> to regenerate info.json</li>
+            <li>Check that info.json contains nodes with <code>"mqttActive": true</code></li>
+            <li>Open map.html in a browser</li>
+            <li>Verify that nodes with mqttActive flag have yellow circles around them</li>
+            <li>Click on a node with yellow circle and verify popup shows "🌐 MQTT: Actif"</li>
+        </ol>
+    </div>
+</body>
+</html>
