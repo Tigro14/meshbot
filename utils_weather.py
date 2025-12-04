@@ -1119,18 +1119,18 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         error_msg = "❌ Commande curl non trouvée"
         error_print(error_msg)
 
-        # Fallback: use cached data if available
+        # Fallback: use cached data if available with STALLED indicator
         if cached_data:
-            age_hours = int(cache_age_seconds / 3600)
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+            age_hours = cache_age_seconds / 3600
+            error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+            return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
         # Fallback: cache SQLite périmé
         if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
         return error_msg
 
@@ -1139,20 +1139,57 @@ def get_rain_graph(location=None, days=1, max_hours=38, compact_mode=False, pers
         import traceback
         error_print(traceback.format_exc())
 
-        # Fallback: use cached data if available
+        # Fallback: use cached data if available with STALLED indicator
         if cached_data:
-            age_hours = int(cache_age_seconds / 3600)
-            error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-            return f"⚠️ (cache ~{age_hours}h)\n{cached_data}"
+            age_hours = cache_age_seconds / 3600
+            error_print(f"⚠️ Servir cache périmé ({age_hours:.1f}h)")
+            return _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages)
 
         # Fallback: cache SQLite périmé
         if cache_key is not None:
             stale_data, age_hours = _load_stale_cache_sqlite(persistence, cache_key, 'rain')
             if stale_data:
                 error_print(f"⚠️ Servir cache périmé ({age_hours}h)")
-                return f"⚠️ (cache ~{age_hours}h)\n{stale_data}"
+                return _add_stale_indicator_to_rain_graph(stale_data, age_hours, split_messages)
 
         return f"❌ Erreur: {str(e)[:50]}"
+
+
+def _add_stale_indicator_to_rain_graph(cached_data, age_hours, split_messages=False):
+    """
+    Ajouter un indicateur STALLED au graphe de pluie en cache
+    
+    Args:
+        cached_data: Données en cache (string ou tuple si split_messages)
+        age_hours: Age du cache en heures
+        split_messages: Si True, cached_data est un tuple (sparkline, info)
+    
+    Returns:
+        Données avec indicateur STALLED ajouté au header
+    """
+    stale_text = f"STALLED for {int(age_hours)}h"
+    
+    if isinstance(cached_data, tuple):
+        # Mode split: modifier seulement la partie info (sparkline, info)
+        sparkline, info = cached_data
+        # Chercher la ligne avec le header (contient 🌧 ou 🌧️)
+        info_lines = info.split('\n')
+        for i, line in enumerate(info_lines):
+            if '🌧' in line:
+                # Ajouter STALLED après la date
+                info_lines[i] = line + f" - {stale_text}"
+                break
+        modified_info = '\n'.join(info_lines)
+        return (sparkline, modified_info)
+    else:
+        # Mode string: modifier la ligne avec le header
+        lines = cached_data.split('\n')
+        for i, line in enumerate(lines):
+            if '🌧' in line:
+                # Ajouter STALLED après la date
+                lines[i] = line + f" - {stale_text}"
+                break
+        return '\n'.join(lines)
 
 
 def get_moon_emoji(moon_illumination):
