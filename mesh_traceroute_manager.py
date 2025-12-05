@@ -282,7 +282,12 @@ class MeshTracerouteManager:
                         for i, hop in enumerate(route_back):
                             debug_print(f"   {i}. {hop['name']} (0x{hop['node_id']:08x})")
 
-                    return route_forward, route_back
+                    # Si la route est vide, ne pas retourner ici - laisser le fallback construire
+                    # une route basée sur hopStart/hopLimit (connexion directe)
+                    if route_forward:
+                        return route_forward, route_back
+                    else:
+                        debug_print(f"⚠️ Route vide (connexion directe?), utilisation du fallback")
 
                 except ImportError as import_error:
                     error_print(f"⚠️ mesh_pb2 non disponible: {import_error}")
