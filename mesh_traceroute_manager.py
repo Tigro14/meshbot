@@ -356,24 +356,24 @@ class MeshTracerouteManager:
         if compact:
             # Format ultra-compact pour LoRa
             lines = []
-            lines.append(f"🔍 Trace→{target_name}")
-
+            
             if route_forward:
                 hops = len(route_forward) - 1  # Nombre de sauts (excluant origine)
-                lines.append(f"📏 {hops} hop{'s' if hops != 1 else ''}")
+                # Combiner titre et nombre de hops sur la même ligne
+                lines.append(f"🔍 Trace→{target_name} ({hops} hop{'s' if hops != 1 else ''})")
 
                 # Fonction helper pour formater une route
                 def format_compact_route(route, prefix=""):
                     if len(route) <= 4:
-                        # Route courte: afficher tous les noms
+                        # Route courte: afficher tous les noms (tronqués à 30 chars)
                         return prefix + "→".join([
-                            hop['name'].split()[0][:8]  # Premier mot, max 8 chars
+                            hop['name'][:30]  # Nom complet, max 30 chars
                             for hop in route
                         ])
                     else:
                         # Route longue: origine → ... → destination
-                        origin = route[0]['name'].split()[0][:8]
-                        dest = route[-1]['name'].split()[0][:8]
+                        origin = route[0]['name'][:30]
+                        dest = route[-1]['name'][:30]
                         middle = len(route) - 2
                         return f"{prefix}{origin}→[{middle}]→{dest}"
 
@@ -387,6 +387,7 @@ class MeshTracerouteManager:
                 # Temps
                 lines.append(f"⏱️ {elapsed_time:.1f}s")
             else:
+                lines.append(f"🔍 Trace→{target_name}")
                 lines.append("❌ Route inconnue")
 
             return "\n".join(lines)
