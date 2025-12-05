@@ -241,12 +241,19 @@ class MeshTracerouteManager:
 
             # Méthode 1: Route dans RouteDiscovery (protobuf)
             if 'payload' in decoded:
+                payload = decoded['payload']
+                
+                # Log détaillé du paquet pour debug
+                debug_print(f"📦 [Traceroute] Paquet reçu:")
+                debug_print(f"   Payload size: {len(payload)} bytes")
+                debug_print(f"   Payload hex: {payload.hex()}")
+                
                 try:
                     from meshtastic import mesh_pb2
 
                     # Décoder le RouteDiscovery protobuf
                     route_discovery = mesh_pb2.RouteDiscovery()
-                    route_discovery.ParseFromString(decoded['payload'])
+                    route_discovery.ParseFromString(payload)
 
                     # Extraire la route aller
                     for node_id in route_discovery.route:
@@ -277,10 +284,17 @@ class MeshTracerouteManager:
 
                     return route_forward, route_back
 
-                except ImportError:
-                    debug_print("⚠️ mesh_pb2 non disponible")
+                except ImportError as import_error:
+                    error_print(f"⚠️ mesh_pb2 non disponible: {import_error}")
                 except Exception as parse_error:
-                    debug_print(f"⚠️ Erreur parsing RouteDiscovery: {parse_error}")
+                    error_print(f"⚠️ Erreur parsing RouteDiscovery: {parse_error}")
+                    error_print(f"   Type d'erreur: {type(parse_error).__name__}")
+                    error_print(f"   Payload size: {len(payload)} bytes")
+                    error_print(f"   Payload hex: {payload.hex()}")
+                    
+                    # Log traceback complet en debug
+                    import traceback
+                    debug_print(f"   Traceback complet:\n{traceback.format_exc()}")
 
             # Méthode 2: Fallback - analyser hopStart/hopLimit
             if not route_forward:

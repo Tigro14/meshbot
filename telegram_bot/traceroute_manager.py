@@ -632,11 +632,22 @@ class TracerouteManager:
 
             # Parser la réponse traceroute
             route = []
+            parse_error_msg = None
+            payload_debug_info = {}
 
             # Le payload contient la route sous forme de RouteDiscovery
             # protobuf
             if 'payload' in decoded:
                 payload = decoded['payload']
+                payload_debug_info['size'] = len(payload)
+                payload_debug_info['hex'] = payload.hex()
+
+                # Log détaillé du paquet pour debug
+                debug_print(f"📦 [Traceroute] Paquet reçu de {node_name}:")
+                debug_print(f"   Payload size: {len(payload)} bytes")
+                debug_print(f"   Payload hex: {payload.hex()}")
+                debug_print(f"   Packet keys: {list(packet.keys())}")
+                debug_print(f"   Decoded keys: {list(decoded.keys())}")
 
                 try:
                     # Décoder le protobuf RouteDiscovery
@@ -657,10 +668,20 @@ class TracerouteManager:
                             f"   {i}. {node_name_route} (!{node_id:08x})")
 
                 except Exception as parse_error:
+                    parse_error_msg = str(parse_error)
                     error_print(
                         f"❌ Erreur parsing RouteDiscovery: {parse_error}")
-                    # Fallback: afficher le payload brut
-                    info_print(f"Payload brut: {payload.hex()}")
+                    error_print(f"   Type d'erreur: {type(parse_error).__name__}")
+                    error_print(f"   Payload size: {len(payload)} bytes")
+                    error_print(f"   Payload hex: {payload.hex()}")
+                    
+                    # Log traceback complet en debug
+                    import traceback
+                    debug_print(f"   Traceback complet:\n{traceback.format_exc()}")
+            else:
+                error_print(f"❌ Pas de payload dans le paquet decoded")
+                debug_print(f"   Packet structure: {packet}")
+                debug_print(f"   Decoded structure: {decoded}")
 
             # Construire le message pour Telegram
             if route:
@@ -696,14 +717,41 @@ class TracerouteManager:
 
                 telegram_message = "\n".join(route_parts)
             else:
-                # Pas de route décodée
-                telegram_message = (
-                    f"📊 **Traceroute vers {node_name}**\n"
-                    f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"⚠️ Route non décodable\n"
-                    f"Le nœud a répondu mais le format n'est pas standard.\n\n"
-                    f"ℹ️ Cela peut arriver avec certaines versions du firmware."
-                )
+                # Pas de route décodée - Fournir des informations de debug
+                elapsed = time.time() - trace_data['timestamp']
+                
+                debug_parts = []
+                debug_parts.append(f"📊 **Traceroute vers {node_name}**")
+                debug_parts.append(f"━━━━━━━━━━━━━━━━━━━━")
+                debug_parts.append("")
+                debug_parts.append(f"⚠️ **Route non décodable**")
+                debug_parts.append(f"Le nœud a répondu mais le format n'est pas standard.")
+                debug_parts.append("")
+                debug_parts.append(f"⏱️ **Temps de réponse:** {elapsed:.1f}s")
+                
+                # Ajouter des informations de debug si disponibles
+                if parse_error_msg:
+                    debug_parts.append("")
+                    debug_parts.append(f"🔍 **Debug Info:**")
+                    debug_parts.append(f"Erreur: `{parse_error_msg}`")
+                
+                if payload_debug_info:
+                    if 'size' in payload_debug_info:
+                        debug_parts.append(f"Taille payload: {payload_debug_info['size']} bytes")
+                    if 'hex' in payload_debug_info:
+                        # Limiter à 64 caractères pour éviter un message trop long
+                        hex_preview = payload_debug_info['hex'][:64]
+                        if len(payload_debug_info['hex']) > 64:
+                            hex_preview += "..."
+                        debug_parts.append(f"Payload hex: `{hex_preview}`")
+                
+                debug_parts.append("")
+                debug_parts.append(f"ℹ️ Cela peut arriver avec:")
+                debug_parts.append(f"  • Certaines versions du firmware")
+                debug_parts.append(f"  • Des paquets corrompus en transit")
+                debug_parts.append(f"  • Des formats protobuf incompatibles")
+                
+                telegram_message = "\n".join(debug_parts)
 
             # Envoyer à Telegram
             info_print(f"📤 Envoi du traceroute à Telegram...")
