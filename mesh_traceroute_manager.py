@@ -363,10 +363,10 @@ class MeshTracerouteManager:
                 lines.append(f"🔍 Trace→{target_name} ({hops} hop{'s' if hops != 1 else ''})")
 
                 # Fonction helper pour formater une route
-                def format_compact_route(route, prefix=""):
+                def format_compact_route(route, arrow="→"):
                     if len(route) <= 4:
                         # Route courte: afficher tous les noms (tronqués à 30 chars)
-                        return prefix + "→".join([
+                        return arrow.join([
                             hop['name'][:30]  # Nom complet, max 30 chars
                             for hop in route
                         ])
@@ -375,14 +375,14 @@ class MeshTracerouteManager:
                         origin = route[0]['name'][:30]
                         dest = route[-1]['name'][:30]
                         middle = len(route) - 2
-                        return f"{prefix}{origin}→[{middle}]→{dest}"
+                        return f"{origin}{arrow}[{middle}]{arrow}{dest}"
 
-                # Afficher route aller
-                lines.append(f"➡️ {format_compact_route(route_forward, '')}")
+                # Afficher route aller (avec flèche droite)
+                lines.append(f"➡️ {format_compact_route(route_forward, '→')}")
 
-                # Afficher route retour si disponible
+                # Afficher route retour si disponible (avec flèche gauche)
                 if route_back and len(route_back) > 0:
-                    lines.append(f"⬅️ {format_compact_route(route_back, '')}")
+                    lines.append(f"⬅️ {format_compact_route(route_back, '←')}")
 
                 # Temps
                 lines.append(f"⏱️ {elapsed_time:.1f}s")
