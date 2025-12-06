@@ -164,10 +164,11 @@ class MeshTracerouteManager:
         try:
             from_id = packet.get('from', 0) & 0xFFFFFFFF
 
-            # Vérifier si c'est une réponse attendue
+            # Vérifier si c'est une réponse attendue (pour mesh/CLI)
+            # Note: Les réponses Telegram sont gérées par telegram_bot/traceroute_manager
             with self._lock:
                 if from_id not in self.pending_traces:
-                    debug_print(f"⚠️ Traceroute de 0x{from_id:08x} non attendu")
+                    debug_print(f"⚠️ [Mesh] Traceroute de 0x{from_id:08x} non destiné à mesh/CLI (probablement Telegram)")
                     return False
 
                 trace_data = self.pending_traces[from_id].copy()
@@ -240,12 +241,19 @@ class MeshTracerouteManager:
 
             # Méthode 1: Route dans RouteDiscovery (protobuf)
             if 'payload' in decoded:
+                payload = decoded['payload']
+                
+                # Log détaillé du paquet pour debug
+                debug_print(f"📦 [Traceroute] Paquet reçu:")
+                debug_print(f"   Payload size: {len(payload)} bytes")
+                debug_print(f"   Payload hex: {payload.hex()}")
+                
                 try:
                     from meshtastic import mesh_pb2
 
                     # Décoder le RouteDiscovery protobuf
                     route_discovery = mesh_pb2.RouteDiscovery()
-                    route_discovery.ParseFromString(decoded['payload'])
+                    route_discovery.ParseFromString(payload)
 
                     # Extraire la route aller
                     for node_id in route_discovery.route:
@@ -274,12 +282,24 @@ class MeshTracerouteManager:
                         for i, hop in enumerate(route_back):
                             debug_print(f"   {i}. {hop['name']} (0x{hop['node_id']:08x})")
 
-                    return route_forward, route_back
+                    # Si la route est vide, ne pas retourner ici - laisser le fallback construire
+                    # une route basée sur hopStart/hopLimit (connexion directe)
+                    if route_forward:
+                        return route_forward, route_back
+                    else:
+                        debug_print(f"⚠️ Route vide (connexion directe?), utilisation du fallback")
 
-                except ImportError:
-                    debug_print("⚠️ mesh_pb2 non disponible")
+                except ImportError as import_error:
+                    error_print(f"⚠️ mesh_pb2 non disponible: {import_error}")
                 except Exception as parse_error:
-                    debug_print(f"⚠️ Erreur parsing RouteDiscovery: {parse_error}")
+                    error_print(f"⚠️ Erreur parsing RouteDiscovery: {parse_error}")
+                    error_print(f"   Type d'erreur: {type(parse_error).__name__}")
+                    error_print(f"   Payload size: {len(payload)} bytes")
+                    error_print(f"   Payload hex: {payload.hex()}")
+                    
+                    # Log traceback complet en debug
+                    import traceback
+                    debug_print(f"   Traceback complet:\n{traceback.format_exc()}")
 
             # Méthode 2: Fallback - analyser hopStart/hopLimit
             if not route_forward:
@@ -336,37 +356,38 @@ class MeshTracerouteManager:
         if compact:
             # Format ultra-compact pour LoRa
             lines = []
-            lines.append(f"🔍 Trace→{target_name}")
-
+            
             if route_forward:
                 hops = len(route_forward) - 1  # Nombre de sauts (excluant origine)
-                lines.append(f"📏 {hops} hop{'s' if hops != 1 else ''}")
+                # Combiner titre et nombre de hops sur la même ligne
+                lines.append(f"🔍 Trace→{target_name} ({hops} hop{'s' if hops != 1 else ''})")
 
                 # Fonction helper pour formater une route
-                def format_compact_route(route, prefix=""):
+                def format_compact_route(route, arrow="→"):
                     if len(route) <= 4:
-                        # Route courte: afficher tous les noms
-                        return prefix + "→".join([
-                            hop['name'].split()[0][:8]  # Premier mot, max 8 chars
+                        # Route courte: afficher tous les noms (tronqués à 30 chars)
+                        return arrow.join([
+                            hop['name'][:30]  # Nom complet, max 30 chars
                             for hop in route
                         ])
                     else:
                         # Route longue: origine → ... → destination
-                        origin = route[0]['name'].split()[0][:8]
-                        dest = route[-1]['name'].split()[0][:8]
+                        origin = route[0]['name'][:30]
+                        dest = route[-1]['name'][:30]
                         middle = len(route) - 2
-                        return f"{prefix}{origin}→[{middle}]→{dest}"
+                        return f"{origin}{arrow}[{middle}]{arrow}{dest}"
 
-                # Afficher route aller
-                lines.append(f"➡️ {format_compact_route(route_forward, '')}")
+                # Afficher route aller (avec flèche droite)
+                lines.append(f"➡️ {format_compact_route(route_forward, '→')}")
 
-                # Afficher route retour si disponible
+                # Afficher route retour si disponible (avec flèche gauche)
                 if route_back and len(route_back) > 0:
-                    lines.append(f"⬅️ {format_compact_route(route_back, '')}")
+                    lines.append(f"⬅️ {format_compact_route(route_back, '←')}")
 
                 # Temps
                 lines.append(f"⏱️ {elapsed_time:.1f}s")
             else:
+                lines.append(f"🔍 Trace→{target_name}")
                 lines.append("❌ Route inconnue")
 
             return "\n".join(lines)
