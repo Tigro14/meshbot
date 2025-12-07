@@ -299,22 +299,31 @@ class NetworkCommands:
                 # Chercher d'abord dans node_manager (SQLite DB) pour éviter les appels TCP inutiles
                 matching_nodes = []
                 exact_matches = []
-                target_search = target_node_name.lower()
+                
+                # Nettoyer l'input utilisateur:
+                # - Enlever les espaces
+                # - Enlever le préfixe ! (convention Meshtastic pour les IDs)
+                # - Enlever le suffixe ) (du copy-paste depuis les suggestions du bot)
+                target_search = target_node_name.strip().lower()
+                target_search = target_search.lstrip('!')
+                target_search = target_search.rstrip(')')
 
                 # PRIORITÉ 1: Chercher dans node_manager.node_names (SQLite DB - pas de TCP)
                 if self.node_manager and hasattr(self.node_manager, 'node_names'):
                     for node_id, node_data in self.node_manager.node_names.items():
                         node_name = node_data.get('name', '').lower()
-                        node_id_hex = f"{node_id:x}".lower()
+                        # Support both formats: with and without leading zeros
+                        node_id_hex = f"{node_id:x}".lower()  # Without padding (e.g., "de3331e")
+                        node_id_hex_padded = f"{node_id:08x}".lower()  # With padding (e.g., "0de3331e")
                         
                         # Vérifier correspondance exacte d'abord
-                        if target_search == node_name or target_search == node_id_hex:
+                        if target_search == node_name or target_search == node_id_hex or target_search == node_id_hex_padded:
                             exact_matches.append({
                                 'id': node_id,
                                 'name': node_data.get('name', f"Node-{node_id:08x}")
                             })
                         # Sinon correspondance partielle
-                        elif target_search in node_name or target_search in node_id_hex:
+                        elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
                             matching_nodes.append({
                                 'id': node_id,
                                 'name': node_data.get('name', f"Node-{node_id:08x}")
@@ -332,13 +341,15 @@ class NetworkCommands:
                     # Chercher dans remote_nodes
                     for node in remote_nodes:
                         node_name = node.get('name', '').lower()
-                        node_id_hex = f"{node['id']:x}".lower()
+                        # Support both formats: with and without leading zeros
+                        node_id_hex = f"{node['id']:x}".lower()  # Without padding
+                        node_id_hex_padded = f"{node['id']:08x}".lower()  # With padding
 
                         # Vérifier correspondance exacte d'abord
-                        if target_search == node_name or target_search == node_id_hex:
+                        if target_search == node_name or target_search == node_id_hex or target_search == node_id_hex_padded:
                             exact_matches.append(node)
                         # Sinon correspondance partielle
-                        elif target_search in node_name or target_search in node_id_hex:
+                        elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
                             matching_nodes.append(node)
 
                 # Priorité aux correspondances exactes
@@ -523,14 +534,20 @@ class NetworkCommands:
 
             # Chercher le nœud par nom (partiel) ou ID
             target_node = None
-            target_search = target_node_name.lower()
+            
+            # Nettoyer l'input utilisateur (même logique que handle_trace actif)
+            target_search = target_node_name.strip().lower()
+            target_search = target_search.lstrip('!')
+            target_search = target_search.rstrip(')')
 
             for node in remote_nodes:
                 node_name = node.get('name', '').lower()
-                node_id_hex = f"{node['id']:x}".lower()
+                # Support both formats: with and without leading zeros
+                node_id_hex = f"{node['id']:x}".lower()  # Without padding
+                node_id_hex_padded = f"{node['id']:08x}".lower()  # With padding
 
                 # Correspondance par nom (partiel) ou ID (partiel)
-                if target_search in node_name or target_search in node_id_hex:
+                if target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
                     target_node = node
                     break
 
