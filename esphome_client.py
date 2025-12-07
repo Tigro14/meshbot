@@ -9,6 +9,9 @@ from config import *
 from utils import *
 from esphome_history import ESPHomeHistory
 
+# Constante pour détecter si pression est en Pascals ou hPa
+PA_TO_HPA_THRESHOLD = 2000  # Valeurs > 2000 sont probablement en Pa
+
 class ESPHomeClient:
     def __init__(self):
         self.history = ESPHomeHistory()
@@ -142,7 +145,7 @@ class ESPHomeClient:
                     if 'bme280_pressure' in found_data:
                         pressure_value = found_data['bme280_pressure']
                         # Convert from Pa to hPa if necessary (ESPHome might return in Pa)
-                        if pressure_value > 2000:  # Likely in Pa (100000 Pa ≈ 1000 hPa)
+                        if pressure_value > PA_TO_HPA_THRESHOLD:  # Likely in Pa
                             pressure_value = pressure_value / 100
                         parts.append(f"P:{pressure_value:.1f}hPa")
                     
@@ -273,7 +276,7 @@ class ESPHomeClient:
                                 if key == 'pressure' and value is not None:
                                     # ESPHome retourne généralement en hPa (millibar)
                                     # Meshtastic attend des Pascals (1 hPa = 100 Pa)
-                                    if value < 2000:  # Probablement en hPa
+                                    if value < PA_TO_HPA_THRESHOLD:  # Probablement en hPa
                                         value = value * 100
                                 
                                 result[key] = value

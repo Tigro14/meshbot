@@ -11,6 +11,9 @@ import time
 from datetime import datetime
 from utils import debug_print, error_print
 
+# Constante pour détecter si pression est en Pascals ou hPa
+PA_TO_HPA_THRESHOLD = 2000  # Valeurs > 2000 sont probablement en Pa
+
 class ESPHomeHistory:
     def __init__(self, history_file="esphome_history.json"):
         self.history_file = history_file
@@ -253,10 +256,10 @@ class ESPHomeHistory:
             press_data = self.get_sparkline('pressure', hours)
             lines.append(f"🔽 Pression:")
             lines.append(f"{press_data['sparkline']}")
-            # Convert from Pa to hPa if necessary (values > 2000 are likely in Pa)
-            min_val = press_data['min'] / 100 if press_data['min'] > 2000 else press_data['min']
-            max_val = press_data['max'] / 100 if press_data['max'] > 2000 else press_data['max']
-            cur_val = press_data['current'] / 100 if press_data['current'] > 2000 else press_data['current']
+            # Convert from Pa to hPa if necessary
+            min_val = self._convert_pressure_to_hpa(press_data['min'])
+            max_val = self._convert_pressure_to_hpa(press_data['max'])
+            cur_val = self._convert_pressure_to_hpa(press_data['current'])
             lines.append(
                 f"Min: {min_val:.1f}hPa | "
                 f"Max: {max_val:.1f}hPa | "
@@ -300,9 +303,9 @@ class ESPHomeHistory:
             press_data = self.get_sparkline('pressure', hours)
             if press_data['current'] > 0:
                 # Convert from Pa to hPa if necessary
-                min_val = press_data['min'] / 100 if press_data['min'] > 2000 else press_data['min']
-                max_val = press_data['max'] / 100 if press_data['max'] > 2000 else press_data['max']
-                cur_val = press_data['current'] / 100 if press_data['current'] > 2000 else press_data['current']
+                min_val = self._convert_pressure_to_hpa(press_data['min'])
+                max_val = self._convert_pressure_to_hpa(press_data['max'])
+                cur_val = self._convert_pressure_to_hpa(press_data['current'])
                 lines.append(f"🔽{press_data['sparkline']}")
                 lines.append(f"P:{min_val:.1f}-{max_val:.1f}hPa Now:{cur_val:.1f}hPa{press_data['trend']}")
             
@@ -324,3 +327,18 @@ class ESPHomeHistory:
             f"{metric}: {len(self.history[metric])} pts"
             for metric in self.history
         ])
+    
+    def _convert_pressure_to_hpa(self, pressure_value):
+        """
+        Convertir une valeur de pression en hPa si nécessaire
+        
+        Args:
+            pressure_value: Valeur de pression (peut être en Pa ou hPa)
+        
+        Returns:
+            float: Valeur convertie en hPa
+        """
+        if pressure_value > PA_TO_HPA_THRESHOLD:
+            # Valeur probablement en Pascals, convertir en hPa
+            return pressure_value / 100
+        return pressure_value
