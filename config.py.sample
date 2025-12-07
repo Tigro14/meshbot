@@ -92,6 +92,12 @@ NEIGHBOR_LOAD_INITIAL_WAIT = 10    # Attente initiale avant première vérificat
 NEIGHBOR_LOAD_MAX_WAIT = 60        # Timeout maximum pour chargement complet (secondes)
 NEIGHBOR_LOAD_POLL_INTERVAL = 5    # Intervalle entre vérifications de progression (secondes)
 
+# Configuration rétention des données de voisinage dans SQLite
+# Durée de conservation des données de voisinage (en heures)
+# 720h = 30 jours - Recommandé pour avoir une carte réseau bien peuplée
+# 48h = 2 jours - Valeur historique (peut donner une carte vide)
+NEIGHBOR_RETENTION_HOURS = 720  # 30 jours de rétention
+
 # Configuration affichage des métriques de signal
 SHOW_RSSI = False  # Afficher les valeurs RSSI (-85dB)
 SHOW_SNR = False   # Afficher les valeurs SNR (SNR:8.5)

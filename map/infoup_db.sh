@@ -29,10 +29,10 @@ cd /home/dietpi/bot/map
 if [ -n "$TCP_QUERY_HOST" ]; then
     echo "🔌 Mode HYBRIDE: database + requête TCP vers $TCP_QUERY_HOST:$TCP_QUERY_PORT"
     echo "⚠️  ATTENTION: Peut causer des conflits si le bot utilise ce nœud!"
-    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py --tcp-query $TCP_QUERY_HOST:$TCP_QUERY_PORT $DB_PATH 48"
+    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py --tcp-query $TCP_QUERY_HOST:$TCP_QUERY_PORT $DB_PATH 720"
 else
     echo "🗄️  Mode DATABASE UNIQUEMENT (sûr, pas de conflits TCP)"
-    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py $DB_PATH 48"
+    EXPORT_CMD="/home/dietpi/bot/map/export_neighbors_from_db.py $DB_PATH 720"
 fi
 
 echo "📊 Export des voisins..."
@@ -43,7 +43,8 @@ $EXPORT_CMD > $JSON_LINKS_FILE
 echo "📡 Récupération des infos nœuds depuis la base de données..."
 # Exporter les infos de nœuds (avec hopsAway mais sans neighbors)
 # Logs vont sur stderr, JSON va sur stdout
-/home/dietpi/bot/map/export_nodes_from_db.py "$NODE_NAMES_FILE" "$DB_PATH" 48 > /tmp/info_temp.json
+# Utilise 720 heures (30 jours) pour cohérence avec export neighbors
+/home/dietpi/bot/map/export_nodes_from_db.py "$NODE_NAMES_FILE" "$DB_PATH" 720 > /tmp/info_temp.json
 
 echo "🔀 Fusion des données de voisinage dans info.json..."
 # Fusionner info_neighbors.json dans info.json pour avoir tout en un seul fichier

@@ -84,6 +84,38 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 
 ## Recent Architectural Changes (November 2025)
 
+### Neighbor Data Retention Extension (December 2025)
+
+Extended neighbor data retention from 48 hours to 30 days for better network visualization:
+
+**Problem Solved:**
+- Map generation was producing nearly empty maps despite having neighbor data in the database
+- The 48-hour retention period was too short for networks with infrequent updates
+- Export scripts and database cleanup were using different retention periods
+
+**Changes:**
+- Added `NEIGHBOR_RETENTION_HOURS` configuration option (default: 720 hours = 30 days)
+- Updated `main_bot.py` cleanup to use configurable retention period
+- Updated `map/infoup_db.sh` to export 30 days of neighbor data consistently
+- Both neighbor and node exports now use the same 30-day retention period
+
+**Configuration:**
+```python
+# config.py
+NEIGHBOR_RETENTION_HOURS = 720  # 30 jours de rétention
+```
+
+**Benefits:**
+1. ✅ More populated network topology maps
+2. ✅ Better visibility of network evolution over time
+3. ✅ Configurable retention period for different use cases
+4. ✅ Consistent retention across cleanup and export operations
+
+**Files Modified:**
+- `config.py.sample` - Added `NEIGHBOR_RETENTION_HOURS` configuration
+- `main_bot.py` - Uses config value for cleanup instead of hardcoded 48h
+- `map/infoup_db.sh` - Export scripts use 720h (30 days) for all exports
+
 ### Multi-Platform Architecture (v2.0)
 
 The codebase has undergone a significant refactoring to support multiple messaging platforms:

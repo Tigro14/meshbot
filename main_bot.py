@@ -814,8 +814,10 @@ class MeshBot:
                 debug_print("💾 Sauvegarde des statistiques...")
                 self.traffic_monitor.save_statistics()
 
-                # Nettoyage des anciennes données SQLite (> 48h)
-                self.traffic_monitor.cleanup_old_persisted_data(hours=48)
+                # Nettoyage des anciennes données SQLite
+                # Utilise NEIGHBOR_RETENTION_HOURS pour les voisins (config.py)
+                retention_hours = globals().get('NEIGHBOR_RETENTION_HOURS', 48)
+                self.traffic_monitor.cleanup_old_persisted_data(hours=retention_hours)
 
                 # Vérification vigilance météo (si activée)
                 if self.vigilance_monitor:
