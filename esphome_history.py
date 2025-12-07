@@ -253,10 +253,14 @@ class ESPHomeHistory:
             press_data = self.get_sparkline('pressure', hours)
             lines.append(f"🔽 Pression:")
             lines.append(f"{press_data['sparkline']}")
+            # Convert from Pa to hPa if necessary (values > 2000 are likely in Pa)
+            min_val = press_data['min'] / 100 if press_data['min'] > 2000 else press_data['min']
+            max_val = press_data['max'] / 100 if press_data['max'] > 2000 else press_data['max']
+            cur_val = press_data['current'] / 100 if press_data['current'] > 2000 else press_data['current']
             lines.append(
-                f"Min: {press_data['min']:.0f}hPa | "
-                f"Max: {press_data['max']:.0f}hPa | "
-                f"Now: {press_data['current']:.0f}hPa {press_data['trend']}"
+                f"Min: {min_val:.1f}hPa | "
+                f"Max: {max_val:.1f}hPa | "
+                f"Now: {cur_val:.1f}hPa {press_data['trend']}"
             )
             lines.append("")
             
@@ -275,6 +279,44 @@ class ESPHomeHistory:
         except Exception as e:
             error_print(f"Erreur format graphs: {e}")
             return "❌ Erreur génération graphiques"
+    
+    def format_graphs_compact(self, hours=12):
+        """
+        Formater les graphiques en version compacte pour Meshtastic (limite 180 chars)
+        
+        Returns:
+            str: Message formaté compact avec graphiques
+        """
+        try:
+            lines = []
+            
+            # Température
+            temp_data = self.get_sparkline('temperature', hours)
+            if temp_data['current'] > 0:
+                lines.append(f"🌡️{temp_data['sparkline']}")
+                lines.append(f"T:{temp_data['min']:.1f}-{temp_data['max']:.1f}°C Now:{temp_data['current']:.1f}°C{temp_data['trend']}")
+            
+            # Pression
+            press_data = self.get_sparkline('pressure', hours)
+            if press_data['current'] > 0:
+                # Convert from Pa to hPa if necessary
+                min_val = press_data['min'] / 100 if press_data['min'] > 2000 else press_data['min']
+                max_val = press_data['max'] / 100 if press_data['max'] > 2000 else press_data['max']
+                cur_val = press_data['current'] / 100 if press_data['current'] > 2000 else press_data['current']
+                lines.append(f"🔽{press_data['sparkline']}")
+                lines.append(f"P:{min_val:.1f}-{max_val:.1f}hPa Now:{cur_val:.1f}hPa{press_data['trend']}")
+            
+            # Hygrométrie
+            hum_data = self.get_sparkline('humidity', hours)
+            if hum_data['current'] > 0:
+                lines.append(f"💧{hum_data['sparkline']}")
+                lines.append(f"H:{hum_data['min']:.0f}-{hum_data['max']:.0f}% Now:{hum_data['current']:.0f}%{hum_data['trend']}")
+            
+            return "\n".join(lines) if lines else "Pas de données"
+            
+        except Exception as e:
+            error_print(f"Erreur format compact: {e}")
+            return "❌ Erreur"
     
     def _get_stats(self):
         """Obtenir des statistiques sur l'historique"""
