@@ -655,17 +655,43 @@ class TracerouteManager:
                     route_discovery = mesh_pb2.RouteDiscovery()
                     route_discovery.ParseFromString(payload)
 
-                    info_print(f"📋 Route découverte:")
-                    for i, node_id in enumerate(route_discovery.route):
-                        node_name_route = self.telegram.node_manager.get_node_name(
-                            node_id)
-                        route.append({
-                            'node_id': node_id,
-                            'name': node_name_route,
-                            'position': i
-                        })
-                        info_print(
-                            f"   {i}. {node_name_route} (!{node_id:08x})")
+                    # Log des champs disponibles pour debug
+                    debug_print(f"📋 RouteDiscovery parsé:")
+                    debug_print(f"   route (forward): {len(route_discovery.route)} nodes")
+                    debug_print(f"   route_back: {len(route_discovery.route_back)} nodes")
+                    debug_print(f"   snr_towards: {len(route_discovery.snr_towards)} values")
+                    debug_print(f"   snr_back: {len(route_discovery.snr_back)} values")
+
+                    # Extraire la route aller (si disponible)
+                    if route_discovery.route:
+                        info_print(f"📋 Route aller découverte:")
+                        for i, node_id in enumerate(route_discovery.route):
+                            node_name_route = self.telegram.node_manager.get_node_name(
+                                node_id)
+                            route.append({
+                                'node_id': node_id,
+                                'name': node_name_route,
+                                'position': i
+                            })
+                            info_print(
+                                f"   {i}. {node_name_route} (!{node_id:08x})")
+                    
+                    # Si la route aller est vide, utiliser la route retour
+                    # (c'est souvent le cas avec les réponses Meshtastic)
+                    elif route_discovery.route_back:
+                        info_print(f"📋 Route retour découverte (route aller vide):")
+                        for i, node_id in enumerate(route_discovery.route_back):
+                            node_name_route = self.telegram.node_manager.get_node_name(
+                                node_id)
+                            route.append({
+                                'node_id': node_id,
+                                'name': node_name_route,
+                                'position': i
+                            })
+                            info_print(
+                                f"   {i}. {node_name_route} (!{node_id:08x})")
+                    else:
+                        info_print(f"⚠️ Aucune route dans RouteDiscovery (ni aller ni retour)")
 
                 except Exception as parse_error:
                     parse_error_msg = str(parse_error)
