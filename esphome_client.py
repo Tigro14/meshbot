@@ -140,7 +140,11 @@ class ESPHomeClient:
                         parts.append(f"T:{found_data['bme280_temperature']:.1f}C")
                     
                     if 'bme280_pressure' in found_data:
-                        parts.append(f"P:{found_data['bme280_pressure']:.0f}")
+                        pressure_value = found_data['bme280_pressure']
+                        # Convert from Pa to hPa if necessary (ESPHome might return in Pa)
+                        if pressure_value > 2000:  # Likely in Pa (100000 Pa ≈ 1000 hPa)
+                            pressure_value = pressure_value / 100
+                        parts.append(f"P:{pressure_value:.1f}hPa")
                     
                     # Humidité combinée : relative + absolue
                     humidity_relative = None
