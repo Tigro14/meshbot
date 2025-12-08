@@ -393,7 +393,7 @@
             filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
         }
         
-        .node-emoji.owner {
+        .node-emoji.emoji-only {
             font-size: 24px;
         }
         
@@ -565,6 +565,15 @@
         // URL parameter auto-search configuration
         const AUTO_SEARCH_DELAY = 500;  // Delay in ms before triggering auto-search from URL parameter
         let autoSearchNodeParam = null;  // Stores node parameter from URL for deferred search
+        
+        // Function to detect if a string contains emoji
+        function containsEmoji(str) {
+            if (!str) return false;
+            // Unicode ranges for emoji detection
+            // Includes standard emoji, symbols, and pictographs
+            const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{FE00}-\u{FE0F}\u{1F004}\u{1F0CF}\u{1F170}-\u{1F251}]/u;
+            return emojiRegex.test(str);
+        }
         
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
@@ -1290,7 +1299,8 @@
                     // Create emoji marker centered in the circle (using shortName)
                     const shortName = node.user?.shortName || '';
                     if (shortName) {
-                        const emojiClass = id === myNodeId ? 'node-emoji owner' : 'node-emoji';
+                        const hasEmoji = containsEmoji(shortName);
+                        const emojiClass = hasEmoji ? 'node-emoji emoji-only' : 'node-emoji text-only';
                         const emojiIcon = L.divIcon({
                             html: `<div class="${emojiClass}">${shortName}</div>`,
                             className: '',
@@ -1311,28 +1321,51 @@
                         } else {
                             labelMarkers[id] = [labelMarkers[id], emojiMarker];
                         }
-                    }
-                    
-                    // Create a divIcon with text label using longName on the side
-                    const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
-                    const labelIcon = L.divIcon({
-                        html: `<div class="node-label">${labelText}</div>`,
-                        className: '',
-                        iconSize: [null, null]
-                    });
-                    
-                    const labelMarker = L.marker([displayLat, displayLon], {
-                        icon: labelIcon,
-                        interactive: false
-                    });
-                    labelMarker.addTo(map);
-                    // Handle array of markers
-                    if (!labelMarkers[id]) {
-                        labelMarkers[id] = labelMarker;
-                    } else if (Array.isArray(labelMarkers[id])) {
-                        labelMarkers[id].push(labelMarker);
+                        
+                        // Only create label (longName) if shortName doesn't contain an emoji
+                        if (!hasEmoji) {
+                            // Create a divIcon with text label using longName on the side
+                            const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
+                            const labelIcon = L.divIcon({
+                                html: `<div class="node-label">${labelText}</div>`,
+                                className: '',
+                                iconSize: [null, null]
+                            });
+                            
+                            const labelMarker = L.marker([displayLat, displayLon], {
+                                icon: labelIcon,
+                                interactive: false
+                            });
+                            labelMarker.addTo(map);
+                            // Handle array of markers
+                            if (Array.isArray(labelMarkers[id])) {
+                                labelMarkers[id].push(labelMarker);
+                            } else {
+                                labelMarkers[id] = [labelMarkers[id], labelMarker];
+                            }
+                        }
                     } else {
-                        labelMarkers[id] = [labelMarkers[id], labelMarker];
+                        // No shortName - create label with longName
+                        const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
+                        const labelIcon = L.divIcon({
+                            html: `<div class="node-label">${labelText}</div>`,
+                            className: '',
+                            iconSize: [null, null]
+                        });
+                        
+                        const labelMarker = L.marker([displayLat, displayLon], {
+                            icon: labelIcon,
+                            interactive: false
+                        });
+                        labelMarker.addTo(map);
+                        // Handle array of markers
+                        if (!labelMarkers[id]) {
+                            labelMarkers[id] = labelMarker;
+                        } else if (Array.isArray(labelMarkers[id])) {
+                            labelMarkers[id].push(labelMarker);
+                        } else {
+                            labelMarkers[id] = [labelMarkers[id], labelMarker];
+                        }
                     }
                     
                     marker.on('mouseover', function() {
@@ -1586,7 +1619,8 @@
             const shortName = node.user?.shortName || '';
             const markers_to_store = [];
             if (shortName) {
-                const emojiClass = id === myNodeId ? 'node-emoji owner' : 'node-emoji';
+                const hasEmoji = containsEmoji(shortName);
+                const emojiClass = hasEmoji ? 'node-emoji emoji-only' : 'node-emoji text-only';
                 const emojiIcon = L.divIcon({
                     html: `<div class="${emojiClass}">${shortName}</div>`,
                     className: '',
@@ -1599,22 +1633,39 @@
                 });
                 emojiMarker.addTo(map);
                 markers_to_store.push(emojiMarker);
+                
+                // Only create label (longName) if shortName doesn't contain an emoji
+                if (!hasEmoji) {
+                    const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
+                    const labelIcon = L.divIcon({
+                        html: `<div class="node-label">${labelText}</div>`,
+                        className: '',
+                        iconSize: [null, null]
+                    });
+                    
+                    const labelMarker = L.marker([lat, lon], {
+                        icon: labelIcon,
+                        interactive: false
+                    });
+                    labelMarker.addTo(map);
+                    markers_to_store.push(labelMarker);
+                }
+            } else {
+                // No shortName - create label with longName
+                const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
+                const labelIcon = L.divIcon({
+                    html: `<div class="node-label">${labelText}</div>`,
+                    className: '',
+                    iconSize: [null, null]
+                });
+                
+                const labelMarker = L.marker([lat, lon], {
+                    icon: labelIcon,
+                    interactive: false
+                });
+                labelMarker.addTo(map);
+                markers_to_store.push(labelMarker);
             }
-            
-            // Create a divIcon with text label using longName on the side
-            const labelText = node.user?.longName || (id.startsWith('!') ? id.substring(id.length - 4) : id.substring(0, 4));
-            const labelIcon = L.divIcon({
-                html: `<div class="node-label">${labelText}</div>`,
-                className: '',
-                iconSize: [null, null]
-            });
-            
-            const labelMarker = L.marker([lat, lon], {
-                icon: labelIcon,
-                interactive: false
-            });
-            labelMarker.addTo(map);
-            markers_to_store.push(labelMarker);
             
             // Store markers (emoji + label)
             labelMarkers[id] = markers_to_store;
