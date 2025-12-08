@@ -201,8 +201,7 @@ def test_no_gateway_id():
     # Create mock ServiceEnvelope without gateway_id
     mock_envelope = Mock()
     mock_envelope.HasField = Mock(return_value=True)
-    # gateway_id is missing (getattr will return '')
-    delattr(mock_envelope, 'gateway_id') if hasattr(mock_envelope, 'gateway_id') else None
+    mock_envelope.gateway_id = ''  # Empty string, simulating missing gateway_id
     
     # Create mock packet
     mock_packet = Mock()
