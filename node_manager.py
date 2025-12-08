@@ -325,8 +325,8 @@ class NodeManager:
                                     old_name = self.node_names[node_id_int]['name']
                                     self.node_names[node_id_int]['name'] = name
                                     # Also update shortName and hwModel
-                                    self.node_names[node_id_int]['shortName'] = short_name if short_name else None
-                                    self.node_names[node_id_int]['hwModel'] = hw_model if hw_model else None
+                                    self.node_names[node_id_int]['shortName'] = short_name or None
+                                    self.node_names[node_id_int]['hwModel'] = hw_model or None
                                     debug_print(f"🔄 {node_id_int:08x}: '{old_name}' -> '{name}'")
                                     updated_count += 1
                     
@@ -466,8 +466,8 @@ class NodeManager:
                                 self.node_names[node_id]['name'] = name
                                 debug_print(f"📱 Renommé: {old_name} → {name} ({node_id:08x})")
                             # Always update shortName and hwModel even if name didn't change
-                            self.node_names[node_id]['shortName'] = short_name if short_name else None
-                            self.node_names[node_id]['hwModel'] = hw_model if hw_model else None
+                            self.node_names[node_id]['shortName'] = short_name or None
+                            self.node_names[node_id]['hwModel'] = hw_model or None
                         
                         # Sauvegarde différée
                         threading.Timer(10.0, lambda: self.save_node_names()).start()

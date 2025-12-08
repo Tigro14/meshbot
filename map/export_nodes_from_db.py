@@ -108,10 +108,8 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 # Get neighbor data from neighbors table
                 neighbors_raw = persistence.load_neighbors(hours=hours)
                 
-                # Track MQTT-active nodes (nodes that have sent NEIGHBORINFO via MQTT)
-                # mqtt_last_heard_data already initialized above
-                
                 # Format neighbor data for map compatibility
+                # Note: mqtt_last_heard_data is initialized at line 58 to avoid UnboundLocalError
                 for node_id_str, neighbor_list in neighbors_raw.items():
                     formatted_neighbors = []
                     max_timestamp = 0
