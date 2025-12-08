@@ -366,6 +366,15 @@
             color: #202124;
         }
         
+        .popup-info a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        
+        .popup-info a:hover {
+            text-decoration: underline;
+        }
+        
         .node-label {
             font-size: 10px;
             font-weight: bold;
@@ -1384,12 +1393,41 @@
                     let popupContent = `<div class="popup-title">${node.user?.longName || 'Nœud inconnu'}</div>`;
                     popupContent += `<div class="popup-info">`;
                     popupContent += `<strong>ID:</strong> ${node.user?.shortName || id}<br>`;
+                    
+                    // Add hwModel if available
+                    if (node.user?.hwModel) {
+                        popupContent += `<strong>Modèle:</strong> ${node.user.hwModel}<br>`;
+                    }
+                    
                     popupContent += `<strong>Hops:</strong> ${node.hopsAway !== undefined ? node.hopsAway : 'N/A'}<br>`;
                     popupContent += `<strong>SNR:</strong> ${node.snr !== undefined ? node.snr.toFixed(1) + ' dB' : 'N/A'}<br>`;
+                    
+                    // Add neighbor list with clickable links
                     if (node.neighbors || node.neighbours) {
-                        const neighborCount = (node.neighbors || node.neighbours).length;
+                        const neighbors = node.neighbors || node.neighbours;
+                        const neighborCount = neighbors.length;
                         popupContent += `<strong>Voisins directs:</strong> ${neighborCount}<br>`;
+                        
+                        if (neighborCount > 0) {
+                            popupContent += `<div style="margin-left: 10px; margin-top: 5px;">`;
+                            neighbors.forEach((neighbor, index) => {
+                                const neighborId = neighbor.nodeId || neighbor.node_id || neighbor.id;
+                                const neighborNode = meshData.nodes[neighborId];
+                                const neighborName = neighborNode?.user?.longName || neighborId;
+                                const snrText = neighbor.snr !== undefined && neighbor.snr !== null ? ` (${neighbor.snr.toFixed(1)} dB)` : '';
+                                
+                                // Create clickable link to map.html?node=longName
+                                popupContent += `<a href="map.html?node=${encodeURIComponent(neighborName)}" style="color: #1a73e8; text-decoration: none;">${neighborName}</a>${snrText}`;
+                                
+                                // Add line break if not the last neighbor
+                                if (index < neighborCount - 1) {
+                                    popupContent += `<br>`;
+                                }
+                            });
+                            popupContent += `</div>`;
+                        }
                     }
+                    
                     if (node.mqttActive) {
                         popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
                     }
