@@ -89,6 +89,8 @@ class NodeManager:
                             # Ancien format: juste le nom
                             self.node_names[node_id] = {
                                 'name': v,
+                                'shortName': None,
+                                'hwModel': None,
                                 'lat': None,
                                 'lon': None,
                                 'alt': None,
@@ -98,6 +100,8 @@ class NodeManager:
                             # Nouveau format: dict avec toutes les infos
                             self.node_names[node_id] = {
                                 'name': v.get('name', f"Node-{node_id:08x}"),
+                                'shortName': v.get('shortName'),
+                                'hwModel': v.get('hwModel'),
                                 'lat': v.get('lat'),
                                 'lon': v.get('lon'),
                                 'alt': v.get('alt'),
@@ -154,6 +158,8 @@ class NodeManager:
                                 if node_id not in self.node_names:
                                     self.node_names[node_id] = {
                                         'name': name,
+                                        'shortName': None,
+                                        'hwModel': None,
                                         'lat': None,
                                         'lon': None,
                                         'alt': None,
@@ -250,6 +256,8 @@ class NodeManager:
             default_name = node_id if isinstance(node_id, str) else f"Node-{node_id:08x}"
             self.node_names[node_id] = {
                 'name': default_name,
+                'shortName': None,
+                'hwModel': None,
                 'lat': lat,
                 'lon': lon,
                 'alt': alt,
@@ -297,6 +305,7 @@ class NodeManager:
                         if isinstance(user_info, dict):
                             long_name = user_info.get('longName', '').strip()
                             short_name = user_info.get('shortName', '').strip()
+                            hw_model = user_info.get('hwModel', '').strip()
                             
                             name = long_name or short_name
                             if name and len(name) > 0:
@@ -304,6 +313,8 @@ class NodeManager:
                                 if node_id_int not in self.node_names:
                                     self.node_names[node_id_int] = {
                                         'name': name,
+                                        'shortName': short_name if short_name else None,
+                                        'hwModel': hw_model if hw_model else None,
                                         'lat': None,
                                         'lon': None,
                                         'alt': None,
@@ -313,6 +324,9 @@ class NodeManager:
                                 elif self.node_names[node_id_int]['name'] != name:
                                     old_name = self.node_names[node_id_int]['name']
                                     self.node_names[node_id_int]['name'] = name
+                                    # Also update shortName and hwModel
+                                    self.node_names[node_id_int]['shortName'] = short_name if short_name else None
+                                    self.node_names[node_id_int]['hwModel'] = hw_model if hw_model else None
                                     debug_print(f"🔄 {node_id_int:08x}: '{old_name}' -> '{name}'")
                                     updated_count += 1
                     
@@ -329,6 +343,8 @@ class NodeManager:
                                 if node_id_int not in self.node_names:
                                     self.node_names[node_id_int] = {
                                         'name': f"Node-{node_id_int:08x}",
+                                        'shortName': None,
+                                        'hwModel': None,
                                         'lat': lat,
                                         'lon': lon,
                                         'alt': alt,
@@ -428,6 +444,7 @@ class NodeManager:
                     user_info = decoded['user']
                     long_name = user_info.get('longName', '').strip()
                     short_name = user_info.get('shortName', '').strip()
+                    hw_model = user_info.get('hwModel', '').strip()
                     
                     name = long_name or short_name
                     if name and len(name) > 0:
@@ -435,6 +452,8 @@ class NodeManager:
                         if node_id not in self.node_names:
                             self.node_names[node_id] = {
                                 'name': name,
+                                'shortName': short_name if short_name else None,
+                                'hwModel': hw_model if hw_model else None,
                                 'lat': None,
                                 'lon': None,
                                 'alt': None,
@@ -446,6 +465,9 @@ class NodeManager:
                             if old_name != name:
                                 self.node_names[node_id]['name'] = name
                                 debug_print(f"📱 Renommé: {old_name} → {name} ({node_id:08x})")
+                            # Always update shortName and hwModel even if name didn't change
+                            self.node_names[node_id]['shortName'] = short_name if short_name else None
+                            self.node_names[node_id]['hwModel'] = hw_model if hw_model else None
                         
                         # Sauvegarde différée
                         threading.Timer(10.0, lambda: self.save_node_names()).start()
