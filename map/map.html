@@ -588,6 +588,24 @@
                     }
                 );
                 
+                // Géoportail Lidar HD SURSOL (surface) layer
+                const lidarSursol = L.tileLayer(
+                    'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=PLANIGN.LIDAR.SURSOL&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png',
+                    {
+                        attribution: '© IGN - Géoportail Lidar HD',
+                        maxZoom: 19
+                    }
+                );
+                
+                // Géoportail Lidar HD TERRAIN layer
+                const lidarTerrain = L.tileLayer(
+                    'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=PLANIGN.LIDAR.TERRAIN&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png',
+                    {
+                        attribution: '© IGN - Géoportail Lidar HD',
+                        maxZoom: 19
+                    }
+                );
+                
                 // Add default layer (OpenStreetMap)
                 osmLayer.addTo(map);
                 
@@ -595,7 +613,9 @@
                 const baseLayers = {
                     "OpenStreetMap": osmLayer,
                     "Orthophoto France": orthoGeoportail,
-                    "Topographie (Relief)": openTopoMap
+                    "Topographie (Relief)": openTopoMap,
+                    "Lidar HD - Surface": lidarSursol,
+                    "Lidar HD - Terrain": lidarTerrain
                 };
                 L.control.layers(baseLayers, null, {position: 'topleft'}).addTo(map);
             } catch (error) {
