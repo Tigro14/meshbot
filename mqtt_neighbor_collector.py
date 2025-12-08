@@ -298,7 +298,7 @@ class MQTTNeighborCollector:
         Résoudre l'ID d'une gateway en nom lisible
         
         Args:
-            gateway_id: ID de la gateway (string)
+            gateway_id: ID de la gateway (string, format: "!xxxxxxxx" ou "xxxxxxxx")
             
         Returns:
             str: Nom de la gateway ou l'ID si résolution impossible, ou None si pas de gateway_id
@@ -310,11 +310,25 @@ class MQTTNeighborCollector:
             return gateway_id
         
         try:
-            gateway_name = self.node_manager.get_node_name(gateway_id)
-            # If get_node_name returns "Unknown" or a hex ID, use the ID as-is
-            if gateway_name and (gateway_name == "Unknown" or gateway_name.startswith("!")):
-                return gateway_id
+            # Convert gateway_id string to integer for node_names lookup
+            # Format can be "!a2ea17b8" or "a2ea17b8"
+            gateway_id_str = gateway_id
+            if gateway_id_str.startswith('!'):
+                gateway_id_int = int(gateway_id_str[1:], 16)
+            else:
+                gateway_id_int = int(gateway_id_str, 16)
+            
+            # Get the node name using the integer ID
+            gateway_name = self.node_manager.get_node_name(gateway_id_int)
+            
+            # If get_node_name returns "Unknown" or a hex ID format, use the original ID string
+            if gateway_name and (gateway_name == "Unknown" or gateway_name.startswith("!") or gateway_name.startswith("Node-")):
+                return gateway_id_str
             return gateway_name
+        except (ValueError, AttributeError) as e:
+            # ValueError: invalid hex string, AttributeError: node_manager issues
+            debug_print(f"👥 Erreur résolution nom gateway {gateway_id}: {e}")
+            return gateway_id
         except Exception as e:
             debug_print(f"👥 Erreur résolution nom gateway {gateway_id}: {e}")
             return gateway_id
