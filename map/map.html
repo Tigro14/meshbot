@@ -459,6 +459,11 @@
                 return '#4169e1';                // Royal blue - Weak MQTT
             }
             
+            // "Heard via" links - brown color
+            if (source === 'via') {
+                return '#8B4513'; // Saddle brown - indicates relay/indirect link
+            }
+            
             // Radio links (default colors)
             if (snr === null || snr === undefined) return '#888888';
             if (snr > 5) return '#00ff00'; // Green - Excellent
@@ -470,6 +475,11 @@
             // MQTT links slightly more transparent to distinguish them
             const baseOpacity = source === 'mqtt' ? 0.7 : 1.0;
             
+            // "Heard via" links are semi-transparent to show they're indirect
+            if (source === 'via') {
+                return 0.5;
+            }
+            
             if (snr === null || snr === undefined) return 0.3 * baseOpacity;
             if (snr > 5) return 0.9 * baseOpacity;
             if (snr > 0) return 0.6 * baseOpacity;
@@ -479,6 +489,11 @@
         function getLinkWeight(snr, source) {
             // MQTT links slightly thinner
             const baseWeight = source === 'mqtt' ? 0.8 : 1.0;
+            
+            // "Heard via" links are thinner to show they're indirect
+            if (source === 'via') {
+                return 2;
+            }
             
             if (snr === null || snr === undefined) return 3 * baseWeight;
             if (snr > 5) return 4 * baseWeight;  // Reduced from 7 to 4 for green links
@@ -493,6 +508,9 @@
             if (source === 'mqtt') {
                 return 'Liaison MQTT (collecteur distant)';
             }
+            if (source === 'via') {
+                return 'Entendu via (relay)';
+            }
             return 'Liaison radio (mesure directe)';
         }
         
@@ -501,10 +519,11 @@
             const legendRadio = document.getElementById('legendRadio');
             const legendMqtt = document.getElementById('legendMqtt');
             const legendInferred = document.getElementById('legendInferred');
+            const legendVia = document.getElementById('legendVia');
             const linkSourcesSection = document.getElementById('linkSourcesSection');
             
             // Safety check
-            if (!legendRadio || !legendMqtt || !legendInferred || !linkSourcesSection) {
+            if (!legendRadio || !legendMqtt || !legendInferred || !legendVia || !linkSourcesSection) {
                 return;
             }
             
@@ -512,9 +531,10 @@
             legendRadio.style.display = linkTypes.radio ? 'flex' : 'none';
             legendMqtt.style.display = linkTypes.mqtt ? 'flex' : 'none';
             legendInferred.style.display = linkTypes.inferred ? 'flex' : 'none';
+            legendVia.style.display = linkTypes.via ? 'flex' : 'none';
             
             // Hide the entire "Source des liens" section if no links exist
-            const hasAnyLinks = linkTypes.radio || linkTypes.mqtt || linkTypes.inferred;
+            const hasAnyLinks = linkTypes.radio || linkTypes.mqtt || linkTypes.inferred || linkTypes.via;
             linkSourcesSection.style.display = hasAnyLinks ? 'block' : 'none';
         }
         
@@ -694,6 +714,10 @@
                             <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
                             <span style="opacity: 0.7;">Inférée (topologie)</span>
                         </div>
+                        <div id="legendVia" class="legend-item" style="display:none;">
+                            <div class="legend-line" style="background-color: #8B4513;"></div>
+                            <span>Entendu via (relay)</span>
+                        </div>
                     </div>
                 `;
                 return div;
@@ -781,7 +805,8 @@
             const linkTypes = {
                 radio: false,
                 mqtt: false,
-                inferred: false
+                inferred: false,
+                via: false
             };
 
             // Convertir en tableau si nécessaire
@@ -834,6 +859,71 @@
                         linkLayerGroup.addLayer(line);
                         linkCount++;
                     });
+                }
+            });
+
+            // Create "heard via" links for nodes with hops > 0 (even when neighbor data exists)
+            // These show which relay node was likely used to hear indirect nodes
+            console.log('Creating "heard via" relay links...');
+            
+            nodesArray.forEach(node => {
+                const nodeId = node.user?.id || node.nodeId;
+                if (!node.position || !markers[nodeId]) return;
+                
+                // Only for nodes heard via relay (hops > 0)
+                if (node.hopsAway && node.hopsAway > 0) {
+                    const targetHops = node.hopsAway - 1;
+                    
+                    // Find potential relay nodes (nodes at hopsAway - 1)
+                    const potentialRelays = nodesArray.filter(n => {
+                        const nId = n.user?.id || n.nodeId;
+                        return nId !== nodeId && 
+                               n.position && 
+                               markers[nId] && 
+                               (n.hopsAway === targetHops || (!n.hopsAway && targetHops === 0));
+                    });
+                    
+                    if (potentialRelays.length > 0) {
+                        // Sort by SNR to get the most likely relay
+                        potentialRelays.sort((a, b) => {
+                            const snrA = a.snr || -100;
+                            const snrB = b.snr || -100;
+                            return snrB - snrA;
+                        });
+                        
+                        // Use the best SNR node as the likely relay
+                        const relay = potentialRelays[0];
+                        const relayId = relay.user?.id || relay.nodeId;
+                        
+                        // Only draw if we haven't already drawn this link (as neighbor or via)
+                        const linkKey = [nodeId, relayId].sort().join('-');
+                        if (!drawnLinks.has(linkKey)) {
+                            drawnLinks.add(linkKey);
+                            
+                            // Track via link type
+                            linkTypes.via = true;
+                            
+                            const fromLatLng = markers[nodeId].getLatLng();
+                            const toLatLng = markers[relayId].getLatLng();
+                            
+                            const line = L.polyline([fromLatLng, toLatLng], {
+                                color: getLinkColor(node.snr, 'via'),
+                                weight: getLinkWeight(node.snr, 'via'),
+                                opacity: getLinkOpacity(node.snr, 'via'),
+                                dashArray: '3, 3'  // Dashed to show it's inferred
+                            });
+
+                            let popupContent = `<strong>${getLinkDescription('via', false)}</strong><br>`;
+                            popupContent += `${node.user.shortName || nodeId} → ${relay.user.shortName || relayId}<br>`;
+                            popupContent += `Distance: ${node.hopsAway} hop(s)<br>`;
+                            if (node.snr) popupContent += `SNR: ${node.snr.toFixed(1)} dB<br>`;
+                            popupContent += `Source: Entendu via (relay probable)`;
+                            
+                            line.bindPopup(popupContent);
+                            linkLayerGroup.addLayer(line);
+                            linkCount++;
+                        }
+                    }
                 }
             });
 

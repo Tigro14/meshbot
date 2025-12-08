@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo: "Heard Via" Links Feature</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #202124;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        .description {
+            color: #5f6368;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        .legend-container {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        .legend-section {
+            flex: 1;
+            min-width: 250px;
+        }
+        .legend-title {
+            font-weight: 600;
+            color: #202124;
+            margin-bottom: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 0.9rem;
+        }
+        .legend-line {
+            width: 40px;
+            height: 3px;
+            margin-right: 12px;
+        }
+        .demo-canvas {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            margin: 20px 0;
+            position: relative;
+            background: linear-gradient(to bottom, #e3f2fd, #f5f5f5);
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        .node-circle {
+            stroke: white;
+            stroke-width: 2;
+        }
+        .node-label {
+            font-size: 11px;
+            font-weight: 600;
+            fill: #202124;
+            text-anchor: middle;
+        }
+        .hop-label {
+            font-size: 9px;
+            fill: #5f6368;
+            text-anchor: middle;
+        }
+        .feature-box {
+            background: #e8f5e9;
+            border: 1px solid #81c784;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .feature-box h3 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+        .feature-list {
+            list-style: none;
+            padding-left: 0;
+        }
+        .feature-list li {
+            padding: 5px 0;
+            color: #1b5e20;
+        }
+        .feature-list li:before {
+            content: "✓ ";
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ Nouvelle fonctionnalité: Liens "Entendu via"</h1>
+        <p class="description">
+            Visualisation améliorée de la topologie réseau avec des liens bruns montrant
+            les relais probables pour les nœuds indirects.
+        </p>
+
+        <h2>Légende des types de liens</h2>
+        <div class="legend-container">
+            <div class="legend-section">
+                <div class="legend-title">Liens de voisinage direct</div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #00ff00;"></div>
+                    <span>Radio - SNR > 5 dB (Excellent)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #ffff00;"></div>
+                    <span>Radio - SNR 0-5 dB (Bon)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #ff6600;"></div>
+                    <span>Radio - SNR < 0 dB (Faible)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #00ffff;"></div>
+                    <span>MQTT (collecteur distant)</span>
+                </div>
+            </div>
+            <div class="legend-section">
+                <div class="legend-title">Liens inférés</div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #8B4513;"></div>
+                    <span><strong>🆕 Entendu via (relay)</strong></span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
+                    <span>Inférée (topologie)</span>
+                </div>
+            </div>
+        </div>
+
+        <h2>Démonstration visuelle</h2>
+        <p class="description">
+            Exemple de réseau avec un nœud central (Bot - 0 hop), des nœuds directs (1 hop),
+            et des nœuds indirects (2-3 hops). Les liens bruns montrent par quel nœud
+            les messages ont probablement été relayés.
+        </p>
+        <div class="demo-canvas">
+            <svg viewBox="0 0 800 400">
+                <!-- Links - drawn first so they're behind nodes -->
+                
+                <!-- Hop 0 -> Hop 1 (neighbor links - green) -->
+                <line x1="400" y1="200" x2="250" y2="120" stroke="#00ff00" stroke-width="4" opacity="0.9"/>
+                <line x1="400" y1="200" x2="550" y2="120" stroke="#00ff00" stroke-width="4" opacity="0.9"/>
+                <line x1="400" y1="200" x2="300" y2="280" stroke="#ffff00" stroke-width="4" opacity="0.6"/>
+                <line x1="400" y1="200" x2="500" y2="280" stroke="#ffff00" stroke-width="4" opacity="0.6"/>
+                
+                <!-- Hop 1 -> Hop 2 (neighbor links - yellow/orange) -->
+                <line x1="250" y1="120" x2="150" y2="80" stroke="#ffff00" stroke-width="4" opacity="0.6"/>
+                <line x1="550" y1="120" x2="650" y2="80" stroke="#ff6600" stroke-width="4" opacity="0.4"/>
+                
+                <!-- Hop 2 -> Hop 3 (VIA LINKS - BROWN) -->
+                <line x1="150" y1="80" x2="80" y2="50" stroke="#8B4513" stroke-width="2" 
+                      opacity="0.5" stroke-dasharray="3,3"/>
+                <line x1="650" y1="80" x2="720" y2="50" stroke="#8B4513" stroke-width="2" 
+                      opacity="0.5" stroke-dasharray="3,3"/>
+                
+                <!-- Hop 1 -> Hop 3 (VIA LINKS - BROWN - longer relay path) -->
+                <line x1="300" y1="280" x2="200" y2="320" stroke="#8B4513" stroke-width="2" 
+                      opacity="0.5" stroke-dasharray="3,3"/>
+                
+                <!-- Nodes -->
+                <!-- Hop 0 - Bot (red) -->
+                <circle cx="400" cy="200" r="20" fill="#e74c3c" class="node-circle"/>
+                <text x="400" y="205" class="node-label">Bot</text>
+                <text x="400" y="235" class="hop-label">0 hop</text>
+                
+                <!-- Hop 1 (green) -->
+                <circle cx="250" cy="120" r="16" fill="#27ae60" class="node-circle"/>
+                <text x="250" y="124" class="node-label">NodeA</text>
+                <text x="250" y="150" class="hop-label">1 hop</text>
+                
+                <circle cx="550" cy="120" r="16" fill="#27ae60" class="node-circle"/>
+                <text x="550" y="124" class="node-label">NodeB</text>
+                <text x="550" y="150" class="hop-label">1 hop</text>
+                
+                <circle cx="300" cy="280" r="16" fill="#27ae60" class="node-circle"/>
+                <text x="300" y="284" class="node-label">NodeC</text>
+                <text x="300" y="260" class="hop-label">1 hop</text>
+                
+                <circle cx="500" cy="280" r="16" fill="#27ae60" class="node-circle"/>
+                <text x="500" y="284" class="node-label">NodeD</text>
+                <text x="500" y="260" class="hop-label">1 hop</text>
+                
+                <!-- Hop 2 (blue) -->
+                <circle cx="150" cy="80" r="14" fill="#3498db" class="node-circle"/>
+                <text x="150" y="84" class="node-label" style="font-size: 10px;">NodeE</text>
+                <text x="150" y="105" class="hop-label">2 hops</text>
+                
+                <circle cx="650" cy="80" r="14" fill="#3498db" class="node-circle"/>
+                <text x="650" y="84" class="node-label" style="font-size: 10px;">NodeF</text>
+                <text x="650" y="105" class="hop-label">2 hops</text>
+                
+                <!-- Hop 3 (orange) - these use VIA links -->
+                <circle cx="80" cy="50" r="12" fill="#f39c12" class="node-circle"/>
+                <text x="80" y="54" class="node-label" style="font-size: 9px;">NodeG</text>
+                <text x="80" y="75" class="hop-label">3 hops (via E)</text>
+                
+                <circle cx="720" cy="50" r="12" fill="#f39c12" class="node-circle"/>
+                <text x="720" y="54" class="node-label" style="font-size: 9px;">NodeH</text>
+                <text x="720" y="75" class="hop-label">3 hops (via F)</text>
+                
+                <circle cx="200" cy="320" r="12" fill="#f39c12" class="node-circle"/>
+                <text x="200" y="324" class="node-label" style="font-size: 9px;">NodeI</text>
+                <text x="200" y="345" class="hop-label">3 hops (via C)</text>
+                
+                <!-- Legend annotations -->
+                <text x="400" y="30" style="font-size: 12px; fill: #666; text-anchor: middle;">
+                    ━━━ Liens verts/jaunes = voisinage direct | - - - Liens bruns = entendu via
+                </text>
+            </svg>
+        </div>
+
+        <h2>Caractéristiques de la nouvelle fonctionnalité</h2>
+        <div class="feature-box">
+            <h3>Liens "Entendu via" (Brown)</h3>
+            <ul class="feature-list">
+                <li>Affichés pour TOUS les nœuds avec hops > 0</li>
+                <li>Fonctionne même quand des données de voisinage existent</li>
+                <li>Complète les liens de voisinage directs (vert/jaune/orange)</li>
+                <li>Identifie le relay probable basé sur la distance en hops</li>
+                <li>Trie par SNR pour sélectionner le meilleur relay</li>
+                <li>Évite les doublons avec les liens de voisinage existants</li>
+                <li>Style: Couleur brune (#8B4513), pointillés (3,3), semi-transparent (0.5)</li>
+            </ul>
+        </div>
+
+        <h2>Comparaison avec les liens inférés existants</h2>
+        <div class="legend-container">
+            <div class="legend-section">
+                <div class="legend-title">Liens "Entendu via" (NOUVEAU 🆕)</div>
+                <ul class="feature-list">
+                    <li>Couleur: Brun (#8B4513)</li>
+                    <li>Affichés: Toujours (si hops > 0)</li>
+                    <li>But: Montrer les relays probables</li>
+                    <li>Complément: Aux liens de voisinage</li>
+                </ul>
+            </div>
+            <div class="legend-section">
+                <div class="legend-title">Liens inférés (Existants)</div>
+                <ul class="feature-list">
+                    <li>Couleur: Gris (#888888)</li>
+                    <li>Affichés: Seulement si AUCUNE donnée de voisinage</li>
+                    <li>But: Topologie de secours</li>
+                    <li>Remplace: Les liens de voisinage manquants</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Impact sur la carte</h2>
+        <p class="description">
+            Les liens bruns "Entendu via" apparaîtront automatiquement sur la carte pour 
+            tous les nœuds indirects (hops > 0), fournissant une visualisation plus complète
+            de la topologie réseau et aidant à identifier les nœuds relais critiques.
+        </p>
+        <p class="description" style="margin-top: 10px;">
+            <strong>Note:</strong> Les liens "Entendu via" sont des inférences basées sur la distance
+            en hops et le SNR. Ils montrent le relay le plus PROBABLE, pas nécessairement le chemin
+            exact qu'un paquet a pris.
+        </p>
+    </div>
+</body>
+</html>
