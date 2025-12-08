@@ -22,6 +22,42 @@
             width: 280px;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        .stats.collapsed {
+            transform: translateX(calc(100% + 20px));
+        }
+        
+        .stats-toggle {
+            position: absolute;
+            left: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px 0 0 8px;
+            padding: 12px 8px;
+            cursor: pointer;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+            z-index: 1001;
+        }
+        
+        .stats-toggle:hover {
+            background: rgba(255, 255, 255, 1);
+            box-shadow: -2px 0 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .stats-toggle svg {
+            display: block;
+            width: 24px;
+            height: 24px;
+            transition: transform 0.3s;
+        }
+        
+        .stats.collapsed .stats-toggle svg {
+            transform: rotate(180deg);
         }
         
         .stats-header {
@@ -360,12 +396,97 @@
         .node-emoji.owner {
             font-size: 24px;
         }
+        
+        /* Legend collapsible styles */
+        .legend-container {
+            position: relative;
+        }
+        
+        .legend.collapsed {
+            transform: translateY(calc(100% + 10px));
+        }
+        
+        .legend-toggle {
+            position: absolute;
+            top: -35px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 8px 8px 0 0;
+            padding: 8px 12px;
+            cursor: pointer;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #5f6368;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .legend-toggle:hover {
+            background: rgba(255, 255, 255, 1);
+            box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.2);
+            color: #1a73e8;
+        }
+        
+        .legend-toggle svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.3s;
+        }
+        
+        .legend.collapsed + .legend-toggle svg {
+            transform: rotate(180deg);
+        }
+        
+        /* Mobile responsive styles */
+        @media (max-width: 768px) {
+            .stats {
+                width: 250px;
+                top: 10px;
+                right: 10px;
+                padding: 12px;
+            }
+            
+            .stats-toggle {
+                left: -35px;
+                padding: 10px 6px;
+            }
+            
+            .stats-toggle svg {
+                width: 20px;
+                height: 20px;
+            }
+            
+            .legend {
+                font-size: 0.8rem;
+            }
+            
+            .legend-toggle {
+                font-size: 0.75rem;
+                padding: 6px 10px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats {
+                width: calc(100vw - 60px);
+                max-width: 250px;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
     <div class="stats">
+        <button class="stats-toggle" onclick="toggleStats()" aria-label="Toggle menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 18l-6-6 6-6"/>
+            </svg>
+        </button>
         <div class="stats-header">
             <svg class="stats-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" stroke="#1a73e8" stroke-width="2"/>
@@ -668,6 +789,7 @@
             const legend = L.control({position: 'bottomright'});
             
             legend.onAdd = () => {
+                const container = L.DomUtil.create('div', 'legend-container');
                 const div = L.DomUtil.create('div', 'legend');
                 div.innerHTML = `
                     <h4 id="legendTitle">Distance (hops)</h4>
@@ -739,7 +861,20 @@
                         </div>
                     </div>
                 `;
-                return div;
+                
+                const toggle = L.DomUtil.create('button', 'legend-toggle');
+                toggle.innerHTML = `
+                    Légende
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 15l-6-6-6 6"/>
+                    </svg>
+                `;
+                toggle.onclick = toggleLegend;
+                toggle.setAttribute('aria-label', 'Toggle legend');
+                
+                container.appendChild(div);
+                container.appendChild(toggle);
+                return container;
             };
             
             legend.addTo(map);
@@ -1662,9 +1797,65 @@
             }
         }
         
+        // Toggle functions for collapsible panels
+        function toggleStats() {
+            const statsPanel = document.querySelector('.stats');
+            const isCollapsed = statsPanel.classList.toggle('collapsed');
+            
+            // Save state to localStorage
+            try {
+                localStorage.setItem('statsCollapsed', isCollapsed ? 'true' : 'false');
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+        }
+        
+        function toggleLegend() {
+            const legendPanel = document.querySelector('.legend');
+            const isCollapsed = legendPanel.classList.toggle('collapsed');
+            
+            // Save state to localStorage
+            try {
+                localStorage.setItem('legendCollapsed', isCollapsed ? 'true' : 'false');
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+        }
+        
+        // Restore collapsed states from localStorage
+        function restoreCollapsedStates() {
+            try {
+                // Restore stats panel state
+                const statsCollapsed = localStorage.getItem('statsCollapsed');
+                if (statsCollapsed === 'true') {
+                    document.querySelector('.stats')?.classList.add('collapsed');
+                }
+                
+                // Restore legend state
+                const legendCollapsed = localStorage.getItem('legendCollapsed');
+                if (legendCollapsed === 'true') {
+                    document.querySelector('.legend')?.classList.add('collapsed');
+                }
+                
+                // Auto-collapse on mobile screens (< 768px)
+                if (window.innerWidth < 768) {
+                    // Only auto-collapse if user hasn't explicitly set a preference
+                    if (statsCollapsed === null) {
+                        document.querySelector('.stats')?.classList.add('collapsed');
+                    }
+                    if (legendCollapsed === null) {
+                        document.querySelector('.legend')?.classList.add('collapsed');
+                    }
+                }
+            } catch (e) {
+                console.warn('localStorage not available:', e);
+            }
+        }
+        
         // Initialize everything when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             initFromURLParams();
+            restoreCollapsedStates();
             initMap();
         });
     </script>
