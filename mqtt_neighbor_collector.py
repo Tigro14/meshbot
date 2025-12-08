@@ -293,6 +293,32 @@ class MQTTNeighborCollector:
         except Exception as e:
             debug_print(f"👥 Erreur traitement NODEINFO: {e}")
     
+    def _resolve_gateway_name(self, gateway_id):
+        """
+        Résoudre l'ID d'une gateway en nom lisible
+        
+        Args:
+            gateway_id: ID de la gateway (string)
+            
+        Returns:
+            str: Nom de la gateway ou l'ID si résolution impossible, ou None si pas de gateway_id
+        """
+        if not gateway_id:
+            return None
+        
+        if not self.node_manager:
+            return gateway_id
+        
+        try:
+            gateway_name = self.node_manager.get_node_name(gateway_id)
+            # If get_node_name returns "Unknown" or a hex ID, use the ID as-is
+            if gateway_name and (gateway_name == "Unknown" or gateway_name.startswith("!")):
+                return gateway_id
+            return gateway_name
+        except Exception as e:
+            debug_print(f"👥 Erreur résolution nom gateway {gateway_id}: {e}")
+            return gateway_id
+    
     def _on_mqtt_message(self, client, userdata, msg):
         """
         Callback de réception de message MQTT
@@ -331,6 +357,10 @@ class MQTTNeighborCollector:
                 return
             
             packet = envelope.packet
+            
+            # Extraire les informations du ServiceEnvelope (gateway qui a relayé le paquet)
+            gateway_id = getattr(envelope, 'gateway_id', '')
+            channel_id = getattr(envelope, 'channel_id', '')
             
             # Extraire l'ID du paquet et de l'émetteur pour déduplication et déchiffrement
             packet_id = getattr(packet, 'id', 0)
@@ -390,10 +420,16 @@ class MQTTNeighborCollector:
                     if longname and (longname == "Unknown" or longname.startswith("!")):
                         longname = None
                 
+                # Get gateway name using helper method
+                gateway_name = self._resolve_gateway_name(gateway_id)
+                
+                # Format log message with "via" information
+                via_suffix = f" via {gateway_name}" if gateway_name else ""
+                
                 if longname:
-                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x} ({longname})")
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x} ({longname}){via_suffix}")
                 else:
-                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}{via_suffix}")
             
             # Traiter les paquets NODEINFO pour mettre à jour les noms de nœuds
             if decoded.portnum == portnums_pb2.PortNum.NODEINFO_APP:
@@ -493,15 +529,20 @@ class MQTTNeighborCollector:
                     if self.node_manager:
                         try:
                             node_name = self.node_manager.get_node_name(node_id)
-                        except:
-                            pass
+                        except Exception as e:
+                            debug_print(f"👥 Erreur récupération nom pour {node_id_str}: {e}")
+                    
+                    # Obtenir le nom du gateway en utilisant la méthode helper
+                    gateway_name = self._resolve_gateway_name(gateway_id)
                     
                     # Format du log similaire aux paquets mesh
                     distance_str = ""
                     if distance_km is not None:
                         distance_str = f" [{distance_km:.1f}km]"
                     
-                    debug_print(f"[MQTT] 👥 NEIGHBORINFO de {node_name}{distance_str}: {len(formatted_neighbors)} voisins")
+                    via_suffix = f" via {gateway_name}" if gateway_name else ""
+                    
+                    debug_print(f"[MQTT] 👥 NEIGHBORINFO de {node_name}{distance_str}{via_suffix}: {len(formatted_neighbors)} voisins")
                 
                 # Log original plus concis (toujours affiché si DEBUG_MODE=False)
                 debug_print(f"👥 MQTT: {len(formatted_neighbors)} voisins pour {node_id_str}")
