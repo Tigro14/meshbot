@@ -871,6 +871,7 @@
             // Create "heard via" links ONLY for nodes with hops > 0 that DON'T have neighbor data
             // These show which relay node was likely used to hear indirect nodes
             // Skip nodes that already have formal neighbor information (radio or MQTT)
+            // IMPORTANT: Skip links directly to owner node (targetHops = 0) as they have no value
             console.log('Creating "heard via" relay links for nodes without neighbor data...');
             
             nodesArray.forEach(node => {
@@ -885,6 +886,12 @@
                 // Only for nodes heard via relay (hops > 0)
                 if (node.hopsAway && node.hopsAway > 0) {
                     const targetHops = node.hopsAway - 1;
+                    
+                    // Skip if target relay would be the owner node (hops = 0)
+                    // "Heard via" links to the owner node have no value since the owner is the source
+                    if (targetHops === 0) {
+                        return;
+                    }
                     
                     // Find potential relay nodes (nodes at hopsAway - 1)
                     const potentialRelays = nodesArray.filter(n => {
