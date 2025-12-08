@@ -69,7 +69,7 @@ class DBCommandsTelegram(TelegramCommandBase):
                 elif subcommand in ['clean', 'cleanup']:
                     result = db_handler._cleanup_db(args, 'telegram')
                 elif subcommand in ['vacuum', 'v']:
-                    result = db_handler._vacuum_db('telegram')
+                    result = db_handler._vacuum_db(args, 'telegram')
                 elif subcommand in ['info', 'i']:
                     result = db_handler._get_db_info('telegram')
                 elif subcommand in ['nb', 'neighbors']:

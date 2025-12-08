@@ -7,6 +7,7 @@ Opérations de maintenance, stats et nettoyage
 import os
 import time
 from utils import error_print, debug_print, info_print
+from config import REBOOT_PASSWORD
 import traceback
 
 
@@ -52,7 +53,7 @@ class DBCommands:
             elif subcommand in ['clean', 'cleanup']:
                 response = self._cleanup_db(args, channel)
             elif subcommand in ['vacuum', 'v']:
-                response = self._vacuum_db(channel)
+                response = self._vacuum_db(args, channel)
             elif subcommand in ['info', 'i']:
                 response = self._get_db_info(channel)
             elif subcommand in ['purgeweather', 'pw']:
@@ -80,8 +81,8 @@ class DBCommands:
                 "🗄️ /db [cmd]\n"
                 "s=stats i=info\n"
                 "nb=neighbors\n"
-                "clean=nettoyage\n"
-                "v=vacuum pw=weather"
+                "clean <pwd>=nettoyage\n"
+                "v <pwd>=vacuum pw=weather"
             )
         else:  # telegram
             return """🗄️ BASE DE DONNÉES - OPTIONS
@@ -90,16 +91,19 @@ Sous-commandes:
 • stats - Statistiques DB
 • info - Informations détaillées
 • nb - Stats voisinage (neighbors)
-• clean [hours] - Nettoyer données anciennes
-• vacuum - Optimiser DB (VACUUM)
+• clean <password> [hours] - Nettoyer données anciennes
+• vacuum <password> - Optimiser DB (VACUUM)
+• purgeweather - Purger cache météo
 
 Exemples:
 • /db stats - Stats DB
 • /db nb - Stats voisinage
-• /db clean 72 - Nettoyer > 72h
-• /db vacuum - Optimiser
+• /db clean mypass 72 - Nettoyer > 72h
+• /db vacuum mypass - Optimiser
 
-Raccourcis: s, i, v, nb
+⚠️ Note: clean et vacuum nécessitent un mot de passe
+
+Raccourcis: s, i, v, nb, pw
 """
 
     def _get_db_stats(self, channel='mesh'):
@@ -187,11 +191,32 @@ Raccourcis: s, i, v, nb
         if not self.persistence:
             return "❌ DB non disponible"
 
-        # Parser les heures
+        # Vérifier qu'il y a au moins un argument (le mot de passe)
+        if not args:
+            if channel == 'mesh':
+                return "❌ /db clean <pwd> [hours]"
+            else:
+                return "❌ Mot de passe requis\n\nUsage: /db clean <password> [hours]"
+
+        # Le premier argument est le mot de passe
+        provided_password = args[0]
+        
+        # Vérifier le mot de passe
+        if provided_password != REBOOT_PASSWORD:
+            info_print(f"🚫 /db clean refusé (mauvais mot de passe)")
+            if channel == 'mesh':
+                return "❌ Mot de passe incorrect"
+            else:
+                return "❌ Mot de passe incorrect\n\nAccès refusé."
+        
+        # Le mot de passe est correct, continuer avec le nettoyage
+        info_print(f"🔐 /db clean autorisé")
+
+        # Parser les heures (deuxième argument si présent)
         hours = 48  # Défaut
-        if args:
+        if len(args) > 1:
             try:
-                hours = int(args[0])
+                hours = int(args[1])
                 hours = max(1, min(168, hours))  # 1h à 1 semaine
             except ValueError:
                 pass
@@ -240,10 +265,31 @@ Raccourcis: s, i, v, nb
             error_print(f"Erreur cleanup DB: {e}")
             return f"❌ Erreur: {str(e)[:100]}"
 
-    def _vacuum_db(self, channel='mesh'):
+    def _vacuum_db(self, args, channel='mesh'):
         """Optimiser la base de données (VACUUM)"""
         if not self.persistence:
             return "❌ DB non disponible"
+
+        # Vérifier qu'il y a au moins un argument (le mot de passe)
+        if not args:
+            if channel == 'mesh':
+                return "❌ /db vacuum <pwd>"
+            else:
+                return "❌ Mot de passe requis\n\nUsage: /db vacuum <password>"
+
+        # Le premier argument est le mot de passe
+        provided_password = args[0]
+        
+        # Vérifier le mot de passe
+        if provided_password != REBOOT_PASSWORD:
+            info_print(f"🚫 /db vacuum refusé (mauvais mot de passe)")
+            if channel == 'mesh':
+                return "❌ Mot de passe incorrect"
+            else:
+                return "❌ Mot de passe incorrect\n\nAccès refusé."
+        
+        # Le mot de passe est correct, continuer avec le vacuum
+        info_print(f"🔐 /db vacuum autorisé")
 
         try:
             # Taille avant
