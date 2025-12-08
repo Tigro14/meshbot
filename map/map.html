@@ -814,6 +814,9 @@
             
             let hasNeighborInfo = false;
             
+            // Track which nodes have neighbor data (radio or MQTT)
+            const nodesWithNeighbors = new Set();
+            
             nodesArray.forEach(node => {
                 const nodeId = node.user?.id || node.nodeId;
                 if (!node.position || !markers[nodeId]) return;
@@ -822,6 +825,9 @@
                 
                 if (neighbors.length > 0) {
                     hasNeighborInfo = true;
+                    
+                    // Mark this node as having neighbor data
+                    nodesWithNeighbors.add(nodeId);
                     
                     neighbors.forEach(neighbor => {
                         const neighborId = neighbor.nodeId || neighbor.node_id || neighbor.id;
@@ -862,13 +868,19 @@
                 }
             });
 
-            // Create "heard via" links for nodes with hops > 0 (even when neighbor data exists)
+            // Create "heard via" links ONLY for nodes with hops > 0 that DON'T have neighbor data
             // These show which relay node was likely used to hear indirect nodes
-            console.log('Creating "heard via" relay links...');
+            // Skip nodes that already have formal neighbor information (radio or MQTT)
+            console.log('Creating "heard via" relay links for nodes without neighbor data...');
             
             nodesArray.forEach(node => {
                 const nodeId = node.user?.id || node.nodeId;
                 if (!node.position || !markers[nodeId]) return;
+                
+                // Skip nodes that already have neighbor data
+                if (nodesWithNeighbors.has(nodeId)) {
+                    return;
+                }
                 
                 // Only for nodes heard via relay (hops > 0)
                 if (node.hopsAway && node.hopsAway > 0) {

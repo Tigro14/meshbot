@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Comparison: Heard Via Links Fix</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        h1 { color: #1a73e8; margin-bottom: 10px; }
+        .subtitle { color: #5f6368; margin-bottom: 30px; }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+        .panel {
+            border: 2px solid #dadce0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .panel.before { border-color: #ea4335; }
+        .panel.after { border-color: #34a853; }
+        .panel h2 {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid currentColor;
+        }
+        .before h2 { color: #ea4335; }
+        .after h2 { color: #34a853; }
+        svg {
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(to bottom, #e3f2fd, #f5f5f5);
+            border-radius: 4px;
+        }
+        .node {
+            cursor: pointer;
+        }
+        .node:hover circle {
+            stroke-width: 3;
+        }
+        .legend {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 0.9rem;
+        }
+        .legend-line {
+            width: 40px;
+            height: 3px;
+            margin-right: 10px;
+        }
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 4px;
+        }
+        .stats.before-stats {
+            background: #ffebee;
+        }
+        .stats strong {
+            color: #202124;
+        }
+        .improvement {
+            background: #e8f5e9;
+            border: 2px solid #34a853;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        .improvement h2 {
+            color: #1e8e3e;
+            margin-bottom: 15px;
+        }
+        ul {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Visual Comparison: "Heard Via" Links Fix</h1>
+        <p class="subtitle">
+            Demonstration of how the fix removes redundant "heard via" links when neighbor data exists
+        </p>
+
+        <div class="comparison">
+            <!-- BEFORE -->
+            <div class="panel before">
+                <h2>❌ Before Fix (Redundant Links)</h2>
+                <svg viewBox="0 0 400 400">
+                    <!-- Nodes -->
+                    <g class="node">
+                        <circle cx="200" cy="50" r="20" fill="#e74c3c" stroke="white" stroke-width="2"/>
+                        <text x="200" y="55" text-anchor="middle" fill="white" font-weight="bold">A</text>
+                        <text x="200" y="35" text-anchor="middle" fill="#202124" font-size="11">Bot (0 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="100" cy="150" r="16" fill="#27ae60" stroke="white" stroke-width="2"/>
+                        <text x="100" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">B</text>
+                        <text x="100" y="130" text-anchor="middle" fill="#202124" font-size="10">Has neighbors</text>
+                        <text x="100" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(1 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="200" cy="150" r="16" fill="#27ae60" stroke="white" stroke-width="2"/>
+                        <text x="200" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">C</text>
+                        <text x="200" y="130" text-anchor="middle" fill="#202124" font-size="10">Has neighbors</text>
+                        <text x="200" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(1 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="300" cy="150" r="16" fill="#95a5a6" stroke="white" stroke-width="2"/>
+                        <text x="300" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">D</text>
+                        <text x="300" y="130" text-anchor="middle" fill="#202124" font-size="10">No neighbors</text>
+                        <text x="300" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(2 hops)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="300" cy="250" r="16" fill="#95a5a6" stroke="white" stroke-width="2"/>
+                        <text x="300" y="255" text-anchor="middle" fill="white" font-weight="bold" font-size="12">E</text>
+                        <text x="300" y="275" text-anchor="middle" fill="#202124" font-size="10">No neighbors</text>
+                        <text x="300" y="287" text-anchor="middle" fill="#5f6368" font-size="9">(3 hops)</text>
+                    </g>
+                    
+                    <!-- Neighbor Links (green) -->
+                    <line x1="200" y1="70" x2="100" y2="135" stroke="#00ff00" stroke-width="4" opacity="0.8"/>
+                    <line x1="200" y1="70" x2="200" y2="135" stroke="#00ff00" stroke-width="4" opacity="0.8"/>
+                    
+                    <!-- REDUNDANT "Heard Via" Links (brown) -->
+                    <line x1="100" y1="150" x2="200" y2="70" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    <line x1="200" y1="150" x2="200" y2="70" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    
+                    <!-- Valid "Heard Via" Links (brown) -->
+                    <line x1="300" y1="150" x2="200" y2="70" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    <line x1="300" y1="250" x2="300" y2="165" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    
+                    <!-- Labels for redundant links -->
+                    <text x="150" y="100" fill="#ea4335" font-size="10" font-weight="bold">REDUNDANT</text>
+                    <text x="150" y="120" fill="#ea4335" font-size="10" font-weight="bold">REDUNDANT</text>
+                </svg>
+                
+                <div class="stats before-stats">
+                    <strong>Total Links: 6</strong><br>
+                    • Green neighbor links: 2<br>
+                    • Brown "heard via" links: 4<br>
+                    • <span style="color: #ea4335;">⚠️ Redundant links: 2</span>
+                </div>
+            </div>
+
+            <!-- AFTER -->
+            <div class="panel after">
+                <h2>✅ After Fix (Clean Links)</h2>
+                <svg viewBox="0 0 400 400">
+                    <!-- Nodes -->
+                    <g class="node">
+                        <circle cx="200" cy="50" r="20" fill="#e74c3c" stroke="white" stroke-width="2"/>
+                        <text x="200" y="55" text-anchor="middle" fill="white" font-weight="bold">A</text>
+                        <text x="200" y="35" text-anchor="middle" fill="#202124" font-size="11">Bot (0 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="100" cy="150" r="16" fill="#27ae60" stroke="white" stroke-width="2"/>
+                        <text x="100" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">B</text>
+                        <text x="100" y="130" text-anchor="middle" fill="#202124" font-size="10">Has neighbors</text>
+                        <text x="100" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(1 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="200" cy="150" r="16" fill="#27ae60" stroke="white" stroke-width="2"/>
+                        <text x="200" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">C</text>
+                        <text x="200" y="130" text-anchor="middle" fill="#202124" font-size="10">Has neighbors</text>
+                        <text x="200" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(1 hop)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="300" cy="150" r="16" fill="#95a5a6" stroke="white" stroke-width="2"/>
+                        <text x="300" y="155" text-anchor="middle" fill="white" font-weight="bold" font-size="12">D</text>
+                        <text x="300" y="130" text-anchor="middle" fill="#202124" font-size="10">No neighbors</text>
+                        <text x="300" y="142" text-anchor="middle" fill="#5f6368" font-size="9">(2 hops)</text>
+                    </g>
+                    
+                    <g class="node">
+                        <circle cx="300" cy="250" r="16" fill="#95a5a6" stroke="white" stroke-width="2"/>
+                        <text x="300" y="255" text-anchor="middle" fill="white" font-weight="bold" font-size="12">E</text>
+                        <text x="300" y="275" text-anchor="middle" fill="#202124" font-size="10">No neighbors</text>
+                        <text x="300" y="287" text-anchor="middle" fill="#5f6368" font-size="9">(3 hops)</text>
+                    </g>
+                    
+                    <!-- Neighbor Links (green) - UNCHANGED -->
+                    <line x1="200" y1="70" x2="100" y2="135" stroke="#00ff00" stroke-width="4" opacity="0.8"/>
+                    <line x1="200" y1="70" x2="200" y2="135" stroke="#00ff00" stroke-width="4" opacity="0.8"/>
+                    
+                    <!-- Valid "Heard Via" Links ONLY (brown) -->
+                    <line x1="300" y1="150" x2="200" y2="70" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    <line x1="300" y1="250" x2="300" y2="165" stroke="#8B4513" stroke-width="2" opacity="0.5" stroke-dasharray="3,3"/>
+                    
+                    <!-- Labels for valid links -->
+                    <text x="240" y="100" fill="#34a853" font-size="10" font-weight="bold">VALID (no neighbors)</text>
+                    <text x="320" y="210" fill="#34a853" font-size="10" font-weight="bold">VALID</text>
+                </svg>
+                
+                <div class="stats">
+                    <strong>Total Links: 4</strong><br>
+                    • Green neighbor links: 2<br>
+                    • Brown "heard via" links: 2<br>
+                    • <span style="color: #34a853;">✅ No redundant links</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <strong style="display: block; margin-bottom: 10px;">Legend:</strong>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #00ff00;"></div>
+                <span>Neighbor links (from actual neighbor data - radio/MQTT)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-line" style="background: #8B4513; opacity: 0.5;" class="dashed"></div>
+                <span>Brown "heard via" links (inferred relay path)</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 16px; height: 16px; border-radius: 50%; background: #27ae60; margin-right: 10px;"></div>
+                <span>Node WITH neighbor data</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 16px; height: 16px; border-radius: 50%; background: #95a5a6; margin-right: 10px;"></div>
+                <span>Node WITHOUT neighbor data</span>
+            </div>
+        </div>
+
+        <div class="improvement">
+            <h2>💡 Key Improvements</h2>
+            <ul>
+                <li><strong>Reduced Link Count:</strong> From 6 links to 4 links (33% reduction)</li>
+                <li><strong>No Redundancy:</strong> Eliminated 2 redundant brown links that overlapped with green neighbor links</li>
+                <li><strong>Cleaner Visualization:</strong> Nodes B and C now only show their actual neighbor links</li>
+                <li><strong>Correct Semantics:</strong> "Heard via" links now only appear for nodes D and E (no neighbor data)</li>
+                <li><strong>Better Performance:</strong> Fewer links to render = faster map loading</li>
+            </ul>
+        </div>
+
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-top: 30px;">
+            <h3 style="color: #202124; margin-bottom: 15px;">How the Fix Works</h3>
+            <ol style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>Track nodes with neighbors:</strong> During neighbor link creation, add each node to a Set called <code>nodesWithNeighbors</code></li>
+                <li><strong>Skip these nodes:</strong> When creating "heard via" links, check if the node is in <code>nodesWithNeighbors</code></li>
+                <li><strong>Only infer for unknown:</strong> Create brown "heard via" links ONLY for nodes NOT in the Set (nodes D and E)</li>
+                <li><strong>Result:</strong> Nodes with actual neighbor data (B and C) don't get redundant inferred links</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>
