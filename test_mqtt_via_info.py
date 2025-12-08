@@ -115,7 +115,8 @@ def test_gateway_name_resolution():
     
     # Mock get_node_name to return a friendly name
     def mock_get_name(node_id):
-        if node_id == "!12345678":
+        # After the fix, gateway_id is converted to int before calling get_node_name
+        if node_id == 0x12345678:  # "!12345678" converted to int
             return "GatewayNode"
         elif node_id == 0x11223344:
             return "SenderNode"
