@@ -1261,9 +1261,14 @@
                 const longName = node.user?.longName?.toLowerCase() || '';
                 const nodeId = id.toLowerCase();
                 
+                // For node ID matching, strip the '!' prefix to enable short hex ID searches
+                // This allows searches like "f5k1" or "40ad" to match "!12f5k123" or "!ab40ad45"
+                const nodeIdHex = nodeId.startsWith('!') ? nodeId.substring(1) : nodeId;
+                
                 if (shortName.includes(searchLower) || 
                     longName.includes(searchLower) || 
-                    nodeId.includes(searchLower)) {
+                    nodeId.includes(searchLower) ||
+                    nodeIdHex.includes(searchLower)) {
                     foundNodes.push({ id, node });
                 }
             }

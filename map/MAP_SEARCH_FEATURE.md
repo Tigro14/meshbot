@@ -16,6 +16,10 @@ The search form is located in the stats panel on the right side of the map, belo
   - Short name (e.g., "tigro", "bob")
   - Long name (e.g., "Tigro G2 PV", "Bob's Node")
   - Node ID (e.g., "!a2e175ac", "a2e175ac")
+  - **Short hex node IDs** (e.g., "f5k1", "40ad", "75ac") - NEW in v1.3
+    - Matches against any part of the hex portion of the node ID
+    - Works without the `!` prefix
+    - Example: "f5k1" matches "!12f5k123"
 - **Case Insensitive**: Searches work regardless of letter casing
 - **Partial Match**: Searches find nodes that contain the search term
 
@@ -168,6 +172,24 @@ Input: "a2e175ac"
 Result: Finds node with ID "!a2e175ac"
 ```
 
+### Example 3a: Find node by short hex ID (New in v1.3)
+```
+Input: "f5k1"
+Result: Finds node with ID "!12f5k123" (matches hex portion)
+```
+
+### Example 3b: Find node by partial hex ID (New in v1.3)
+```
+Input: "40ad"
+Result: Finds node with ID "!ab40ad45" (matches hex portion)
+```
+
+### Example 3c: Find node by last 4 hex chars (New in v1.3)
+```
+Input: "75ac"
+Result: Finds node with ID "!a2e175ac" (matches last 4 chars)
+```
+
 ### Example 4: Multiple nodes with partial match (New in v1.1)
 ```
 Input: "tigro"
@@ -287,10 +309,19 @@ Potential improvements for future versions:
 ## Related Files
 
 - `map/map.html`: Main implementation
+- `map/test_short_hex_search.html`: Short hex ID search test suite (NEW in v1.3)
 - `map/test_map_search.html`: Automated tests (gitignored)
 - `map/.gitignore`: Excludes test files from version control
 
 ## Version History
+
+- **v1.3** (2024-12-08): Short hex node ID support
+  - Enhanced search to match short hex node IDs (e.g., "f5k1", "40ad")
+  - Strips `!` prefix from node IDs during comparison
+  - Enables searching by any portion of the hex ID, not just the full ID
+  - Examples: "75ac" matches "!a2e175ac", "f5k1" matches "!12f5k123"
+  - Fully backward compatible with existing search patterns
+  - Added comprehensive test suite (`test_short_hex_search.html`)
 
 - **v1.2** (2024-12-04): URL parameter support
   - Added `node` URL parameter for automatic search on page load
