@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: Emoji Circles Enhancement</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #map { width: 100%; height: 100vh; }
+        
+        .info-box {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            max-width: 400px;
+        }
+        
+        .info-box h2 {
+            margin-bottom: 10px;
+            color: #1a73e8;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            line-height: 1.6;
+        }
+        
+        .node-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #000;
+            text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+            white-space: nowrap;
+            pointer-events: none;
+            text-align: center;
+            position: relative;
+            top: -20px;
+        }
+        
+        .node-emoji {
+            font-size: 20px;
+            pointer-events: none;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+            filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8));
+        }
+        
+        .node-emoji.owner {
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="info-box">
+        <h2>🧪 Test: Emoji Circles Enhancement</h2>
+        <ul>
+            <li><strong>Regular nodes:</strong> 20px radius (was 12px)</li>
+            <li><strong>Owner node:</strong> 28px radius (was 20px)</li>
+            <li><strong>Emoji:</strong> Centered in circle using shortName</li>
+            <li><strong>LongName:</strong> Still displayed on the side</li>
+            <li><strong>MQTT circles:</strong> 28px/36px (was 20px/28px)</li>
+        </ul>
+        <p style="margin-top: 10px; font-size: 12px; color: #666;">
+            Click markers to see details. This demonstrates larger circles with emoji centers.
+        </p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([48.8566, 2.3522], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Test data - simulating mesh nodes with emoji shortNames
+        const testNodes = [
+            {
+                id: '!a2e175ac',
+                lat: 48.8566,
+                lon: 2.3522,
+                shortName: '🏠',
+                longName: 'Owner Node',
+                color: '#e74c3c',
+                isOwner: true,
+                mqttActive: false
+            },
+            {
+                id: '!12345678',
+                lat: 48.8600,
+                lon: 2.3400,
+                shortName: '🚀',
+                longName: 'Rocket Station',
+                color: '#27ae60',
+                isOwner: false,
+                mqttActive: true
+            },
+            {
+                id: '!abcdef01',
+                lat: 48.8500,
+                lon: 2.3600,
+                shortName: '🌟',
+                longName: 'Star Node',
+                color: '#3498db',
+                isOwner: false,
+                mqttActive: false
+            },
+            {
+                id: '!99887766',
+                lat: 48.8650,
+                lon: 2.3500,
+                shortName: '🔥',
+                longName: 'Fire Node',
+                color: '#f39c12',
+                isOwner: false,
+                mqttActive: true
+            },
+            {
+                id: '!44556677',
+                lat: 48.8520,
+                lon: 2.3480,
+                shortName: '⚡',
+                longName: 'Lightning Node',
+                color: '#9b59b6',
+                isOwner: false,
+                mqttActive: false
+            },
+            {
+                id: '!11223344',
+                lat: 48.8580,
+                lon: 2.3550,
+                shortName: '🌈',
+                longName: 'Rainbow Node',
+                color: '#e67e22',
+                isOwner: false,
+                mqttActive: false
+            }
+        ];
+        
+        // Create markers for test nodes
+        testNodes.forEach(node => {
+            const radius = node.isOwner ? 28 : 20;
+            
+            // Create circle marker
+            const marker = L.circleMarker([node.lat, node.lon], {
+                radius: radius,
+                fillColor: node.color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+            
+            marker.bindTooltip(node.longName, {
+                permanent: false,
+                direction: 'top'
+            });
+            
+            // Add emoji centered in circle
+            const emojiClass = node.isOwner ? 'node-emoji owner' : 'node-emoji';
+            const emojiIcon = L.divIcon({
+                html: `<div class="${emojiClass}">${node.shortName}</div>`,
+                className: '',
+                iconSize: [null, null]
+            });
+            
+            const emojiMarker = L.marker([node.lat, node.lon], {
+                icon: emojiIcon,
+                interactive: false
+            });
+            emojiMarker.addTo(map);
+            
+            // Add longName label on the side
+            const labelIcon = L.divIcon({
+                html: `<div class="node-label">${node.longName}</div>`,
+                className: '',
+                iconSize: [null, null]
+            });
+            
+            const labelMarker = L.marker([node.lat, node.lon], {
+                icon: labelIcon,
+                interactive: false
+            });
+            labelMarker.addTo(map);
+            
+            // Add MQTT hi-viz circle if active
+            if (node.mqttActive) {
+                const hivizRadius = node.isOwner ? 36 : 28;
+                const hivizCircle = L.circleMarker([node.lat, node.lon], {
+                    radius: hivizRadius,
+                    fillColor: 'transparent',
+                    color: '#FFD700',
+                    weight: 5,
+                    opacity: 1,
+                    fillOpacity: 0,
+                    interactive: false
+                });
+                hivizCircle.addTo(map);
+            }
+            
+            // Popup content
+            let popupContent = `<div style="font-weight: 700; font-size: 1.1rem; color: #1a73e8; margin-bottom: 8px;">${node.longName}</div>`;
+            popupContent += `<div style="color: #5f6368; line-height: 1.6;">`;
+            popupContent += `<strong>ID:</strong> ${node.shortName} (${node.id})<br>`;
+            popupContent += `<strong>Circle radius:</strong> ${radius}px<br>`;
+            if (node.mqttActive) {
+                popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
+            }
+            popupContent += `<strong>Color:</strong> ${node.color}`;
+            popupContent += `</div>`;
+            
+            marker.bindPopup(popupContent);
+            marker.addTo(map);
+            
+            marker.on('mouseover', function() {
+                this.setStyle({ fillOpacity: 1 });
+            });
+            
+            marker.on('mouseout', function() {
+                this.setStyle({ fillOpacity: 0.8 });
+            });
+        });
+    </script>
+</body>
+</html>
