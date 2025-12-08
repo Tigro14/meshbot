@@ -55,6 +55,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         neighbors_data = {}
         mqtt_active_nodes = set()  # Track MQTT-active nodes
         mqtt_node_data = {}  # Position/name data for MQTT-active nodes from packets table
+        mqtt_last_heard_data = {}  # Track when node was last heard via MQTT
         
         if os.path.exists(db_path):
             log(f"📊 Enrichissement avec données SQLite...")
@@ -107,11 +108,8 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 # Get neighbor data from neighbors table
                 neighbors_raw = persistence.load_neighbors(hours=hours)
                 
-                # Track MQTT-active nodes (nodes that have sent NEIGHBORINFO via MQTT)
-                mqtt_active_nodes = set()
-                mqtt_last_heard_data = {}  # Track when node was last heard via MQTT
-                
                 # Format neighbor data for map compatibility
+                # Note: mqtt_last_heard_data is initialized at line 58 to avoid UnboundLocalError
                 for node_id_str, neighbor_list in neighbors_raw.items():
                     formatted_neighbors = []
                     max_timestamp = 0
@@ -224,9 +222,17 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 lon = node_data.get('lon')
                 alt = node_data.get('alt')
                 
-                # Build user info
-                # Try to extract shortName from longName (take first 4 chars)
-                short_name = name[:4].upper() if len(name) >= 4 else name.upper()
+                # Get shortName and hwModel from node_names.json
+                short_name = node_data.get('shortName')
+                hw_model = node_data.get('hwModel')
+                
+                # Fallback: if shortName not available, generate from name (first 4 chars)
+                if not short_name:
+                    short_name = name[:4].upper() if len(name) >= 4 else name.upper()
+                
+                # Fallback: if hwModel not available, use UNKNOWN
+                if not hw_model:
+                    hw_model = "UNKNOWN"
                 
                 node_entry = {
                     "num": node_id,
@@ -234,7 +240,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         "id": node_id_hex,
                         "longName": name,
                         "shortName": short_name,
-                        "hwModel": "UNKNOWN"  # Not available in node_names.json
+                        "hwModel": hw_model
                     }
                 }
                 
@@ -306,8 +312,10 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 lon = node_info['lon']
                 alt = node_info.get('alt')
                 
-                # Extract short name
+                # Extract short name - generate fallback since MQTT nodes won't have it stored
                 short_name = name[:4].upper() if len(name) >= 4 else name.upper()
+                # hwModel unknown for MQTT-only nodes
+                hw_model = "UNKNOWN"
                 
                 log(f"   ➕ Ajout nœud MQTT-only: {name} ({node_id_hex}) @ {lat:.4f}, {lon:.4f}")
                 
@@ -318,7 +326,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         "id": node_id_hex,
                         "longName": name,
                         "shortName": short_name,
-                        "hwModel": "UNKNOWN"
+                        "hwModel": hw_model
                     },
                     "position": {
                         "latitude": lat,
