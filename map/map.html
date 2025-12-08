@@ -451,39 +451,28 @@
         }
         
         function getLinkColor(snr, source) {
-            // If source is MQTT, use a distinct color (cyan/blue tint)
-            if (source === 'mqtt') {
-                if (snr === null || snr === undefined) return '#00bfff'; // Deep sky blue for unknown SNR
-                if (snr > 5) return '#00ffff'; // Cyan - Excellent MQTT
-                if (snr > 0) return '#1e90ff';  // Dodger blue - Good MQTT
-                return '#4169e1';                // Royal blue - Weak MQTT
-            }
-            
-            // Radio links (default colors)
+            // All links use the same colors based on SNR
+            // Differentiation is done via dashArray (solid vs dashed)
             if (snr === null || snr === undefined) return '#888888';
-            if (snr > 5) return '#00ff00'; // Green - Excellent
-            if (snr > 0) return '#ffff00';  // Yellow - Good
-            return '#ff6600';                // Orange - Weak
+            if (snr > 5) return '#00ff00'; // Green - Excellent (SNR > 5dB)
+            if (snr > 0) return '#ffff00';  // Yellow - Good (SNR 0-5dB)
+            return '#ff6600';                // Orange - Weak (SNR < 0dB)
         }
 
         function getLinkOpacity(snr, source) {
-            // MQTT links slightly more transparent to distinguish them
-            const baseOpacity = source === 'mqtt' ? 0.7 : 1.0;
-            
-            if (snr === null || snr === undefined) return 0.3 * baseOpacity;
-            if (snr > 5) return 0.9 * baseOpacity;
-            if (snr > 0) return 0.6 * baseOpacity;
-            return 0.4 * baseOpacity;
+            // All links use the same opacity
+            if (snr === null || snr === undefined) return 0.3;
+            if (snr > 5) return 0.9;
+            if (snr > 0) return 0.6;
+            return 0.4;
         }
 
         function getLinkWeight(snr, source) {
-            // MQTT links slightly thinner
-            const baseWeight = source === 'mqtt' ? 0.8 : 1.0;
-            
-            if (snr === null || snr === undefined) return 3 * baseWeight;
-            if (snr > 5) return 4 * baseWeight;  // Reduced from 7 to 4 for green links
-            if (snr > 0) return 5 * baseWeight;
-            return 4 * baseWeight;
+            // All links use the same weight
+            if (snr === null || snr === undefined) return 3;
+            if (snr > 5) return 4;  // Green links
+            if (snr > 0) return 5;  // Yellow links
+            return 4;               // Orange links
         }
         
         function getLinkDescription(source, isInferred) {
@@ -661,18 +650,18 @@
                             <span>Faible (SNR < 0)</span>
                         </div>
                         
-                        <div id="linkSourcesSection" style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124;">Source des liens:</div>
+                        <div id="linkSourcesSection" style="margin-top: 12px; margin-bottom: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); font-weight: 600; color: #202124;">Type de lien:</div>
                         <div id="legendRadio" class="legend-item" style="display:none;">
                             <div class="legend-line" style="background-color: #00ff00;"></div>
-                            <span>Radio (mesure directe)</span>
+                            <span>Radio directe (ligne pleine)</span>
                         </div>
                         <div id="legendMqtt" class="legend-item" style="display:none;">
-                            <div class="legend-line" style="background-color: #00ffff;"></div>
-                            <span>MQTT (collecteur distant)</span>
+                            <div style="width: 30px; height: 3px; margin-right: 8px; background-image: repeating-linear-gradient(to right, #00ff00 0, #00ff00 5px, transparent 5px, transparent 10px);"></div>
+                            <span>MQTT (ligne pointillée)</span>
                         </div>
                         <div id="legendInferred" class="legend-item" style="display:none;">
-                            <div class="legend-line" style="background-color: #888888; opacity: 0.5;"></div>
-                            <span style="opacity: 0.7;">Inférée (topologie)</span>
+                            <div style="width: 30px; height: 3px; margin-right: 8px; background-image: repeating-linear-gradient(to right, #888888 0, #888888 5px, transparent 5px, transparent 10px);"></div>
+                            <span>Inférée (ligne pointillée)</span>
                         </div>
                     </div>
                 `;
@@ -802,7 +791,7 @@
                             color: getLinkColor(snr, source),
                             weight: getLinkWeight(snr, source),
                             opacity: getLinkOpacity(snr, source),
-                            dashArray: snr === null ? '5, 5' : null
+                            dashArray: source === 'mqtt' ? '5, 5' : null  // MQTT links are dashed, radio links are solid
                         });
 
                         let popupContent = `<strong>${getLinkDescription(source, false)}</strong><br>`;

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test - Couleurs des liens selon SNR</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #202124;
+            margin-bottom: 10px;
+        }
+        .section {
+            margin: 30px 0;
+        }
+        h2 {
+            color: #5f6368;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+        .link-example {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .link-visual {
+            width: 60px;
+            height: 4px;
+            margin-right: 15px;
+        }
+        .link-visual.dashed {
+            background-image: repeating-linear-gradient(to right, currentColor 0, currentColor 5px, transparent 5px, transparent 10px);
+        }
+        .link-visual.solid {
+            background-color: currentColor;
+        }
+        .green { color: #00ff00; }
+        .yellow { color: #ffff00; }
+        .orange { color: #ff6600; }
+        .gray { color: #888888; }
+        
+        .legend-section {
+            background: #f0f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        .color-demo {
+            width: 30px;
+            height: 3px;
+            margin-right: 10px;
+        }
+        .explanation {
+            color: #5f6368;
+            font-size: 0.9rem;
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f0fe;
+            border-left: 4px solid #1a73e8;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Légende des liens - Nouvelle version</h1>
+        <p style="color: #5f6368;">Test des nouvelles couleurs et styles de liens selon le SNR et la source</p>
+
+        <div class="explanation">
+            <strong>Changement clé :</strong> Toutes les sources de liens (Radio directe, MQTT, Inférée) utilisent maintenant les <strong>mêmes couleurs</strong> basées sur le SNR. La différenciation se fait par le <strong>style de ligne</strong> (pleine vs pointillée).
+        </div>
+
+        <div class="section">
+            <h2>📊 Couleurs par qualité SNR (pour tous les types de liens)</h2>
+            <div class="link-example">
+                <div class="link-visual solid green"></div>
+                <span><strong>Vert</strong> - Excellente (SNR > 5 dB)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual solid yellow"></div>
+                <span><strong>Jaune</strong> - Bonne (SNR 0-5 dB)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual solid orange"></div>
+                <span><strong>Orange</strong> - Faible (SNR < 0 dB)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual solid gray"></div>
+                <span><strong>Gris</strong> - SNR inconnu</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔌 Types de liens (différenciés par le style)</h2>
+            
+            <h3 style="color: #202124; margin-top: 20px;">Radio directe (ligne pleine)</h3>
+            <div class="link-example">
+                <div class="link-visual solid green"></div>
+                <span>Radio - Excellente (SNR > 5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual solid yellow"></div>
+                <span>Radio - Bonne (SNR 0-5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual solid orange"></div>
+                <span>Radio - Faible (SNR < 0)</span>
+            </div>
+
+            <h3 style="color: #202124; margin-top: 20px;">MQTT (ligne pointillée)</h3>
+            <div class="link-example">
+                <div class="link-visual dashed green"></div>
+                <span>MQTT - Excellente (SNR > 5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual dashed yellow"></div>
+                <span>MQTT - Bonne (SNR 0-5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual dashed orange"></div>
+                <span>MQTT - Faible (SNR < 0)</span>
+            </div>
+
+            <h3 style="color: #202124; margin-top: 20px;">Inférée (ligne pointillée)</h3>
+            <div class="link-example">
+                <div class="link-visual dashed green"></div>
+                <span>Inférée - Excellente (SNR > 5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual dashed yellow"></div>
+                <span>Inférée - Bonne (SNR 0-5)</span>
+            </div>
+            <div class="link-example">
+                <div class="link-visual dashed orange"></div>
+                <span>Inférée - Faible (SNR < 0)</span>
+            </div>
+        </div>
+
+        <div class="legend-section">
+            <h2>📋 Nouvelle légende (comme sur la carte)</h2>
+            
+            <div style="font-weight: 600; margin-bottom: 10px;">Qualité SNR:</div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-color: #00ff00;"></div>
+                <span>Excellente (SNR > 5)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-color: #ffff00;"></div>
+                <span>Bonne (SNR 0-5)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-color: #ff6600;"></div>
+                <span>Faible (SNR < 0)</span>
+            </div>
+
+            <div style="font-weight: 600; margin-top: 20px; margin-bottom: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.1);">Type de lien:</div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-color: #00ff00;"></div>
+                <span>Radio directe (ligne pleine)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-image: repeating-linear-gradient(to right, #00ff00 0, #00ff00 5px, transparent 5px, transparent 10px);"></div>
+                <span>MQTT (ligne pointillée)</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-demo" style="background-image: repeating-linear-gradient(to right, #888888 0, #888888 5px, transparent 5px, transparent 10px);"></div>
+                <span>Inférée (ligne pointillée)</span>
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>✅ Avantages de ce système :</strong>
+            <ul style="margin: 10px 0;">
+                <li>🎨 Couleurs uniformes basées sur la qualité du signal (SNR)</li>
+                <li>📍 Différenciation claire par le style de ligne (pleine/pointillée)</li>
+                <li>👁️ Plus facile à comprendre visuellement</li>
+                <li>🔄 Cohérence entre les différentes sources de données</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
