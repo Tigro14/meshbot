@@ -332,6 +332,10 @@ class MQTTNeighborCollector:
             
             packet = envelope.packet
             
+            # Extraire les informations du ServiceEnvelope (gateway qui a relayé le paquet)
+            gateway_id = getattr(envelope, 'gateway_id', '')
+            channel_id = getattr(envelope, 'channel_id', '')
+            
             # Extraire l'ID du paquet et de l'émetteur pour déduplication et déchiffrement
             packet_id = getattr(packet, 'id', 0)
             from_id = getattr(packet, 'from', 0)
@@ -390,10 +394,26 @@ class MQTTNeighborCollector:
                     if longname and (longname == "Unknown" or longname.startswith("!")):
                         longname = None
                 
+                # Get gateway name if available
+                gateway_name = None
+                if gateway_id and self.node_manager:
+                    try:
+                        gateway_name = self.node_manager.get_node_name(gateway_id)
+                        # If get_node_name returns "Unknown" or a hex ID, use the ID as-is
+                        if gateway_name and (gateway_name == "Unknown" or gateway_name.startswith("!")):
+                            gateway_name = gateway_id
+                    except:
+                        gateway_name = gateway_id
+                elif gateway_id:
+                    gateway_name = gateway_id
+                
+                # Format log message with "via" information
+                via_suffix = f" via {gateway_name}" if gateway_name else ""
+                
                 if longname:
-                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x} ({longname})")
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x} ({longname}){via_suffix}")
                 else:
-                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}")
+                    debug_print(f"👥 [MQTT] Paquet {portnum_name} de {from_id:08x}{via_suffix}")
             
             # Traiter les paquets NODEINFO pour mettre à jour les noms de nœuds
             if decoded.portnum == portnums_pb2.PortNum.NODEINFO_APP:
@@ -496,12 +516,27 @@ class MQTTNeighborCollector:
                         except:
                             pass
                     
+                    # Obtenir le nom du gateway
+                    gateway_name = None
+                    if gateway_id and self.node_manager:
+                        try:
+                            gateway_name = self.node_manager.get_node_name(gateway_id)
+                            # If get_node_name returns "Unknown" or a hex ID, use the ID as-is
+                            if gateway_name and (gateway_name == "Unknown" or gateway_name.startswith("!")):
+                                gateway_name = gateway_id
+                        except:
+                            gateway_name = gateway_id
+                    elif gateway_id:
+                        gateway_name = gateway_id
+                    
                     # Format du log similaire aux paquets mesh
                     distance_str = ""
                     if distance_km is not None:
                         distance_str = f" [{distance_km:.1f}km]"
                     
-                    debug_print(f"[MQTT] 👥 NEIGHBORINFO de {node_name}{distance_str}: {len(formatted_neighbors)} voisins")
+                    via_suffix = f" via {gateway_name}" if gateway_name else ""
+                    
+                    debug_print(f"[MQTT] 👥 NEIGHBORINFO de {node_name}{distance_str}{via_suffix}: {len(formatted_neighbors)} voisins")
                 
                 # Log original plus concis (toujours affiché si DEBUG_MODE=False)
                 debug_print(f"👥 MQTT: {len(formatted_neighbors)} voisins pour {node_id_str}")
