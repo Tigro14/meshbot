@@ -137,11 +137,70 @@ def truncate_text(text, max_length, suffix="..."):
         return text
     return text[:max_length - len(suffix)] + suffix
 
+def is_emoji(char):
+    """
+    Check if a character is an emoji.
+    Covers common emoji Unicode ranges.
+    """
+    code = ord(char)
+    return (
+        0x1F600 <= code <= 0x1F64F or  # Emoticons
+        0x1F300 <= code <= 0x1F5FF or  # Symbols & Pictographs
+        0x1F680 <= code <= 0x1F6FF or  # Transport & Map
+        0x1F700 <= code <= 0x1F77F or  # Alchemical Symbols
+        0x1F780 <= code <= 0x1F7FF or  # Geometric Shapes Extended
+        0x1F800 <= code <= 0x1F8FF or  # Supplemental Arrows-C
+        0x1F900 <= code <= 0x1F9FF or  # Supplemental Symbols and Pictographs
+        0x1FA00 <= code <= 0x1FA6F or  # Chess Symbols
+        0x1FA70 <= code <= 0x1FAFF or  # Symbols and Pictographs Extended-A
+        0x2600 <= code <= 0x26FF or    # Miscellaneous Symbols
+        0x2700 <= code <= 0x27BF or    # Dingbats
+        0xFE00 <= code <= 0xFE0F or    # Variation Selectors
+        0x1F1E6 <= code <= 0x1F1FF     # Regional Indicator Symbols (flags)
+    )
+
 def clean_node_name(name):
-    """Nettoyer et valider un nom de nœud"""
+    """
+    Nettoyer et valider un nom de nœud pour prévenir les injections SQL et XSS.
+    
+    Filtre tous les caractères sauf:
+    - Alphanumériques (a-z, A-Z, 0-9)
+    - Espaces, tirets, underscores
+    - Emojis (préservés pour les noms de nœuds personnalisés)
+    
+    Bloque:
+    - Balises HTML (<script>, <img>, etc.)
+    - Tentatives d'injection SQL (', --, ;, etc.)
+    - Caractères spéciaux dangereux
+    
+    Args:
+        name: Nom de nœud brut (longName ou shortName)
+    
+    Returns:
+        Nom nettoyé et sécurisé
+    """
     if not name:
         return ""
-    return name.strip()
+    
+    # Import re module for regex
+    re_module = lazy_import_re()
+    
+    # Remove leading/trailing whitespace
+    name = name.strip()
+    
+    # Build a cleaned version keeping only safe characters and emojis
+    cleaned = []
+    for char in name:
+        # Keep alphanumeric, spaces, hyphens, underscores, and emojis
+        if char.isalnum() or char in ' -_' or is_emoji(char):
+            cleaned.append(char)
+    
+    result = ''.join(cleaned)
+    
+    # Collapse multiple spaces into one
+    result = re_module.sub(r'\s+', ' ', result)
+    
+    return result.strip()
 
 def validate_page_number(page_str, total_pages):
     """Valider et normaliser un numéro de page"""
