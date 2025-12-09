@@ -376,7 +376,9 @@ class MeshBot:
                     try:
                         if self._is_recent_broadcast(message):
                             debug_print(f"🔄 Broadcast ignoré (envoyé par nous): {message[:30]}")
-                            # Ne pas ajouter nos propres broadcasts aux messages publics
+                            # Ajouter nos propres broadcasts (comme /echo) aux messages publics
+                            if message:
+                                self.traffic_monitor.add_public_message(packet, message, source='local')
                             return  # Ne pas traiter ce broadcast
                     except Exception as e:
                         # En cas d'erreur dans la déduplication, continuer quand même

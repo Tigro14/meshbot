@@ -6,6 +6,7 @@ Ce test vérifie que:
 1. Les noms de nœuds sont entre crochets [NodeName] et non en gras **NodeName:**
 2. Les messages sont sur une seule ligne: [HH:MM:SS] [NodeName] message
 3. Il n'y a pas de lignes vides entre les messages
+4. Les messages du bot (comme /echo) sont inclus dans l'historique
 """
 
 import sys
@@ -30,6 +31,7 @@ def test_traffic_report_formatting():
     - Nom du nœud entre crochets [NodeName]
     - Message sur la même ligne
     - Pas de lignes vides entre les messages
+    - Messages du bot inclus dans l'historique
     """
     print("🧪 Test: Format de la commande /trafic\n")
     
