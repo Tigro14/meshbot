@@ -141,8 +141,19 @@ def is_emoji(char):
     """
     Check if a character is an emoji.
     Covers common emoji Unicode ranges.
+    
+    Args:
+        char: A single character to check
+        
+    Returns:
+        bool: True if the character is an emoji, False otherwise
     """
-    code = ord(char)
+    try:
+        code = ord(char)
+    except (TypeError, ValueError):
+        # Handle invalid input (not a single character or surrogate pairs)
+        return False
+    
     return (
         0x1F600 <= code <= 0x1F64F or  # Emoticons
         0x1F300 <= code <= 0x1F5FF or  # Symbols & Pictographs
@@ -182,7 +193,7 @@ def clean_node_name(name):
     if not name:
         return ""
     
-    # Import re module for regex
+    # Import re module for whitespace normalization
     re_module = lazy_import_re()
     
     # Remove leading/trailing whitespace
