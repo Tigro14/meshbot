@@ -304,16 +304,19 @@ class NodeManager:
                         user_info = node_info['user']
                         if isinstance(user_info, dict):
                             long_name = user_info.get('longName', '').strip()
-                            short_name = user_info.get('shortName', '').strip()
+                            short_name_raw = user_info.get('shortName', '').strip()
                             hw_model = user_info.get('hwModel', '').strip()
                             
-                            name = long_name or short_name
+                            # Sanitize names to prevent SQL injection and XSS
+                            name = clean_node_name(long_name or short_name_raw)
+                            short_name = clean_node_name(short_name_raw) if short_name_raw else None
+                            
                             if name and len(name) > 0:
                                 # Initialiser l'entrée si nécessaire
                                 if node_id_int not in self.node_names:
                                     self.node_names[node_id_int] = {
                                         'name': name,
-                                        'shortName': short_name if short_name else None,
+                                        'shortName': short_name,
                                         'hwModel': hw_model if hw_model else None,
                                         'lat': None,
                                         'lon': None,
@@ -325,7 +328,7 @@ class NodeManager:
                                     old_name = self.node_names[node_id_int]['name']
                                     self.node_names[node_id_int]['name'] = name
                                     # Also update shortName and hwModel
-                                    self.node_names[node_id_int]['shortName'] = short_name or None
+                                    self.node_names[node_id_int]['shortName'] = short_name
                                     self.node_names[node_id_int]['hwModel'] = hw_model or None
                                     debug_print(f"🔄 {node_id_int:08x}: '{old_name}' -> '{name}'")
                                     updated_count += 1
@@ -443,16 +446,19 @@ class NodeManager:
                 if 'user' in decoded and node_id:
                     user_info = decoded['user']
                     long_name = user_info.get('longName', '').strip()
-                    short_name = user_info.get('shortName', '').strip()
+                    short_name_raw = user_info.get('shortName', '').strip()
                     hw_model = user_info.get('hwModel', '').strip()
                     
-                    name = long_name or short_name
+                    # Sanitize names to prevent SQL injection and XSS
+                    name = clean_node_name(long_name or short_name_raw)
+                    short_name = clean_node_name(short_name_raw) if short_name_raw else None
+                    
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas
                         if node_id not in self.node_names:
                             self.node_names[node_id] = {
                                 'name': name,
-                                'shortName': short_name if short_name else None,
+                                'shortName': short_name,
                                 'hwModel': hw_model if hw_model else None,
                                 'lat': None,
                                 'lon': None,
@@ -466,7 +472,7 @@ class NodeManager:
                                 self.node_names[node_id]['name'] = name
                                 debug_print(f"📱 Renommé: {old_name} → {name} ({node_id:08x})")
                             # Always update shortName and hwModel even if name didn't change
-                            self.node_names[node_id]['shortName'] = short_name or None
+                            self.node_names[node_id]['shortName'] = short_name
                             self.node_names[node_id]['hwModel'] = hw_model or None
                         
                         # Sauvegarde différée

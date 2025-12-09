@@ -14,6 +14,24 @@ import os
 import traceback
 from datetime import datetime
 
+# Add parent directory to path for importing utils
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import sanitization function to prevent XSS in exported names
+try:
+    from utils import clean_node_name
+except ImportError:
+    # Fallback if utils is not available (minimal sanitization)
+    import re
+    def clean_node_name(name):
+        """Minimal sanitization fallback"""
+        if not name:
+            return ""
+        # Remove HTML tags and dangerous characters
+        name = re.sub(r'<[^>]*>', '', name)  # Strip HTML tags
+        name = re.sub(r'[<>"\']', '', name)  # Remove dangerous chars
+        return name.strip()
+
 # Helper to log on stderr (doesn't pollute JSON on stdout)
 def log(msg):
     print(msg, file=sys.stderr)
@@ -180,8 +198,10 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                                 
                                 # Only store if position is valid
                                 if lat and lon and lat != 0 and lon != 0:
+                                    # Sanitize sender_name to prevent XSS
+                                    sanitized_name = clean_node_name(sender_name) if sender_name else f"Node-{node_key}"
                                     mqtt_node_data[node_id_str] = {
-                                        'name': sender_name or f"Node-{node_key}",
+                                        'name': sanitized_name,
                                         'lat': lat,
                                         'lon': lon,
                                         'alt': alt
@@ -226,7 +246,12 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 short_name = node_data.get('shortName')
                 hw_model = node_data.get('hwModel')
                 
-                # Fallback: if shortName not available, generate from name (first 4 chars)
+                # Sanitize names to prevent XSS in exported JSON
+                # This is defense in depth - names should already be sanitized in node_names.json
+                name = clean_node_name(name) if name else f"Node-{node_id:08x}"
+                short_name = clean_node_name(short_name) if short_name else None
+                
+                # Fallback: if shortName not available after sanitization, generate from name (first 4 chars)
                 if not short_name:
                     short_name = name[:4].upper() if len(name) >= 4 else name.upper()
                 
@@ -307,12 +332,13 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 
                 # Get MQTT node data
                 node_info = mqtt_node_data[node_id_str]
-                name = node_info['name']
+                name = node_info['name']  # Already sanitized when stored
                 lat = node_info['lat']
                 lon = node_info['lon']
                 alt = node_info.get('alt')
                 
                 # Extract short name - generate fallback since MQTT nodes won't have it stored
+                # Use sanitized name for generating short name
                 short_name = name[:4].upper() if len(name) >= 4 else name.upper()
                 # hwModel unknown for MQTT-only nodes
                 hw_model = "UNKNOWN"
