@@ -33,7 +33,7 @@ class MessageRouter:
         self.sender = MessageSender(interface, node_manager)
 
         # Gestionnaires de commandes par domaine
-        self.ai_handler = AICommands(llama_client, self.sender)
+        self.ai_handler = AICommands(llama_client, self.sender, broadcast_tracker=broadcast_tracker)
         self.network_handler = NetworkCommands(remote_nodes_client, self.sender, node_manager, traffic_monitor=traffic_monitor, interface=interface, broadcast_tracker=broadcast_tracker)
         self.system_handler = SystemCommands(interface, node_manager, self.sender, bot_start_time)
         self.utility_handler = UtilityCommands(esphome_client, traffic_monitor, self.sender, node_manager, blitz_monitor, vigilance_monitor, broadcast_tracker=broadcast_tracker)
@@ -66,8 +66,8 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer commandes broadcast-friendly (echo, my, weather, rain)
-        broadcast_commands = ['/echo ', '/my', '/weather', '/rain']
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot)
+        broadcast_commands = ['/echo ', '/my', '/weather', '/rain', '/bot ']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
@@ -83,6 +83,9 @@ class MessageRouter:
             elif message.startswith('/rain'):
                 info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/bot '):
+                info_print(f"BOT PUBLIC de {sender_info}: '{message}'")
+                self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
         # Log messages pour nous
