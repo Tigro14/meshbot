@@ -242,8 +242,17 @@ TEMP_CHECK_INTERVAL = 60  # Vérifier la température toutes les 60 secondes
 
 # Configuration monitoring nœud distant (tigrog2)
 # ⚠️ IMPORTANT: Si activé, le bot crée des connexions TCP vers REMOTE_NODE_HOST
-#    pour surveiller l'état du nœud distant. Désactiver si vous n'avez pas besoin
-#    de cette fonctionnalité ou si vous voulez éviter les connexions TCP.
+#    pour surveiller l'état du nœud distant.
+#
+# ⚠️ CONFLIT TCP EN MODE CONNECTION_MODE='tcp':
+#    Si CONNECTION_MODE='tcp', le bot maintient déjà une connexion TCP permanente.
+#    Activer TIGROG2_MONITORING_ENABLED créerait une SECONDE connexion TCP vers
+#    le même nœud, violant la limite ESP32 d'une connexion TCP par client.
+#
+#    RECOMMANDATION:
+#    - Si CONNECTION_MODE='tcp'    → TIGROG2_MONITORING_ENABLED = False (OBLIGATOIRE)
+#    - Si CONNECTION_MODE='serial' → TIGROG2_MONITORING_ENABLED peut être True
+#
 TIGROG2_MONITORING_ENABLED = False  # Activer/désactiver le monitoring du nœud distant via TCP
 TIGROG2_CHECK_INTERVAL = 120  # Vérifier le nœud distant toutes les 2 minutes
 TIGROG2_TIMEOUT = 20  # Timeout de connexion en secondes
