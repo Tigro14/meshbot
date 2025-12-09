@@ -27,6 +27,8 @@ class TelegramCommandBase:
         self.node_manager = telegram_integration.node_manager
         self.context_manager = telegram_integration.context_manager
         self.traffic_monitor = telegram_integration.message_handler.traffic_monitor
+        # Provide access to the bot's interface for commands that need to send messages
+        self.interface = telegram_integration.message_handler.interface
 
     def check_authorization(self, user_id):
         """

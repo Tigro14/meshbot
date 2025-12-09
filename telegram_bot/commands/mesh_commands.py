@@ -7,14 +7,16 @@ Commandes mesh Telegram : echo
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram_bot.command_base import TelegramCommandBase
-from utils import info_print, error_print
+from utils import info_print, error_print, debug_print
 import asyncio
+import time
 
 # Import optionnel de REMOTE_NODE_HOST avec fallback
 try:
-    from config import REMOTE_NODE_HOST
+    from config import REMOTE_NODE_HOST, CONNECTION_MODE
 except ImportError:
     REMOTE_NODE_HOST = None
+    CONNECTION_MODE = 'serial'
 
 
 class MeshCommands(TelegramCommandBase):
@@ -40,10 +42,6 @@ class MeshCommands(TelegramCommandBase):
         def send_echo():
             info_print("✅ 3. ENTRÉE dans send_echo()")
             try:
-                # Vérifier que REMOTE_NODE_HOST est configuré
-                if not REMOTE_NODE_HOST:
-                    return "❌ REMOTE_NODE_HOST non configuré dans config.py"
-
                 # Utiliser le mapping Telegram → Meshtastic
                 mesh_identity = self.get_mesh_identity(user.id)
 
@@ -57,26 +55,56 @@ class MeshCommands(TelegramCommandBase):
 
                 message = f"{prefix}: {echo_text}"
 
-                # ✅ IMPORT SIMPLIFIÉ - Fonction au niveau module
-                from safe_tcp_connection import send_text_to_remote
-                import traceback
-
-                info_print(
-                    f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
-
-                # ✅ APPEL SIMPLIFIÉ - Plus besoin de SafeTCPConnection.method()
-                success, result_msg = send_text_to_remote(
-                    REMOTE_NODE_HOST,
-                    message,
-                    wait_time=10  # Attendre 10s
-                )
-
-                info_print(f"📊 Résultat: success={success}, msg={result_msg}")
-
-                if success:
-                    return f"✅ Echo diffusé: {message}"
+                # ========================================
+                # MODE DETECTION: Avoid TCP conflicts
+                # ========================================
+                # If bot is in TCP mode, use the existing interface to avoid
+                # violating ESP32's single TCP connection limit
+                # If bot is in serial mode, create a temporary TCP connection
+                connection_mode = CONNECTION_MODE.lower() if CONNECTION_MODE else 'serial'
+                
+                if connection_mode == 'tcp':
+                    # TCP MODE: Use existing bot interface (no second connection)
+                    debug_print(f"🔌 Mode TCP: utilisation de l'interface existante du bot")
+                    
+                    if not self.interface:
+                        return "❌ Interface bot non disponible"
+                    
+                    try:
+                        debug_print(f"📤 Envoi via interface bot: '{message}'")
+                        self.interface.sendText(message)
+                        # Wait a bit for message to be queued
+                        time.sleep(2)
+                        info_print(f"✅ Message envoyé via interface TCP principale")
+                        return f"✅ Echo diffusé: {message}"
+                    except Exception as e:
+                        error_print(f"❌ Erreur sendText via interface: {e}")
+                        return f"❌ Échec envoi: {str(e)[:50]}"
+                        
                 else:
-                    return f"❌ Échec: {result_msg}"
+                    # SERIAL MODE: Create temporary TCP connection
+                    debug_print(f"📡 Mode serial: création connexion TCP temporaire")
+                    
+                    if not REMOTE_NODE_HOST:
+                        return "❌ REMOTE_NODE_HOST non configuré dans config.py"
+                    
+                    from safe_tcp_connection import send_text_to_remote
+                    import traceback
+
+                    info_print(f"📤 Envoi message vers {REMOTE_NODE_HOST}: '{message}'")
+
+                    success, result_msg = send_text_to_remote(
+                        REMOTE_NODE_HOST,
+                        message,
+                        wait_time=10  # Attendre 10s
+                    )
+
+                    info_print(f"📊 Résultat: success={success}, msg={result_msg}")
+
+                    if success:
+                        return f"✅ Echo diffusé: {message}"
+                    else:
+                        return f"❌ Échec: {result_msg}"
 
             except Exception as e:
                 error_print(f"❌ Exception send_echo: {e}")
