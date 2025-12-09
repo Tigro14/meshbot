@@ -584,6 +584,30 @@
             return emojiRegex.test(str);
         }
         
+        // Sanitize search input to prevent XSS and other malicious content
+        function sanitizeSearchInput(input) {
+            if (!input) return '';
+            
+            // Remove any HTML tags
+            let sanitized = input.replace(/<[^>]*>/g, '');
+            
+            // Remove potentially dangerous characters for XSS
+            // Keep alphanumeric, spaces, hyphens, underscores, and emojis
+            // Remove: <, >, ", ', &, ;, =, (, ), etc.
+            sanitized = sanitized.replace(/[<>"'&;=()]/g, '');
+            
+            // Trim and normalize whitespace
+            sanitized = sanitized.trim().replace(/\s+/g, ' ');
+            
+            // Limit length to prevent DoS
+            const MAX_SEARCH_LENGTH = 100;
+            if (sanitized.length > MAX_SEARCH_LENGTH) {
+                sanitized = sanitized.substring(0, MAX_SEARCH_LENGTH);
+            }
+            
+            return sanitized;
+        }
+        
         function isValidPosition(lat, lon) {
             return lat !== undefined && lon !== undefined && 
                    lat !== null && lon !== null &&
@@ -1489,9 +1513,17 @@
         }
         
         function searchNode() {
-            const searchTerm = document.getElementById('searchInput').value.trim();
+            const searchInput = document.getElementById('searchInput').value.trim();
             const resultDiv = document.getElementById('searchResult');
             const resultsListDiv = document.getElementById('searchResultsList');
+            
+            // Sanitize search input to prevent XSS
+            const searchTerm = sanitizeSearchInput(searchInput);
+            
+            // Update input field with sanitized value
+            if (searchTerm !== searchInput) {
+                document.getElementById('searchInput').value = searchTerm;
+            }
             
             // Clear previous results
             resultsListDiv.innerHTML = '';
@@ -1872,14 +1904,17 @@
             
             // Handle node parameter for automatic search and zoom
             if (nodeParam) {
-                // Set the search input value
+                // Sanitize the node parameter from URL to prevent XSS
+                const sanitizedNodeParam = sanitizeSearchInput(nodeParam);
+                
+                // Set the search input value with sanitized content
                 const searchInput = document.getElementById('searchInput');
                 if (searchInput) {
-                    searchInput.value = nodeParam;
+                    searchInput.value = sanitizedNodeParam;
                 }
                 
-                // Store parameter for deferred search after map data loads
-                autoSearchNodeParam = nodeParam;
+                // Store sanitized parameter for deferred search after map data loads
+                autoSearchNodeParam = sanitizedNodeParam;
             }
         }
         
