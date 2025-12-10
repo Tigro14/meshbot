@@ -2451,9 +2451,10 @@ class TrafficMonitor:
                     lines.append(f"  └─ {len(neighbors)} voisin(s):")
                     
                     # Trier voisins par SNR (meilleur d'abord)
+                    # Utiliser -999 si SNR est None ou absent
                     sorted_neighbors = sorted(
                         neighbors,
-                        key=lambda x: x.get('snr', -999),
+                        key=lambda x: x.get('snr') if x.get('snr') is not None else -999,
                         reverse=True
                     )
                     

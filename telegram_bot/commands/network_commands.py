@@ -110,7 +110,7 @@ class NetworkCommands(TelegramCommandBase):
                 if not nodes:
                     return f"❌ Aucun nœud trouvé sur {REMOTE_NODE_NAME}"
 
-                nodes.sort(key=lambda x: x.get('snr', -999), reverse=True)
+                nodes.sort(key=lambda x: x.get('snr') if x.get('snr') is not None else -999, reverse=True)
                 lines = [
                     f"📡 Nœuds DIRECTS de {REMOTE_NODE_NAME} ({len(nodes)}):\n"]
 

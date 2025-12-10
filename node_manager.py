@@ -394,7 +394,8 @@ class NodeManager:
                 return "Aucun nœud récent (30min)"
             
             # Trier par qualité SNR (descendant)
-            recent_nodes.sort(key=lambda x: x[1]['snr'], reverse=True)
+            # Utiliser 0 si SNR est None pour éviter TypeError
+            recent_nodes.sort(key=lambda x: x[1].get('snr', 0) if x[1].get('snr') is not None else 0, reverse=True)
             
             # Formater le rapport
             lines = []
@@ -493,7 +494,11 @@ class NodeManager:
             hops_taken = hop_start - hop_limit
             
             # Extraire SNR (essayer plusieurs clés)
-            snr = packet.get('snr', packet.get('rxSnr', 0.0))
+            snr = packet.get('snr')
+            if snr is None:
+                snr = packet.get('rxSnr')
+            if snr is None:
+                snr = 0.0
             
             # Obtenir le nom
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
@@ -596,7 +601,8 @@ class NodeManager:
                 return "Aucun nœud récent (30min)"
             
             # Trier par qualité SNR (descendant)
-            recent_nodes.sort(key=lambda x: x[1]['snr'], reverse=True)
+            # Utiliser 0 si SNR est None pour éviter TypeError
+            recent_nodes.sort(key=lambda x: x[1].get('snr', 0) if x[1].get('snr') is not None else 0, reverse=True)
             
             # Formater le rapport
             lines = []

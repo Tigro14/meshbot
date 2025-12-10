@@ -110,7 +110,7 @@ def test_neighbor_display():
         print(f"\n**{node_name}** ({node_id_str})")
         print(f"  └─ {len(neighbors)} voisin(s):")
         
-        for neighbor in sorted(neighbors, key=lambda x: x.get('snr', -999), reverse=True):
+        for neighbor in sorted(neighbors, key=lambda x: x.get('snr') if x.get('snr') is not None else -999, reverse=True):
             neighbor_id = neighbor['node_id']
             neighbor_name = node_manager.get_node_name(neighbor_id)
             snr = neighbor.get('snr')
