@@ -994,11 +994,7 @@ class TrafficMonitor:
                     icon = f"{rank}."
                 
                 # Barre de progression
-                bar_length = int(percentage / 5)
-                progress_bar = "█" * bar_length + "░" * (20 - bar_length)
-                
                 lines.append(f"\n{icon} {name}")
-                lines.append(f"   {progress_bar}")
                 lines.append(f"   📦 {packet_count} paquets ({percentage:.1f}%)")
                 
                 # Breakdown par type si demandé
