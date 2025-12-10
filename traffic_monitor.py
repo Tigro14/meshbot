@@ -2591,10 +2591,51 @@ class TrafficMonitor:
                     to_short = link['to_name'].split('-')[0][:6]
                     lines.append(f"{i}.{from_short}→{to_short} {dist} {snr_str}")
                 
+                # Ajouter le record 30j en compact
+                try:
+                    record_links = self.persistence.load_radio_links_with_positions(hours=30*24)
+                    record_distance = 0
+                    
+                    for link in record_links:
+                        from_id = link['from_id']
+                        to_id = link['to_id']
+                        
+                        try:
+                            if isinstance(from_id, str):
+                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                            if isinstance(to_id, str):
+                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                        except (ValueError, AttributeError):
+                            continue
+                        
+                        from_data = self.node_manager.get_node_data(from_id)
+                        to_data = self.node_manager.get_node_data(to_id)
+                        
+                        if not from_data or not to_data:
+                            continue
+                        
+                        from_lat = from_data.get('latitude')
+                        from_lon = from_data.get('longitude')
+                        to_lat = to_data.get('latitude')
+                        to_lon = to_data.get('longitude')
+                        
+                        if not all([from_lat, from_lon, to_lat, to_lon]):
+                            continue
+                        
+                        distance = self.node_manager.haversine_distance(from_lat, from_lon, to_lat, to_lon)
+                        if distance > record_distance:
+                            record_distance = distance
+                    
+                    if record_distance > 0:
+                        lines.append(f"🏆 Record 30j: {self.node_manager.format_distance(record_distance)}")
+                
+                except Exception:
+                    pass  # Ignore errors in compact mode
+                
                 # Joindre en une ligne pour rester sous 180 chars
                 result = " | ".join(lines)
                 if len(result) > 180:
-                    # Si trop long, réduire encore
+                    # Si trop long, réduire encore (sans record)
                     lines = [f"📡 Top {len(top_links)} ({hours}h):"]
                     for i, link in enumerate(top_links, 1):
                         dist = self.node_manager.format_distance(link['distance_km'])
@@ -2645,6 +2686,66 @@ class TrafficMonitor:
                 avg_distance = sum(l['distance_km'] for l in top_links) / len(top_links)
                 lines.append(f"📊 Distance moyenne: {self.node_manager.format_distance(avg_distance)}")
                 lines.append(f"📈 Total liaisons analysées: {len(links_with_distance)}")
+                
+                # Record de distance sur 30 jours
+                try:
+                    record_links = self.persistence.load_radio_links_with_positions(hours=30*24)  # 30 jours
+                    record_distance = 0
+                    record_link = None
+                    
+                    for link in record_links:
+                        from_id = link['from_id']
+                        to_id = link['to_id']
+                        
+                        # Convertir les IDs
+                        try:
+                            if isinstance(from_id, str):
+                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                            if isinstance(to_id, str):
+                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                        except (ValueError, AttributeError):
+                            continue
+                        
+                        # Obtenir les positions
+                        from_data = self.node_manager.get_node_data(from_id)
+                        to_data = self.node_manager.get_node_data(to_id)
+                        
+                        if not from_data or not to_data:
+                            continue
+                        
+                        from_lat = from_data.get('latitude')
+                        from_lon = from_data.get('longitude')
+                        to_lat = to_data.get('latitude')
+                        to_lon = to_data.get('longitude')
+                        
+                        if not all([from_lat, from_lon, to_lat, to_lon]):
+                            continue
+                        
+                        # Calculer distance
+                        distance = self.node_manager.haversine_distance(from_lat, from_lon, to_lat, to_lon)
+                        
+                        if distance > record_distance:
+                            record_distance = distance
+                            record_link = {
+                                'from_id': from_id,
+                                'to_id': to_id,
+                                'distance_km': distance,
+                                'from_name': self.node_manager.get_node_name(from_id),
+                                'to_name': self.node_manager.get_node_name(to_id),
+                                'timestamp': link.get('timestamp')
+                            }
+                    
+                    if record_link:
+                        lines.append("")
+                        lines.append(f"🏆 **Record 30 jours: {self.node_manager.format_distance(record_distance)}**")
+                        lines.append(f"   {record_link['from_name']} ↔ {record_link['to_name']}")
+                        if record_link['timestamp']:
+                            from datetime import datetime
+                            dt = datetime.fromtimestamp(record_link['timestamp'])
+                            lines.append(f"   🕐 {dt.strftime('%d/%m/%Y %H:%M')}")
+                
+                except Exception as record_error:
+                    logger.debug(f"Impossible de calculer le record 30j: {record_error}")
                 
                 return "\n".join(lines)
             
