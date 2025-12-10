@@ -24,13 +24,27 @@ def load_node_names(node_names_file='node_names.json'):
 
 def get_node_name(node_id, node_names):
     """Get human-readable node name from node_names dict."""
+    # Convert node_id to integer if it's a string
+    try:
+        if isinstance(node_id, str):
+            # Try to parse as decimal or hex
+            if node_id.startswith('!'):
+                node_id_int = int(node_id[1:], 16)
+            else:
+                node_id_int = int(node_id)
+        else:
+            node_id_int = int(node_id)
+    except (ValueError, TypeError):
+        # If we can't convert, return the original value
+        return str(node_id)
+    
     # Try hex format with !
-    hex_id = f"!{node_id:08x}"
+    hex_id = f"!{node_id_int:08x}"
     if hex_id in node_names:
         return node_names[hex_id].get('longName', hex_id)
     
     # Try string format
-    str_id = str(node_id)
+    str_id = str(node_id_int)
     if str_id in node_names:
         return node_names[str_id].get('longName', hex_id)
     
@@ -184,13 +198,29 @@ def view_positions(db_path='traffic_history.db', hours=24, with_rssi=False):
         
         # Get node name
         node_name = get_node_name(node_id, node_names)
-        hex_id = f"!{node_id:08x}"
+        
+        # Format node_id as hex
+        try:
+            if isinstance(node_id, str):
+                if node_id.startswith('!'):
+                    node_id_int = int(node_id[1:], 16)
+                else:
+                    node_id_int = int(node_id)
+            else:
+                node_id_int = int(node_id)
+            hex_id = f"!{node_id_int:08x}"
+        except (ValueError, TypeError):
+            hex_id = str(node_id)
         
         # Format timestamp
         ts_str = datetime.fromtimestamp(latest['timestamp']).strftime('%d/%m %H:%M')
         
+        # Display node information
         print(f"🔷 {node_name}")
-        print(f"   ID: {hex_id} (decimal: {node_id})")
+        try:
+            print(f"   ID: {hex_id} (decimal: {node_id_int})")
+        except (NameError, UnboundLocalError):
+            print(f"   ID: {hex_id}")
         print(f"   📍 Position: {latest['lat']:.6f}, {latest['lon']:.6f} (alt: {latest['alt']:.0f}m)")
         print(f"   🕐 Dernière: {ts_str}")
         print(f"   📊 Packets: {len(data['positions'])}")
