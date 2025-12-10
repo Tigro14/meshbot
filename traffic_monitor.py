@@ -478,6 +478,8 @@ class TrafficMonitor:
                 'rssi': rssi,
                 'snr': snr,
                 'hops': hops_taken,
+                'hop_limit': hop_limit,
+                'hop_start': hop_start,
                 'size': packet_size,
                 'is_broadcast': to_id in [0xFFFFFFFF, 0],
                 'is_encrypted': is_encrypted
