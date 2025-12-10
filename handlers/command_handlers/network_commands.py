@@ -897,6 +897,14 @@ class NetworkCommands:
             except Exception:
                 pass
         
+        # Hops (distance réseau)
+        hops_away = node_data.get('hops_away')
+        if hops_away is not None:
+            if hops_away == 0:
+                parts.append("✅ Direct")
+            else:
+                parts.append(f"🔀 {hops_away}hop{'s' if hops_away > 1 else ''}")
+        
         # Signal (RSSI/SNR) si disponible
         rssi = node_data.get('rssi', 0)
         snr = node_data.get('snr', 0.0)
@@ -1011,6 +1019,18 @@ class NetworkCommands:
                 distance_est = estimate_distance_from_rssi(display_rssi)
                 lines.append(f"   Distance (est): {distance_est}")
             
+            lines.append("")
+        
+        # === HOPS (DISTANCE RÉSEAU) ===
+        hops_away = node_data.get('hops_away')
+        if hops_away is not None:
+            lines.append("🔀 DISTANCE RÉSEAU")
+            if hops_away == 0:
+                lines.append("   ✅ Connexion directe (0 hop)")
+                lines.append("   Le nœud est dans la portée radio directe")
+            else:
+                lines.append(f"   🔀 Relayé ({hops_away} hop{'s' if hops_away > 1 else ''})")
+                lines.append(f"   Le message passe par {hops_away} nœud{'s' if hops_away > 1 else ''} intermédiaire{'s' if hops_away > 1 else ''}")
             lines.append("")
         
         # === DERNIÈRE RÉCEPTION ===

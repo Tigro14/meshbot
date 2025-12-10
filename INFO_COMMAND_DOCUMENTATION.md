@@ -28,13 +28,19 @@ The `/info` command can be used in broadcast mode to share node information publ
 ### Compact Format (Mesh - ≤180 chars)
 Used for LoRa mesh transmission with strict character limits.
 
-**Example:**
+**Example (Direct connection):**
 ```
-ℹ️ tigrog2 (!f547fabc) | 📍 47.2346,6.8901 | ⛰️ 520m | ↔️ 12.3km | 📶 -87dB SNR8.2 | ⏱️ 2h ago | 📊 1234pkt
+ℹ️ tigrog2 (!f547fabc) | ✅ Direct | 📍 47.2346,6.8901 | ⛰️ 520m | ↔️ 12.3km | 📶 -87dB SNR8.2 | ⏱️ 2h ago | 📊 1234pkt
+```
+
+**Example (Relayed connection):**
+```
+ℹ️ RemoteNode (!abcd1234) | 🔀 2hops | 📍 47.3456,6.9012 | ↔️ 25km | 📶 -102dB SNR2.1 | ⏱️ 5h ago | 📊 89pkt
 ```
 
 **Fields (when available):**
 - Node name and ID
+- Hop information (✅ Direct for 0 hops, 🔀 Nhops for relayed)
 - GPS coordinates (latitude, longitude)
 - Altitude
 - Distance from bot
@@ -66,6 +72,10 @@ Used for platforms without character limits.
    SNR: 8.2 dB
    Distance (est): 300m-1km
 
+🔀 DISTANCE RÉSEAU
+   ✅ Connexion directe (0 hop)
+   Le nœud est dans la portée radio directe
+
 ⏱️ DERNIÈRE RÉCEPTION: il y a 2h
 
 📊 STATISTIQUES MESH
@@ -91,6 +101,7 @@ Used for platforms without character limits.
 ### When Available
 - **Short Name**: 4-character short identifier
 - **Hardware Model**: Device hardware model (e.g., TLORA_V2_1_1P6)
+- **Hop Information**: Network distance (0 hops = direct, 1+ hops = relayed)
 - **GPS Position**: Latitude, longitude, altitude
 - **Distance**: GPS-calculated or RSSI-estimated distance from bot
 - **Signal Metrics**: RSSI, SNR, signal quality description
