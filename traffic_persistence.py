@@ -1054,6 +1054,9 @@ class TrafficPersistence:
             cursor = self.conn.cursor()
             cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
             
+            # DEBUG: Log the query parameters
+            logger.debug(f"get_node_position_from_db: node_id={node_id}, hours={hours}, cutoff={cutoff}")
+            
             # Chercher la position la plus récente pour ce nœud
             # On cherche dans les paquets où ce nœud est l'émetteur (from_id)
             cursor.execute('''
@@ -1074,9 +1077,15 @@ class TrafficPersistence:
                     lat = position.get('latitude')
                     lon = position.get('longitude')
                     if lat and lon and lat != 0 and lon != 0:
+                        logger.debug(f"✅ Position trouvée pour {node_id}: lat={lat}, lon={lon}")
                         return {'latitude': lat, 'longitude': lon}
-                except (json.JSONDecodeError, KeyError, TypeError):
+                    else:
+                        logger.debug(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.debug(f"❌ Erreur parsing position pour {node_id}: {e}")
                     pass
+            else:
+                logger.debug(f"❌ Aucune position trouvée pour {node_id}")
             
             return None
             
