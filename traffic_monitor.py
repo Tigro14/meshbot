@@ -508,6 +508,27 @@ class TrafficMonitor:
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde voisins: {e}")
 
+            # Capturer les positions GPS (AVANT la sauvegarde du paquet)
+            if packet_entry['packet_type'] == 'POSITION_APP':
+                if packet and 'decoded' in packet:
+                    decoded = packet['decoded']
+                    if 'position' in decoded:
+                        position = decoded['position']
+                        lat = position.get('latitude')
+                        lon = position.get('longitude')
+                        alt = position.get('altitude')
+
+                        if lat is not None and lon is not None:
+                            # Ajouter la position au packet_entry pour la sauvegarde DB
+                            packet_entry['position'] = {
+                                'latitude': lat,
+                                'longitude': lon,
+                                'altitude': alt
+                            }
+                            # Mise à jour du node_manager (en mémoire)
+                            self.node_manager.update_node_position(from_id, lat, lon, alt)
+                            debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+
             self.all_packets.append(packet_entry)
 
             # Log périodique des paquets enregistrés (tous les 25 paquets)
@@ -522,20 +543,6 @@ class TrafficMonitor:
                 self.persistence.save_packet(packet_entry)
             except Exception as e:
                 logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
-
-            # Capturer les positions GPS
-            if packet_entry['packet_type'] == 'POSITION_APP':
-                if packet and 'decoded' in packet:
-                    decoded = packet['decoded']
-                    if 'position' in decoded:
-                        position = decoded['position']
-                        lat = position.get('latitude')
-                        lon = position.get('longitude')
-                        alt = position.get('altitude')
-
-                        if lat is not None and lon is not None:
-                            self.node_manager.update_node_position(from_id, lat, lon, alt)
-                            #debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             # NOTE: Les messages publics sont maintenant gérés par add_public_message()
             # appelé depuis main_bot.py pour éviter les doublons
