@@ -444,3 +444,72 @@ class NetworkCommands(TelegramCommandBase):
         
         # Envoyer la réponse (sans Markdown pour éviter les erreurs de parsing)
         await update.effective_message.reply_text(response)
+
+    async def propag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /propag - Afficher les plus longues liaisons radio
+        
+        Affiche les liaisons radio les plus longues détectées dans le réseau mesh,
+        triées par distance GPS entre les nœuds.
+        
+        Usage:
+            /propag          -> Top 5 liaisons des dernières 24h
+            /propag 48       -> Top 5 liaisons des dernières 48h
+            /propag 24 10    -> Top 10 liaisons des dernières 24h
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Parser les arguments
+        hours = 24
+        top_n = 5
+        
+        if context.args:
+            try:
+                if len(context.args) >= 1:
+                    hours = int(context.args[0])
+                    hours = max(1, min(72, hours))  # Limiter entre 1 et 72h
+                if len(context.args) >= 2:
+                    top_n = int(context.args[1])
+                    top_n = max(1, min(10, top_n))  # Limiter entre 1 et 10
+            except ValueError:
+                await update.effective_message.reply_text(
+                    "❌ Usage: /propag [heures] [top_n]\n"
+                    "Exemples:\n"
+                    "  /propag          → Top 5 (24h)\n"
+                    "  /propag 48       → Top 5 (48h)\n"
+                    "  /propag 24 10    → Top 10 (24h)"
+                )
+                return
+        
+        # Logger la requête
+        info_print(f"📱 Telegram /propag ({hours}h, top {top_n}): {user.username}")
+        
+        def get_propag_report():
+            try:
+                # Vérifier si le traffic monitor est disponible
+                if not self.message_handler.traffic_monitor:
+                    return "❌ Traffic monitor non disponible"
+                
+                # Générer le rapport (format détaillé pour Telegram)
+                return self.message_handler.traffic_monitor.get_propagation_report(
+                    hours=hours,
+                    top_n=top_n,
+                    max_distance_km=100,  # Rayon de 100km
+                    compact=False  # Format détaillé pour Telegram
+                )
+                
+            except Exception as e:
+                error_print(f"Erreur /propag: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:200]}"
+        
+        # Exécuter dans un thread pour ne pas bloquer
+        response = await asyncio.to_thread(get_propag_report)
+        
+        # Envoyer la réponse
+        await update.effective_message.reply_text(response)

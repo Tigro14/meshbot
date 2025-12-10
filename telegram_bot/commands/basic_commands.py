@@ -41,6 +41,7 @@ class BasicCommands(TelegramCommandBase):
             f"• /weather - Météo Paris\n"
             f"• /rx [page]\n"
             f"• /mqtt [heures] - Nœuds MQTT\n"
+            f"• /propag [h] [top] - Longues liaisons radio\n"
             f"• /sys\n"
             f"• /echo <msg>\n"
             f"• /nodes\n"
