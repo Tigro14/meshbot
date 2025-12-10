@@ -74,14 +74,29 @@ def view_positions(db_path='traffic_history.db', hours=24, with_rssi=False):
     # Calculate time cutoff
     cutoff = datetime.now().timestamp() - (hours * 3600)
     
-    # Query for packets with positions
-    query = """
-        SELECT from_id, to_id, position, snr, rssi, timestamp, hop_limit, hop_start, source
-        FROM packets
-        WHERE position IS NOT NULL
-        AND timestamp > ?
-        ORDER BY timestamp DESC
-    """
+    # Check which columns exist in the table
+    cursor.execute("PRAGMA table_info(packets)")
+    columns = [row[1] for row in cursor.fetchall()]
+    has_hop_limit = 'hop_limit' in columns
+    has_hop_start = 'hop_start' in columns
+    
+    # Build query based on available columns
+    if has_hop_limit and has_hop_start:
+        query = """
+            SELECT from_id, to_id, position, snr, rssi, timestamp, hop_limit, hop_start, source
+            FROM packets
+            WHERE position IS NOT NULL
+            AND timestamp > ?
+            ORDER BY timestamp DESC
+        """
+    else:
+        query = """
+            SELECT from_id, to_id, position, snr, rssi, timestamp, NULL, NULL, source
+            FROM packets
+            WHERE position IS NOT NULL
+            AND timestamp > ?
+            ORDER BY timestamp DESC
+        """
     
     try:
         cursor.execute(query, (cutoff,))
