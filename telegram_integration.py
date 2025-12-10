@@ -283,9 +283,6 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("dbstats", self.admin_commands.dbstats_command))
         self.application.add_handler(CommandHandler("cleanup", self.admin_commands.cleanup_command))
 
-        # Commandes DB
-        self.application.add_handler(CommandHandler("db", self.db_commands.db_command))
-
         info_print(f"✅ {len(self.application.handlers[0])} handlers enregistrés")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
