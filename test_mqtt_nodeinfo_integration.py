@@ -104,7 +104,7 @@ def simulate_mqtt_nodeinfo_flow():
         print(f"**{node_name}** ({node_id_str})")
         print(f"  └─ {len(neighbors)} voisin(s):")
         
-        for i, neighbor in enumerate(sorted(neighbors, key=lambda x: x.get('snr', -999), reverse=True)[:3]):
+        for i, neighbor in enumerate(sorted(neighbors, key=lambda x: x.get('snr') if x.get('snr') is not None else -999, reverse=True)[:3]):
             neighbor_id = neighbor['node_id']
             neighbor_name = node_manager_without_fix.get_node_name(neighbor_id)
             snr = neighbor.get('snr')
@@ -125,7 +125,7 @@ def simulate_mqtt_nodeinfo_flow():
         print(f"  └─ {len(neighbors)} voisin(s):")
         
         names_found = 0
-        for neighbor in sorted(neighbors, key=lambda x: x.get('snr', -999), reverse=True):
+        for neighbor in sorted(neighbors, key=lambda x: x.get('snr') if x.get('snr') is not None else -999, reverse=True):
             neighbor_id = neighbor['node_id']
             neighbor_name = node_manager.get_node_name(neighbor_id)
             snr = neighbor.get('snr')
