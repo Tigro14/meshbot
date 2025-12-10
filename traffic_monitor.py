@@ -807,12 +807,22 @@ class TrafficMonitor:
                 decoded = packet['decoded']
                 if 'telemetry' in decoded:
                     telemetry = decoded['telemetry']
+                    
+                    # Device metrics (battery, voltage, channel utilization)
                     if 'deviceMetrics' in telemetry:
                         metrics = telemetry['deviceMetrics']
                         tel_stats['last_battery'] = metrics.get('batteryLevel')
                         tel_stats['last_voltage'] = metrics.get('voltage')
                         tel_stats['last_channel_util'] = metrics.get('channelUtilization')
                         tel_stats['last_air_util'] = metrics.get('airUtilTx')
+                    
+                    # Environment metrics (temperature, humidity, pressure, air quality)
+                    if 'environmentMetrics' in telemetry:
+                        env_metrics = telemetry['environmentMetrics']
+                        tel_stats['last_temperature'] = env_metrics.get('temperature')
+                        tel_stats['last_humidity'] = env_metrics.get('relativeHumidity')
+                        tel_stats['last_pressure'] = env_metrics.get('barometricPressure')
+                        tel_stats['last_air_quality'] = env_metrics.get('iaq')
         
         # Position
         elif packet_type == 'POSITION_APP':

@@ -93,6 +93,27 @@ class TrafficPersistence:
                 logger.info("Migration DB : ajout de la colonne is_encrypted")
                 cursor.execute("ALTER TABLE packets ADD COLUMN is_encrypted INTEGER DEFAULT 0")
 
+            # Migration : ajouter les colonnes de télémétrie à node_stats si elles n'existent pas
+            try:
+                cursor.execute("SELECT last_battery_level FROM node_stats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Les colonnes n'existent pas, les ajouter
+                logger.info("Migration DB : ajout des colonnes de télémétrie à node_stats")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_level INTEGER")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_voltage REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_telemetry_update REAL")
+            
+            # Migration : ajouter les colonnes d'environnement à node_stats si elles n'existent pas
+            try:
+                cursor.execute("SELECT last_temperature FROM node_stats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Les colonnes n'existent pas, les ajouter
+                logger.info("Migration DB : ajout des colonnes d'environnement à node_stats")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_temperature REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_humidity REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_pressure REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_air_quality REAL")
+
             # Index pour optimiser les requêtes sur les paquets
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_packets_timestamp
@@ -140,7 +161,14 @@ class TrafficPersistence:
                     telemetry_stats TEXT,
                     position_stats TEXT,
                     routing_stats TEXT,
-                    last_updated REAL
+                    last_updated REAL,
+                    last_battery_level INTEGER,
+                    last_battery_voltage REAL,
+                    last_telemetry_update REAL,
+                    last_temperature REAL,
+                    last_humidity REAL,
+                    last_pressure REAL,
+                    last_air_quality REAL
                 )
             ''')
 
@@ -345,12 +373,30 @@ class TrafficPersistence:
             timestamp = datetime.now().timestamp()
 
             for node_id, stats in node_stats.items():
+                # Extract telemetry stats for last battery data
+                telemetry_stats = stats.get('telemetry_stats', {})
+                last_battery = telemetry_stats.get('last_battery')
+                last_voltage = telemetry_stats.get('last_voltage')
+                last_temperature = telemetry_stats.get('last_temperature')
+                last_humidity = telemetry_stats.get('last_humidity')
+                last_pressure = telemetry_stats.get('last_pressure')
+                last_air_quality = telemetry_stats.get('last_air_quality')
+                
+                # Determine telemetry update timestamp
+                # Use current timestamp if we have fresh telemetry data, otherwise None
+                has_telemetry = (last_battery is not None or last_voltage is not None or 
+                                last_temperature is not None or last_humidity is not None or
+                                last_pressure is not None or last_air_quality is not None)
+                last_telemetry_update = timestamp if has_telemetry else None
+                
                 cursor.execute('''
                     INSERT OR REPLACE INTO node_stats (
                         node_id, total_packets, total_bytes, packet_types,
                         hourly_activity, message_stats, telemetry_stats,
-                        position_stats, routing_stats, last_updated
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_stats, routing_stats, last_updated,
+                        last_battery_level, last_battery_voltage, last_telemetry_update,
+                        last_temperature, last_humidity, last_pressure, last_air_quality
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     node_id,
                     stats.get('total_packets', 0),
@@ -358,10 +404,17 @@ class TrafficPersistence:
                     json.dumps(dict(stats.get('by_type', {}))),
                     json.dumps(stats.get('hourly_activity', {})),
                     json.dumps(stats.get('message_stats', {})),
-                    json.dumps(stats.get('telemetry_stats', {})),
+                    json.dumps(telemetry_stats),
                     json.dumps(stats.get('position_stats', {})),
                     json.dumps(stats.get('routing_stats', {})),
-                    timestamp
+                    timestamp,
+                    last_battery,
+                    last_voltage,
+                    last_telemetry_update,
+                    last_temperature,
+                    last_humidity,
+                    last_pressure,
+                    last_air_quality
                 ))
 
             self.conn.commit()
@@ -514,13 +567,35 @@ class TrafficPersistence:
             node_stats = {}
             for row in cursor.fetchall():
                 node_id = row['node_id']
+                
+                # Load telemetry stats from JSON
+                telemetry_stats = json.loads(row['telemetry_stats']) if row['telemetry_stats'] else {}
+                
+                # Add battery data from dedicated columns (takes precedence over JSON)
+                if 'last_battery_level' in row.keys() and row['last_battery_level'] is not None:
+                    telemetry_stats['last_battery'] = row['last_battery_level']
+                if 'last_battery_voltage' in row.keys() and row['last_battery_voltage'] is not None:
+                    telemetry_stats['last_voltage'] = row['last_battery_voltage']
+                if 'last_telemetry_update' in row.keys() and row['last_telemetry_update'] is not None:
+                    telemetry_stats['last_telemetry_update'] = row['last_telemetry_update']
+                
+                # Add environment data from dedicated columns
+                if 'last_temperature' in row.keys() and row['last_temperature'] is not None:
+                    telemetry_stats['last_temperature'] = row['last_temperature']
+                if 'last_humidity' in row.keys() and row['last_humidity'] is not None:
+                    telemetry_stats['last_humidity'] = row['last_humidity']
+                if 'last_pressure' in row.keys() and row['last_pressure'] is not None:
+                    telemetry_stats['last_pressure'] = row['last_pressure']
+                if 'last_air_quality' in row.keys() and row['last_air_quality'] is not None:
+                    telemetry_stats['last_air_quality'] = row['last_air_quality']
+                
                 node_stats[node_id] = {
                     'total_packets': row['total_packets'],
                     'total_bytes': row['total_bytes'],
                     'by_type': defaultdict(int, json.loads(row['packet_types']) if row['packet_types'] else {}),
                     'hourly_activity': defaultdict(int, json.loads(row['hourly_activity']) if row['hourly_activity'] else {}),
                     'message_stats': json.loads(row['message_stats']) if row['message_stats'] else {},
-                    'telemetry_stats': json.loads(row['telemetry_stats']) if row['telemetry_stats'] else {},
+                    'telemetry_stats': telemetry_stats,
                     'position_stats': json.loads(row['position_stats']) if row['position_stats'] else {},
                     'routing_stats': json.loads(row['routing_stats']) if row['routing_stats'] else {}
                 }

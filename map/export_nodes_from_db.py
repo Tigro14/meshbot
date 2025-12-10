@@ -66,7 +66,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         
         log(f"✅ {len(node_names_data)} nœuds trouvés dans node_names.json")
         
-        # Enrich with SQLite data (SNR, last heard, hops, neighbors)
+        # Enrich with SQLite data (SNR, last heard, hops, neighbors, telemetry)
         snr_data = {}
         last_heard_data = {}
         hops_data = {}
@@ -74,6 +74,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
         mqtt_active_nodes = set()  # Track MQTT-active nodes
         mqtt_node_data = {}  # Position/name data for MQTT-active nodes from packets table
         mqtt_last_heard_data = {}  # Track when node was last heard via MQTT
+        telemetry_data = {}  # Battery level and voltage from node_stats
         
         if os.path.exists(db_path):
             log(f"📊 Enrichissement avec données SQLite...")
@@ -217,6 +218,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
                 log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
                 log(f"   • MQTT nodes avec position (packets): {len(mqtt_node_data)} nœuds")
+                log(f"   • Telemetry disponible pour {len(telemetry_data)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
@@ -306,6 +308,32 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 if node_id_str in mqtt_active_nodes:
                     node_entry["mqttActive"] = True
                 
+                # Add telemetry data if available from node_stats
+                if node_id_str in telemetry_data:
+                    telem = telemetry_data[node_id_str]
+                    
+                    # Device metrics (battery)
+                    if telem.get('battery_level') is not None or telem.get('battery_voltage') is not None:
+                        if "deviceMetrics" not in node_entry:
+                            node_entry["deviceMetrics"] = {}
+                        if telem.get('battery_level') is not None:
+                            node_entry["deviceMetrics"]["batteryLevel"] = telem['battery_level']
+                        if telem.get('battery_voltage') is not None:
+                            node_entry["deviceMetrics"]["voltage"] = telem['battery_voltage']
+                    
+                    # Environment metrics (temperature, humidity, pressure, air quality)
+                    if (telem.get('temperature') is not None or telem.get('humidity') is not None or
+                        telem.get('pressure') is not None or telem.get('air_quality') is not None):
+                        node_entry["environmentMetrics"] = {}
+                        if telem.get('temperature') is not None:
+                            node_entry["environmentMetrics"]["temperature"] = telem['temperature']
+                        if telem.get('humidity') is not None:
+                            node_entry["environmentMetrics"]["relativeHumidity"] = telem['humidity']
+                        if telem.get('pressure') is not None:
+                            node_entry["environmentMetrics"]["barometricPressure"] = telem['pressure']
+                        if telem.get('air_quality') is not None:
+                            node_entry["environmentMetrics"]["iaq"] = telem['air_quality']
+                
                 output_nodes[node_id_hex] = node_entry
                 
             except Exception as e:
@@ -386,6 +414,32 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 # mqtt_active_nodes is now keyed by decimal (e.g., '385503196')
                 if node_id_str in mqtt_active_nodes:
                     node_entry["mqttActive"] = True
+                
+                # Add telemetry data if available from node_stats
+                if node_id_str in telemetry_data:
+                    telem = telemetry_data[node_id_str]
+                    
+                    # Device metrics (battery)
+                    if telem.get('battery_level') is not None or telem.get('battery_voltage') is not None:
+                        if "deviceMetrics" not in node_entry:
+                            node_entry["deviceMetrics"] = {}
+                        if telem.get('battery_level') is not None:
+                            node_entry["deviceMetrics"]["batteryLevel"] = telem['battery_level']
+                        if telem.get('battery_voltage') is not None:
+                            node_entry["deviceMetrics"]["voltage"] = telem['battery_voltage']
+                    
+                    # Environment metrics (temperature, humidity, pressure, air quality)
+                    if (telem.get('temperature') is not None or telem.get('humidity') is not None or
+                        telem.get('pressure') is not None or telem.get('air_quality') is not None):
+                        node_entry["environmentMetrics"] = {}
+                        if telem.get('temperature') is not None:
+                            node_entry["environmentMetrics"]["temperature"] = telem['temperature']
+                        if telem.get('humidity') is not None:
+                            node_entry["environmentMetrics"]["relativeHumidity"] = telem['humidity']
+                        if telem.get('pressure') is not None:
+                            node_entry["environmentMetrics"]["barometricPressure"] = telem['pressure']
+                        if telem.get('air_quality') is not None:
+                            node_entry["environmentMetrics"]["iaq"] = telem['air_quality']
                 
                 output_nodes[node_id_hex] = node_entry
                 mqtt_only_added += 1
