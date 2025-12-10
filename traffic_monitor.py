@@ -989,7 +989,7 @@ class TrafficMonitor:
             total_packets = sum(s['total_packets'] for _, s in period_stats.items())
             
             for rank, (node_id, stats) in enumerate(sorted_nodes, 1):
-                name = truncate_text(stats['name'], 15)
+                name = truncate_text(stats['name'], 35)
                 packet_count = stats['total_packets']
                 percentage = (packet_count / total_packets * 100) if total_packets > 0 else 0
                 
@@ -1003,9 +1003,14 @@ class TrafficMonitor:
                 else:
                     icon = f"{rank}."
                 
-                # Barre de progression
-                lines.append(f"\n{icon} {name}")
-                lines.append(f"   📦 {packet_count} paquets ({percentage:.1f}%)")
+                # Temps depuis dernier paquet
+                time_str = format_elapsed_time(stats['last_seen'])
+                lines.append(f"\n{icon} {name} {time_str} ago")
+                # Taille des données
+                if stats['bytes'] > 1024:
+                    lines.append(f" 📦 {packet_count} paquets ({percentage:.1f}%)  {stats['bytes']/1024:.1f}KB")
+                else:
+                    lines.append(f" 📦 {packet_count} paquets ({percentage:.1f}%)  {stats['bytes']}B")
                 
                 # Breakdown par type si demandé
                 if include_packet_types:
@@ -1037,19 +1042,12 @@ class TrafficMonitor:
                             channel_line_parts.append(f"Canal: {avg_channel:.1f}%")
                         if stats['air_utils']:
                             avg_air = sum(stats['air_utils']) / len(stats['air_utils'])
-                            channel_line_parts.append(f"Air TX: {avg_air:.1f}%")
+                            if avg_air > 0.2:
+                                channel_line_parts.append(f"Air TX: {avg_air:.1f}%")
                         if channel_line_parts:
                             lines.append(f"   📡 {' | '.join(channel_line_parts)}")
                 
-                # Taille des données
-                if stats['bytes'] > 1024:
-                    lines.append(f"   📊 Data: {stats['bytes']/1024:.1f}KB")
-                else:
-                    lines.append(f"   📊 Data: {stats['bytes']}B")
                 
-                # Temps depuis dernier paquet
-                time_str = format_elapsed_time(stats['last_seen'])
-                lines.append(f"   ⏰ Dernier: {time_str}")
             
             # === STATISTIQUES GLOBALES ===
             lines.append(f"\n{'='*40}")
