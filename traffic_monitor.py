@@ -2527,9 +2527,15 @@ class TrafficMonitor:
                 
                 try:
                     if isinstance(from_id, str):
-                        from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                        if from_id.startswith('!'):
+                            from_id = int(from_id[1:], 16)
+                        else:
+                            from_id = int(from_id)  # Decimal string from database
                     if isinstance(to_id, str):
-                        to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                        if to_id.startswith('!'):
+                            to_id = int(to_id[1:], 16)
+                        else:
+                            to_id = int(to_id)  # Decimal string from database
                 except (ValueError, AttributeError):
                     continue
                 
@@ -2670,9 +2676,15 @@ class TrafficMonitor:
                         
                         try:
                             if isinstance(from_id, str):
-                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                                if from_id.startswith('!'):
+                                    from_id = int(from_id[1:], 16)
+                                else:
+                                    from_id = int(from_id)  # Decimal string from database
                             if isinstance(to_id, str):
-                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                                if to_id.startswith('!'):
+                                    to_id = int(to_id[1:], 16)
+                                else:
+                                    to_id = int(to_id)  # Decimal string from database
                         except (ValueError, AttributeError):
                             continue
                         
@@ -2801,9 +2813,15 @@ class TrafficMonitor:
                         
                         try:
                             if isinstance(from_id, str):
-                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                                if from_id.startswith('!'):
+                                    from_id = int(from_id[1:], 16)
+                                else:
+                                    from_id = int(from_id)  # Decimal string from database
                             if isinstance(to_id, str):
-                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                                if to_id.startswith('!'):
+                                    to_id = int(to_id[1:], 16)
+                                else:
+                                    to_id = int(to_id)  # Decimal string from database
                         except (ValueError, AttributeError):
                             continue
                         
