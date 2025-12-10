@@ -93,27 +93,6 @@ class TrafficPersistence:
                 logger.info("Migration DB : ajout de la colonne is_encrypted")
                 cursor.execute("ALTER TABLE packets ADD COLUMN is_encrypted INTEGER DEFAULT 0")
 
-            # Migration : ajouter les colonnes de télémétrie à node_stats si elles n'existent pas
-            try:
-                cursor.execute("SELECT last_battery_level FROM node_stats LIMIT 1")
-            except sqlite3.OperationalError:
-                # Les colonnes n'existent pas, les ajouter
-                logger.info("Migration DB : ajout des colonnes de télémétrie à node_stats")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_level INTEGER")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_voltage REAL")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_telemetry_update REAL")
-            
-            # Migration : ajouter les colonnes d'environnement à node_stats si elles n'existent pas
-            try:
-                cursor.execute("SELECT last_temperature FROM node_stats LIMIT 1")
-            except sqlite3.OperationalError:
-                # Les colonnes n'existent pas, les ajouter
-                logger.info("Migration DB : ajout des colonnes d'environnement à node_stats")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_temperature REAL")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_humidity REAL")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_pressure REAL")
-                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_air_quality REAL")
-
             # Index pour optimiser les requêtes sur les paquets
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_packets_timestamp
@@ -249,6 +228,27 @@ class TrafficPersistence:
                 CREATE INDEX IF NOT EXISTS idx_neighbors_composite
                 ON neighbors(node_id, neighbor_id, timestamp)
             ''')
+
+            # Migration : ajouter les colonnes de télémétrie à node_stats si elles n'existent pas
+            try:
+                cursor.execute("SELECT last_battery_level FROM node_stats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Les colonnes n'existent pas, les ajouter
+                logger.info("Migration DB : ajout des colonnes de télémétrie à node_stats")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_level INTEGER")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_battery_voltage REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_telemetry_update REAL")
+            
+            # Migration : ajouter les colonnes d'environnement à node_stats si elles n'existent pas
+            try:
+                cursor.execute("SELECT last_temperature FROM node_stats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Les colonnes n'existent pas, les ajouter
+                logger.info("Migration DB : ajout des colonnes d'environnement à node_stats")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_temperature REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_humidity REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_pressure REAL")
+                cursor.execute("ALTER TABLE node_stats ADD COLUMN last_air_quality REAL")
 
             self.conn.commit()
             logger.info(f"✅ Base de données initialisée : {self.db_path}")
