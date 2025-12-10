@@ -416,14 +416,14 @@ class UnifiedStatsCommands:
                 lines.append(f"Range: {min_ch:.1f}% - {max_ch:.1f}%")
 
                 # État global
-                if total_avg > 20:
+                """if total_avg > 20:
                     lines.append("🔴 **État: CRITIQUE - Réduire trafic**")
                 elif total_avg > 15:
                     lines.append("🟡 **État: ÉLEVÉ - Attention**")
                 elif total_avg > 10:
                     lines.append("🟢 **État: NORMAL**")
                 else:
-                    lines.append("⚪ **État: FAIBLE**")
+                    lines.append("⚪ **État: FAIBLE**")"""
 
                 # Distribution visuelle
                 lines.append(f"\n**Distribution:**")
@@ -445,10 +445,10 @@ class UnifiedStatsCommands:
                     # Icône et statut
                     if avg_ch > 25:
                         icon = "🔴"
-                        status = "CRITIQUE"
+                        status = "TRES IMPORTANT"
                     elif avg_ch > 15:
                         icon = "🟡"
-                        status = "ÉLEVÉ"
+                        status = "BRUYANT/ROUTER"
                     elif avg_ch > 10:
                         icon = "🟢"
                         status = "NORMAL"
@@ -456,28 +456,16 @@ class UnifiedStatsCommands:
                         icon = "⚪"
                         status = "FAIBLE"
 
-                    lines.append(f"\n{i}. {icon} **{name}**")
+                    lines.append(f"\n{i}. {icon}[{name}] {samples} paquets")
                     lines.append(f"   Canal: {avg_ch:.1f}% ({status})")
                     if avg_air > 0:
                         lines.append(f"   Air TX: {avg_air:.1f}%")
-                    lines.append(f"   Échantillons: {samples}")
-
-                    if avg_ch > 15:
-                        lines.append("   ⚠️ Réduire fréquence paquets")
 
                 # Résumé des nœuds non affichés
                 if len(node_averages) > 15:
                     remaining = len(node_averages) - 15
                     remaining_avg = sum(n['avg_channel'] for n in node_averages[15:]) / remaining
                     lines.append(f"\n... et **{remaining} autres nœuds** (moy: {remaining_avg:.1f}%)")
-
-                # LÉGENDE SEUILS
-                lines.append("\n" + "=" * 50)
-                lines.append("**📋 SEUILS DE RÉFÉRENCE**")
-                lines.append("🟢 <10% = Normal")
-                lines.append("🟡 10-15% = Acceptable")
-                lines.append("🟠 15-25% = Élevé")
-                lines.append("🔴 >25% = Critique")
 
             return "\n".join(lines)
 
