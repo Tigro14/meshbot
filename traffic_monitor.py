@@ -2602,9 +2602,11 @@ class TrafficMonitor:
                         debug_print(f"  ⚠️ SKIP: Les deux nœuds hors du rayon de {max_distance_km}km")
                         continue
                 
-                # Obtenir les noms des nœuds
-                from_name = self.node_manager.get_node_name(from_id)
-                to_name = self.node_manager.get_node_name(to_id)
+                # Obtenir les noms des nœuds - convertir en format hex avec ! pour la recherche
+                from_id_hex = f"!{from_id:08x}" if isinstance(from_id, int) else from_id
+                to_id_hex = f"!{to_id:08x}" if isinstance(to_id, int) else to_id
+                from_name = self.node_manager.get_node_name(from_id_hex)
+                to_name = self.node_manager.get_node_name(to_id_hex)
                 
                 debug_print(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
                 

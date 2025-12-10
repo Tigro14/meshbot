@@ -1138,6 +1138,7 @@ class TrafficPersistence:
                     AND to_id IS NOT NULL
                     AND to_id != 4294967295
                     AND to_id != 0
+                    AND from_id != to_id
                     AND (snr IS NOT NULL OR rssi IS NOT NULL)
                 ORDER BY timestamp DESC
             ''', (cutoff,))
