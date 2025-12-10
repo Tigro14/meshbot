@@ -7,8 +7,9 @@ Vérifie que Canal% et Air TX sont affichés dans /stats top (Telegram uniquemen
 import sys
 import os
 
-# Ajouter le répertoire du projet au path
-sys.path.insert(0, '/home/runner/work/meshbot/meshbot')
+# Ajouter le répertoire du projet au path (relatif au fichier de test)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
 
 # Créer un mock minimal de config
 import types
@@ -34,7 +35,10 @@ def test_channel_integration_in_code():
     print("=" * 60)
     
     # Vérifier que traffic_monitor.py contient les modifications
-    with open('/home/runner/work/meshbot/meshbot/traffic_monitor.py', 'r') as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    traffic_file = os.path.join(script_dir, 'traffic_monitor.py')
+    
+    with open(traffic_file, 'r') as f:
         traffic_code = f.read()
     
     print("\n✅ Test 1: Vérification de channel_utils et air_utils dans period_stats")
@@ -43,21 +47,24 @@ def test_channel_integration_in_code():
     print("   ✓ Champs channel_utils et air_utils ajoutés")
     
     print("\n✅ Test 2: Vérification de la collecte des données de télémétrie")
-    assert "if include_packet_types and 'telemetry' in packet" in traffic_code, "❌ Condition de collecte manquante"
+    assert "if include_packet_types and packet.get('telemetry')" in traffic_code, "❌ Condition de collecte manquante"
     assert "stats['channel_utils'].append" in traffic_code, "❌ Collecte channel_util manquante"
     assert "stats['air_utils'].append" in traffic_code, "❌ Collecte air_util manquante"
-    print("   ✓ Logique de collecte des données de canal ajoutée")
+    assert "elif packet_type == 'TELEMETRY_APP':" in traffic_code, "❌ Vérification du type TELEMETRY_APP manquante"
+    print("   ✓ Logique de collecte des données de canal ajoutée (uniquement TELEMETRY_APP)")
     
     print("\n✅ Test 3: Vérification de l'affichage Canal% et Air TX")
-    assert "if stats['channel_utils'] or stats['air_utils']:" in traffic_code, "❌ Condition d'affichage manquante"
+    assert "if include_packet_types and (stats['channel_utils'] or stats['air_utils']):" in traffic_code, "❌ Condition d'affichage avec include_packet_types manquante"
     assert "Canal:" in traffic_code, "❌ Label 'Canal:' manquant"
     assert "Air TX:" in traffic_code, "❌ Label 'Air TX:' manquant"
     assert "avg_channel = sum(stats['channel_utils']) / len(stats['channel_utils'])" in traffic_code, "❌ Calcul moyenne canal manquant"
     assert "avg_air = sum(stats['air_utils']) / len(stats['air_utils'])" in traffic_code, "❌ Calcul moyenne air manquant"
-    print("   ✓ Logique d'affichage Canal% et Air TX ajoutée")
+    print("   ✓ Logique d'affichage Canal% et Air TX ajoutée avec condition include_packet_types")
     
     # Vérifier que unified_stats.py contient les modifications
-    with open('/home/runner/work/meshbot/meshbot/handlers/command_handlers/unified_stats.py', 'r') as f:
+    unified_file = os.path.join(script_dir, 'handlers/command_handlers/unified_stats.py')
+    
+    with open(unified_file, 'r') as f:
         unified_code = f.read()
     
     print("\n✅ Test 4: Vérification de la dépréciation de /stats channel pour Telegram")

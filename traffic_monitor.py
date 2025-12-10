@@ -953,12 +953,12 @@ class TrafficMonitor:
                         stats['messages'] += 1
                     elif packet_type == 'TELEMETRY_APP':
                         stats['telemetry'] += 1
-                        # Collecter les données de canal pour Telegram
-                        if include_packet_types and 'telemetry' in packet and packet['telemetry']:
+                        # Collecter les données de canal pour Telegram (uniquement depuis TELEMETRY_APP)
+                        if include_packet_types and packet.get('telemetry'):
                             telemetry = packet['telemetry']
-                            if 'channel_util' in telemetry and telemetry['channel_util'] is not None:
+                            if telemetry.get('channel_util') is not None:
                                 stats['channel_utils'].append(telemetry['channel_util'])
-                            if 'air_util' in telemetry and telemetry['air_util'] is not None:
+                            if telemetry.get('air_util') is not None:
                                 stats['air_utils'].append(telemetry['air_util'])
                     elif packet_type == 'POSITION_APP':
                         stats['position'] += 1
@@ -1028,8 +1028,9 @@ class TrafficMonitor:
                     if breakdown:
                         lines.append(f"   Types: {' '.join(breakdown)}")
                     
-                    # Ajouter les données de canal (Channel% et Air TX) pour Telegram
-                    if stats['channel_utils'] or stats['air_utils']:
+                    # Ajouter les données de canal (Channel% et Air TX) uniquement pour Telegram
+                    # Vérifier que les listes ne sont pas vides avant de calculer les moyennes
+                    if include_packet_types and (stats['channel_utils'] or stats['air_utils']):
                         channel_line_parts = []
                         if stats['channel_utils']:
                             avg_channel = sum(stats['channel_utils']) / len(stats['channel_utils'])
