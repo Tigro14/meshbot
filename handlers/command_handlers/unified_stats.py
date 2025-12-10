@@ -80,20 +80,20 @@ class UnifiedStatsCommands:
             return """📊 **STATS - OPTIONS DISPONIBLES**
 
 **Sous-commandes:**
-• `top [h] [n]` - Top talkers
-• `channel [h]` - Utilisation canal
+• `top [h] [n]` - Top talkers avec Canal% et Air TX
 • `histo [type] [h]` - Historique (sparkline)
 • `packets [h]` - Types de paquets
 • `global` - Vue d'ensemble
 • `traffic [h]` - Messages publics
 
 **Exemples:**
-• `/stats top 24 10` - Top 10 dernières 24h
-• `/stats channel 12` - Canal dernières 12h
+• `/stats top 24 10` - Top 10 dernières 24h avec stats canal
 • `/stats histo pos 6` - Histo positions 6h
 
-**Raccourcis:** t, ch, h, p, g, tr
+**Raccourcis:** t, h, p, g, tr
 **Aliases:** `/top`, `/packets`, `/histo`
+
+**Note:** `/stats channel` est intégré dans `/stats top`
 """
 
     def get_global_stats(self, params, channel='mesh'):
@@ -251,11 +251,27 @@ class UnifiedStatsCommands:
     def get_channel_stats(self, params, channel='mesh'):
         """
         Utilisation du canal (Channel Utilization)
+        
+        Pour Telegram: redirige vers /stats top (données canal intégrées)
+        Pour Mesh: continue à fonctionner normalement
 
         Args:
             params: [hours] optionnel
             channel: 'mesh' ou 'telegram'
         """
+        # Pour Telegram: rediriger vers /stats top avec message informatif
+        if channel == 'telegram':
+            return (
+                "ℹ️ **COMMANDE DÉPRÉCIÉE**\n\n"
+                "Les statistiques de canal (Canal% et Air TX) sont maintenant "
+                "intégrées dans la commande `/stats top`.\n\n"
+                "Utilisez:\n"
+                "• `/stats top` - Top talkers avec Canal% et Air TX\n"
+                "• `/stats top 24 15` - Top 15 sur 24h avec données canal\n\n"
+                "Cette intégration offre une vue plus compacte et complète."
+            )
+        
+        # Pour Mesh: continuer le fonctionnement normal
         if not self.traffic_monitor:
             return "❌ Traffic monitor non disponible"
 
