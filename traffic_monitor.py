@@ -1306,11 +1306,8 @@ class TrafficMonitor:
                 # Message complet
                 content = msg['message']
                 
-                # Format: [HH:MM:SS] Sender:
-                #           message
-                lines.append(f"[{time_str}] **{sender}:**")
-                lines.append(f"  {content}")
-                lines.append("")
+                # Format: [HH:MM:SS] [NodeName] message
+                lines.append(f"[{time_str}] [{sender}] {content}")
             
             result = "\n".join(lines)
             
@@ -1329,9 +1326,8 @@ class TrafficMonitor:
                     sender = msg['sender_name']
                     content = msg['message']
                     
-                    lines.append(f"[{time_str}] **{sender}:**")
-                    lines.append(f"  {content}")
-                    lines.append("")
+                    # Format: [HH:MM:SS] [NodeName] message
+                    lines.append(f"[{time_str}] [{sender}] {content}")
                 
                 result = "\n".join(lines)
             
