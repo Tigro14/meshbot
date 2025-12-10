@@ -2505,10 +2505,13 @@ class TrafficMonitor:
             links_with_distance = []
             
             for link in links:
-                from_id = link['from_id']
-                to_id = link['to_id']
+                from_id_db = link['from_id']  # Original database ID (string format)
+                to_id_db = link['to_id']      # Original database ID (string format)
                 
-                # Convertir les IDs en entiers si nécessaire
+                # Convertir les IDs en entiers pour node_manager
+                from_id = from_id_db
+                to_id = to_id_db
+                
                 try:
                     if isinstance(from_id, str):
                         from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
@@ -2524,8 +2527,9 @@ class TrafficMonitor:
                 to_lon = None
                 
                 # Essayer d'obtenir la position depuis la base de données (30 jours de rétention)
-                from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
-                to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
+                # Utiliser les IDs au format original de la DB
+                from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                 
                 if from_pos_db:
                     from_lat = from_pos_db.get('latitude')
@@ -2616,8 +2620,12 @@ class TrafficMonitor:
                     record_distance = 0
                     
                     for link in record_links:
-                        from_id = link['from_id']
-                        to_id = link['to_id']
+                        from_id_db = link['from_id']  # Original DB format
+                        to_id_db = link['to_id']      # Original DB format
+                        
+                        # Convertir pour node_manager
+                        from_id = from_id_db
+                        to_id = to_id_db
                         
                         try:
                             if isinstance(from_id, str):
@@ -2633,8 +2641,9 @@ class TrafficMonitor:
                         to_lat = None
                         to_lon = None
                         
-                        from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
-                        to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
+                        # Utiliser les IDs au format DB original
+                        from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                         
                         if from_pos_db:
                             from_lat = from_pos_db.get('latitude')
@@ -2732,10 +2741,13 @@ class TrafficMonitor:
                     record_link = None
                     
                     for link in record_links:
-                        from_id = link['from_id']
-                        to_id = link['to_id']
+                        from_id_db = link['from_id']  # Original DB format
+                        to_id_db = link['to_id']      # Original DB format
                         
-                        # Convertir les IDs
+                        # Convertir les IDs pour node_manager
+                        from_id = from_id_db
+                        to_id = to_id_db
+                        
                         try:
                             if isinstance(from_id, str):
                                 from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
@@ -2750,8 +2762,9 @@ class TrafficMonitor:
                         to_lat = None
                         to_lon = None
                         
-                        from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
-                        to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
+                        # Utiliser les IDs au format DB original
+                        from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                         
                         if from_pos_db:
                             from_lat = from_pos_db.get('latitude')
