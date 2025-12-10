@@ -2517,17 +2517,36 @@ class TrafficMonitor:
                 except (ValueError, AttributeError):
                     continue
                 
-                # Obtenir les positions des nœuds
-                from_data = self.node_manager.get_node_data(from_id)
-                to_data = self.node_manager.get_node_data(to_id)
+                # Obtenir les positions des nœuds - d'abord depuis la DB, puis depuis node_manager
+                from_lat = None
+                from_lon = None
+                to_lat = None
+                to_lon = None
                 
-                if not from_data or not to_data:
-                    continue
+                # Essayer d'obtenir la position depuis la base de données (30 jours de rétention)
+                from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
+                to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
                 
-                from_lat = from_data.get('latitude')
-                from_lon = from_data.get('longitude')
-                to_lat = to_data.get('latitude')
-                to_lon = to_data.get('longitude')
+                if from_pos_db:
+                    from_lat = from_pos_db.get('latitude')
+                    from_lon = from_pos_db.get('longitude')
+                
+                if to_pos_db:
+                    to_lat = to_pos_db.get('latitude')
+                    to_lon = to_pos_db.get('longitude')
+                
+                # Si pas trouvé dans la DB, essayer depuis node_manager (mémoire)
+                if not (from_lat and from_lon):
+                    from_data = self.node_manager.get_node_data(from_id)
+                    if from_data:
+                        from_lat = from_data.get('latitude')
+                        from_lon = from_data.get('longitude')
+                
+                if not (to_lat and to_lon):
+                    to_data = self.node_manager.get_node_data(to_id)
+                    if to_data:
+                        to_lat = to_data.get('latitude')
+                        to_lon = to_data.get('longitude')
                 
                 # Vérifier que les deux nœuds ont des positions GPS
                 if not all([from_lat, from_lon, to_lat, to_lon]):
@@ -2608,16 +2627,35 @@ class TrafficMonitor:
                         except (ValueError, AttributeError):
                             continue
                         
-                        from_data = self.node_manager.get_node_data(from_id)
-                        to_data = self.node_manager.get_node_data(to_id)
+                        # Obtenir les positions depuis la DB ou node_manager
+                        from_lat = None
+                        from_lon = None
+                        to_lat = None
+                        to_lon = None
                         
-                        if not from_data or not to_data:
-                            continue
+                        from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
                         
-                        from_lat = from_data.get('latitude')
-                        from_lon = from_data.get('longitude')
-                        to_lat = to_data.get('latitude')
-                        to_lon = to_data.get('longitude')
+                        if from_pos_db:
+                            from_lat = from_pos_db.get('latitude')
+                            from_lon = from_pos_db.get('longitude')
+                        
+                        if to_pos_db:
+                            to_lat = to_pos_db.get('latitude')
+                            to_lon = to_pos_db.get('longitude')
+                        
+                        # Fallback to node_manager if not in DB
+                        if not (from_lat and from_lon):
+                            from_data = self.node_manager.get_node_data(from_id)
+                            if from_data:
+                                from_lat = from_data.get('latitude')
+                                from_lon = from_data.get('longitude')
+                        
+                        if not (to_lat and to_lon):
+                            to_data = self.node_manager.get_node_data(to_id)
+                            if to_data:
+                                to_lat = to_data.get('latitude')
+                                to_lon = to_data.get('longitude')
                         
                         if not all([from_lat, from_lon, to_lat, to_lon]):
                             continue
@@ -2706,17 +2744,35 @@ class TrafficMonitor:
                         except (ValueError, AttributeError):
                             continue
                         
-                        # Obtenir les positions
-                        from_data = self.node_manager.get_node_data(from_id)
-                        to_data = self.node_manager.get_node_data(to_id)
+                        # Obtenir les positions depuis la DB ou node_manager
+                        from_lat = None
+                        from_lon = None
+                        to_lat = None
+                        to_lon = None
                         
-                        if not from_data or not to_data:
-                            continue
+                        from_pos_db = self.persistence.get_node_position_from_db(str(from_id), hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(str(to_id), hours=720)
                         
-                        from_lat = from_data.get('latitude')
-                        from_lon = from_data.get('longitude')
-                        to_lat = to_data.get('latitude')
-                        to_lon = to_data.get('longitude')
+                        if from_pos_db:
+                            from_lat = from_pos_db.get('latitude')
+                            from_lon = from_pos_db.get('longitude')
+                        
+                        if to_pos_db:
+                            to_lat = to_pos_db.get('latitude')
+                            to_lon = to_pos_db.get('longitude')
+                        
+                        # Fallback to node_manager if not in DB
+                        if not (from_lat and from_lon):
+                            from_data = self.node_manager.get_node_data(from_id)
+                            if from_data:
+                                from_lat = from_data.get('latitude')
+                                from_lon = from_data.get('longitude')
+                        
+                        if not (to_lat and to_lon):
+                            to_data = self.node_manager.get_node_data(to_id)
+                            if to_data:
+                                to_lat = to_data.get('latitude')
+                                to_lon = to_data.get('longitude')
                         
                         if not all([from_lat, from_lon, to_lat, to_lon]):
                             continue

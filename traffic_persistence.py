@@ -1039,6 +1039,51 @@ class TrafficPersistence:
             logger.error(traceback.format_exc())
             return {}
 
+    def get_node_position_from_db(self, node_id: str, hours: int = 720) -> Optional[Dict]:
+        """
+        Récupère la dernière position GPS connue d'un nœud depuis la base de données.
+        
+        Args:
+            node_id: ID du nœud
+            hours: Nombre d'heures à chercher en arrière (défaut: 720h = 30 jours)
+            
+        Returns:
+            Dict avec 'latitude' et 'longitude' ou None si pas trouvé
+        """
+        try:
+            cursor = self.conn.cursor()
+            cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
+            
+            # Chercher la position la plus récente pour ce nœud
+            # On cherche dans les paquets où ce nœud est l'émetteur (from_id)
+            cursor.execute('''
+                SELECT position
+                FROM packets
+                WHERE from_id = ?
+                    AND timestamp >= ?
+                    AND position IS NOT NULL
+                    AND position != ''
+                ORDER BY timestamp DESC
+                LIMIT 1
+            ''', (node_id, cutoff))
+            
+            row = cursor.fetchone()
+            if row and row['position']:
+                try:
+                    position = json.loads(row['position'])
+                    lat = position.get('latitude')
+                    lon = position.get('longitude')
+                    if lat and lon and lat != 0 and lon != 0:
+                        return {'latitude': lat, 'longitude': lon}
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la position du nœud {node_id} : {e}")
+            return None
+
     def load_radio_links_with_positions(self, hours: int = 24) -> List[Dict]:
         """
         Charge les liaisons radio avec les positions GPS pour calculer les distances.
@@ -1083,12 +1128,12 @@ class TrafficPersistence:
                     'timestamp': row['timestamp']
                 }
                 
-                # Parser le JSON de position si présent
+                # Parser le JSON de position si présent (position de l'émetteur)
                 if row['position_json']:
                     try:
                         position = json.loads(row['position_json'])
-                        link['lat'] = position.get('latitude')
-                        link['lon'] = position.get('longitude')
+                        link['sender_lat'] = position.get('latitude')
+                        link['sender_lon'] = position.get('longitude')
                     except (json.JSONDecodeError, KeyError):
                         pass
                 
