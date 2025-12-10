@@ -293,6 +293,69 @@ class MQTTNeighborCollector:
         except Exception as e:
             debug_print(f"👥 Erreur traitement NODEINFO: {e}")
     
+    def _process_position(self, packet, decoded, from_id):
+        """
+        Traiter un paquet POSITION pour extraire et sauvegarder les coordonnées GPS
+        
+        Args:
+            packet: Paquet MeshPacket protobuf
+            decoded: Données décodées (Data protobuf)
+            from_id: ID de l'émetteur
+        """
+        try:
+            # Parser le payload Position
+            position = mesh_pb2.Position()
+            position.ParseFromString(decoded.payload)
+            
+            # Extraire les coordonnées
+            # Les coordonnées Meshtastic sont en 1e-7 degrés (int32)
+            # Convertir en float degrés décimaux
+            lat_i7 = position.latitude_i
+            lon_i7 = position.longitude_i
+            altitude = position.altitude
+            
+            if lat_i7 != 0 and lon_i7 != 0:  # Vérifier que les coordonnées sont valides
+                lat = lat_i7 / 1e7
+                lon = lon_i7 / 1e7
+                
+                # Mettre à jour le node_manager avec cette position
+                if self.node_manager:
+                    self.node_manager.update_node_position(from_id, lat, lon, altitude)
+                    debug_print(f"📍 [MQTT] Position capturée: !{from_id:08x} -> {lat:.5f}, {lon:.5f}")
+                
+                # Sauvegarder la position dans la base de données
+                if self.persistence:
+                    # Créer un packet_entry similaire à celui de traffic_monitor.py
+                    packet_entry = {
+                        'timestamp': time.time(),
+                        'from_id': from_id,
+                        'to_id': 0xFFFFFFFF,  # Les positions sont généralement broadcast
+                        'source': 'mqtt',
+                        'sender_name': self.node_manager.get_node_name(from_id) if self.node_manager else f"!{from_id:08x}",
+                        'packet_type': 'POSITION_APP',
+                        'message': None,
+                        'rssi': 0,  # Pas de RSSI pour les paquets MQTT
+                        'snr': 0.0,  # Pas de SNR pour les paquets MQTT
+                        'hops': 0,
+                        'size': len(decoded.payload),
+                        'is_broadcast': True,
+                        'is_encrypted': False,
+                        'position': {
+                            'latitude': lat,
+                            'longitude': lon,
+                            'altitude': altitude
+                        }
+                    }
+                    
+                    try:
+                        self.persistence.save_packet(packet_entry)
+                        debug_print(f"💾 [MQTT] Position sauvegardée en DB: !{from_id:08x}")
+                    except Exception as e:
+                        error_print(f"👥 Erreur sauvegarde position MQTT: {e}")
+                
+        except Exception as e:
+            debug_print(f"👥 Erreur traitement POSITION: {e}")
+    
     def _resolve_gateway_name(self, gateway_id):
         """
         Résoudre l'ID d'une gateway en nom lisible
@@ -448,6 +511,11 @@ class MQTTNeighborCollector:
             # Traiter les paquets NODEINFO pour mettre à jour les noms de nœuds
             if decoded.portnum == portnums_pb2.PortNum.NODEINFO_APP:
                 self._process_nodeinfo(packet, decoded, from_id)
+                return
+            
+            # Traiter les paquets POSITION pour sauvegarder les coordonnées GPS
+            if decoded.portnum == portnums_pb2.PortNum.POSITION_APP:
+                self._process_position(packet, decoded, from_id)
                 return
             
             # Vérifier que c'est un paquet NEIGHBORINFO_APP
