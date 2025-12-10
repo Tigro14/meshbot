@@ -510,6 +510,27 @@ class TrafficMonitor:
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde voisins: {e}")
 
+            # Capturer les positions GPS (AVANT la sauvegarde du paquet)
+            if packet_entry['packet_type'] == 'POSITION_APP':
+                if packet and 'decoded' in packet:
+                    decoded = packet['decoded']
+                    if 'position' in decoded:
+                        position = decoded['position']
+                        lat = position.get('latitude')
+                        lon = position.get('longitude')
+                        alt = position.get('altitude')
+
+                        if lat is not None and lon is not None:
+                            # Ajouter la position au packet_entry pour la sauvegarde DB
+                            packet_entry['position'] = {
+                                'latitude': lat,
+                                'longitude': lon,
+                                'altitude': alt
+                            }
+                            # Mise à jour du node_manager (en mémoire)
+                            self.node_manager.update_node_position(from_id, lat, lon, alt)
+                            debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+
             self.all_packets.append(packet_entry)
 
             # Log périodique des paquets enregistrés (tous les 25 paquets)
@@ -524,20 +545,6 @@ class TrafficMonitor:
                 self.persistence.save_packet(packet_entry)
             except Exception as e:
                 logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
-
-            # Capturer les positions GPS
-            if packet_entry['packet_type'] == 'POSITION_APP':
-                if packet and 'decoded' in packet:
-                    decoded = packet['decoded']
-                    if 'position' in decoded:
-                        position = decoded['position']
-                        lat = position.get('latitude')
-                        lon = position.get('longitude')
-                        alt = position.get('altitude')
-
-                        if lat is not None and lon is not None:
-                            self.node_manager.update_node_position(from_id, lat, lon, alt)
-                            #debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             # NOTE: Les messages publics sont maintenant gérés par add_public_message()
             # appelé depuis main_bot.py pour éviter les doublons
@@ -2498,20 +2505,26 @@ class TrafficMonitor:
             # Charger les liaisons radio depuis la DB
             links = self.persistence.load_radio_links_with_positions(hours=hours)
             
+            debug_print(f"📊 /propag: {len(links)} liaisons chargées depuis la DB (dernières {hours}h)")
+            
             if not links:
                 return "❌ Aucune donnée de liaison radio disponible"
             
             # Obtenir la position de référence (bot)
             ref_pos = self.node_manager.get_reference_position()
+            debug_print(f"📍 Position de référence du bot: {ref_pos}")
             
             # Calculer les distances pour chaque liaison
             links_with_distance = []
             
             for link in links:
-                from_id = link['from_id']
-                to_id = link['to_id']
+                from_id_db = link['from_id']  # Original database ID (string format)
+                to_id_db = link['to_id']      # Original database ID (string format)
                 
-                # Convertir les IDs en entiers si nécessaire
+                # Convertir les IDs en entiers pour node_manager
+                from_id = from_id_db
+                to_id = to_id_db
+                
                 try:
                     if isinstance(from_id, str):
                         from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
@@ -2520,20 +2533,50 @@ class TrafficMonitor:
                 except (ValueError, AttributeError):
                     continue
                 
-                # Obtenir les positions des nœuds
-                from_data = self.node_manager.get_node_data(from_id)
-                to_data = self.node_manager.get_node_data(to_id)
+                # Obtenir les positions des nœuds - d'abord depuis la DB, puis depuis node_manager
+                from_lat = None
+                from_lon = None
+                to_lat = None
+                to_lon = None
                 
-                if not from_data or not to_data:
-                    continue
+                # Essayer d'obtenir la position depuis la base de données (30 jours de rétention)
+                # Utiliser les IDs au format original de la DB
+                debug_print(f"🔍 Recherche GPS pour liaison: {from_id_db} → {to_id_db}")
+                from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                 
-                from_lat = from_data.get('latitude')
-                from_lon = from_data.get('longitude')
-                to_lat = to_data.get('latitude')
-                to_lon = to_data.get('longitude')
+                if from_pos_db:
+                    from_lat = from_pos_db.get('latitude')
+                    from_lon = from_pos_db.get('longitude')
+                    debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon})")
+                
+                if to_pos_db:
+                    to_lat = to_pos_db.get('latitude')
+                    to_lon = to_pos_db.get('longitude')
+                    debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon})")
+                
+                # Si pas trouvé dans la DB, essayer depuis node_manager (mémoire)
+                if not (from_lat and from_lon):
+                    from_data = self.node_manager.get_node_data(from_id)
+                    if from_data:
+                        from_lat = from_data.get('latitude')
+                        from_lon = from_data.get('longitude')
+                        debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon})")
+                    else:
+                        debug_print(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
+                
+                if not (to_lat and to_lon):
+                    to_data = self.node_manager.get_node_data(to_id)
+                    if to_data:
+                        to_lat = to_data.get('latitude')
+                        to_lon = to_data.get('longitude')
+                        debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon})")
+                    else:
+                        debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
                 
                 # Vérifier que les deux nœuds ont des positions GPS
                 if not all([from_lat, from_lon, to_lat, to_lon]):
+                    debug_print(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
                     continue
                 
                 # Calculer la distance de la liaison
@@ -2554,13 +2597,20 @@ class TrafficMonitor:
                         ref_lat, ref_lon, to_lat, to_lon
                     )
                     
+                    debug_print(f"  📏 Distances au bot: FROM={from_distance:.1f}km, TO={to_distance:.1f}km (max={max_distance_km}km)")
+                    
                     # Filtrer si les deux nœuds sont hors du rayon
                     if from_distance > max_distance_km and to_distance > max_distance_km:
+                        debug_print(f"  ⚠️ SKIP: Les deux nœuds hors du rayon de {max_distance_km}km")
                         continue
                 
-                # Obtenir les noms des nœuds
-                from_name = self.node_manager.get_node_name(from_id)
-                to_name = self.node_manager.get_node_name(to_id)
+                # Obtenir les noms des nœuds - convertir en format hex avec ! pour la recherche
+                from_id_hex = f"!{from_id:08x}" if isinstance(from_id, int) else from_id
+                to_id_hex = f"!{to_id:08x}" if isinstance(to_id, int) else to_id
+                from_name = self.node_manager.get_node_name(from_id_hex)
+                to_name = self.node_manager.get_node_name(to_id_hex)
+                
+                debug_print(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
                 
                 links_with_distance.append({
                     'from_id': from_id,
@@ -2572,6 +2622,8 @@ class TrafficMonitor:
                     'rssi': link.get('rssi'),
                     'timestamp': link.get('timestamp')
                 })
+            
+            debug_print(f"📊 Total liaisons valides avec GPS: {len(links_with_distance)}")
             
             if not links_with_distance:
                 return "❌ Aucune liaison radio avec GPS dans le rayon configuré"
@@ -2600,8 +2652,12 @@ class TrafficMonitor:
                     record_distance = 0
                     
                     for link in record_links:
-                        from_id = link['from_id']
-                        to_id = link['to_id']
+                        from_id_db = link['from_id']  # Original DB format
+                        to_id_db = link['to_id']      # Original DB format
+                        
+                        # Convertir pour node_manager
+                        from_id = from_id_db
+                        to_id = to_id_db
                         
                         try:
                             if isinstance(from_id, str):
@@ -2611,16 +2667,36 @@ class TrafficMonitor:
                         except (ValueError, AttributeError):
                             continue
                         
-                        from_data = self.node_manager.get_node_data(from_id)
-                        to_data = self.node_manager.get_node_data(to_id)
+                        # Obtenir les positions depuis la DB ou node_manager
+                        from_lat = None
+                        from_lon = None
+                        to_lat = None
+                        to_lon = None
                         
-                        if not from_data or not to_data:
-                            continue
+                        # Utiliser les IDs au format DB original
+                        from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                         
-                        from_lat = from_data.get('latitude')
-                        from_lon = from_data.get('longitude')
-                        to_lat = to_data.get('latitude')
-                        to_lon = to_data.get('longitude')
+                        if from_pos_db:
+                            from_lat = from_pos_db.get('latitude')
+                            from_lon = from_pos_db.get('longitude')
+                        
+                        if to_pos_db:
+                            to_lat = to_pos_db.get('latitude')
+                            to_lon = to_pos_db.get('longitude')
+                        
+                        # Fallback to node_manager if not in DB
+                        if not (from_lat and from_lon):
+                            from_data = self.node_manager.get_node_data(from_id)
+                            if from_data:
+                                from_lat = from_data.get('latitude')
+                                from_lon = from_data.get('longitude')
+                        
+                        if not (to_lat and to_lon):
+                            to_data = self.node_manager.get_node_data(to_id)
+                            if to_data:
+                                to_lat = to_data.get('latitude')
+                                to_lon = to_data.get('longitude')
                         
                         if not all([from_lat, from_lon, to_lat, to_lon]):
                             continue
@@ -2697,10 +2773,13 @@ class TrafficMonitor:
                     record_link = None
                     
                     for link in record_links:
-                        from_id = link['from_id']
-                        to_id = link['to_id']
+                        from_id_db = link['from_id']  # Original DB format
+                        to_id_db = link['to_id']      # Original DB format
                         
-                        # Convertir les IDs
+                        # Convertir les IDs pour node_manager
+                        from_id = from_id_db
+                        to_id = to_id_db
+                        
                         try:
                             if isinstance(from_id, str):
                                 from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
@@ -2709,17 +2788,36 @@ class TrafficMonitor:
                         except (ValueError, AttributeError):
                             continue
                         
-                        # Obtenir les positions
-                        from_data = self.node_manager.get_node_data(from_id)
-                        to_data = self.node_manager.get_node_data(to_id)
+                        # Obtenir les positions depuis la DB ou node_manager
+                        from_lat = None
+                        from_lon = None
+                        to_lat = None
+                        to_lon = None
                         
-                        if not from_data or not to_data:
-                            continue
+                        # Utiliser les IDs au format DB original
+                        from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
+                        to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                         
-                        from_lat = from_data.get('latitude')
-                        from_lon = from_data.get('longitude')
-                        to_lat = to_data.get('latitude')
-                        to_lon = to_data.get('longitude')
+                        if from_pos_db:
+                            from_lat = from_pos_db.get('latitude')
+                            from_lon = from_pos_db.get('longitude')
+                        
+                        if to_pos_db:
+                            to_lat = to_pos_db.get('latitude')
+                            to_lon = to_pos_db.get('longitude')
+                        
+                        # Fallback to node_manager if not in DB
+                        if not (from_lat and from_lon):
+                            from_data = self.node_manager.get_node_data(from_id)
+                            if from_data:
+                                from_lat = from_data.get('latitude')
+                                from_lon = from_data.get('longitude')
+                        
+                        if not (to_lat and to_lon):
+                            to_data = self.node_manager.get_node_data(to_id)
+                            if to_data:
+                                to_lat = to_data.get('latitude')
+                                to_lon = to_data.get('longitude')
                         
                         if not all([from_lat, from_lon, to_lat, to_lon]):
                             continue

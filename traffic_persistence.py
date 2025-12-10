@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import os
+from utils import debug_print, info_print, error_print
 
 logger = logging.getLogger(__name__)
 
@@ -1058,6 +1059,74 @@ class TrafficPersistence:
             logger.error(traceback.format_exc())
             return {}
 
+    def get_node_position_from_db(self, node_id: str, hours: int = 720) -> Optional[Dict]:
+        """
+        Récupère la dernière position GPS connue d'un nœud depuis la base de données.
+        
+        Args:
+            node_id: ID du nœud (peut être int, string décimal, ou hex avec !)
+            hours: Nombre d'heures à chercher en arrière (défaut: 720h = 30 jours)
+            
+        Returns:
+            Dict avec 'latitude' et 'longitude' ou None si pas trouvé
+        """
+        try:
+            cursor = self.conn.cursor()
+            cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
+            
+            # Convertir node_id en différents formats pour maximiser les chances de match
+            search_ids = []
+            
+            # Si c'est un entier ou une chaîne numérique
+            try:
+                if isinstance(node_id, str) and node_id.startswith('!'):
+                    # Format !hex
+                    node_id_int = int(node_id[1:], 16)
+                    search_ids = [node_id, str(node_id_int), node_id_int]
+                elif isinstance(node_id, (int, str)):
+                    node_id_int = int(node_id) if isinstance(node_id, str) else node_id
+                    node_id_hex = f"!{node_id_int:08x}"
+                    search_ids = [str(node_id_int), node_id_int, node_id_hex]
+            except (ValueError, AttributeError):
+                search_ids = [node_id]
+            
+            debug_print(f"get_node_position_from_db: node_id={node_id}, search_ids={search_ids}, hours={hours}")
+            
+            # Essayer de trouver une position avec n'importe quel format d'ID
+            for search_id in search_ids:
+                cursor.execute('''
+                    SELECT position
+                    FROM packets
+                    WHERE from_id = ?
+                        AND timestamp >= ?
+                        AND position IS NOT NULL
+                        AND position != ''
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ''', (search_id, cutoff))
+                
+                row = cursor.fetchone()
+                if row and row['position']:
+                    try:
+                        position = json.loads(row['position'])
+                        lat = position.get('latitude')
+                        lon = position.get('longitude')
+                        if lat and lon and lat != 0 and lon != 0:
+                            debug_print(f"✅ Position trouvée pour {node_id} (via {search_id}): lat={lat}, lon={lon}")
+                            return {'latitude': lat, 'longitude': lon}
+                        else:
+                            debug_print(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        debug_print(f"❌ Erreur parsing position pour {node_id}: {e}")
+                        continue
+            
+            debug_print(f"❌ Aucune position trouvée pour {node_id} (cherché: {search_ids})")
+            return None
+            
+        except Exception as e:
+            error_print(f"Erreur lors de la récupération de la position du nœud {node_id} : {e}")
+            return None
+
     def load_radio_links_with_positions(self, hours: int = 24) -> List[Dict]:
         """
         Charge les liaisons radio avec les positions GPS pour calculer les distances.
@@ -1088,6 +1157,7 @@ class TrafficPersistence:
                     AND to_id IS NOT NULL
                     AND to_id != 4294967295
                     AND to_id != 0
+                    AND from_id != to_id
                     AND (snr IS NOT NULL OR rssi IS NOT NULL)
                 ORDER BY timestamp DESC
             ''', (cutoff,))
@@ -1102,12 +1172,12 @@ class TrafficPersistence:
                     'timestamp': row['timestamp']
                 }
                 
-                # Parser le JSON de position si présent
+                # Parser le JSON de position si présent (position de l'émetteur)
                 if row['position_json']:
                     try:
                         position = json.loads(row['position_json'])
-                        link['lat'] = position.get('latitude')
-                        link['lon'] = position.get('longitude')
+                        link['sender_lat'] = position.get('latitude')
+                        link['sender_lon'] = position.get('longitude')
                     except (json.JSONDecodeError, KeyError):
                         pass
                 
