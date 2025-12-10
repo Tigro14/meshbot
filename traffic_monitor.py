@@ -2477,5 +2477,181 @@ class TrafficMonitor:
             import traceback
             logger.error(traceback.format_exc())
             return f"⚠️ Erreur: {str(e)[:50]}"
+    
+    def get_propagation_report(self, hours=24, top_n=5, max_distance_km=100, compact=True):
+        """
+        Générer un rapport des plus longues liaisons radio.
+        
+        Args:
+            hours: Nombre d'heures à analyser (défaut: 24)
+            top_n: Nombre de liaisons à afficher (défaut: 5)
+            max_distance_km: Distance maximale depuis le bot (défaut: 100km)
+            compact: Format compact pour LoRa (180 chars) ou détaillé pour Telegram
+            
+        Returns:
+            Rapport formaté des plus longues liaisons radio
+        """
+        try:
+            # Charger les liaisons radio depuis la DB
+            links = self.persistence.load_radio_links_with_positions(hours=hours)
+            
+            if not links:
+                return "❌ Aucune donnée de liaison radio disponible"
+            
+            # Obtenir la position de référence (bot)
+            ref_pos = self.node_manager.get_reference_position()
+            
+            # Calculer les distances pour chaque liaison
+            links_with_distance = []
+            
+            for link in links:
+                from_id = link['from_id']
+                to_id = link['to_id']
+                
+                # Convertir les IDs en entiers si nécessaire
+                try:
+                    if isinstance(from_id, str):
+                        from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                    if isinstance(to_id, str):
+                        to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                except (ValueError, AttributeError):
+                    continue
+                
+                # Obtenir les positions des nœuds
+                from_data = self.node_manager.get_node_data(from_id)
+                to_data = self.node_manager.get_node_data(to_id)
+                
+                if not from_data or not to_data:
+                    continue
+                
+                from_lat = from_data.get('latitude')
+                from_lon = from_data.get('longitude')
+                to_lat = to_data.get('latitude')
+                to_lon = to_data.get('longitude')
+                
+                # Vérifier que les deux nœuds ont des positions GPS
+                if not all([from_lat, from_lon, to_lat, to_lon]):
+                    continue
+                
+                # Calculer la distance de la liaison
+                distance_km = self.node_manager.haversine_distance(
+                    from_lat, from_lon, to_lat, to_lon
+                )
+                
+                # Filtrer par distance depuis le bot si position de référence disponible
+                if ref_pos and ref_pos[0] != 0 and ref_pos[1] != 0:
+                    ref_lat, ref_lon = ref_pos
+                    
+                    # Distance du nœud FROM au bot
+                    from_distance = self.node_manager.haversine_distance(
+                        ref_lat, ref_lon, from_lat, from_lon
+                    )
+                    # Distance du nœud TO au bot
+                    to_distance = self.node_manager.haversine_distance(
+                        ref_lat, ref_lon, to_lat, to_lon
+                    )
+                    
+                    # Filtrer si les deux nœuds sont hors du rayon
+                    if from_distance > max_distance_km and to_distance > max_distance_km:
+                        continue
+                
+                # Obtenir les noms des nœuds
+                from_name = self.node_manager.get_node_name(from_id)
+                to_name = self.node_manager.get_node_name(to_id)
+                
+                links_with_distance.append({
+                    'from_id': from_id,
+                    'to_id': to_id,
+                    'from_name': from_name,
+                    'to_name': to_name,
+                    'distance_km': distance_km,
+                    'snr': link.get('snr'),
+                    'rssi': link.get('rssi'),
+                    'timestamp': link.get('timestamp')
+                })
+            
+            if not links_with_distance:
+                return "❌ Aucune liaison radio avec GPS dans le rayon configuré"
+            
+            # Trier par distance décroissante
+            links_with_distance.sort(key=lambda x: x['distance_km'], reverse=True)
+            
+            # Prendre les top N
+            top_links = links_with_distance[:top_n]
+            
+            # Formater le rapport
+            if compact:
+                # Format compact pour LoRa (180 chars max)
+                lines = [f"📡 Top {len(top_links)} liaisons ({hours}h):"]
+                for i, link in enumerate(top_links, 1):
+                    dist = self.node_manager.format_distance(link['distance_km'])
+                    snr_str = f"SNR:{link['snr']:.0f}" if link['snr'] else ""
+                    # Format ultra-compact: "1.A→B 45km SNR:8"
+                    from_short = link['from_name'].split('-')[0][:6]  # Tronquer le nom
+                    to_short = link['to_name'].split('-')[0][:6]
+                    lines.append(f"{i}.{from_short}→{to_short} {dist} {snr_str}")
+                
+                # Joindre en une ligne pour rester sous 180 chars
+                result = " | ".join(lines)
+                if len(result) > 180:
+                    # Si trop long, réduire encore
+                    lines = [f"📡 Top {len(top_links)} ({hours}h):"]
+                    for i, link in enumerate(top_links, 1):
+                        dist = self.node_manager.format_distance(link['distance_km'])
+                        lines.append(f"{i}.{dist}")
+                    result = " | ".join(lines)
+                
+                return result
+            else:
+                # Format détaillé pour Telegram
+                lines = [
+                    f"📡 **Top {len(top_links)} liaisons radio** (dernières {hours}h)",
+                    f"🎯 Rayon maximum: {max_distance_km}km",
+                    ""
+                ]
+                
+                for i, link in enumerate(top_links, 1):
+                    dist_str = self.node_manager.format_distance(link['distance_km'])
+                    
+                    # Emoji basé sur la distance
+                    if link['distance_km'] > 50:
+                        emoji = "🏆"
+                    elif link['distance_km'] > 30:
+                        emoji = "🥇"
+                    elif link['distance_km'] > 15:
+                        emoji = "🥈"
+                    else:
+                        emoji = "🥉"
+                    
+                    lines.append(f"{emoji} **#{i} - {dist_str}**")
+                    lines.append(f"   📤 {link['from_name']} (ID: !{link['from_id']:08x})")
+                    lines.append(f"   📥 {link['to_name']} (ID: !{link['to_id']:08x})")
+                    
+                    # Signal quality
+                    if link['snr']:
+                        lines.append(f"   📊 SNR: {link['snr']:.1f} dB")
+                    if link['rssi']:
+                        lines.append(f"   📶 RSSI: {link['rssi']} dBm")
+                    
+                    # Timestamp
+                    if link['timestamp']:
+                        from datetime import datetime
+                        dt = datetime.fromtimestamp(link['timestamp'])
+                        lines.append(f"   🕐 {dt.strftime('%d/%m %H:%M')}")
+                    
+                    lines.append("")
+                
+                # Statistiques
+                avg_distance = sum(l['distance_km'] for l in top_links) / len(top_links)
+                lines.append(f"📊 Distance moyenne: {self.node_manager.format_distance(avg_distance)}")
+                lines.append(f"📈 Total liaisons analysées: {len(links_with_distance)}")
+                
+                return "\n".join(lines)
+            
+        except Exception as e:
+            logger.error(f"Erreur dans get_propagation_report: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"⚠️ Erreur: {str(e)[:50]}"
 
 
