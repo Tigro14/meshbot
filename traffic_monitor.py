@@ -871,6 +871,7 @@ class TrafficMonitor:
     def get_top_talkers_report(self, hours=24, top_n=10, include_packet_types=True):
         """
         Générer un rapport des top talkers avec breakdown par type de paquet
+        Pour Telegram: inclut aussi les données de canal (channel_util et air_util)
         """
         try:
             # Charger les paquets directement depuis SQLite pour avoir les données les plus récentes
@@ -888,7 +889,9 @@ class TrafficMonitor:
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
-                'name': ''
+                'name': '',
+                'channel_utils': [],  # Pour calculer moyenne canal%
+                'air_utils': []  # Pour calculer moyenne Air TX
             })
                    # ✅ AJOUT : Compter par source
             local_count = 0
@@ -950,6 +953,13 @@ class TrafficMonitor:
                         stats['messages'] += 1
                     elif packet_type == 'TELEMETRY_APP':
                         stats['telemetry'] += 1
+                        # Collecter les données de canal pour Telegram
+                        if include_packet_types and 'telemetry' in packet and packet['telemetry']:
+                            telemetry = packet['telemetry']
+                            if 'channel_util' in telemetry and telemetry['channel_util'] is not None:
+                                stats['channel_utils'].append(telemetry['channel_util'])
+                            if 'air_util' in telemetry and telemetry['air_util'] is not None:
+                                stats['air_utils'].append(telemetry['air_util'])
                     elif packet_type == 'POSITION_APP':
                         stats['position'] += 1
                     elif packet_type == 'NODEINFO_APP':
@@ -1017,6 +1027,18 @@ class TrafficMonitor:
 
                     if breakdown:
                         lines.append(f"   Types: {' '.join(breakdown)}")
+                    
+                    # Ajouter les données de canal (Channel% et Air TX) pour Telegram
+                    if stats['channel_utils'] or stats['air_utils']:
+                        channel_line_parts = []
+                        if stats['channel_utils']:
+                            avg_channel = sum(stats['channel_utils']) / len(stats['channel_utils'])
+                            channel_line_parts.append(f"Canal: {avg_channel:.1f}%")
+                        if stats['air_utils']:
+                            avg_air = sum(stats['air_utils']) / len(stats['air_utils'])
+                            channel_line_parts.append(f"Air TX: {avg_air:.1f}%")
+                        if channel_line_parts:
+                            lines.append(f"   📡 {' | '.join(channel_line_parts)}")
                 
                 # Taille des données
                 if stats['bytes'] > 1024:
