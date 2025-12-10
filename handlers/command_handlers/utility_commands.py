@@ -579,6 +579,7 @@ class UtilityCommands:
             "/nodes",
             "/neighbors",
             "/propag",
+            "/info",
             "/mqtt",
             "/stats [cmd]",
             "/db [cmd]",
@@ -631,6 +632,11 @@ class UtilityCommands:
           /propag 48 → Top 5 liaisons (48h)
           /propag 24 10 → Top 10 liaisons (24h)
           Rayon: 100km du bot
+        • /info <node> - Informations complètes sur un nœud
+          /info tigro → Infos détaillées du nœud "tigro"
+          /info F547F → Infos du nœud par ID
+          Affiche: nom, GPS, distance, signal, stats mesh
+          Support broadcast pour partage public
         • /mqtt [heures] - Nœuds MQTT entendus directement
           Liste nœuds ayant envoyé NEIGHBORINFO via MQTT
           /mqtt → Tous les nœuds MQTT (48h)

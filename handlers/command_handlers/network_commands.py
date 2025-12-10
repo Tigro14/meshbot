@@ -701,4 +701,360 @@ class NetworkCommands:
             error_print(traceback.format_exc())
             error_msg = f"⚠️ Erreur: {str(e)[:30]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
+    
+    def handle_info(self, message, sender_id, sender_info, is_broadcast=False):
+        """
+        Gérer la commande /info <node> - Afficher les informations complètes d'un nœud
+        
+        Usage:
+            /info <node_name> ou /info <node_id>
+        
+        Exemples:
+            /info tigro
+            /info F547F
+            /info !12345678
+        
+        Informations affichées:
+            - Nom du nœud (longName, shortName, hwModel)
+            - Position GPS (latitude, longitude, altitude)
+            - Distance depuis le bot (GPS ou estimée)
+            - Signal (RSSI, SNR, qualité)
+            - Dernière réception (last heard)
+            - Statistiques mesh (paquets, types, télémétrie)
+        
+        Format adaptatif:
+            - Compact pour mesh (≤180 chars)
+            - Détaillé pour Telegram/CLI
+        """
+        info_print(f"Info: {sender_info}")
+        
+        # Parser le nom/ID du nœud
+        parts = message.split(maxsplit=1)
+        if len(parts) < 2:
+            error_msg = "Usage: /info <node_name>"
+            self.sender.send_single(error_msg, sender_id, sender_info)
+            return
+        
+        target_node_name = parts[1].strip()
+        
+        # Déterminer le format (compact pour mesh, détaillé pour autres)
+        sender_str = str(sender_info).lower()
+        compact = 'telegram' not in sender_str and 'cli' not in sender_str
+        
+        # Capturer le sender actuel pour le thread (important pour CLI!)
+        current_sender = self.sender
+        
+        def get_node_info():
+            try:
+                # Chercher le nœud par nom ou ID
+                target_node = self._find_node(target_node_name)
+                
+                if not target_node:
+                    error_msg = f"❌ Nœud '{target_node_name}' introuvable"
+                    current_sender.send_single(error_msg, sender_id, sender_info)
+                    return
+                
+                # Récupérer les statistiques mesh du nœud
+                node_stats = None
+                if self.traffic_monitor:
+                    node_id = target_node.get('id')
+                    if node_id and hasattr(self.traffic_monitor, 'node_packet_stats'):
+                        node_stats = self.traffic_monitor.node_packet_stats.get(node_id)
+                
+                # Formater la réponse selon le format
+                if compact:
+                    response = self._format_info_compact(target_node, node_stats)
+                else:
+                    response = self._format_info_detailed(target_node, node_stats)
+                
+                # Envoyer la réponse
+                if is_broadcast:
+                    # Réponse publique en broadcast
+                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, f"/info {target_node_name}")
+                else:
+                    # Réponse privée
+                    command_log = f"/info {target_node_name}"
+                    current_sender.log_conversation(sender_id, sender_info, command_log, response)
+                    
+                    if compact:
+                        current_sender.send_single(response, sender_id, sender_info)
+                    else:
+                        current_sender.send_chunks(response, sender_id, sender_info)
+                
+                info_print(f"✅ Info '{target_node_name}' envoyée à {sender_info}")
+                
+            except Exception as e:
+                error_print(f"Erreur commande /info: {e}")
+                error_print(traceback.format_exc())
+                error_msg = f"⚠️ Erreur: {str(e)[:30]}"
+                current_sender.send_single(error_msg, sender_id, sender_info)
+        
+        # Lancer dans un thread pour ne pas bloquer
+        threading.Thread(target=get_node_info, daemon=True, name="NodeInfo").start()
+    
+    def _find_node(self, search_term):
+        """
+        Chercher un nœud par nom ou ID
+        
+        Args:
+            search_term: Nom du nœud ou ID (partiel ou complet)
+        
+        Returns:
+            dict: Données du nœud trouvé, ou None si non trouvé
+        """
+        # Nettoyer l'input utilisateur
+        target_search = search_term.strip().lower()
+        target_search = target_search.lstrip('!')
+        target_search = target_search.rstrip(')')
+        
+        matching_nodes = []
+        exact_matches = []
+        
+        # PRIORITÉ 1: Chercher dans node_manager.node_names (SQLite DB - pas de TCP)
+        if self.node_manager and hasattr(self.node_manager, 'node_names'):
+            for node_id, node_data in self.node_manager.node_names.items():
+                node_name = node_data.get('name', '').lower()
+                node_id_hex = f"{node_id:x}".lower()
+                node_id_hex_padded = f"{node_id:08x}".lower()
+                
+                # Vérifier correspondance exacte
+                if target_search == node_name or target_search == node_id_hex or target_search == node_id_hex_padded:
+                    # Enrichir avec l'ID numérique
+                    result = node_data.copy()
+                    result['id'] = node_id
+                    exact_matches.append(result)
+                # Correspondance partielle
+                elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
+                    result = node_data.copy()
+                    result['id'] = node_id
+                    matching_nodes.append(result)
+        
+        # PRIORITÉ 2: Si aucun résultat local, chercher via TCP (remote_nodes)
+        if len(exact_matches) == 0 and len(matching_nodes) == 0:
+            debug_print(f"🔍 Aucun nœud trouvé localement, recherche via TCP...")
+            remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
+            if remote_nodes:
+                for node in remote_nodes:
+                    node_name = node.get('name', '').lower()
+                    node_id_hex = f"{node['id']:x}".lower()
+                    node_id_hex_padded = f"{node['id']:08x}".lower()
+                    
+                    if target_search == node_name or target_search == node_id_hex or target_search == node_id_hex_padded:
+                        exact_matches.append(node)
+                    elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
+                        matching_nodes.append(node)
+        
+        # Retourner le résultat
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        elif len(exact_matches) == 0 and len(matching_nodes) == 1:
+            return matching_nodes[0]
+        elif len(exact_matches) > 1 or len(matching_nodes) > 1:
+            # Ambiguïté: retourner le premier (ou on pourrait lister les options)
+            all_matches = exact_matches if exact_matches else matching_nodes
+            debug_print(f"⚠️ Plusieurs nœuds correspondent à '{search_term}', utilisation du premier")
+            return all_matches[0]
+        
+        return None
+    
+    def _format_info_compact(self, node_data, node_stats=None):
+        """
+        Formater les infos du nœud de manière compacte pour mesh (≤180 chars)
+        
+        Args:
+            node_data: Données du nœud
+            node_stats: Statistiques mesh optionnelles
+        
+        Returns:
+            str: Rapport compact
+        """
+        parts = []
+        
+        # Nom du nœud
+        node_name = node_data.get('name', 'Unknown')
+        node_id = node_data.get('id', 0)
+        parts.append(f"ℹ️ {truncate_text(node_name, 15)} (!{node_id:08x})")
+        
+        # Position GPS si disponible
+        lat = node_data.get('lat') or node_data.get('latitude')
+        lon = node_data.get('lon') or node_data.get('longitude')
+        alt = node_data.get('alt') or node_data.get('altitude')
+        
+        if lat is not None and lon is not None:
+            parts.append(f"📍 {lat:.4f},{lon:.4f}")
+            if alt is not None:
+                parts.append(f"⛰️ {int(alt)}m")
+        else:
+            parts.append("📍 GPS n/a")
+        
+        # Distance GPS depuis le bot
+        if self.node_manager and node_id:
+            try:
+                gps_distance = self.node_manager.get_node_distance(node_id)
+                if gps_distance:
+                    distance_str = self.node_manager.format_distance(gps_distance)
+                    parts.append(f"↔️ {distance_str}")
+            except Exception:
+                pass
+        
+        # Signal (RSSI/SNR) si disponible
+        rssi = node_data.get('rssi', 0)
+        snr = node_data.get('snr', 0.0)
+        
+        if rssi != 0 or snr != 0:
+            icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+            rssi_str = f"{rssi}dB" if rssi != 0 else ""
+            snr_str = f"SNR{snr:.1f}" if snr != 0 else ""
+            signal_parts = [s for s in [rssi_str, snr_str] if s]
+            if signal_parts:
+                parts.append(f"{icon} {' '.join(signal_parts)}")
+        
+        # Last heard
+        last_heard = node_data.get('last_heard', 0)
+        if last_heard > 0:
+            time_str = format_elapsed_time(last_heard)
+            parts.append(f"⏱️ {time_str}")
+        
+        # Stats mesh (compactes)
+        if node_stats:
+            total_packets = node_stats.get('total_packets', 0)
+            if total_packets > 0:
+                parts.append(f"📊 {total_packets}pkt")
+        
+        # Assembler en une seule ligne compacte
+        return " | ".join(parts)
+    
+    def _format_info_detailed(self, node_data, node_stats=None):
+        """
+        Formater les infos du nœud de manière détaillée pour Telegram/CLI
+        
+        Args:
+            node_data: Données du nœud
+            node_stats: Statistiques mesh optionnelles
+        
+        Returns:
+            str: Rapport détaillé
+        """
+        lines = []
+        
+        # === HEADER ===
+        node_name = node_data.get('name', 'Unknown')
+        node_id = node_data.get('id', 0)
+        lines.append(f"ℹ️ INFORMATIONS NŒUD")
+        lines.append(f"━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"📛 Nom: {node_name}")
+        lines.append(f"🆔 ID: !{node_id:08x} (0x{node_id:08x})")
+        
+        # ShortName et HwModel si disponibles
+        short_name = node_data.get('shortName')
+        hw_model = node_data.get('hwModel')
+        if short_name:
+            lines.append(f"🏷️ Short: {short_name}")
+        if hw_model:
+            lines.append(f"🖥️ Model: {hw_model}")
+        
+        lines.append("")
+        
+        # === POSITION GPS ===
+        lat = node_data.get('lat') or node_data.get('latitude')
+        lon = node_data.get('lon') or node_data.get('longitude')
+        alt = node_data.get('alt') or node_data.get('altitude')
+        
+        if lat is not None and lon is not None:
+            lines.append("📍 POSITION GPS")
+            lines.append(f"   Latitude: {lat:.6f}")
+            lines.append(f"   Longitude: {lon:.6f}")
+            if alt is not None:
+                lines.append(f"   Altitude: {int(alt)}m")
+            
+            # Distance GPS depuis le bot
+            if self.node_manager and node_id:
+                try:
+                    gps_distance = self.node_manager.get_node_distance(node_id)
+                    if gps_distance:
+                        distance_str = self.node_manager.format_distance(gps_distance)
+                        lines.append(f"   Distance: {distance_str}")
+                except Exception:
+                    pass
+            
+            lines.append("")
+        else:
+            lines.append("📍 POSITION GPS: Non disponible")
+            lines.append("")
+        
+        # === SIGNAL ===
+        rssi = node_data.get('rssi', 0)
+        snr = node_data.get('snr', 0.0)
+        
+        if rssi != 0 or snr != 0:
+            lines.append("📶 SIGNAL")
+            
+            # Estimation RSSI depuis SNR si nécessaire
+            display_rssi = rssi
+            rssi_estimated = False
+            if rssi == 0 and snr != 0:
+                display_rssi = estimate_rssi_from_snr(snr)
+                rssi_estimated = True
+            
+            if display_rssi != 0:
+                rssi_str = f"~{display_rssi}dBm" if rssi_estimated else f"{display_rssi}dBm"
+                quality = get_signal_quality_description(display_rssi, snr)
+                icon = get_signal_quality_icon(display_rssi)
+                lines.append(f"   RSSI: {rssi_str} {icon}")
+                lines.append(f"   Qualité: {quality}")
+            
+            if snr != 0:
+                lines.append(f"   SNR: {snr:.1f} dB")
+            
+            # Distance estimée depuis RSSI
+            if display_rssi != 0 and display_rssi > -150:
+                distance_est = estimate_distance_from_rssi(display_rssi)
+                lines.append(f"   Distance (est): {distance_est}")
+            
+            lines.append("")
+        
+        # === DERNIÈRE RÉCEPTION ===
+        last_heard = node_data.get('last_heard', 0)
+        if last_heard > 0:
+            time_str = format_elapsed_time(last_heard)
+            lines.append(f"⏱️ DERNIÈRE RÉCEPTION: {time_str}")
+            lines.append("")
+        
+        # === STATISTIQUES MESH ===
+        if node_stats:
+            lines.append("📊 STATISTIQUES MESH")
+            
+            total_packets = node_stats.get('total_packets', 0)
+            lines.append(f"   Paquets totaux: {total_packets}")
+            
+            # Stats par type
+            by_type = node_stats.get('by_type', {})
+            if by_type:
+                lines.append("   Types de paquets:")
+                # Top 5 types
+                sorted_types = sorted(by_type.items(), key=lambda x: x[1], reverse=True)
+                for pkt_type, count in sorted_types[:5]:
+                    type_name = self.traffic_monitor.packet_type_names.get(pkt_type, pkt_type) if self.traffic_monitor else pkt_type
+                    lines.append(f"     • {type_name}: {count}")
+            
+            # Stats télémétrie
+            telemetry = node_stats.get('telemetry_stats', {})
+            if telemetry and telemetry.get('count', 0) > 0:
+                lines.append("   Télémétrie:")
+                if telemetry.get('last_battery') is not None:
+                    lines.append(f"     • Batterie: {telemetry['last_battery']}%")
+                if telemetry.get('last_voltage') is not None:
+                    lines.append(f"     • Voltage: {telemetry['last_voltage']:.2f}V")
+            
+            # First/last seen
+            first_seen = node_stats.get('first_seen')
+            last_seen = node_stats.get('last_seen')
+            if first_seen:
+                first_str = format_elapsed_time(first_seen)
+                lines.append(f"   Premier vu: {first_str}")
+            if last_seen:
+                last_str = format_elapsed_time(last_seen)
+                lines.append(f"   Dernier vu: {last_str}")
+        
+        return "\n".join(lines)
 
