@@ -1045,7 +1045,7 @@ class TrafficPersistence:
         Récupère la dernière position GPS connue d'un nœud depuis la base de données.
         
         Args:
-            node_id: ID du nœud
+            node_id: ID du nœud (peut être int, string décimal, ou hex avec !)
             hours: Nombre d'heures à chercher en arrière (défaut: 720h = 30 jours)
             
         Returns:
@@ -1055,39 +1055,53 @@ class TrafficPersistence:
             cursor = self.conn.cursor()
             cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
             
-            # DEBUG: Log the query parameters
-            debug_print(f"get_node_position_from_db: node_id={node_id}, hours={hours}, cutoff={cutoff}")
+            # Convertir node_id en différents formats pour maximiser les chances de match
+            search_ids = []
             
-            # Chercher la position la plus récente pour ce nœud
-            # On cherche dans les paquets où ce nœud est l'émetteur (from_id)
-            cursor.execute('''
-                SELECT position
-                FROM packets
-                WHERE from_id = ?
-                    AND timestamp >= ?
-                    AND position IS NOT NULL
-                    AND position != ''
-                ORDER BY timestamp DESC
-                LIMIT 1
-            ''', (node_id, cutoff))
+            # Si c'est un entier ou une chaîne numérique
+            try:
+                if isinstance(node_id, str) and node_id.startswith('!'):
+                    # Format !hex
+                    node_id_int = int(node_id[1:], 16)
+                    search_ids = [node_id, str(node_id_int), node_id_int]
+                elif isinstance(node_id, (int, str)):
+                    node_id_int = int(node_id) if isinstance(node_id, str) else node_id
+                    node_id_hex = f"!{node_id_int:08x}"
+                    search_ids = [str(node_id_int), node_id_int, node_id_hex]
+            except (ValueError, AttributeError):
+                search_ids = [node_id]
             
-            row = cursor.fetchone()
-            if row and row['position']:
-                try:
-                    position = json.loads(row['position'])
-                    lat = position.get('latitude')
-                    lon = position.get('longitude')
-                    if lat and lon and lat != 0 and lon != 0:
-                        debug_print(f"✅ Position trouvée pour {node_id}: lat={lat}, lon={lon}")
-                        return {'latitude': lat, 'longitude': lon}
-                    else:
-                        debug_print(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
-                    debug_print(f"❌ Erreur parsing position pour {node_id}: {e}")
-                    pass
-            else:
-                debug_print(f"❌ Aucune position trouvée pour {node_id}")
+            debug_print(f"get_node_position_from_db: node_id={node_id}, search_ids={search_ids}, hours={hours}")
             
+            # Essayer de trouver une position avec n'importe quel format d'ID
+            for search_id in search_ids:
+                cursor.execute('''
+                    SELECT position
+                    FROM packets
+                    WHERE from_id = ?
+                        AND timestamp >= ?
+                        AND position IS NOT NULL
+                        AND position != ''
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ''', (search_id, cutoff))
+                
+                row = cursor.fetchone()
+                if row and row['position']:
+                    try:
+                        position = json.loads(row['position'])
+                        lat = position.get('latitude')
+                        lon = position.get('longitude')
+                        if lat and lon and lat != 0 and lon != 0:
+                            debug_print(f"✅ Position trouvée pour {node_id} (via {search_id}): lat={lat}, lon={lon}")
+                            return {'latitude': lat, 'longitude': lon}
+                        else:
+                            debug_print(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        debug_print(f"❌ Erreur parsing position pour {node_id}: {e}")
+                        continue
+            
+            debug_print(f"❌ Aucune position trouvée pour {node_id} (cherché: {search_ids})")
             return None
             
         except Exception as e:
