@@ -92,6 +92,22 @@ class TrafficPersistence:
                 # La colonne n'existe pas, l'ajouter
                 logger.info("Migration DB : ajout de la colonne is_encrypted")
                 cursor.execute("ALTER TABLE packets ADD COLUMN is_encrypted INTEGER DEFAULT 0")
+            
+            # Migration : ajouter hop_limit si elle n'existe pas
+            try:
+                cursor.execute("SELECT hop_limit FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                # La colonne n'existe pas, l'ajouter
+                logger.info("Migration DB : ajout de la colonne hop_limit")
+                cursor.execute("ALTER TABLE packets ADD COLUMN hop_limit INTEGER")
+            
+            # Migration : ajouter hop_start si elle n'existe pas
+            try:
+                cursor.execute("SELECT hop_start FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                # La colonne n'existe pas, l'ajouter
+                logger.info("Migration DB : ajout de la colonne hop_start")
+                cursor.execute("ALTER TABLE packets ADD COLUMN hop_start INTEGER")
 
             # Index pour optimiser les requêtes sur les paquets
             cursor.execute('''
@@ -289,8 +305,9 @@ class TrafficPersistence:
             cursor.execute('''
                 INSERT INTO packets (
                     timestamp, from_id, to_id, source, sender_name, packet_type,
-                    message, rssi, snr, hops, size, is_broadcast, is_encrypted, telemetry, position
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    message, rssi, snr, hops, size, is_broadcast, is_encrypted, telemetry, position,
+                    hop_limit, hop_start
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 packet.get('timestamp'),
                 packet.get('from_id'),
@@ -306,7 +323,9 @@ class TrafficPersistence:
                 1 if packet.get('is_broadcast') else 0,
                 1 if packet.get('is_encrypted') else 0,
                 telemetry,
-                position
+                position,
+                packet.get('hop_limit'),
+                packet.get('hop_start')
             ))
 
             self.conn.commit()
