@@ -902,7 +902,7 @@ class NetworkCommands:
         snr = node_data.get('snr', 0.0)
         
         if rssi != 0 or snr != 0:
-            icon = get_signal_quality_icon(rssi) if rssi != 0 else "📶"
+            icon = get_signal_quality_icon(snr) if snr != 0 else "📶"
             rssi_str = f"{rssi}dB" if rssi != 0 else ""
             snr_str = f"SNR{snr:.1f}" if snr != 0 else ""
             signal_parts = [s for s in [rssi_str, snr_str] if s]
@@ -999,7 +999,7 @@ class NetworkCommands:
             if display_rssi != 0:
                 rssi_str = f"~{display_rssi}dBm" if rssi_estimated else f"{display_rssi}dBm"
                 quality = get_signal_quality_description(display_rssi, snr)
-                icon = get_signal_quality_icon(display_rssi)
+                icon = get_signal_quality_icon(snr) if snr != 0 else "📶"
                 lines.append(f"   RSSI: {rssi_str} {icon}")
                 lines.append(f"   Qualité: {quality}")
             
@@ -1034,7 +1034,10 @@ class NetworkCommands:
                 # Top 5 types
                 sorted_types = sorted(by_type.items(), key=lambda x: x[1], reverse=True)
                 for pkt_type, count in sorted_types[:5]:
-                    type_name = self.traffic_monitor.packet_type_names.get(pkt_type, pkt_type) if self.traffic_monitor else pkt_type
+                    # Safe attribute access with fallback
+                    type_name = pkt_type
+                    if self.traffic_monitor and hasattr(self.traffic_monitor, 'packet_type_names'):
+                        type_name = self.traffic_monitor.packet_type_names.get(pkt_type, pkt_type)
                     lines.append(f"     • {type_name}: {count}")
             
             # Stats télémétrie
