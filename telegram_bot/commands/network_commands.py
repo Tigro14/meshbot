@@ -459,8 +459,12 @@ class NetworkCommands(TelegramCommandBase):
         """
         user = update.effective_user
         
+        # DEBUG: Log au tout début pour vérifier que la méthode est appelée
+        info_print(f"🔍 DEBUG: propag_command appelée par user {user.id} ({user.username})")
+        
         # Vérifier l'autorisation
         if not self.check_authorization(user.id):
+            info_print(f"⚠️ DEBUG: User {user.id} NON autorisé pour /propag")
             await update.effective_message.reply_text("❌ Non autorisé")
             return
         
