@@ -632,4 +632,73 @@ class NetworkCommands:
                     pass  # Silent fail
 
         return "\n".join(lines)
+    
+    def handle_propag(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /propag - Afficher les plus longues liaisons radio
+        
+        Usage:
+            /propag [hours] [top_n]
+            
+        Exemples:
+            /propag          → Top 5 liaisons des dernières 24h
+            /propag 48       → Top 5 liaisons des dernières 48h
+            /propag 24 10    → Top 10 liaisons des dernières 24h
+        """
+        if not self.traffic_monitor:
+            self.sender.send_single("❌ TrafficMonitor non disponible", sender_id, sender_info)
+            return
+        
+        info_print(f"Propag: {sender_info}")
+        
+        # Parser les arguments
+        parts = message.split()
+        hours = 24
+        top_n = 5
+        
+        try:
+            if len(parts) >= 2:
+                hours = int(parts[1])
+                hours = max(1, min(72, hours))  # Limiter entre 1 et 72h
+            if len(parts) >= 3:
+                top_n = int(parts[2])
+                top_n = max(1, min(10, top_n))  # Limiter entre 1 et 10
+        except ValueError:
+            self.sender.send_single("❌ Usage: /propag [hours] [top_n]", sender_id, sender_info)
+            return
+        
+        # Déterminer le format (compact pour mesh, détaillé pour Telegram/CLI)
+        sender_str = str(sender_info).lower()
+        compact = 'telegram' not in sender_str and 'cli' not in sender_str
+        
+        try:
+            # Générer le rapport
+            report = self.traffic_monitor.get_propagation_report(
+                hours=hours,
+                top_n=top_n,
+                max_distance_km=100,  # Rayon de 100km comme spécifié
+                compact=compact
+            )
+            
+            # Construire la commande pour les logs
+            if hours != 24 or top_n != 5:
+                command_log = f"/propag {hours} {top_n}"
+            else:
+                command_log = "/propag"
+            
+            # Envoyer la réponse
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
+            
+            if compact:
+                # Pour LoRa, envoyer tel quel (déjà optimisé pour 180 chars)
+                self.sender.send_single(report, sender_id, sender_info)
+            else:
+                # Pour Telegram/CLI, peut être plus long
+                self.sender.send_chunks(report, sender_id, sender_info)
+            
+        except Exception as e:
+            error_print(f"Erreur commande /propag: {e}")
+            error_print(traceback.format_exc())
+            error_msg = f"⚠️ Erreur: {str(e)[:30]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)
 

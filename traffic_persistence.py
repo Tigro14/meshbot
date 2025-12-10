@@ -1039,6 +1039,69 @@ class TrafficPersistence:
             logger.error(traceback.format_exc())
             return {}
 
+    def load_radio_links_with_positions(self, hours: int = 24) -> List[Dict]:
+        """
+        Charge les liaisons radio avec les positions GPS pour calculer les distances.
+        
+        Args:
+            hours: Nombre d'heures à charger
+            
+        Returns:
+            Liste de dicts avec from_id, to_id, snr, rssi, timestamp, from_lat, from_lon, to_lat, to_lon
+        """
+        try:
+            cursor = self.conn.cursor()
+            cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
+            
+            # Requête pour récupérer les paquets avec positions GPS quand disponibles
+            # On utilise les données de position stockées dans le JSON position
+            cursor.execute('''
+                SELECT 
+                    from_id, 
+                    to_id, 
+                    snr, 
+                    rssi,
+                    timestamp,
+                    position as position_json
+                FROM packets
+                WHERE timestamp >= ?
+                    AND from_id IS NOT NULL 
+                    AND to_id IS NOT NULL
+                    AND to_id != 4294967295
+                    AND to_id != 0
+                    AND (snr IS NOT NULL OR rssi IS NOT NULL)
+                ORDER BY timestamp DESC
+            ''', (cutoff,))
+            
+            links = []
+            for row in cursor.fetchall():
+                link = {
+                    'from_id': row['from_id'],
+                    'to_id': row['to_id'],
+                    'snr': row['snr'],
+                    'rssi': row['rssi'],
+                    'timestamp': row['timestamp']
+                }
+                
+                # Parser le JSON de position si présent
+                if row['position_json']:
+                    try:
+                        position = json.loads(row['position_json'])
+                        link['lat'] = position.get('latitude')
+                        link['lon'] = position.get('longitude')
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                
+                links.append(link)
+            
+            return links
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement des liaisons radio : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return []
+
     def close(self):
         """Ferme la connexion à la base de données."""
         if self.conn:

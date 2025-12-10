@@ -119,6 +119,8 @@ class MessageRouter:
             self.network_handler.handle_nodes(message, sender_id, sender_info)
         elif message.startswith('/neighbors'):
             self.network_handler.handle_neighbors(message, sender_id, sender_info)
+        elif message.startswith('/propag'):
+            self.network_handler.handle_propag(message, sender_id, sender_info)
         
         # ===================================================================
         # Commandes système avec authentification

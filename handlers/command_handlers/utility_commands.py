@@ -578,6 +578,7 @@ class UtilityCommands:
             "/echo",
             "/nodes",
             "/neighbors",
+            "/propag",
             "/mqtt",
             "/stats [cmd]",
             "/db [cmd]",
@@ -625,6 +626,11 @@ class UtilityCommands:
         • /neighbors [node] - Voisins mesh (topology réseau)
           /neighbors → Tous les voisins (format compact)
           /neighbors tigro → Voisins d'un nœud spécifique
+        • /propag [heures] [top] - Plus longues liaisons radio
+          /propag → Top 5 liaisons (24h)
+          /propag 48 → Top 5 liaisons (48h)
+          /propag 24 10 → Top 10 liaisons (24h)
+          Rayon: 100km du bot
         • /mqtt [heures] - Nœuds MQTT entendus directement
           Liste nœuds ayant envoyé NEIGHBORINFO via MQTT
           /mqtt → Tous les nœuds MQTT (48h)
