@@ -43,9 +43,33 @@ def view_positions(db_path='traffic_history.db', hours=24, with_rssi=False):
     # Load node names
     node_names = load_node_names()
     
+    # Check if database exists
+    import os
+    if not os.path.exists(db_path):
+        print(f"❌ Erreur: Database '{db_path}' introuvable")
+        print(f"   Vérifiez que le chemin est correct et que le bot a créé la base de données.")
+        sys.exit(1)
+    
     # Connect to database
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+    except Exception as e:
+        print(f"❌ Erreur de connexion à la base de données: {e}")
+        sys.exit(1)
+    
+    # Check if packets table exists
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='packets'")
+        if not cursor.fetchone():
+            print(f"❌ Erreur: La table 'packets' n'existe pas dans {db_path}")
+            print(f"   La base de données semble vide ou corrompue.")
+            conn.close()
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Erreur lors de la vérification de la table: {e}")
+        conn.close()
+        sys.exit(1)
     
     # Calculate time cutoff
     cutoff = datetime.now().timestamp() - (hours * 3600)
@@ -59,8 +83,13 @@ def view_positions(db_path='traffic_history.db', hours=24, with_rssi=False):
         ORDER BY timestamp DESC
     """
     
-    cursor.execute(query, (cutoff,))
-    rows = cursor.fetchall()
+    try:
+        cursor.execute(query, (cutoff,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        print(f"❌ Erreur lors de la requête: {e}")
+        conn.close()
+        sys.exit(1)
     
     print(f"=== Node Positions (dernières {hours}h) ===")
     print(f"Total packets with GPS: {len(rows)}")
