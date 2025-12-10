@@ -2613,8 +2613,9 @@ class TrafficMonitor:
                 
                 # Obtenir les noms des nœuds - utiliser les IDs entiers pour la recherche
                 # get_node_name() attend un int, pas une string hex
-                from_name = self.node_manager.get_node_name(from_id)
-                to_name = self.node_manager.get_node_name(to_id)
+                # Passer l'interface pour permettre la recherche en temps réel
+                from_name = self.node_manager.get_node_name(from_id, self.node_manager.interface)
+                to_name = self.node_manager.get_node_name(to_id, self.node_manager.interface)
                 
                 debug_print(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
                 
@@ -2849,8 +2850,8 @@ class TrafficMonitor:
                                 'from_id': from_id,
                                 'to_id': to_id,
                                 'distance_km': distance,
-                                'from_name': self.node_manager.get_node_name(from_id),
-                                'to_name': self.node_manager.get_node_name(to_id),
+                                'from_name': self.node_manager.get_node_name(from_id, self.node_manager.interface),
+                                'to_name': self.node_manager.get_node_name(to_id, self.node_manager.interface),
                                 'timestamp': link.get('timestamp')
                             }
                     
