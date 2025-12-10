@@ -2495,14 +2495,14 @@ class TrafficMonitor:
             # Charger les liaisons radio depuis la DB
             links = self.persistence.load_radio_links_with_positions(hours=hours)
             
-            logger.debug(f"📊 /propag: {len(links)} liaisons chargées depuis la DB (dernières {hours}h)")
+            debug_print(f"📊 /propag: {len(links)} liaisons chargées depuis la DB (dernières {hours}h)")
             
             if not links:
                 return "❌ Aucune donnée de liaison radio disponible"
             
             # Obtenir la position de référence (bot)
             ref_pos = self.node_manager.get_reference_position()
-            logger.debug(f"📍 Position de référence du bot: {ref_pos}")
+            debug_print(f"📍 Position de référence du bot: {ref_pos}")
             
             # Calculer les distances pour chaque liaison
             links_with_distance = []
@@ -2531,19 +2531,19 @@ class TrafficMonitor:
                 
                 # Essayer d'obtenir la position depuis la base de données (30 jours de rétention)
                 # Utiliser les IDs au format original de la DB
-                logger.debug(f"🔍 Recherche GPS pour liaison: {from_id_db} → {to_id_db}")
+                debug_print(f"🔍 Recherche GPS pour liaison: {from_id_db} → {to_id_db}")
                 from_pos_db = self.persistence.get_node_position_from_db(from_id_db, hours=720)
                 to_pos_db = self.persistence.get_node_position_from_db(to_id_db, hours=720)
                 
                 if from_pos_db:
                     from_lat = from_pos_db.get('latitude')
                     from_lon = from_pos_db.get('longitude')
-                    logger.debug(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon})")
+                    debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon})")
                 
                 if to_pos_db:
                     to_lat = to_pos_db.get('latitude')
                     to_lon = to_pos_db.get('longitude')
-                    logger.debug(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon})")
+                    debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon})")
                 
                 # Si pas trouvé dans la DB, essayer depuis node_manager (mémoire)
                 if not (from_lat and from_lon):
@@ -2551,22 +2551,22 @@ class TrafficMonitor:
                     if from_data:
                         from_lat = from_data.get('latitude')
                         from_lon = from_data.get('longitude')
-                        logger.debug(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon})")
+                        debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon})")
                     else:
-                        logger.debug(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
+                        debug_print(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
                 
                 if not (to_lat and to_lon):
                     to_data = self.node_manager.get_node_data(to_id)
                     if to_data:
                         to_lat = to_data.get('latitude')
                         to_lon = to_data.get('longitude')
-                        logger.debug(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon})")
+                        debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon})")
                     else:
-                        logger.debug(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
+                        debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
                 
                 # Vérifier que les deux nœuds ont des positions GPS
                 if not all([from_lat, from_lon, to_lat, to_lon]):
-                    logger.debug(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
+                    debug_print(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
                     continue
                 
                 # Calculer la distance de la liaison
@@ -2587,18 +2587,18 @@ class TrafficMonitor:
                         ref_lat, ref_lon, to_lat, to_lon
                     )
                     
-                    logger.debug(f"  📏 Distances au bot: FROM={from_distance:.1f}km, TO={to_distance:.1f}km (max={max_distance_km}km)")
+                    debug_print(f"  📏 Distances au bot: FROM={from_distance:.1f}km, TO={to_distance:.1f}km (max={max_distance_km}km)")
                     
                     # Filtrer si les deux nœuds sont hors du rayon
                     if from_distance > max_distance_km and to_distance > max_distance_km:
-                        logger.debug(f"  ⚠️ SKIP: Les deux nœuds hors du rayon de {max_distance_km}km")
+                        debug_print(f"  ⚠️ SKIP: Les deux nœuds hors du rayon de {max_distance_km}km")
                         continue
                 
                 # Obtenir les noms des nœuds
                 from_name = self.node_manager.get_node_name(from_id)
                 to_name = self.node_manager.get_node_name(to_id)
                 
-                logger.debug(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
+                debug_print(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
                 
                 links_with_distance.append({
                     'from_id': from_id,
@@ -2611,7 +2611,7 @@ class TrafficMonitor:
                     'timestamp': link.get('timestamp')
                 })
             
-            logger.debug(f"📊 Total liaisons valides avec GPS: {len(links_with_distance)}")
+            debug_print(f"📊 Total liaisons valides avec GPS: {len(links_with_distance)}")
             
             if not links_with_distance:
                 return "❌ Aucune liaison radio avec GPS dans le rayon configuré"

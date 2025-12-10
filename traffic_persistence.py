@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 import os
+from utils import debug_print, info_print, error_print
 
 logger = logging.getLogger(__name__)
 
@@ -1055,7 +1056,7 @@ class TrafficPersistence:
             cutoff = (datetime.now() - timedelta(hours=hours)).timestamp()
             
             # DEBUG: Log the query parameters
-            logger.debug(f"get_node_position_from_db: node_id={node_id}, hours={hours}, cutoff={cutoff}")
+            debug_print(f"get_node_position_from_db: node_id={node_id}, hours={hours}, cutoff={cutoff}")
             
             # Chercher la position la plus récente pour ce nœud
             # On cherche dans les paquets où ce nœud est l'émetteur (from_id)
@@ -1077,20 +1078,20 @@ class TrafficPersistence:
                     lat = position.get('latitude')
                     lon = position.get('longitude')
                     if lat and lon and lat != 0 and lon != 0:
-                        logger.debug(f"✅ Position trouvée pour {node_id}: lat={lat}, lon={lon}")
+                        debug_print(f"✅ Position trouvée pour {node_id}: lat={lat}, lon={lon}")
                         return {'latitude': lat, 'longitude': lon}
                     else:
-                        logger.debug(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
+                        debug_print(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
                 except (json.JSONDecodeError, KeyError, TypeError) as e:
-                    logger.debug(f"❌ Erreur parsing position pour {node_id}: {e}")
+                    debug_print(f"❌ Erreur parsing position pour {node_id}: {e}")
                     pass
             else:
-                logger.debug(f"❌ Aucune position trouvée pour {node_id}")
+                debug_print(f"❌ Aucune position trouvée pour {node_id}")
             
             return None
             
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération de la position du nœud {node_id} : {e}")
+            error_print(f"Erreur lors de la récupération de la position du nœud {node_id} : {e}")
             return None
 
     def load_radio_links_with_positions(self, hours: int = 24) -> List[Dict]:
