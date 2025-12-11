@@ -716,13 +716,12 @@ class UnifiedStatsCommands:
                     else:
                         icon = "⚪"  # Faible portée
                     
-                    lines.append(f"{i}. {icon} **{name}**")
+                    lines.append(f"{i}. {icon} {name}")
                     lines.append(f"   Hop start max: **{hop_start}** ({count} paquets)")
                     lines.append("")
                 
                 # Résumé
                 avg_hop_start = sum(d['max_hop_start'] for _, d in top_20) / len(top_20)
-                lines.append(f"**Résumé:**")
                 lines.append(f"• Moyenne hop_start (top 20): {avg_hop_start:.1f}")
                 lines.append(f"• Max hop_start observé: {top_20[0][1]['max_hop_start']}")
                 
