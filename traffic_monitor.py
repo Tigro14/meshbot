@@ -2587,9 +2587,9 @@ class TrafficMonitor:
                         #debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
                 
                 # Vérifier que les deux nœuds ont des positions GPS
-                #if not all([from_lat, from_lon, to_lat, to_lon]):
+                if not all([from_lat, from_lon, to_lat, to_lon]):
                     #debug_print(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
-                    #continue
+                    continue
                 
                 # Calculer la distance de la liaison
                 distance_km = self.node_manager.haversine_distance(
