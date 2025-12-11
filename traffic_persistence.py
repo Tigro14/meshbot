@@ -82,7 +82,9 @@ class TrafficPersistence:
                     is_broadcast INTEGER,
                     is_encrypted INTEGER DEFAULT 0,
                     telemetry TEXT,
-                    position TEXT
+                    position TEXT,
+                    hop_limit INTEGER,
+                    hop_start INTEGER
                 )
             ''')
 
