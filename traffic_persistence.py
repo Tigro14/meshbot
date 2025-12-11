@@ -1068,7 +1068,7 @@ class TrafficPersistence:
             hours: Nombre d'heures à chercher en arrière (défaut: 720h = 30 jours)
             
         Returns:
-            Dict avec 'latitude' et 'longitude' ou None si pas trouvé
+            Dict avec 'latitude', 'longitude' et 'altitude' ou None si pas trouvé
         """
         try:
             cursor = self.conn.cursor()
@@ -1111,9 +1111,10 @@ class TrafficPersistence:
                         position = json.loads(row['position'])
                         lat = position.get('latitude')
                         lon = position.get('longitude')
+                        alt = position.get('altitude')
                         if lat and lon and lat != 0 and lon != 0:
-                            debug_print(f"✅ Position trouvée pour {node_id} (via {search_id}): lat={lat}, lon={lon}")
-                            return {'latitude': lat, 'longitude': lon}
+                            debug_print(f"✅ Position trouvée pour {node_id} (via {search_id}): lat={lat}, lon={lon}, alt={alt}")
+                            return {'latitude': lat, 'longitude': lon, 'altitude': alt}
                         else:
                             debug_print(f"⚠️ Position invalide pour {node_id}: lat={lat}, lon={lon}")
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
