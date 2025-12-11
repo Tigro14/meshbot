@@ -2527,9 +2527,15 @@ class TrafficMonitor:
                 
                 try:
                     if isinstance(from_id, str):
-                        from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                        if from_id.startswith('!'):
+                            from_id = int(from_id[1:], 16)
+                        else:
+                            from_id = int(from_id)  # Decimal string from database
                     if isinstance(to_id, str):
-                        to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                        if to_id.startswith('!'):
+                            to_id = int(to_id[1:], 16)
+                        else:
+                            to_id = int(to_id)  # Decimal string from database
                 except (ValueError, AttributeError):
                     continue
                 
@@ -2605,16 +2611,17 @@ class TrafficMonitor:
                     
                     debug_print(f"  📏 Distances au bot: FROM={from_distance:.1f}km, TO={to_distance:.1f}km (max={max_distance_km}km)")
                     
-                    # Filtrer si les deux nœuds sont hors du rayon
+                    # Filtrer si AUCUN des deux nœuds n'est dans le rayon
+                    # (on garde la liaison si au moins un nœud est dans le rayon)
                     if from_distance > max_distance_km and to_distance > max_distance_km:
-                        debug_print(f"  ⚠️ SKIP: Les deux nœuds hors du rayon de {max_distance_km}km")
+                        debug_print(f"  ⚠️ SKIP: Aucun nœud dans le rayon de {max_distance_km}km")
                         continue
                 
-                # Obtenir les noms des nœuds - convertir en format hex avec ! pour la recherche
-                from_id_hex = f"!{from_id:08x}" if isinstance(from_id, int) else from_id
-                to_id_hex = f"!{to_id:08x}" if isinstance(to_id, int) else to_id
-                from_name = self.node_manager.get_node_name(from_id_hex)
-                to_name = self.node_manager.get_node_name(to_id_hex)
+                # Obtenir les noms des nœuds - utiliser les IDs entiers pour la recherche
+                # get_node_name() attend un int, pas une string hex
+                # Passer l'interface pour permettre la recherche en temps réel
+                from_name = self.node_manager.get_node_name(from_id, self.node_manager.interface)
+                to_name = self.node_manager.get_node_name(to_id, self.node_manager.interface)
                 
                 debug_print(f"  ✅ LIAISON VALIDE: {from_name} ↔ {to_name} ({distance_km:.1f}km)")
                 
@@ -2704,9 +2711,15 @@ class TrafficMonitor:
                         
                         try:
                             if isinstance(from_id, str):
-                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                                if from_id.startswith('!'):
+                                    from_id = int(from_id[1:], 16)
+                                else:
+                                    from_id = int(from_id)  # Decimal string from database
                             if isinstance(to_id, str):
-                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                                if to_id.startswith('!'):
+                                    to_id = int(to_id[1:], 16)
+                                else:
+                                    to_id = int(to_id)  # Decimal string from database
                         except (ValueError, AttributeError):
                             continue
                         
@@ -2787,8 +2800,18 @@ class TrafficMonitor:
                         emoji = "🥉"
                     
                     lines.append(f"{emoji} **#{i} - {dist_str}**")
-                    lines.append(f"   📤 {link['from_name']} (ID: !{link['from_id']:08x}) - Alt: {link['from_alt']:.0f}m")
-                    lines.append(f"   📥 {link['to_name']} (ID: !{link['to_id']:08x}) - Alt: {link['to_alt']:.0f}m")
+                    
+                    # Node FROM with altitude
+                    from_info = f"   📤 {link['from_name']} (ID: !{link['from_id']:08x})"
+                    if link.get('from_alt') is not None:
+                        from_info += f" - Alt: {int(link['from_alt'])}m"
+                    lines.append(from_info)
+                    
+                    # Node TO with altitude
+                    to_info = f"   📥 {link['to_name']} (ID: !{link['to_id']:08x})"
+                    if link.get('to_alt') is not None:
+                        to_info += f" - Alt: {int(link['to_alt'])}m"
+                    lines.append(to_info)
                     
                     # Signal quality
                     if link['snr']:
@@ -2825,9 +2848,15 @@ class TrafficMonitor:
                         
                         try:
                             if isinstance(from_id, str):
-                                from_id = int(from_id[1:], 16) if from_id.startswith('!') else int(from_id, 16)
+                                if from_id.startswith('!'):
+                                    from_id = int(from_id[1:], 16)
+                                else:
+                                    from_id = int(from_id)  # Decimal string from database
                             if isinstance(to_id, str):
-                                to_id = int(to_id[1:], 16) if to_id.startswith('!') else int(to_id, 16)
+                                if to_id.startswith('!'):
+                                    to_id = int(to_id[1:], 16)
+                                else:
+                                    to_id = int(to_id)  # Decimal string from database
                         except (ValueError, AttributeError):
                             continue
                         
@@ -2874,8 +2903,8 @@ class TrafficMonitor:
                                 'from_id': from_id,
                                 'to_id': to_id,
                                 'distance_km': distance,
-                                'from_name': self.node_manager.get_node_name(from_id),
-                                'to_name': self.node_manager.get_node_name(to_id),
+                                'from_name': self.node_manager.get_node_name(from_id, self.node_manager.interface),
+                                'to_name': self.node_manager.get_node_name(to_id, self.node_manager.interface),
                                 'timestamp': link.get('timestamp')
                             }
                     
