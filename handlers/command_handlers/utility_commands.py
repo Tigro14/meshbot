@@ -858,12 +858,18 @@ class UtilityCommands:
             error_msg = f"❌ Erreur: {str(e)[:30]}"
             self.sender.send_single(error_msg, sender_id, sender_info)
 
-    def handle_hop(self, message, sender_id, sender_info):
+    def handle_hop(self, message, sender_id, sender_info, is_broadcast=False):
         """
         Gérer la commande /hop [heures]
         Alias pour /stats hop - affiche les nœuds triés par hop_start (portée max)
+        
+        Args:
+            message: Message complet (ex: "/hop 48")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+            is_broadcast: Si True, répondre en broadcast public
         """
-        info_print(f"Hop: {sender_info}")
+        info_print(f"Hop: {sender_info} (broadcast={is_broadcast})")
         
         # Parser les arguments
         parts = message.split()
@@ -903,10 +909,14 @@ class UtilityCommands:
             params = [str(hours)] if hours != 24 else []
             report = unified_stats.get_stats('hop', params, channel='mesh')
             
-            self.sender.log_conversation(sender_id, sender_info, 
-                                        f"/hop {hours}" if hours != 24 else "/hop", 
-                                        report)
-            self.sender.send_single(report, sender_id, sender_info)
+            cmd = f"/hop {hours}" if hours != 24 else "/hop"
+            self.sender.log_conversation(sender_id, sender_info, cmd, report)
+            
+            # Envoyer selon le mode (broadcast ou direct)
+            if is_broadcast:
+                self._send_broadcast_via_tigrog2(report, sender_id, sender_info, cmd)
+            else:
+                self.sender.send_single(report, sender_id, sender_info)
             
             info_print(f"✅ Hop stats ({hours}h) envoyées à {sender_info}")
             
