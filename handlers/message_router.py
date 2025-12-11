@@ -66,12 +66,12 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, info, propag)
-        broadcast_commands = ['/echo ', '/my', '/weather', '/rain', '/bot ', '/info ', '/propag']
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, info, propag, hop)
+        broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/info', '/propag', '/hop']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
-            if message.startswith('/echo '):
+            if message.startswith('/echo'):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
             elif message.startswith('/my'):
@@ -83,15 +83,18 @@ class MessageRouter:
             elif message.startswith('/rain'):
                 info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
                 self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/bot '):
+            elif message.startswith('/bot'):
                 info_print(f"BOT PUBLIC de {sender_info}: '{message}'")
                 self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/info '):
+            elif message.startswith('/info'):
                 info_print(f"INFO PUBLIC de {sender_info}: '{message}'")
                 self.network_handler.handle_info(message, sender_id, sender_info, is_broadcast=is_broadcast)
             elif message.startswith('/propag'):
                 info_print(f"PROPAG PUBLIC de {sender_info}: '{message}'")
                 self.network_handler.handle_propag(message, sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/hop'):
+                info_print(f"HOP PUBLIC de {sender_info}: '{message}'")
+                self.utility_handler.handle_hop(message, sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
         # Log messages pour nous
@@ -115,7 +118,7 @@ class MessageRouter:
         command = text_parts[0].lower()
         
         # Commandes IA
-        if message.startswith('/bot '):
+        if message.startswith('/bot'):
             self.ai_handler.handle_bot(message, sender_id, sender_info)
         
         # Commandes réseau
