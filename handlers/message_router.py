@@ -66,8 +66,8 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, info)
-        broadcast_commands = ['/echo ', '/my', '/weather', '/rain', '/bot ', '/info ']
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, info, propag)
+        broadcast_commands = ['/echo ', '/my', '/weather', '/rain', '/bot ', '/info ', '/propag']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
@@ -89,6 +89,9 @@ class MessageRouter:
             elif message.startswith('/info '):
                 info_print(f"INFO PUBLIC de {sender_info}: '{message}'")
                 self.network_handler.handle_info(message, sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/propag'):
+                info_print(f"PROPAG PUBLIC de {sender_info}: '{message}'")
+                self.network_handler.handle_propag(message, sender_id, sender_info, is_broadcast=is_broadcast)
             return
 
         # Log messages pour nous

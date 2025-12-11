@@ -633,7 +633,7 @@ class NetworkCommands:
 
         return "\n".join(lines)
     
-    def handle_propag(self, message, sender_id, sender_info):
+    def handle_propag(self, message, sender_id, sender_info, is_broadcast=False):
         """
         Gérer la commande /propag - Afficher les plus longues liaisons radio
         
@@ -644,12 +644,22 @@ class NetworkCommands:
             /propag          → Top 5 liaisons des dernières 24h
             /propag 48       → Top 5 liaisons des dernières 48h
             /propag 24 10    → Top 10 liaisons des dernières 24h
+        
+        Args:
+            message: Message complet (ex: "/propag", "/propag 48", "/propag 24 10")
+            sender_id: ID de l'expéditeur
+            sender_info: Infos sur l'expéditeur
+            is_broadcast: Si True, répondre en broadcast public
         """
         if not self.traffic_monitor:
-            self.sender.send_single("❌ TrafficMonitor non disponible", sender_id, sender_info)
+            error_msg = "❌ TrafficMonitor non disponible"
+            if is_broadcast:
+                self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
+            else:
+                self.sender.send_single(error_msg, sender_id, sender_info)
             return
         
-        info_print(f"Propag: {sender_info}")
+        info_print(f"Propag: {sender_info} (broadcast={is_broadcast})")
         
         # Parser les arguments
         parts = message.split()
@@ -664,12 +674,16 @@ class NetworkCommands:
                 top_n = int(parts[2])
                 top_n = max(1, min(10, top_n))  # Limiter entre 1 et 10
         except ValueError:
-            self.sender.send_single("❌ Usage: /propag [hours] [top_n]", sender_id, sender_info)
+            error_msg = "❌ Usage: /propag [hours] [top_n]"
+            if is_broadcast:
+                self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
+            else:
+                self.sender.send_single(error_msg, sender_id, sender_info)
             return
         
-        # Déterminer le format (compact pour mesh, détaillé pour Telegram/CLI)
+        # Déterminer le format (compact pour mesh/broadcast, détaillé pour Telegram/CLI)
         sender_str = str(sender_info).lower()
-        compact = 'telegram' not in sender_str and 'cli' not in sender_str
+        compact = is_broadcast or ('telegram' not in sender_str and 'cli' not in sender_str)
         
         try:
             # Générer le rapport
@@ -687,20 +701,28 @@ class NetworkCommands:
                 command_log = "/propag"
             
             # Envoyer la réponse
-            self.sender.log_conversation(sender_id, sender_info, command_log, report)
-            
-            if compact:
-                # Pour LoRa, envoyer tel quel (déjà optimisé pour 180 chars)
-                self.sender.send_single(report, sender_id, sender_info)
+            if is_broadcast:
+                # Réponse publique via broadcast
+                self._send_broadcast_via_tigrog2(report, sender_id, sender_info, command_log)
             else:
-                # Pour Telegram/CLI, peut être plus long
-                self.sender.send_chunks(report, sender_id, sender_info)
+                # Réponse privée
+                self.sender.log_conversation(sender_id, sender_info, command_log, report)
+                
+                if compact:
+                    # Pour LoRa, envoyer tel quel (déjà optimisé pour 180 chars)
+                    self.sender.send_single(report, sender_id, sender_info)
+                else:
+                    # Pour Telegram/CLI, peut être plus long
+                    self.sender.send_chunks(report, sender_id, sender_info)
             
         except Exception as e:
             error_print(f"Erreur commande /propag: {e}")
             error_print(traceback.format_exc())
             error_msg = f"⚠️ Erreur: {str(e)[:30]}"
-            self.sender.send_single(error_msg, sender_id, sender_info)
+            if is_broadcast:
+                self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
+            else:
+                self.sender.send_single(error_msg, sender_id, sender_info)
     
     def handle_info(self, message, sender_id, sender_info, is_broadcast=False):
         """
