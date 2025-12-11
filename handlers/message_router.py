@@ -181,6 +181,8 @@ class MessageRouter:
             self.utility_handler.handle_top(message, sender_id, sender_info)
         elif message.startswith('/histo'):  
             self.utility_handler.handle_histo(message, sender_id, sender_info)
+        elif message.startswith('/hop'):
+            self.utility_handler.handle_hop(message, sender_id, sender_info)
         elif message.startswith('/trace'):  
             self.network_handler.handle_trace(message, sender_id, sender_info, packet)
         elif message.startswith('/packets'):
