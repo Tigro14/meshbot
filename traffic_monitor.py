@@ -2557,13 +2557,13 @@ class TrafficMonitor:
                     from_lat = from_pos_db.get('latitude')
                     from_lon = from_pos_db.get('longitude')
                     from_alt = from_pos_db.get('altitude')
-                    debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon}, alt={from_alt})")
+                    debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon}, {from_alt}m)")
                 
                 if to_pos_db:
                     to_lat = to_pos_db.get('latitude')
                     to_lon = to_pos_db.get('longitude')
                     to_alt = to_pos_db.get('altitude')
-                    debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon}, alt={to_alt})")
+                    debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon}, {to_alt}m)")
                 
                 # Si pas trouvé dans la DB, essayer depuis node_manager (mémoire)
                 if not (from_lat and from_lon):
@@ -2572,7 +2572,7 @@ class TrafficMonitor:
                         from_lat = from_data.get('latitude')
                         from_lon = from_data.get('longitude')
                         from_alt = from_data.get('altitude')
-                        debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon}, alt={from_alt})")
+                        debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon}, {from_alt}m)")
                     else:
                         debug_print(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
                 
@@ -2582,7 +2582,7 @@ class TrafficMonitor:
                         to_lat = to_data.get('latitude')
                         to_lon = to_data.get('longitude')
                         to_alt = to_data.get('altitude')
-                        debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon}, alt={to_alt})")
+                        debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon}, {to_alt}m)")
                     else:
                         debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
                 
@@ -2630,8 +2630,8 @@ class TrafficMonitor:
                     'to_id': to_id,
                     'from_name': from_name,
                     'to_name': to_name,
-                    'from_alt': from_alt,
-                    'to_alt': to_alt,
+                    'from_alt': from_alt if from_alt is not None else 0,
+                    'to_alt': to_alt if to_alt is not None else 0,
                     'distance_km': distance_km,
                     'snr': link.get('snr'),
                     'rssi': link.get('rssi'),
@@ -2642,6 +2642,41 @@ class TrafficMonitor:
             
             if not links_with_distance:
                 return "❌ Aucune liaison radio avec GPS dans le rayon configuré"
+            
+            # Déduplication par paire (from_id, to_id)
+            # Conserver uniquement le meilleur lien pour chaque paire de nœuds
+            unique_links = {}
+            for link in links_with_distance:
+                # Créer une clé unique pour la paire de nœuds (bidirectionnelle)
+                # Trier les IDs pour que A→B et B→A soient considérés comme la même liaison
+                pair_key = tuple(sorted([link['from_id'], link['to_id']]))
+                
+                # Si cette paire n'existe pas encore, ou si ce lien a un meilleur signal
+                if pair_key not in unique_links:
+                    unique_links[pair_key] = link
+                else:
+                    # Comparer et garder le meilleur lien (priorité: distance > SNR > timestamp)
+                    existing = unique_links[pair_key]
+                    
+                    # Critère 1: Même distance (devrait être le cas pour une paire)
+                    # Critère 2: Meilleur SNR (plus élevé = meilleur)
+                    # Critère 3: Plus récent (timestamp plus grand)
+                    
+                    replace = False
+                    if link['snr'] is not None and existing['snr'] is not None:
+                        if link['snr'] > existing['snr']:
+                            replace = True
+                    elif link['snr'] is not None and existing['snr'] is None:
+                        replace = True
+                    elif link['timestamp'] > existing['timestamp']:
+                        replace = True
+                    
+                    if replace:
+                        unique_links[pair_key] = link
+            
+            # Convertir le dictionnaire en liste
+            links_with_distance = list(unique_links.values())
+            debug_print(f"📊 Liaisons uniques après déduplication: {len(links_with_distance)}")
             
             # Trier par distance décroissante
             links_with_distance.sort(key=lambda x: x['distance_km'], reverse=True)
