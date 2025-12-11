@@ -287,3 +287,53 @@ class StatsCommands(TelegramCommandBase):
             if not message:
                 return
             await update.effective_message.reply_text(f"❌ Erreur: {str(e)[:50]}")
+
+    async def hop_command(self, update: Update,
+                          context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /hop [heures] - Alias pour /stats hop
+        Affiche les nœuds triés par hop_start (portée maximale)
+        
+        Usage:
+            /hop           - Top 20 nœuds par portée (24h)
+            /hop 48        - Top 20 nœuds par portée (48h)
+            /hop 168       - Top 20 nœuds par portée (7 jours)
+        """
+        user = update.effective_user
+        
+        # Parser les arguments
+        hours = 24
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(168, hours))  # Entre 1h et 7 jours
+            except ValueError:
+                hours = 24
+        
+        info_print(f"📱 Telegram /hop {hours}h: {user.username}")
+        
+        # Vérifier que unified_stats est disponible
+        if not hasattr(self.telegram, 'unified_stats') or not self.telegram.unified_stats:
+            await update.effective_message.reply_text("❌ Système de stats non disponible")
+            return
+        
+        def get_hop_stats():
+            """Appeler le système unifié pour obtenir les stats hop"""
+            try:
+                params = [str(hours)] if hours != 24 else []
+                return self.telegram.unified_stats.get_stats(
+                    subcommand='hop',
+                    params=params,
+                    channel='telegram'  # Format détaillé pour Telegram
+                )
+            except Exception as e:
+                error_print(f"Erreur hop stats: {e}")
+                import traceback
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        # Exécuter dans un thread séparé
+        response = await asyncio.to_thread(get_hop_stats)
+        
+        # Envoyer la réponse
+        await self.send_message(update, response)
