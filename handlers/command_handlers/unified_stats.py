@@ -706,18 +706,8 @@ class UnifiedStatsCommands:
                     hop_start = data['max_hop_start']
                     count = data['count']
                     
-                    # Icône selon le hop_start
-                    if hop_start >= 7:
-                        icon = "🔴"  # Très grande portée
-                    elif hop_start >= 5:
-                        icon = "🟡"  # Grande portée
-                    elif hop_start >= 3:
-                        icon = "🟢"  # Portée moyenne
-                    else:
-                        icon = "⚪"  # Faible portée
-                    
-                    lines.append(f"{i}. {icon} {name}")
-                    lines.append(f"   Hop start max: **{hop_start}** ({count} paquets)")
+                    lines.append(f"{i}. {name}")
+                    lines.append(f"   Hop start max: {hop_start} ({count} paquets)")
                     lines.append("")
                 
                 # Résumé
