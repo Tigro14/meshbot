@@ -2557,13 +2557,13 @@ class TrafficMonitor:
                     from_lat = from_pos_db.get('latitude')
                     from_lon = from_pos_db.get('longitude')
                     from_alt = from_pos_db.get('altitude')
-                    debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon}, {from_alt}m)")
+                    #debug_print(f"  ✅ FROM DB: {from_id_db} = ({from_lat}, {from_lon}, {from_alt}m)")
                 
                 if to_pos_db:
                     to_lat = to_pos_db.get('latitude')
                     to_lon = to_pos_db.get('longitude')
                     to_alt = to_pos_db.get('altitude')
-                    debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon}, {to_alt}m)")
+                    #debug_print(f"  ✅ TO DB: {to_id_db} = ({to_lat}, {to_lon}, {to_alt}m)")
                 
                 # Si pas trouvé dans la DB, essayer depuis node_manager (mémoire)
                 if not (from_lat and from_lon):
@@ -2572,9 +2572,9 @@ class TrafficMonitor:
                         from_lat = from_data.get('latitude')
                         from_lon = from_data.get('longitude')
                         from_alt = from_data.get('altitude')
-                        debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon}, {from_alt}m)")
-                    else:
-                        debug_print(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
+                        #debug_print(f"  ✅ FROM MEM: {from_id} = ({from_lat}, {from_lon}, {from_alt}m)")
+                    #else:
+                        #debug_print(f"  ❌ FROM: Aucune position trouvée pour {from_id_db}")
                 
                 if not (to_lat and to_lon):
                     to_data = self.node_manager.get_node_data(to_id)
@@ -2582,14 +2582,14 @@ class TrafficMonitor:
                         to_lat = to_data.get('latitude')
                         to_lon = to_data.get('longitude')
                         to_alt = to_data.get('altitude')
-                        debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon}, {to_alt}m)")
-                    else:
-                        debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
+                        #debug_print(f"  ✅ TO MEM: {to_id} = ({to_lat}, {to_lon}, {to_alt}m)")
+                    #else:
+                        #debug_print(f"  ❌ TO: Aucune position trouvée pour {to_id_db}")
                 
                 # Vérifier que les deux nœuds ont des positions GPS
-                if not all([from_lat, from_lon, to_lat, to_lon]):
-                    debug_print(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
-                    continue
+                #if not all([from_lat, from_lon, to_lat, to_lon]):
+                    #debug_print(f"  ⚠️ SKIP: Position GPS manquante (from: {from_lat},{from_lon}, to: {to_lat},{to_lon})")
+                    #continue
                 
                 # Calculer la distance de la liaison
                 distance_km = self.node_manager.haversine_distance(
@@ -2789,26 +2789,16 @@ class TrafficMonitor:
                 for i, link in enumerate(top_links, 1):
                     dist_str = self.node_manager.format_distance(link['distance_km'])
                     
-                    # Emoji basé sur la distance
-                    if link['distance_km'] > 50:
-                        emoji = "🏆"
-                    elif link['distance_km'] > 30:
-                        emoji = "🥇"
-                    elif link['distance_km'] > 15:
-                        emoji = "🥈"
-                    else:
-                        emoji = "🥉"
-                    
-                    lines.append(f"{emoji} **#{i} - {dist_str}**")
+                    lines.append(f"#{i} - {dist_str}")
                     
                     # Node FROM with altitude
-                    from_info = f"   📤 {link['from_name']} (ID: !{link['from_id']:08x})"
+                    from_info = f"   {link['from_name']}"
                     if link.get('from_alt') is not None:
                         from_info += f" - Alt: {int(link['from_alt'])}m"
                     lines.append(from_info)
                     
                     # Node TO with altitude
-                    to_info = f"   📥 {link['to_name']} (ID: !{link['to_id']:08x})"
+                    to_info = f"   {link['to_name']}"
                     if link.get('to_alt') is not None:
                         to_info += f" - Alt: {int(link['to_alt'])}m"
                     lines.append(to_info)
