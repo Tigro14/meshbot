@@ -664,13 +664,16 @@ class UtilityCommands:
              - channel [h] : Utilisation du canal
              - histo [type] [h] : Histogramme temporel
              - traffic [h] : Historique messages publics
-          Raccourcis: g, t, p, ch, h, tr
-          Ex: /stats top 24 10, /stats channel 12
+             - hop [h] : Top 20 nœuds par hop_start (portée max)
+          Raccourcis: g, t, p, ch, h, tr, hop
+          Ex: /stats top 24 10, /stats hop 48
         • /trafic [heures] - Historique messages publics
           Défaut: 8h, max 24h, stats détaillées
         • /top [heures] [nombre] - Top talkers (alias)
           Défaut: 24h, top 10
         • /packets [heures] - Distribution paquets (alias)
+        • /hop [heures] - Top 20 portée (alias /stats hop)
+          Défaut: 24h, max 7j
         • /trace [short_id] - Traceroute mesh
           Analyse chemin, identifie relays
         • /histo [type] [h] - Histogramme (alias)
@@ -849,6 +852,66 @@ class UtilityCommands:
             
         except Exception as e:
             error_print(f"Erreur /histo: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            
+            error_msg = f"❌ Erreur: {str(e)[:30]}"
+            self.sender.send_single(error_msg, sender_id, sender_info)
+
+    def handle_hop(self, message, sender_id, sender_info):
+        """
+        Gérer la commande /hop [heures]
+        Alias pour /stats hop - affiche les nœuds triés par hop_start (portée max)
+        """
+        info_print(f"Hop: {sender_info}")
+        
+        # Parser les arguments
+        parts = message.split()
+        hours = 24  # Défaut: 24 heures
+        
+        if len(parts) > 1:
+            try:
+                requested = int(parts[1])
+                hours = max(1, min(168, requested))  # Entre 1h et 7 jours
+            except ValueError:
+                hours = 24
+        
+        if not self.traffic_monitor:
+            self.sender.send_single("❌ Traffic monitor non disponible", sender_id, sender_info)
+            return
+        
+        try:
+            # Utiliser le système unifié des stats
+            from handlers.command_handlers.unified_stats import UnifiedStatsCommands
+            
+            # Obtenir l'interface via le sender
+            interface = None
+            if hasattr(self.sender, '_get_interface'):
+                try:
+                    interface = self.sender._get_interface()
+                except:
+                    pass
+            
+            # Créer une instance de UnifiedStatsCommands
+            unified_stats = UnifiedStatsCommands(
+                self.traffic_monitor, 
+                self.node_manager, 
+                interface
+            )
+            
+            # Obtenir le rapport
+            params = [str(hours)] if hours != 24 else []
+            report = unified_stats.get_stats('hop', params, channel='mesh')
+            
+            self.sender.log_conversation(sender_id, sender_info, 
+                                        f"/hop {hours}" if hours != 24 else "/hop", 
+                                        report)
+            self.sender.send_single(report, sender_id, sender_info)
+            
+            info_print(f"✅ Hop stats ({hours}h) envoyées à {sender_info}")
+            
+        except Exception as e:
+            error_print(f"Erreur /hop: {e}")
             import traceback
             error_print(traceback.format_exc())
             
