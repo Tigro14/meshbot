@@ -58,6 +58,8 @@ class UnifiedStatsCommands:
                 return self.get_histogram(params, channel)
             elif subcommand in ['traffic', 'trafic', 'tr']:
                 return self.get_traffic_history(params, channel)
+            elif subcommand in ['hop', 'hops']:
+                return self.get_hop_stats(params, channel)
             else:
                 return self.get_help(channel)
 
@@ -72,9 +74,9 @@ class UnifiedStatsCommands:
             return (
                 "📊 /stats [cmd] [h]\n"
                 "g=global t=top p=pkt\n"
-                "ch=canal h=histo\n"
+                "ch=canal h=histo hop=hops\n"
                 "Types histo: pos,text,node,tele\n"
-                "Ex: /stats h pos 12"
+                "Ex: /stats hop 48"
             )
         else:  # telegram
             return """📊 **STATS - OPTIONS DISPONIBLES**
@@ -85,12 +87,14 @@ class UnifiedStatsCommands:
 • `packets [h]` - Types de paquets
 • `global` - Vue d'ensemble
 • `traffic [h]` - Messages publics
+• `hop [h]` - Top 20 nœuds par hop_start (portée max)
 
 **Exemples:**
 • `/stats top 24 10` - Top 10 dernières 24h avec stats canal
 • `/stats histo pos 6` - Histo positions 6h
+• `/stats hop 48` - Top 20 nœuds par portée sur 48h
 
-**Raccourcis:** t, h, p, g, tr
+**Raccourcis:** t, h, p, g, tr, hop
 **Aliases:** `/top`, `/packets`, `/histo`
 
 **Note:** `/stats channel` est intégré dans `/stats top`
@@ -599,6 +603,134 @@ class UnifiedStatsCommands:
 
         except Exception as e:
             error_print(f"Erreur traffic_history: {e}")
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def get_hop_stats(self, params, channel='mesh'):
+        """
+        Statistiques des nœuds par hop_start (portée maximale)
+        Liste les 20 premiers nœuds triés par hop_start décroissant
+
+        Args:
+            params: [hours] optionnel (défaut: 24h)
+            channel: 'mesh' ou 'telegram'
+        """
+        if not self.traffic_monitor:
+            return "❌ Traffic monitor non disponible"
+
+        # Paramètre: nombre d'heures
+        hours = 24
+        if len(params) > 0:
+            try:
+                hours = int(params[0])
+                hours = max(1, min(168, hours))  # Entre 1h et 7 jours
+            except ValueError:
+                pass
+
+        try:
+            # Charger les paquets depuis la base de données
+            all_packets = self.traffic_monitor.persistence.load_packets(hours=hours, limit=10000)
+
+            if not all_packets:
+                return f"📭 Aucun paquet ({hours}h)"
+
+            # Agréger les données par nœud
+            node_hop_data = {}
+            
+            for packet in all_packets:
+                from_id = packet.get('from_id')
+                hop_start = packet.get('hop_start')
+                
+                # Ignorer les paquets sans from_id ou hop_start
+                if not from_id or hop_start is None:
+                    continue
+                
+                # Convertir from_id en int si nécessaire
+                if isinstance(from_id, str):
+                    try:
+                        if from_id.startswith('!'):
+                            from_id = int(from_id[1:], 16)
+                        else:
+                            from_id = int(from_id)
+                    except (ValueError, AttributeError):
+                        continue
+                
+                # Initialiser ou mettre à jour les données du nœud
+                if from_id not in node_hop_data:
+                    node_hop_data[from_id] = {
+                        'max_hop_start': hop_start,
+                        'count': 1,
+                        'name': self.node_manager.get_node_name(from_id, interface=self.interface)
+                    }
+                else:
+                    # Garder le hop_start maximum observé
+                    node_hop_data[from_id]['max_hop_start'] = max(
+                        node_hop_data[from_id]['max_hop_start'], 
+                        hop_start
+                    )
+                    node_hop_data[from_id]['count'] += 1
+
+            if not node_hop_data:
+                return f"📭 Aucun nœud avec hop_start ({hours}h)"
+
+            # Trier par hop_start décroissant
+            sorted_nodes = sorted(
+                node_hop_data.items(),
+                key=lambda x: x[1]['max_hop_start'],
+                reverse=True
+            )
+
+            # Limiter aux 20 premiers
+            top_20 = sorted_nodes[:20]
+
+            # Formater la réponse selon le canal
+            if channel == 'mesh':
+                # Version ultra-compacte pour LoRa (180 chars max)
+                lines = []
+                lines.append(f"🔄 Hop({hours}h) Top{len(top_20)}")
+                
+                for node_id, data in top_20[:10]:  # Encore plus limité pour mesh
+                    name = data['name'][:8]  # Nom court
+                    hop_start = data['max_hop_start']
+                    lines.append(f"{name}:{hop_start}")
+                
+                return "\n".join(lines)
+            
+            else:  # telegram - version détaillée
+                lines = []
+                lines.append(f"🔄 **TOP 20 NŒUDS PAR HOP_START ({hours}h)**")
+                lines.append("=" * 50)
+                lines.append(f"\n{len(node_hop_data)} nœuds actifs, top 20 affichés\n")
+                
+                for i, (node_id, data) in enumerate(top_20, 1):
+                    name = data['name'][:25]  # Nom plus long pour Telegram
+                    hop_start = data['max_hop_start']
+                    count = data['count']
+                    
+                    # Icône selon le hop_start
+                    if hop_start >= 7:
+                        icon = "🔴"  # Très grande portée
+                    elif hop_start >= 5:
+                        icon = "🟡"  # Grande portée
+                    elif hop_start >= 3:
+                        icon = "🟢"  # Portée moyenne
+                    else:
+                        icon = "⚪"  # Faible portée
+                    
+                    lines.append(f"{i}. {icon} **{name}**")
+                    lines.append(f"   Hop start max: **{hop_start}** ({count} paquets)")
+                    lines.append("")
+                
+                # Résumé
+                avg_hop_start = sum(d['max_hop_start'] for _, d in top_20) / len(top_20)
+                lines.append(f"**Résumé:**")
+                lines.append(f"• Moyenne hop_start (top 20): {avg_hop_start:.1f}")
+                lines.append(f"• Max hop_start observé: {top_20[0][1]['max_hop_start']}")
+                
+                return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur hop_stats: {e}")
+            error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:100]}"
 
     # Méthodes utilitaires privées
