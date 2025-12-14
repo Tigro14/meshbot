@@ -11,6 +11,7 @@ import threading
 import meshtastic.tcp_interface
 from config import *
 from utils import *
+from reboot_semaphore import RebootSemaphore
 
 class SystemCommands:
     def __init__(self, interface, node_manager, sender, bot_start_time=None):
@@ -190,14 +191,19 @@ class SystemCommands:
             node_name = self.node_manager.get_node_name(from_id, self._get_interface())
             info_print(f"🚨 REBOOT Pi5: {node_name} (0x{from_id:08x})")
             
-            signal_file = "/tmp/reboot_requested"
-            with open(signal_file, 'w') as f:
-                f.write(f"Demandé par: {node_name}\n")
-                f.write(f"Node ID: 0x{from_id:08x}\n")
-                f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            # Use semaphore-based signaling (survives read-only filesystem)
+            requester_info = {
+                'name': node_name,
+                'node_id': f"0x{from_id:08x}",
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
             
-            info_print(f"✅ Signal créé: {signal_file}")
-            return "✅ Redémarrage Pi5 programmé"
+            if RebootSemaphore.signal_reboot(requester_info):
+                info_print(f"✅ Sémaphore reboot activé (via /dev/shm)")
+                return "✅ Redémarrage Pi5 programmé"
+            else:
+                error_print("❌ Échec activation sémaphore reboot")
+                return "❌ Erreur lors du signal reboot"
             
         except Exception as e:
             error_print(f"Erreur reboot: {e}")
