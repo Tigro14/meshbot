@@ -34,6 +34,8 @@ from vigilance_monitor import VigilanceMonitor
 from blitz_monitor import BlitzMonitor
 from mqtt_neighbor_collector import MQTTNeighborCollector
 from mesh_traceroute_manager import MeshTracerouteManager
+from db_error_monitor import DBErrorMonitor
+from reboot_semaphore import RebootSemaphore
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -56,6 +58,11 @@ class MeshBot:
         self.running = False
         
         self.start_time = time.time()
+        
+        # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
+        self.db_error_monitor = None
+        self._init_db_error_monitor()
+        
         # Initialisation des gestionnaires
         self.node_manager = NodeManager(self.interface)
         self.context_manager = ContextManager(self.node_manager)
@@ -64,6 +71,11 @@ class MeshBot:
         self.traffic_monitor = TrafficMonitor(self.node_manager)
         self.remote_nodes_client = RemoteNodesClient()
         self.remote_nodes_client.set_node_manager(self.node_manager)
+        
+        # Configurer le callback d'erreur DB dans traffic_monitor.persistence
+        if self.db_error_monitor and self.traffic_monitor.persistence:
+            self.traffic_monitor.persistence.error_callback = self.db_error_monitor.record_error
+            debug_print("✅ Callback d'erreur DB configuré")
 
         # Moniteur de vigilance météo (si activé)
         self.vigilance_monitor = None
@@ -1081,6 +1093,49 @@ class MeshBot:
         signal_name = signal.Signals(signum).name
         info_print(f"🛑 Signal {signal_name} reçu - arrêt propre du bot...")
         self.running = False
+    
+    def _init_db_error_monitor(self):
+        """
+        Initialise le moniteur d'erreurs de base de données avec auto-reboot.
+        """
+        try:
+            # Récupérer la configuration
+            enabled = globals().get('DB_AUTO_REBOOT_ENABLED', True)
+            window_seconds = globals().get('DB_AUTO_REBOOT_WINDOW_SECONDS', 300)
+            error_threshold = globals().get('DB_AUTO_REBOOT_ERROR_THRESHOLD', 10)
+            
+            if not enabled:
+                debug_print("ℹ️ Moniteur d'erreurs DB désactivé (DB_AUTO_REBOOT_ENABLED=False)")
+                return
+            
+            # Créer le callback de reboot
+            def reboot_callback():
+                """Callback pour déclencher le reboot de l'application."""
+                try:
+                    requester_info = {
+                        'name': 'DBErrorMonitor',
+                        'node_id': '0xDB_ERROR',
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    return RebootSemaphore.signal_reboot(requester_info)
+                except Exception as e:
+                    error_print(f"❌ Erreur callback reboot: {e}")
+                    return False
+            
+            # Initialiser le moniteur
+            self.db_error_monitor = DBErrorMonitor(
+                window_seconds=window_seconds,
+                error_threshold=error_threshold,
+                enabled=enabled,
+                reboot_callback=reboot_callback
+            )
+            
+            info_print("✅ Moniteur d'erreurs DB initialisé avec auto-reboot")
+            
+        except Exception as e:
+            error_print(f"❌ Erreur initialisation moniteur DB: {e}")
+            error_print(traceback.format_exc())
+            self.db_error_monitor = None
     
     def start(self):
         """Démarrage du bot - version simplifiée avec support TCP/Serial"""
