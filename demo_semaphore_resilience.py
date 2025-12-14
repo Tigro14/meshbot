@@ -42,6 +42,8 @@ def simulate_readonly_filesystem():
             print("   ✅ Écriture réussie (filesystem normal)")
             
             # Simuler passage en read-only en changeant permissions
+            # Note: This is a limited simulation - real read-only FS is at mount level
+            # In reality, the kernel remounts the filesystem as read-only
             os.chmod(tmpdir, 0o444)  # Read-only
             
             try:

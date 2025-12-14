@@ -15,12 +15,16 @@ import signal
 import os
 
 # Import du module semaphore
+# Note: In production, install the bot as a package or ensure PYTHONPATH is set
+# For systemd service, use WorkingDirectory to point to bot directory
 try:
     from reboot_semaphore import RebootSemaphore
 except ImportError:
-    # Si le module n'est pas dans le PATH, l'ajouter
+    # Fallback: If module not in PATH, try to find it relative to script location
+    # This is for development/testing only - production should use proper paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, script_dir)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
     from reboot_semaphore import RebootSemaphore
 
 LOG_FILE = "/var/log/bot-reboot.log"

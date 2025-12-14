@@ -8,7 +8,21 @@ Uses /dev/shm (shared memory) to survive read-only filesystem issues
 import os
 import fcntl
 import time
-from utils import info_print, error_print, debug_print
+import sys
+
+# Import utils functions with fallback for standalone usage
+try:
+    from utils import info_print, error_print, debug_print
+except ImportError:
+    # Fallback implementations for standalone usage
+    def info_print(msg):
+        print(f"[INFO] {msg}", file=sys.stdout)
+    
+    def error_print(msg):
+        print(f"[ERROR] {msg}", file=sys.stderr)
+    
+    def debug_print(msg):
+        pass  # Debug disabled in standalone mode
 
 # Use /dev/shm (tmpfs in RAM) - survives even if disk filesystems go read-only
 REBOOT_SEMAPHORE_FILE = "/dev/shm/meshbot_reboot.lock"
@@ -26,6 +40,9 @@ class RebootSemaphore:
     - Automatic cleanup on reboot (tmpfs is cleared)
     """
     
+    # Class variable to track file descriptor for proper cleanup
+    _lock_fd = None
+    
     @staticmethod
     def signal_reboot(requester_info):
         """
@@ -37,6 +54,13 @@ class RebootSemaphore:
         
         Returns:
             bool: True if signal was set successfully, False otherwise
+        
+        Note:
+            The lock file descriptor is kept open to maintain the lock.
+            It will be automatically released when:
+            - The process exits
+            - clear_reboot_signal() is called explicitly
+            - The system reboots (tmpfs is cleared)
         """
         try:
             # Create lock file if it doesn't exist
@@ -46,6 +70,9 @@ class RebootSemaphore:
             try:
                 # Try to acquire exclusive lock (non-blocking)
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                
+                # Store fd for later cleanup (if needed)
+                RebootSemaphore._lock_fd = lock_fd
                 
                 # Write reboot info for logging
                 try:
@@ -68,12 +95,9 @@ class RebootSemaphore:
                 
             except IOError as e:
                 # Lock is already held - reboot already signaled
+                os.close(lock_fd)  # Close since we won't use it
                 debug_print(f"ℹ️ Sémaphore reboot déjà actif")
                 return True  # Still consider it success
-            finally:
-                # Don't close the fd - keep the lock active
-                # It will be released when process exits or explicitly cleared
-                pass
                 
         except Exception as e:
             error_print(f"❌ Erreur lors de l'activation du sémaphore reboot: {e}")
@@ -117,6 +141,15 @@ class RebootSemaphore:
         This should be called by the watcher after initiating the reboot
         """
         try:
+            # Close file descriptor if we have one
+            if RebootSemaphore._lock_fd is not None:
+                try:
+                    os.close(RebootSemaphore._lock_fd)
+                    RebootSemaphore._lock_fd = None
+                    debug_print(f"✅ Lock file descriptor fermé")
+                except Exception as e:
+                    debug_print(f"⚠️ Erreur fermeture fd: {e}")
+            
             # Remove lock file
             if os.path.exists(REBOOT_SEMAPHORE_FILE):
                 os.remove(REBOOT_SEMAPHORE_FILE)
