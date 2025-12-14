@@ -8,15 +8,26 @@ en lecture seule.
 
 ## Problème résolu
 
+### Scénario réel: Raspberry Pi avec filesystem corrompu
+
+**Situation**: Votre Raspberry Pi est déployé en extérieur avec une connexion LoRa Meshtastic.
+Suite à une coupure de courant ou un problème de carte SD, le système de fichiers passe en 
+mode read-only pour éviter une corruption supplémentaire.
+
+**Conséquences**:
+- Le bot continue de tourner (en RAM)
+- La connexion Meshtastic fonctionne
+- Mais impossible d'écrire sur le disque
+- **Un reboot est nécessaire pour réparer le système**
+
 ### Ancien système (fichier dans /tmp)
 ```
 /rebootpi command → Write /tmp/reboot_requested → Watcher reads file → Reboot
                     ❌ FAIL if filesystem is read-only
 ```
 
-**Problème**: Quand le Raspberry Pi a des problèmes de carte SD ou de corruption, le système de 
-fichiers peut passer en mode lecture seule (read-only). Dans ce cas, impossible d'écrire le fichier 
-signal, donc impossible de redémarrer à distance alors que c'est le moment où on en a le plus besoin!
+**Problème**: L'écriture du fichier signal échoue car le filesystem est read-only.
+Résultat: **Impossible de redémarrer à distance, intervention physique nécessaire** 🚗💨
 
 ### Nouveau système (sémaphore dans /dev/shm)
 ```
@@ -25,7 +36,14 @@ signal, donc impossible de redémarrer à distance alors que c'est le moment où
 ```
 
 **Solution**: `/dev/shm` est un filesystem tmpfs monté en RAM. Il reste accessible même si les 
-filesystems sur disque sont en lecture seule.
+filesystems sur disque sont en lecture seule. **Le reboot distant fonctionne, système réparé!** 🎉
+
+### Pourquoi /dev/shm fonctionne-t-il ?
+
+1. **tmpfs en RAM**: Pas d'I/O disque, tout en mémoire vive
+2. **Indépendant**: Séparé des filesystems sur disque (/, /home, /tmp)
+3. **Toujours accessible**: Même si le disque principal est en panne
+4. **Standard Linux**: Disponible par défaut sur tous les systèmes modernes
 
 ## Architecture technique
 
