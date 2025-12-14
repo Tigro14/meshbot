@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from collections import defaultdict, deque
 import os
 from utils import debug_print, info_print, error_print
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TrafficPersistence:
     """Gère la persistance des données de trafic dans SQLite."""
 
-    def __init__(self, db_path: str = "traffic_history.db", error_callback=None):
+    def __init__(self, db_path: str = "traffic_history.db", error_callback: Optional[Callable[[Exception, str], None]] = None):
         """
         Initialise la connexion à la base de données.
 

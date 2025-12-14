@@ -7,7 +7,7 @@ Surveille les échecs d'écriture persistants et déclenche un reboot automatiqu
 
 import time
 from collections import deque
-from typing import Optional, Callable
+from typing import Optional, Callable, List, Tuple
 from utils import info_print, error_print, debug_print
 import logging
 
@@ -28,7 +28,8 @@ class DBErrorMonitor:
         window_seconds: int = 300,  # 5 minutes
         error_threshold: int = 10,   # 10 erreurs
         enabled: bool = True,
-        reboot_callback: Optional[Callable[[], bool]] = None
+        reboot_callback: Optional[Callable[[], bool]] = None,
+        max_errors_stored: int = 100  # Limite de la deque
     ):
         """
         Initialise le moniteur d'erreurs DB.
@@ -39,15 +40,17 @@ class DBErrorMonitor:
             enabled: Active/désactive le monitoring et auto-reboot
             reboot_callback: Fonction à appeler pour déclencher le reboot
                            Signature: reboot_callback() -> bool
+            max_errors_stored: Nombre maximum d'erreurs à conserver en mémoire (défaut: 100)
         """
         self.window_seconds = window_seconds
         self.error_threshold = error_threshold
         self.enabled = enabled
         self.reboot_callback = reboot_callback
+        self.max_errors_stored = max_errors_stored
         
         # File des erreurs avec timestamp
         # Structure: deque de (timestamp, exception, operation)
-        self.errors = deque(maxlen=100)  # Limite pour éviter croissance illimitée
+        self.errors = deque(maxlen=max_errors_stored)  # Limite pour éviter croissance illimitée
         
         # État du reboot
         self.reboot_triggered = False
@@ -113,7 +116,7 @@ class DBErrorMonitor:
         if error_count >= self.error_threshold:
             self._trigger_reboot(error_count, errors_in_window)
     
-    def _trigger_reboot(self, error_count: int, errors_in_window: list):
+    def _trigger_reboot(self, error_count: int, errors_in_window: List[Tuple[float, Exception, str]]):
         """
         Déclenche le reboot automatique de l'application.
         
