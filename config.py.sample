@@ -321,5 +321,26 @@ REBOOT_AUTHORIZED_USERS = [
 REBOOT_PASSWORD = "your_password_secret"
 REBOOT_COMMANDS_ENABLED = True
 
+# ========================================
+# MONITORING ET AUTO-REBOOT
+# ========================================
+
+# Monitoring des erreurs de base de données avec auto-reboot
+# Si activé, le bot surveille les échecs d'écriture en base de données
+# et déclenche automatiquement un reboot de l'application si le nombre
+# d'erreurs dépasse le seuil configuré dans la fenêtre de temps
+DB_AUTO_REBOOT_ENABLED = True
+
+# Taille de la fenêtre de temps pour compter les erreurs (en secondes)
+# Valeur par défaut: 300 secondes (5 minutes)
+# Les erreurs plus anciennes ne sont pas comptabilisées
+DB_AUTO_REBOOT_WINDOW_SECONDS = 300
+
+# Nombre d'erreurs nécessaires pour déclencher le reboot automatique
+# Valeur par défaut: 10 erreurs dans la fenêtre de temps
+# Ce seuil permet de distinguer les erreurs temporaires (quelques échecs)
+# des erreurs durables (nombreux échecs répétés)
+DB_AUTO_REBOOT_ERROR_THRESHOLD = 10
+
 # Variables globales d'état
 DEBUG_MODE = True

@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from collections import defaultdict, deque
 import os
 from utils import debug_print, info_print, error_print
@@ -19,15 +19,18 @@ logger = logging.getLogger(__name__)
 class TrafficPersistence:
     """Gère la persistance des données de trafic dans SQLite."""
 
-    def __init__(self, db_path: str = "traffic_history.db"):
+    def __init__(self, db_path: str = "traffic_history.db", error_callback: Optional[Callable[[Exception, str], None]] = None):
         """
         Initialise la connexion à la base de données.
 
         Args:
             db_path: Chemin vers le fichier de base de données SQLite
+            error_callback: Fonction à appeler en cas d'erreur d'écriture (optionnel)
+                           Signature: error_callback(error: Exception, operation: str)
         """
         self.db_path = db_path
         self.conn = None
+        self.error_callback = error_callback
         self._init_database()
 
     def _init_database(self):
@@ -344,6 +347,13 @@ class TrafficPersistence:
             logger.error(f"❌ Erreur lors de la sauvegarde du paquet : {e}")
             import traceback
             logger.error(traceback.format_exc())
+            
+            # Notifier le callback d'erreur si configuré
+            if self.error_callback:
+                try:
+                    self.error_callback(e, 'save_packet')
+                except Exception as cb_error:
+                    logger.error(f"Erreur dans error_callback: {cb_error}")
 
     def save_public_message(self, message_data: Dict[str, Any]):
         """
@@ -382,6 +392,13 @@ class TrafficPersistence:
 
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde du message public : {e}")
+            
+            # Notifier le callback d'erreur si configuré
+            if self.error_callback:
+                try:
+                    self.error_callback(e, 'save_public_message')
+                except Exception as cb_error:
+                    logger.error(f"Erreur dans error_callback: {cb_error}")
 
     def save_node_stats(self, node_stats: Dict[str, Dict]):
         """
