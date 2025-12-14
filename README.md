@@ -219,7 +219,11 @@ journalctl -u meshbot -f
 ## Configuration du redémarrage à distance
 
 Le bot dispose d'une commande cachée `/rebootpi` qui permet de redémarrer le Pi5 à distance.
-Pour des raisons de sécurité, cette fonctionnalité utilise un système de fichier signal.
+Pour des raisons de sécurité, cette fonctionnalité utilise un système de sémaphore en mémoire partagée.
+
+**Note importante**: Le système utilise `/dev/shm` (mémoire partagée tmpfs) au lieu de `/tmp`.
+Cela garantit que le signal de redémarrage fonctionne **même si le système de fichiers principal
+devient read-only** (un problème courant sur Raspberry Pi avec des cartes SD défaillantes).
 
 ### 1. Script de surveillance
 
@@ -228,39 +232,71 @@ Créer le script `/usr/local/bin/rebootpi-watcher.sh` :
 ```bash
 #!/bin/bash
 # Script de surveillance pour redémarrage Pi via bot Meshtastic
+# Utilise /dev/shm (tmpfs RAM) pour survivre aux filesystems read-only
 
-SIGNAL_FILE="/tmp/reboot_requested"
+LOCK_FILE="/dev/shm/meshbot_reboot.lock"
+INFO_FILE="/dev/shm/meshbot_reboot.info"
 LOG_FILE="/var/log/bot-reboot.log"
 
 while true; do
-    if [ -f "$SIGNAL_FILE" ]; then
-        echo "$(date): Redémarrage Pi demandé via signal fichier" >> "$LOG_FILE"
-        cat "$SIGNAL_FILE" >> "$LOG_FILE"
-        rm -f "$SIGNAL_FILE"
-        echo "$(date): Exécution du redémarrage Pi..." >> "$LOG_FILE"
+    # Vérifier si le sémaphore de reboot est actif
+    # On teste si le fichier lock existe et si on peut acquérir le lock
+    if [ -f "$LOCK_FILE" ]; then
+        # Tenter d'acquérir un lock exclusif (non-blocking)
+        if ! flock -n -x "$LOCK_FILE" -c 'true' 2>/dev/null; then
+            # Le lock est tenu = signal de reboot actif
+            echo "$(date): Redémarrage Pi demandé via sémaphore (/dev/shm)" >> "$LOG_FILE"
+            
+            # Lire et logger les informations si disponibles
+            if [ -f "$INFO_FILE" ]; then
+                cat "$INFO_FILE" >> "$LOG_FILE"
+            fi
+            
+            # Nettoyer les fichiers de signal
+            rm -f "$LOCK_FILE" "$INFO_FILE" 2>/dev/null || true
+            
+            echo "$(date): Exécution du redémarrage Pi..." >> "$LOG_FILE"
 
-        # Méthodes de redémarrage pour RPi5 (par ordre de préférence)
-        # 1. systemctl (recommandé pour systemd)
-        systemctl reboot || \
-        # 2. shutdown avec délai court
-        shutdown -r +1 "Redémarrage via bot" || \
-        # 3. reboot direct
-        /sbin/reboot || \
-        # 4. sync + reboot forcé
-        { sync; echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }
+            # Méthodes de redémarrage pour RPi5 (par ordre de préférence)
+            # 1. systemctl (recommandé pour systemd)
+            systemctl reboot || \
+            # 2. shutdown avec délai court
+            shutdown -r +1 "Redémarrage via bot" || \
+            # 3. reboot direct
+            /sbin/reboot || \
+            # 4. sync + reboot forcé
+            { sync; echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger; }
+        fi
     fi
     sleep 5
 done
+```
+
+#### Alternative Python (recommandée)
+
+Le bot inclut aussi une version Python plus robuste: `rebootpi-watcher.py`
+
+Avantages de la version Python:
+- ✅ Gestion d'erreurs plus complète
+- ✅ Logs détaillés
+- ✅ Shutdown gracieux (SIGTERM)
+- ✅ Plus facile à maintenir et débugger
+
+Pour utiliser la version Python, copiez le script:
+```bash
+sudo cp rebootpi-watcher.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/rebootpi-watcher.py
 ```
 
 ### 2. Service systemd pour permettre le reboot du Pi à distance
 
 Créer le fichier `/etc/systemd/system/rebootpi-watcher.service` :
 
+**Version Bash (simple):**
 ```ini
 [Unit]
-Description=Bot RebootPi Watcher
-Documentation=https://github.com/votre-repo/meshtastic-bot
+Description=Bot RebootPi Watcher (Bash)
+Documentation=https://github.com/Tigro14/meshbot
 After=multi-user.target
 StartLimitIntervalSec=0
 
@@ -276,6 +312,31 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+**Version Python (recommandée):**
+```ini
+[Unit]
+Description=Bot RebootPi Watcher (Python)
+Documentation=https://github.com/Tigro14/meshbot
+After=multi-user.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/rebootpi-watcher.py
+Restart=always
+RestartSec=10
+User=root
+StandardOutput=journal
+StandardError=journal
+WorkingDirectory=/home/votre-user/meshbot
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Note**: Ajustez `WorkingDirectory` pour pointer vers le répertoire du bot (nécessaire pour
+importer `reboot_semaphore.py`).
 
 ### 3. Activation du service
 
@@ -307,9 +368,34 @@ sudo systemctl is-active rebootpi-watcher.service
 # Consulter les logs du service
 sudo journalctl -u rebootpi-watcher.service -f
 
-# Tester le mécanisme (ATTENTION: redémarre le système!)
-echo "Test manuel" > /tmp/reboot_requested
+# Consulter le log fichier
+sudo tail -f /var/log/bot-reboot.log
+
+# Tester le mécanisme avec le module Python (SANS redémarrage réel)
+python3 test_reboot_semaphore.py
+
+# Test complet du signal (ATTENTION: redémarre le système!)
+# Version Python:
+python3 << 'EOF'
+from reboot_semaphore import RebootSemaphore
+import time
+
+info = {
+    'name': 'TestManual',
+    'node_id': '0xFFFFFFFF',
+    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+}
+RebootSemaphore.signal_reboot(info)
+print("Signal envoyé - Le système va redémarrer dans 5-10 secondes!")
+EOF
+
+# Ou version shell (si vous utilisez la version bash du watcher):
+# sudo python3 -c "from reboot_semaphore import RebootSemaphore; RebootSemaphore.signal_reboot({'name': 'Test', 'node_id': '0xFF', 'timestamp': '2024-01-01 00:00:00'})"
 ```
+
+**Note sur /dev/shm**: Le système utilise maintenant `/dev/shm/meshbot_reboot.lock` au lieu de 
+`/tmp/reboot_requested`. Cela permet au signal de reboot de fonctionner **même si le système de
+fichiers principal est en read-only** (problème fréquent sur RPi avec SD corrompue).
 
 Proceder de même avec :
 

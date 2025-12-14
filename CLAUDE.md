@@ -1636,11 +1636,19 @@ def handle_rebootpi(self, sender_id, sender_info, password):
     if password != REBOOT_PASSWORD:
         return "❌ Mot de passe incorrect"
 
-    # Write signal file (separate service with root does actual reboot)
-    with open("/tmp/reboot_requested", "w") as f:
-        f.write(f"Reboot by {sender_info.get('name', 'unknown')}\n")
-        f.write(f"ID: {hex(sender_id)}\n")
-        f.write(f"Time: {time.time()}\n")
+    # Use semaphore-based signaling (survives read-only filesystem)
+    from reboot_semaphore import RebootSemaphore
+    
+    requester_info = {
+        'name': sender_info.get('name', 'unknown'),
+        'node_id': hex(sender_id),
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    if RebootSemaphore.signal_reboot(requester_info):
+        return "✅ Redémarrage Pi5 programmé"
+    else:
+        return "❌ Erreur lors du signal reboot"
 ```
 
 **Security features**:
@@ -1648,6 +1656,12 @@ def handle_rebootpi(self, sender_id, sender_info, password):
 - Audit trail (logs requester)
 - Privilege separation (bot doesn't have sudo)
 - Hidden from public help text
+
+**Technical improvement**:
+- Uses `/dev/shm` (tmpfs in RAM) instead of `/tmp` for signaling
+- Works even if main filesystem goes read-only
+- File locking via `fcntl.flock()` for robust IPC
+- See `REBOOT_SEMAPHORE.md` for details
 
 #### 3. Hidden Commands
 
