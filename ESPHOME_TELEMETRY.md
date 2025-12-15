@@ -37,7 +37,7 @@ The following ESPHome sensors are automatically broadcast when available:
 
 ### Environmental Metrics
 - **Temperature** (`bme280_temperature`): Celsius
-- **Barometric Pressure** (`bme280_pressure`): Automatically converted from hPa to Pascals
+- **Barometric Pressure** (`bme280_pressure`): Hectopascals (hPa) - no conversion needed, Meshtastic expects hPa
 - **Relative Humidity** (`bme280_relative_humidity` or `bme280_humidity`): Percentage
 
 ### Device Metrics
@@ -92,7 +92,7 @@ from meshtastic.protobuf import portnums_pb2, telemetry_pb2
 env_telemetry = telemetry_pb2.Telemetry()
 env_telemetry.time = int(time.time())
 env_telemetry.environment_metrics.temperature = 21.5  # °C
-env_telemetry.environment_metrics.barometric_pressure = 101325.0  # Pa
+env_telemetry.environment_metrics.barometric_pressure = 1013.25  # hPa (hectopascals)
 env_telemetry.environment_metrics.relative_humidity = 56.4  # %
 
 interface.sendData(

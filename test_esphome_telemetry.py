@@ -59,7 +59,7 @@ def test_esphome_sensor_values():
             ),
             'http://192.168.1.27/sensor/bme280_pressure': Mock(
                 status_code=200,
-                json=lambda: {'value': 1013.25}  # hPa
+                json=lambda: {'value': 1013.25}  # hPa (no conversion needed)
             ),
             'http://192.168.1.27/sensor/bme280_relative_humidity': Mock(
                 status_code=200,
@@ -93,12 +93,12 @@ def test_esphome_sensor_values():
             # Vérifications
             assert values is not None, "❌ get_sensor_values() retourne None"
             assert values['temperature'] == 21.5, f"❌ Température incorrecte: {values['temperature']}"
-            assert values['pressure'] == 101325.0, f"❌ Pression incorrecte (devrait être convertie en Pa): {values['pressure']}"
+            assert values['pressure'] == 1013.25, f"❌ Pression incorrecte (devrait être en hPa): {values['pressure']}"
             assert values['humidity'] == 56.4, f"❌ Humidité incorrecte: {values['humidity']}"
             assert values['battery_voltage'] == 12.8, f"❌ Tension batterie incorrecte: {values['battery_voltage']}"
             assert values['battery_current'] == 1.25, f"❌ Intensité batterie incorrecte: {values['battery_current']}"
             
-            print("\n✅ Test 1 réussi: Valeurs correctes, pression convertie en Pa, et current récupéré")
+            print("\n✅ Test 1 réussi: Valeurs correctes, pression en hPa, et current récupéré")
 
 
 def test_telemetry_broadcast():
@@ -170,7 +170,7 @@ def test_telemetry_broadcast():
         # Mock ESPHomeClient pour retourner des valeurs
         bot.esphome_client.get_sensor_values = Mock(return_value={
             'temperature': 22.3,
-            'pressure': 101325.0,  # Déjà en Pa
+            'pressure': 1013.25,  # En hPa (comme attendu par Meshtastic)
             'humidity': 58.2,
             'battery_voltage': 13.1,
             'battery_current': 1.25
@@ -200,7 +200,7 @@ def test_telemetry_broadcast():
         # Vérifier les valeurs environment_metrics
         env_data = env_call[0][0]
         assert env_data.environment_metrics.temperature == 22.3, "❌ Température incorrecte"
-        assert env_data.environment_metrics.barometric_pressure == 101325.0, "❌ Pression incorrecte"
+        assert env_data.environment_metrics.barometric_pressure == 1013.25, "❌ Pression incorrecte (devrait être en hPa)"
         assert env_data.environment_metrics.relative_humidity == 58.2, "❌ Humidité incorrecte"
         print("  ✓ environment_metrics correctes")
         
@@ -392,7 +392,7 @@ def test_partial_telemetry_broadcast():
         bot.interface.sendData = Mock()
         bot.esphome_client.get_sensor_values = Mock(return_value={
             'temperature': 21.0,
-            'pressure': 101325.0,
+            'pressure': 1013.25,  # En hPa
             'humidity': 55.0,
             'battery_voltage': None,  # Pas de batterie
             'battery_current': None

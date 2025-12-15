@@ -1034,7 +1034,7 @@ class MeshBot:
                 debug_print(f"📊 temperature: {sensor_values['temperature']}")
             
             if sensor_values.get('pressure') is not None:
-                # La pression est déjà en Pascals (converti dans get_sensor_values)
+                # La pression est en hPa (hectopascals) comme attendu par Meshtastic
                 env_telemetry.environment_metrics.barometric_pressure = sensor_values['pressure']
                 has_env_data = True
                 debug_print(f"📊 pressure: {sensor_values['pressure']}")
@@ -1046,7 +1046,7 @@ class MeshBot:
             
             if has_env_data:
                 info_print(f"📊 Télémétrie Env - Température: {sensor_values.get('temperature', 'N/A')}°C")
-                info_print(f"📊 Télémétrie Env - Pression: {sensor_values.get('pressure', 0):.0f} Pa")
+                info_print(f"📊 Télémétrie Env - Pression: {sensor_values.get('pressure', 0):.1f} hPa")
                 info_print(f"📊 Télémétrie Env - Humidité: {sensor_values.get('humidity', 'N/A')}%")
                 
                 if self._send_telemetry_packet(env_telemetry, "environment_metrics"):

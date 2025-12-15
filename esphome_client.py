@@ -201,7 +201,7 @@ class ESPHomeClient:
         Returns:
             dict: Dictionnaire avec les clés:
                 - temperature: Température en °C (ou None)
-                - pressure: Pression en Pa (ou None)
+                - pressure: Pression en hPa (ou None)
                 - humidity: Humidité relative en % (ou None)
                 - battery_voltage: Tension batterie en V (ou None)
                 - battery_current: Intensité batterie en A (ou None)
@@ -272,12 +272,12 @@ class ESPHomeClient:
                             if isinstance(data, dict) and 'value' in data:
                                 value = data['value']
                                 
-                                # Conversion de pression de hPa vers Pa si nécessaire
+                                # Note: Meshtastic expects pressure in hPa (hectopascals)
+                                # ESPHome typically returns hPa, so no conversion needed
+                                # If ESPHome returns Pa (value > 10000), convert to hPa
                                 if key == 'pressure' and value is not None:
-                                    # ESPHome retourne généralement en hPa (millibar)
-                                    # Meshtastic attend des Pascals (1 hPa = 100 Pa)
-                                    if value < 2000:  # Probablement en hPa
-                                        value = value * 100
+                                    if value > 10000:  # Likely in Pa (e.g., 101325 Pa)
+                                        value = value / 100  # Convert Pa to hPa
                                 
                                 result[key] = value
                                 debug_print(f"📊 {key}: {value}")

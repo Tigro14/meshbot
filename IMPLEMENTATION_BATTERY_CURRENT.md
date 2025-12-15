@@ -20,7 +20,7 @@ Enhanced the ESPHome telemetry broadcasting system to include battery current al
 ```
 1. Environment Metrics
    - Temperature (°C)
-   - Barometric Pressure (Pa)
+   - Barometric Pressure (hPa)
    - Relative Humidity (%)
 
 2. Device Metrics
@@ -32,7 +32,7 @@ Enhanced the ESPHome telemetry broadcasting system to include battery current al
 ```
 1. Environment Metrics
    - Temperature (°C)
-   - Barometric Pressure (Pa)
+   - Barometric Pressure (hPa)
    - Relative Humidity (%)
 
 2. Device Metrics
@@ -204,7 +204,7 @@ Expected output:
 ### Partial Sensors (Current Unavailable)
 ```
 📊 Télémétrie Env - Température: 22.3°C
-📊 Télémétrie Env - Pression: 101325 Pa
+📊 Télémétrie Env - Pression: 1013.25 hPa
 📊 Télémétrie Env - Humidité: 58.2%
 ✅ Télémétrie environment_metrics envoyée
 
