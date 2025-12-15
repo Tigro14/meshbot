@@ -44,6 +44,10 @@ The following ESPHome sensors are automatically broadcast when available:
 - **Battery Voltage** (`battery_voltage`): Volts
 - **Battery Level**: Automatically calculated percentage (11.0V = 0%, 13.8V = 100%)
 
+### Power Metrics
+- **Channel 1 Voltage** (`battery_voltage`): Battery voltage in Volts
+- **Channel 1 Current** (`battery_current`): Battery current in Amperes
+
 ## Embedded Device Telemetry
 
 When ESPHome telemetry is enabled (`ESPHOME_TELEMETRY_ENABLED = True`), the bot automatically disables the Meshtastic device's built-in telemetry to avoid duplicate packets on the mesh network:
@@ -68,17 +72,18 @@ When ESPHome telemetry is enabled (`ESPHOME_TELEMETRY_ENABLED = True`), the bot 
 1. **Periodic Check**: Every `ESPHOME_TELEMETRY_INTERVAL` seconds (runs in `periodic_update_thread`)
 2. **Data Fetch**: Queries ESPHome device for sensor values via HTTP
 3. **Data Preparation**: Creates Meshtastic telemetry protobuf messages (see note below)
-4. **Broadcast**: Sends up to 2 TELEMETRY_APP packets to all mesh nodes (0xFFFFFFFF)
+4. **Broadcast**: Sends up to 3 TELEMETRY_APP packets to all mesh nodes (0xFFFFFFFF)
 
-**IMPORTANT**: The Meshtastic telemetry protobuf uses a `oneof` field, which means **only ONE metric type can be sent per packet**. Therefore, the bot sends **TWO separate packets**:
+**IMPORTANT**: The Meshtastic telemetry protobuf uses a `oneof` field, which means **only ONE metric type can be sent per packet**. Therefore, the bot sends **THREE separate packets**:
 - **Packet 1**: `environment_metrics` (temperature, pressure, humidity)
-- **Packet 2**: `device_metrics` (battery voltage, battery level)
+- **Packet 2**: `device_metrics` (battery voltage, battery level percentage)
+- **Packet 3**: `power_metrics` (ch1_voltage, ch1_current for detailed power monitoring)
 
 This ensures all telemetry data appears correctly in node details on receiving devices.
 
 ## Telemetry Packet Structure
 
-The bot sends standard Meshtastic telemetry packets in **two separate broadcasts**:
+The bot sends standard Meshtastic telemetry packets in **three separate broadcasts**:
 
 ```python
 from meshtastic.protobuf import portnums_pb2, telemetry_pb2
@@ -114,14 +119,14 @@ interface.sendData(
 )
 ```
 
-**Why two packets?** The Meshtastic `Telemetry` protobuf has a `oneof variant` field that restricts each packet to containing only one metric type (environment_metrics OR device_metrics OR air_quality_metrics, etc). Attempting to set multiple types in one packet will result in only the last-set type being transmitted.
+**Why three packets?** The Meshtastic `Telemetry` protobuf has a `oneof variant` field that restricts each packet to containing only one metric type (environment_metrics OR device_metrics OR power_metrics OR air_quality_metrics, etc). Attempting to set multiple types in one packet will result in only the last-set type being transmitted.
 
 ## Missing Sensors
 
 The implementation handles missing or faulty sensors gracefully:
 
 - **ESPHome Offline**: No telemetry broadcast, logs warning
-- **Partial Sensors**: Broadcasts available data only (1 or 2 packets depending on what's available)
+- **Partial Sensors**: Broadcasts available data only (1 to 3 packets depending on what's available)
 - **All Sensors Missing**: No telemetry broadcast
 - **Bad Values**: Individual sensors that fail are skipped
 
@@ -135,6 +140,7 @@ Battery: 12.8V ✓
 → Broadcasts: 
   Packet 1: Temperature only (in environment_metrics)
   Packet 2: Battery voltage + level (in device_metrics)
+  Packet 3: Battery voltage + current (in power_metrics)
 ```
 
 ## Viewing Telemetry Data

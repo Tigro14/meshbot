@@ -958,7 +958,7 @@ class MeshBot:
         
         Args:
             telemetry_data: Données de télémétrie (protobuf Telemetry)
-            packet_type: Type de paquet pour les logs ("environment_metrics" ou "device_metrics")
+            packet_type: Type de paquet pour les logs ("environment_metrics", "device_metrics", ou "power_metrics")
         
         Returns:
             bool: True si envoyé avec succès, False sinon
@@ -997,13 +997,14 @@ class MeshBot:
         """
         Envoyer les données ESPHome comme télémétrie broadcast sur le mesh
         
-        IMPORTANT: Meshtastic telemetry uses a 'oneof' field, so environment_metrics
-        and device_metrics must be sent in SEPARATE packets to comply with the
-        TELEMETRY standard. This ensures all data is visible in node details.
+        IMPORTANT: Meshtastic telemetry uses a 'oneof' field, so environment_metrics,
+        device_metrics, and power_metrics must be sent in SEPARATE packets to comply
+        with the TELEMETRY standard. This ensures all data is visible in node details.
         
-        Sends up to 2 packets:
+        Sends up to 3 packets:
         1. Environment metrics (temperature, pressure, humidity)
-        2. Device metrics (battery voltage, battery level)
+        2. Device metrics (battery voltage, battery level percentage)
+        3. Power metrics (ch1_voltage, ch1_current for detailed power monitoring)
         """
         try:
             # Vérifier que la télémétrie est activée
@@ -1071,6 +1072,34 @@ class MeshBot:
                 info_print(f"📊 Télémétrie Device - Batterie: {sensor_values['battery_voltage']:.1f}V ({battery_level}%)")
                 
                 if self._send_telemetry_packet(device_telemetry, "device_metrics"):
+                    packets_sent += 1
+                    # Small delay between packets
+                    time.sleep(0.5)
+            
+            # ===== PACKET 3: Power Metrics =====
+            # Send detailed power data (voltage + current) for power monitoring
+            has_power_data = False
+            power_telemetry = telemetry_pb2.Telemetry()
+            power_telemetry.time = current_time
+            
+            if sensor_values.get('battery_voltage') is not None or sensor_values.get('battery_current') is not None:
+                # Use channel 1 for battery monitoring
+                if sensor_values.get('battery_voltage') is not None:
+                    power_telemetry.power_metrics.ch1_voltage = sensor_values['battery_voltage']
+                    has_power_data = True
+                    debug_print(f"📊 ch1_voltage: {sensor_values['battery_voltage']}")
+                
+                if sensor_values.get('battery_current') is not None:
+                    power_telemetry.power_metrics.ch1_current = sensor_values['battery_current']
+                    has_power_data = True
+                    debug_print(f"📊 ch1_current: {sensor_values['battery_current']}")
+            
+            if has_power_data:
+                voltage_str = f"{sensor_values.get('battery_voltage', 'N/A'):.1f}V" if sensor_values.get('battery_voltage') is not None else "N/A"
+                current_str = f"{sensor_values.get('battery_current', 'N/A'):.2f}A" if sensor_values.get('battery_current') is not None else "N/A"
+                info_print(f"📊 Télémétrie Power - Batterie: {voltage_str} @ {current_str}")
+                
+                if self._send_telemetry_packet(power_telemetry, "power_metrics"):
                     packets_sent += 1
             
             if packets_sent == 0:

@@ -204,6 +204,7 @@ class ESPHomeClient:
                 - pressure: Pression en Pa (ou None)
                 - humidity: Humidité relative en % (ou None)
                 - battery_voltage: Tension batterie en V (ou None)
+                - battery_current: Intensité batterie en A (ou None)
         """
         max_retries = 2
         retry_delay = 2
@@ -242,7 +243,8 @@ class ESPHomeClient:
                     'temperature': None,
                     'pressure': None,
                     'humidity': None,
-                    'battery_voltage': None
+                    'battery_voltage': None,
+                    'battery_current': None
                 }
                 
                 # Mapping des endpoints vers les clés du résultat
@@ -251,7 +253,8 @@ class ESPHomeClient:
                     '/sensor/bme280_pressure': 'pressure',
                     '/sensor/bme280_relative_humidity': 'humidity',
                     '/sensor/bme280_humidity': 'humidity',  # Fallback
-                    '/sensor/battery_voltage': 'battery_voltage'
+                    '/sensor/battery_voltage': 'battery_voltage',
+                    '/sensor/battery_current': 'battery_current'
                 }
                 
                 # Récupérer chaque capteur
