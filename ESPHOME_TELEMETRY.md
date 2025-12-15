@@ -117,6 +117,22 @@ interface.sendData(
     portNum=portnums_pb2.PortNum.TELEMETRY_APP,
     wantResponse=False
 )
+
+# Small delay between packets
+time.sleep(0.5)
+
+# PACKET 3: Power metrics for detailed power monitoring
+power_telemetry = telemetry_pb2.Telemetry()
+power_telemetry.time = int(time.time())
+power_telemetry.power_metrics.ch1_voltage = 12.8  # V (battery voltage)
+power_telemetry.power_metrics.ch1_current = 1.25  # A (battery current)
+
+interface.sendData(
+    power_telemetry,
+    destinationId=0xFFFFFFFF,  # Broadcast to all
+    portNum=portnums_pb2.PortNum.TELEMETRY_APP,
+    wantResponse=False
+)
 ```
 
 **Why three packets?** The Meshtastic `Telemetry` protobuf has a `oneof variant` field that restricts each packet to containing only one metric type (environment_metrics OR device_metrics OR power_metrics OR air_quality_metrics, etc). Attempting to set multiple types in one packet will result in only the last-set type being transmitted.
