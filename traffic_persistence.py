@@ -803,12 +803,13 @@ class TrafficPersistence:
             logger.error(f"Erreur lors du chargement des voisins : {e}")
             return {}
 
-    def cleanup_old_data(self, hours: int = 48):
+    def cleanup_old_data(self, hours: int = 48, node_stats_hours: int = None):
         """
         Supprime les données plus anciennes que le nombre d'heures spécifié.
 
         Args:
-            hours: Nombre d'heures à conserver
+            hours: Nombre d'heures à conserver pour packets/messages/neighbors
+            node_stats_hours: Nombre d'heures à conserver pour node_stats (défaut: 168 = 7 jours)
         """
         try:
             cursor = self.conn.cursor()
@@ -823,9 +824,22 @@ class TrafficPersistence:
             cursor.execute('DELETE FROM neighbors WHERE timestamp < ?', (cutoff,))
             neighbors_deleted = cursor.rowcount
 
+            # Clean up stale node_stats entries (default: 7 days retention)
+            if node_stats_hours is None:
+                # Try to get from config, fallback to 168 hours (7 days)
+                try:
+                    import config
+                    node_stats_hours = getattr(config, 'NODE_STATS_RETENTION_HOURS', 168)
+                except:
+                    node_stats_hours = 168
+            
+            node_stats_cutoff = (datetime.now() - timedelta(hours=node_stats_hours)).timestamp()
+            cursor.execute('DELETE FROM node_stats WHERE last_updated < ?', (node_stats_cutoff,))
+            node_stats_deleted = cursor.rowcount
+
             self.conn.commit()
 
-            logger.info(f"Nettoyage : {packets_deleted} paquets, {messages_deleted} messages, {neighbors_deleted} voisins supprimés (> {hours}h)")
+            logger.info(f"Nettoyage : {packets_deleted} paquets, {messages_deleted} messages, {neighbors_deleted} voisins, {node_stats_deleted} node_stats supprimés (packets/messages/neighbors > {hours}h, node_stats > {node_stats_hours}h)")
 
             # Optimiser la base de données après le nettoyage
             cursor.execute('VACUUM')

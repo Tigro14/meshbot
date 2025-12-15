@@ -98,6 +98,12 @@ NEIGHBOR_LOAD_POLL_INTERVAL = 5    # Intervalle entre vérifications de progress
 # 48h = 2 jours - Valeur historique (peut donner une carte vide)
 NEIGHBOR_RETENTION_HOURS = 720  # 30 jours de rétention
 
+# Configuration rétention des statistiques de nœuds dans SQLite
+# Durée de conservation des métriques agrégées par nœud (en heures)
+# 168h = 7 jours (1 semaine) - Recommandé pour garder les métriques récentes
+# Les statistiques de nœuds inactifs depuis plus de 7 jours seront supprimées
+NODE_STATS_RETENTION_HOURS = 168  # 7 jours de rétention
+
 # Configuration affichage des métriques de signal
 SHOW_RSSI = False  # Afficher les valeurs RSSI (-85dB)
 SHOW_SNR = False   # Afficher les valeurs SNR (SNR:8.5)
