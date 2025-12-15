@@ -59,7 +59,7 @@ def test_esphome_sensor_values():
             ),
             'http://192.168.1.27/sensor/bme280_pressure': Mock(
                 status_code=200,
-                json=lambda: {'value': 1013.25}  # hPa
+                json=lambda: {'value': 1013.25}  # hPa (no conversion needed)
             ),
             'http://192.168.1.27/sensor/bme280_relative_humidity': Mock(
                 status_code=200,
@@ -68,6 +68,10 @@ def test_esphome_sensor_values():
             'http://192.168.1.27/sensor/battery_voltage': Mock(
                 status_code=200,
                 json=lambda: {'value': 12.8}
+            ),
+            'http://192.168.1.27/sensor/battery_current': Mock(
+                status_code=200,
+                json=lambda: {'value': 1.25}
             )
         }
         
@@ -89,16 +93,17 @@ def test_esphome_sensor_values():
             # Vérifications
             assert values is not None, "❌ get_sensor_values() retourne None"
             assert values['temperature'] == 21.5, f"❌ Température incorrecte: {values['temperature']}"
-            assert values['pressure'] == 101325.0, f"❌ Pression incorrecte (devrait être convertie en Pa): {values['pressure']}"
+            assert values['pressure'] == 1013.25, f"❌ Pression incorrecte (devrait être en hPa): {values['pressure']}"
             assert values['humidity'] == 56.4, f"❌ Humidité incorrecte: {values['humidity']}"
             assert values['battery_voltage'] == 12.8, f"❌ Tension batterie incorrecte: {values['battery_voltage']}"
+            assert values['battery_current'] == 1.25, f"❌ Intensité batterie incorrecte: {values['battery_current']}"
             
-            print("\n✅ Test 1 réussi: Valeurs correctes et pression convertie en Pa")
+            print("\n✅ Test 1 réussi: Valeurs correctes, pression en hPa, et current récupéré")
 
 
 def test_telemetry_broadcast():
-    """Test du broadcast de télémétrie - DOIT envoyer 2 paquets séparés"""
-    print("\n🧪 Test 2: Broadcast télémétrie (2 paquets séparés)\n")
+    """Test du broadcast de télémétrie - DOIT envoyer 3 paquets séparés"""
+    print("\n🧪 Test 2: Broadcast télémétrie (3 paquets séparés)\n")
     print("=" * 60)
     
     with patch.dict('sys.modules', {
@@ -165,20 +170,21 @@ def test_telemetry_broadcast():
         # Mock ESPHomeClient pour retourner des valeurs
         bot.esphome_client.get_sensor_values = Mock(return_value={
             'temperature': 22.3,
-            'pressure': 101325.0,  # Déjà en Pa
+            'pressure': 1013.25,  # En hPa (comme attendu par Meshtastic)
             'humidity': 58.2,
-            'battery_voltage': 13.1
+            'battery_voltage': 13.1,
+            'battery_current': 1.25
         })
         
         # Appeler send_esphome_telemetry
         print("Appel de send_esphome_telemetry()...")
         bot.send_esphome_telemetry()
         
-        # Vérifications - doit être appelé 2 fois (env + device)
+        # Vérifications - doit être appelé 3 fois (env + device + power)
         assert bot.interface.sendData.called, "❌ sendData() n'a pas été appelé"
         call_count = bot.interface.sendData.call_count
         print(f"\nsendData() appelé {call_count} fois")
-        assert call_count == 2, f"❌ sendData() devrait être appelé 2 fois (env + device), mais appelé {call_count} fois"
+        assert call_count == 3, f"❌ sendData() devrait être appelé 3 fois (env + device + power), mais appelé {call_count} fois"
         
         # Vérifier premier appel (environment_metrics)
         env_call = bot.interface.sendData.call_args_list[0]
@@ -194,7 +200,7 @@ def test_telemetry_broadcast():
         # Vérifier les valeurs environment_metrics
         env_data = env_call[0][0]
         assert env_data.environment_metrics.temperature == 22.3, "❌ Température incorrecte"
-        assert env_data.environment_metrics.barometric_pressure == 101325.0, "❌ Pression incorrecte"
+        assert env_data.environment_metrics.barometric_pressure == 1013.25, "❌ Pression incorrecte (devrait être en hPa)"
         assert env_data.environment_metrics.relative_humidity == 58.2, "❌ Humidité incorrecte"
         print("  ✓ environment_metrics correctes")
         
@@ -217,7 +223,24 @@ def test_telemetry_broadcast():
         assert device_data.device_metrics.battery_level == expected_battery_level, "❌ Battery level incorrecte"
         print("  ✓ device_metrics correctes")
         
-        print("\n✅ Test 2 réussi: 2 paquets télémétrie envoyés séparément (conforme au standard)")
+        # Vérifier troisième appel (power_metrics)
+        power_call = bot.interface.sendData.call_args_list[2]
+        print(f"\nPaquet 3 (power_metrics):")
+        print(f"  destinationId: {power_call[1].get('destinationId', 'N/A')}")
+        print(f"  portNum: {power_call[1].get('portNum', 'N/A')}")
+        print(f"  wantResponse: {power_call[1].get('wantResponse', 'N/A')}")
+        
+        assert power_call[1]['destinationId'] == 0xFFFFFFFF, "❌ destinationId devrait être broadcast"
+        assert power_call[1]['portNum'] == 67, "❌ portNum devrait être TELEMETRY_APP"
+        assert power_call[1]['wantResponse'] == False, "❌ wantResponse devrait être False"
+        
+        # Vérifier les valeurs power_metrics
+        power_data = power_call[0][0]
+        assert power_data.power_metrics.ch1_voltage == 13.1, "❌ ch1_voltage incorrecte"
+        assert power_data.power_metrics.ch1_current == 1.25, "❌ ch1_current incorrecte"
+        print("  ✓ power_metrics correctes")
+        
+        print("\n✅ Test 2 réussi: 3 paquets télémétrie envoyés séparément (conforme au standard)")
 
 
 def test_missing_sensors():
@@ -265,7 +288,8 @@ def test_missing_sensors():
             'http://192.168.1.27/sensor/battery_voltage': Mock(
                 status_code=200,
                 json=lambda: {'value': 12.5}
-            )
+            ),
+            'http://192.168.1.27/sensor/battery_current': Mock(status_code=404)
         }
         
         def mock_get_partial(url, timeout=5):
@@ -284,6 +308,7 @@ def test_missing_sensors():
             assert values['pressure'] is None, "❌ Pression devrait être None"
             assert values['humidity'] is None, "❌ Humidité devrait être None"
             assert values['battery_voltage'] == 12.5, "❌ Tension batterie devrait être présente"
+            assert values['battery_current'] is None, "❌ Intensité batterie devrait être None"
             
             print("✅ Gère correctement les capteurs partiellement disponibles")
             print(f"   Valeurs: {values}")
@@ -348,6 +373,17 @@ def test_partial_telemetry_broadcast():
         # Importer MeshBot après les mocks
         from main_bot import MeshBot
         
+        # Fix: Add power_metrics to mock
+        def create_mock_telemetry_with_power():
+            mock = MagicMock()
+            mock.time = 0
+            mock.environment_metrics = MagicMock()
+            mock.device_metrics = MagicMock()
+            mock.power_metrics = MagicMock()
+            return mock
+        
+        telemetry_pb2.Telemetry = Mock(side_effect=create_mock_telemetry_with_power)
+        
         # Test Case A: Seulement environment_metrics (pas de batterie)
         print("\nTest Case A: Seulement environment_metrics")
         print("-" * 60)
@@ -356,9 +392,10 @@ def test_partial_telemetry_broadcast():
         bot.interface.sendData = Mock()
         bot.esphome_client.get_sensor_values = Mock(return_value={
             'temperature': 21.0,
-            'pressure': 101325.0,
+            'pressure': 1013.25,  # En hPa
             'humidity': 55.0,
-            'battery_voltage': None  # Pas de batterie
+            'battery_voltage': None,  # Pas de batterie
+            'battery_current': None
         })
         
         bot.send_esphome_telemetry()
@@ -369,8 +406,8 @@ def test_partial_telemetry_broadcast():
         assert call_count == 1, f"❌ Devrait envoyer 1 paquet (env seulement), pas {call_count}"
         print("✅ 1 paquet envoyé (environment_metrics seulement)")
         
-        # Test Case B: Seulement device_metrics (pas d'environnement)
-        print("\nTest Case B: Seulement device_metrics")
+        # Test Case B: Seulement device_metrics et power_metrics (pas d'environnement)
+        print("\nTest Case B: Seulement device_metrics et power_metrics")
         print("-" * 60)
         bot2 = MeshBot()
         bot2.interface = Mock()
@@ -379,16 +416,17 @@ def test_partial_telemetry_broadcast():
             'temperature': None,
             'pressure': None,
             'humidity': None,
-            'battery_voltage': 12.5  # Seulement batterie
+            'battery_voltage': 12.5,  # Batterie présente
+            'battery_current': 1.5
         })
         
         bot2.send_esphome_telemetry()
         
-        # Devrait envoyer 1 seul paquet (device)
+        # Devrait envoyer 2 paquets (device + power)
         call_count = bot2.interface.sendData.call_count
         print(f"sendData() appelé {call_count} fois")
-        assert call_count == 1, f"❌ Devrait envoyer 1 paquet (device seulement), pas {call_count}"
-        print("✅ 1 paquet envoyé (device_metrics seulement)")
+        assert call_count == 2, f"❌ Devrait envoyer 2 paquets (device + power), pas {call_count}"
+        print("✅ 2 paquets envoyés (device_metrics et power_metrics)")
         
         print("\n✅ Test 4 réussi: Gère correctement les données partielles")
 
