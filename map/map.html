@@ -1453,7 +1453,74 @@
                     if (node.mqttActive) {
                         popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
                     }
-                    popupContent += `<strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
+                    
+                    // Add node metrics if available
+                    if (node.nodeStats) {
+                        popupContent += `<br><strong>📊 Métriques collectées:</strong><br>`;
+                        popupContent += `<div style="margin-left: 10px;">`;
+                        
+                        // Total packets received
+                        if (node.nodeStats.totalPackets !== undefined) {
+                            popupContent += `Paquets reçus: <strong>${node.nodeStats.totalPackets}</strong><br>`;
+                        }
+                        
+                        // Total bytes
+                        if (node.nodeStats.totalBytes !== undefined) {
+                            const kb = (node.nodeStats.totalBytes / 1024).toFixed(1);
+                            popupContent += `Volume: <strong>${kb} Ko</strong><br>`;
+                        }
+                        
+                        // Packet types (top 3)
+                        if (node.nodeStats.packetTypes && Object.keys(node.nodeStats.packetTypes).length > 0) {
+                            const types = Object.entries(node.nodeStats.packetTypes)
+                                .sort((a, b) => b[1] - a[1])
+                                .slice(0, 3);
+                            
+                            if (types.length > 0) {
+                                popupContent += `Types de paquets:<br>`;
+                                types.forEach(([type, count]) => {
+                                    // Simplify packet type names for display
+                                    const shortType = type.replace('_APP', '').replace('_', ' ');
+                                    popupContent += `&nbsp;&nbsp;• ${shortType}: ${count}<br>`;
+                                });
+                            }
+                        }
+                        
+                        popupContent += `</div>`;
+                    }
+                    
+                    // Add telemetry data if available
+                    if (node.deviceMetrics || node.environmentMetrics) {
+                        popupContent += `<br><strong>📡 Télémétrie:</strong><br>`;
+                        popupContent += `<div style="margin-left: 10px;">`;
+                        
+                        // Battery info
+                        if (node.deviceMetrics) {
+                            if (node.deviceMetrics.batteryLevel !== undefined) {
+                                popupContent += `🔋 Batterie: <strong>${node.deviceMetrics.batteryLevel}%</strong><br>`;
+                            }
+                            if (node.deviceMetrics.voltage !== undefined) {
+                                popupContent += `⚡ Voltage: <strong>${node.deviceMetrics.voltage.toFixed(2)}V</strong><br>`;
+                            }
+                        }
+                        
+                        // Environment info
+                        if (node.environmentMetrics) {
+                            if (node.environmentMetrics.temperature !== undefined) {
+                                popupContent += `🌡️ Température: <strong>${node.environmentMetrics.temperature.toFixed(1)}°C</strong><br>`;
+                            }
+                            if (node.environmentMetrics.relativeHumidity !== undefined) {
+                                popupContent += `💧 Humidité: <strong>${node.environmentMetrics.relativeHumidity.toFixed(0)}%</strong><br>`;
+                            }
+                            if (node.environmentMetrics.barometricPressure !== undefined) {
+                                popupContent += `🌫️ Pression: <strong>${node.environmentMetrics.barometricPressure.toFixed(1)} hPa</strong><br>`;
+                            }
+                        }
+                        
+                        popupContent += `</div>`;
+                    }
+                    
+                    popupContent += `<br><strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
                     popupContent += `<em>${hoursAgoText}</em>`;
                     popupContent += `</div>`;
                     
@@ -1762,7 +1829,74 @@
             if (node.mqttActive) {
                 popupContent += `<strong>🌐 MQTT:</strong> <span style="color: #FFD700; font-weight: bold;">Actif</span><br>`;
             }
-            popupContent += `<strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
+            
+            // Add node metrics if available
+            if (node.nodeStats) {
+                popupContent += `<br><strong>📊 Métriques collectées:</strong><br>`;
+                popupContent += `<div style="margin-left: 10px;">`;
+                
+                // Total packets received
+                if (node.nodeStats.totalPackets !== undefined) {
+                    popupContent += `Paquets reçus: <strong>${node.nodeStats.totalPackets}</strong><br>`;
+                }
+                
+                // Total bytes
+                if (node.nodeStats.totalBytes !== undefined) {
+                    const kb = (node.nodeStats.totalBytes / 1024).toFixed(1);
+                    popupContent += `Volume: <strong>${kb} Ko</strong><br>`;
+                }
+                
+                // Packet types (top 3)
+                if (node.nodeStats.packetTypes && Object.keys(node.nodeStats.packetTypes).length > 0) {
+                    const types = Object.entries(node.nodeStats.packetTypes)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 3);
+                    
+                    if (types.length > 0) {
+                        popupContent += `Types de paquets:<br>`;
+                        types.forEach(([type, count]) => {
+                            // Simplify packet type names for display
+                            const shortType = type.replace('_APP', '').replace('_', ' ');
+                            popupContent += `&nbsp;&nbsp;• ${shortType}: ${count}<br>`;
+                        });
+                    }
+                }
+                
+                popupContent += `</div>`;
+            }
+            
+            // Add telemetry data if available
+            if (node.deviceMetrics || node.environmentMetrics) {
+                popupContent += `<br><strong>📡 Télémétrie:</strong><br>`;
+                popupContent += `<div style="margin-left: 10px;">`;
+                
+                // Battery info
+                if (node.deviceMetrics) {
+                    if (node.deviceMetrics.batteryLevel !== undefined) {
+                        popupContent += `🔋 Batterie: <strong>${node.deviceMetrics.batteryLevel}%</strong><br>`;
+                    }
+                    if (node.deviceMetrics.voltage !== undefined) {
+                        popupContent += `⚡ Voltage: <strong>${node.deviceMetrics.voltage.toFixed(2)}V</strong><br>`;
+                    }
+                }
+                
+                // Environment info
+                if (node.environmentMetrics) {
+                    if (node.environmentMetrics.temperature !== undefined) {
+                        popupContent += `🌡️ Température: <strong>${node.environmentMetrics.temperature.toFixed(1)}°C</strong><br>`;
+                    }
+                    if (node.environmentMetrics.relativeHumidity !== undefined) {
+                        popupContent += `💧 Humidité: <strong>${node.environmentMetrics.relativeHumidity.toFixed(0)}%</strong><br>`;
+                    }
+                    if (node.environmentMetrics.barometricPressure !== undefined) {
+                        popupContent += `🌫️ Pression: <strong>${node.environmentMetrics.barometricPressure.toFixed(1)} hPa</strong><br>`;
+                    }
+                }
+                
+                popupContent += `</div>`;
+            }
+            
+            popupContent += `<br><strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
             popupContent += `<em>${hoursAgoText}</em>`;
             if (isSearchResult) {
                 popupContent += `<br><strong style="color: #FF00FF;">⚠ Affiché via recherche (hors filtre temps)</strong>`;

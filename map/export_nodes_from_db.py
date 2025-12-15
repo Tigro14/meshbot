@@ -127,6 +127,21 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 # Get neighbor data from neighbors table
                 neighbors_raw = persistence.load_neighbors(hours=hours)
                 
+                # Get node_stats data for metrics display
+                node_stats_raw = persistence.load_node_stats()
+                node_stats_data = {}
+                for node_id_str, stats in node_stats_raw.items():
+                    # Convert node_id from string to ensure consistency
+                    node_stats_data[str(node_id_str)] = {
+                        'total_packets': stats.get('total_packets', 0),
+                        'total_bytes': stats.get('total_bytes', 0),
+                        'by_type': dict(stats.get('by_type', {})),  # Convert defaultdict to dict
+                        'message_stats': stats.get('message_stats', {}),
+                        'telemetry_stats': stats.get('telemetry_stats', {}),
+                        'position_stats': stats.get('position_stats', {}),
+                        'routing_stats': stats.get('routing_stats', {})
+                    }
+                
                 # Format neighbor data for map compatibility
                 # Note: mqtt_last_heard_data is initialized at line 58 to avoid UnboundLocalError
                 for node_id_str, neighbor_list in neighbors_raw.items():
@@ -219,6 +234,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
                 log(f"   • MQTT nodes avec position (packets): {len(mqtt_node_data)} nœuds")
                 log(f"   • Telemetry disponible pour {len(telemetry_data)} nœuds")
+                log(f"   • Node stats disponible pour {len(node_stats_data)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
@@ -440,6 +456,18 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                             node_entry["environmentMetrics"]["barometricPressure"] = telem['pressure']
                         if telem.get('air_quality') is not None:
                             node_entry["environmentMetrics"]["iaq"] = telem['air_quality']
+                
+                # Add node statistics if available
+                if node_id_str in node_stats_data:
+                    stats = node_stats_data[node_id_str]
+                    node_entry["nodeStats"] = {
+                        "totalPackets": stats.get('total_packets', 0),
+                        "totalBytes": stats.get('total_bytes', 0),
+                        "packetTypes": stats.get('by_type', {}),
+                        "messageStats": stats.get('message_stats', {}),
+                        "positionStats": stats.get('position_stats', {}),
+                        "routingStats": stats.get('routing_stats', {})
+                    }
                 
                 output_nodes[node_id_hex] = node_entry
                 mqtt_only_added += 1
