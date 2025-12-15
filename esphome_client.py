@@ -127,7 +127,7 @@ class ESPHomeClient:
                     
                     # Batterie combinée
                     if 'battery_voltage' in found_data and 'battery_current' in found_data:
-                        parts.append(f"{found_data['battery_voltage']:.1f}V ({found_data['battery_current']:.2f}A)")
+                        parts.append(f"{found_data['battery_voltage']:.1f}V ({found_data['battery_current']:.3f}A)")
                     elif 'battery_voltage' in found_data:
                         parts.append(f"{found_data['battery_voltage']:.1f}V")
                     

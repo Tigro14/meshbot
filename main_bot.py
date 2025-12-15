@@ -1096,7 +1096,7 @@ class MeshBot:
             
             if has_power_data:
                 voltage_str = f"{sensor_values.get('battery_voltage', 'N/A'):.1f}V" if sensor_values.get('battery_voltage') is not None else "N/A"
-                current_str = f"{sensor_values.get('battery_current', 'N/A'):.2f}A" if sensor_values.get('battery_current') is not None else "N/A"
+                current_str = f"{sensor_values.get('battery_current', 'N/A'):.3f}A" if sensor_values.get('battery_current') is not None else "N/A"
                 info_print(f"📊 Télémétrie Power - Batterie: {voltage_str} @ {current_str}")
                 
                 if self._send_telemetry_packet(power_telemetry, "power_metrics"):

@@ -195,7 +195,7 @@ Expected output:
 📊 Télémétrie Device - Batterie: 13.1V (75%)
 ✅ Télémétrie device_metrics envoyée
 
-📊 Télémétrie Power - Batterie: 13.1V @ 1.25A
+📊 Télémétrie Power - Batterie: 13.1V @ 1.250A
 ✅ Télémétrie power_metrics envoyée
 
 ✅ Télémétrie ESPHome complète: 3 paquet(s) envoyé(s)
