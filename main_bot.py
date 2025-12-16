@@ -1106,10 +1106,78 @@ class MeshBot:
                 debug_print("⚠️ Aucune donnée à envoyer en télémétrie")
             else:
                 info_print(f"✅ Télémétrie ESPHome complète: {packets_sent} paquet(s) envoyé(s)")
+                # Store the telemetry data in the database for this node
+                self._store_sent_telemetry(sensor_values, battery_level if has_device_data else None)
             
         except Exception as e:
             # Erreur non-réseau (ex: problème protobuf, ESPHome indisponible)
             error_print(f"❌ Erreur préparation télémétrie ESPHome: {e}")
+            error_print(traceback.format_exc())
+    
+    def _store_sent_telemetry(self, sensor_values, battery_level):
+        """
+        Store the telemetry data we just sent to the mesh in our local database.
+        This ensures that our own node's telemetry appears in exports and maps.
+        
+        Args:
+            sensor_values: Dictionary of sensor values from ESPHome
+            battery_level: Calculated battery level percentage (0-100)
+        """
+        try:
+            # Get our node ID
+            my_node_id = getattr(self.interface.localNode, 'nodeNum', None)
+            if not my_node_id:
+                debug_print("⚠️ Cannot store telemetry: local node ID not available")
+                return
+            
+            # Convert node ID to hex string format used in database
+            node_id_hex = f"!{my_node_id:08x}"
+            
+            # Get or create stats for this node
+            if hasattr(self, 'traffic_monitor') and self.traffic_monitor:
+                # Use traffic_monitor's node_packet_stats structure
+                if node_id_hex not in self.traffic_monitor.node_packet_stats:
+                    self.traffic_monitor.node_packet_stats[node_id_hex] = {
+                        'total_packets': 0,
+                        'by_type': {},
+                        'total_bytes': 0,
+                        'first_seen': None,
+                        'last_seen': None,
+                        'hourly_activity': {},
+                        'message_stats': {'count': 0, 'total_chars': 0, 'avg_length': 0},
+                        'telemetry_stats': {'count': 0},
+                        'position_stats': {'count': 0},
+                        'routing_stats': {'count': 0, 'packets_relayed': 0, 'packets_originated': 0}
+                    }
+                
+                # Update telemetry stats
+                tel_stats = self.traffic_monitor.node_packet_stats[node_id_hex]['telemetry_stats']
+                
+                # Device metrics (battery)
+                if battery_level is not None:
+                    tel_stats['last_battery'] = battery_level
+                if sensor_values.get('battery_voltage') is not None:
+                    tel_stats['last_voltage'] = sensor_values['battery_voltage']
+                
+                # Environment metrics
+                if sensor_values.get('temperature') is not None:
+                    tel_stats['last_temperature'] = sensor_values['temperature']
+                if sensor_values.get('humidity') is not None:
+                    tel_stats['last_humidity'] = sensor_values['humidity']
+                if sensor_values.get('pressure') is not None:
+                    tel_stats['last_pressure'] = sensor_values['pressure']
+                
+                # Save to database
+                self.traffic_monitor.persistence.save_node_stats(
+                    {node_id_hex: self.traffic_monitor.node_packet_stats[node_id_hex]}
+                )
+                
+                debug_print(f"💾 Télémétrie stockée en DB pour {node_id_hex}")
+            else:
+                debug_print("⚠️ TrafficMonitor not available, cannot store telemetry")
+                
+        except Exception as e:
+            error_print(f"❌ Erreur stockage télémétrie en DB: {e}")
             error_print(traceback.format_exc())
     
     def _signal_handler(self, signum, frame):
