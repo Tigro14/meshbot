@@ -141,6 +141,31 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         'position_stats': stats.get('position_stats', {}),
                         'routing_stats': stats.get('routing_stats', {})
                     }
+                    
+                    # Extract telemetry data for map display
+                    telem_stats = stats.get('telemetry_stats', {})
+                    if telem_stats:
+                        telemetry_entry = {}
+                        
+                        # Battery metrics
+                        if telem_stats.get('last_battery') is not None:
+                            telemetry_entry['battery_level'] = telem_stats['last_battery']
+                        if telem_stats.get('last_voltage') is not None:
+                            telemetry_entry['battery_voltage'] = telem_stats['last_voltage']
+                        
+                        # Environment metrics
+                        if telem_stats.get('last_temperature') is not None:
+                            telemetry_entry['temperature'] = telem_stats['last_temperature']
+                        if telem_stats.get('last_humidity') is not None:
+                            telemetry_entry['humidity'] = telem_stats['last_humidity']
+                        if telem_stats.get('last_pressure') is not None:
+                            telemetry_entry['pressure'] = telem_stats['last_pressure']
+                        if telem_stats.get('last_air_quality') is not None:
+                            telemetry_entry['air_quality'] = telem_stats['last_air_quality']
+                        
+                        # Only add to telemetry_data if we have at least one metric
+                        if telemetry_entry:
+                            telemetry_data[str(node_id_str)] = telemetry_entry
                 
                 # Format neighbor data for map compatibility
                 # Note: mqtt_last_heard_data is initialized at line 58 to avoid UnboundLocalError
