@@ -261,6 +261,76 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                 log(f"   • Telemetry disponible pour {len(telemetry_data)} nœuds")
                 log(f"   • Node stats disponible pour {len(node_stats_data)} nœuds")
                 
+                # Extract 7-day telemetry history for graphing
+                log(f"📊 Extraction de l'historique télémétrie (7 jours)...")
+                telemetry_history = {}
+                history_days = 7
+                history_cutoff = time.time() - (history_days * 24 * 3600)
+                
+                # Query all TELEMETRY_APP packets from last 7 days
+                cursor.execute("""
+                    SELECT from_id, timestamp, telemetry
+                    FROM packets
+                    WHERE packet_type = 'TELEMETRY_APP' 
+                    AND timestamp > ? 
+                    AND telemetry IS NOT NULL
+                    ORDER BY from_id, timestamp ASC
+                """, (history_cutoff,))
+                
+                telemetry_rows = cursor.fetchall()
+                log(f"   • {len(telemetry_rows)} entrées de télémétrie trouvées")
+                
+                # Group by node and extract metrics
+                for row in telemetry_rows:
+                    from_id_str = str(row[0])
+                    timestamp = row[1]
+                    telemetry_json = row[2]
+                    
+                    try:
+                        telemetry_obj = json.loads(telemetry_json) if telemetry_json else {}
+                        
+                        # Extract battery level and voltage
+                        battery = telemetry_obj.get('battery')
+                        voltage = telemetry_obj.get('voltage')
+                        channel_util = telemetry_obj.get('channel_util')
+                        air_util = telemetry_obj.get('air_util')
+                        
+                        # Skip if no useful data
+                        if battery is None and voltage is None:
+                            continue
+                        
+                        # Initialize history array for this node
+                        if from_id_str not in telemetry_history:
+                            telemetry_history[from_id_str] = []
+                        
+                        # Add data point
+                        data_point = {'t': int(timestamp)}
+                        if battery is not None:
+                            data_point['b'] = battery  # battery level (%)
+                        if voltage is not None:
+                            data_point['v'] = round(voltage, 2)  # voltage (V)
+                        if channel_util is not None:
+                            data_point['c'] = round(channel_util, 1)  # channel utilization
+                        if air_util is not None:
+                            data_point['a'] = round(air_util, 1)  # air utilization
+                        
+                        telemetry_history[from_id_str].append(data_point)
+                        
+                    except Exception as e:
+                        # Silent fail - corrupt telemetry data
+                        pass
+                
+                # Downsample if too many points (keep max 100 points per node)
+                max_points = 100
+                for node_id_str in telemetry_history.keys():
+                    history = telemetry_history[node_id_str]
+                    if len(history) > max_points:
+                        # Simple downsampling: keep every Nth point
+                        step = len(history) // max_points
+                        telemetry_history[node_id_str] = [history[i] for i in range(0, len(history), step)][:max_points]
+                
+                log(f"   • Historique télémétrie pour {len(telemetry_history)} nœuds")
+                
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
                 log(traceback.format_exc())
@@ -374,6 +444,10 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                             node_entry["environmentMetrics"]["barometricPressure"] = telem['pressure']
                         if telem.get('air_quality') is not None:
                             node_entry["environmentMetrics"]["iaq"] = telem['air_quality']
+                
+                # Add telemetry history if available (7-day graphs)
+                if node_id_str in telemetry_history and len(telemetry_history[node_id_str]) > 0:
+                    node_entry["telemetryHistory"] = telemetry_history[node_id_str]
                 
                 output_nodes[node_id_hex] = node_entry
                 
@@ -493,6 +567,10 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         "positionStats": stats.get('position_stats', {}),
                         "routingStats": stats.get('routing_stats', {})
                     }
+                
+                # Add telemetry history if available (7-day graphs)
+                if node_id_str in telemetry_history and len(telemetry_history[node_id_str]) > 0:
+                    node_entry["telemetryHistory"] = telemetry_history[node_id_str]
                 
                 output_nodes[node_id_hex] = node_entry
                 mqtt_only_added += 1
