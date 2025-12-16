@@ -211,17 +211,62 @@ class TrafficMonitor:
         debug_print(f"🔑 Using default Meshtastic PSK for channel {channel_index} ({len(psk)} bytes)")
         return psk
     
+    def _try_decrypt_with_nonce(self, encrypted_bytes, psk, nonce, from_id, method_name):
+        """
+        Try to decrypt with a specific nonce construction.
+        
+        Args:
+            encrypted_bytes: Encrypted data as bytes
+            psk: Pre-Shared Key (16 bytes)
+            nonce: Nonce to use (16 bytes for AES-CTR)
+            from_id: Sender node ID (for logging)
+            method_name: Name of the method (for logging)
+            
+        Returns:
+            Decrypted Data protobuf object or None if decryption fails
+        """
+        try:
+            # Create AES-128-CTR cipher
+            cipher = Cipher(
+                algorithms.AES(psk),
+                modes.CTR(nonce),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            # Decrypt
+            decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
+            
+            # Debug: log decrypted data info
+            debug_print(f"🔍 [{method_name}] Decrypted {len(decrypted_bytes)} bytes from 0x{from_id:08x}")
+            if len(decrypted_bytes) > 0:
+                # Show first few bytes in hex for debugging
+                hex_preview = ' '.join(f'{b:02x}' for b in decrypted_bytes[:min(16, len(decrypted_bytes))])
+                debug_print(f"🔍 [{method_name}] First bytes (hex): {hex_preview}")
+            
+            # Parse as Data protobuf - this will fail if wrong nonce/PSK
+            decoded = mesh_pb2.Data()
+            decoded.ParseFromString(decrypted_bytes)
+            
+            debug_print(f"✅ Successfully decrypted DM packet from 0x{from_id:08x} using {method_name}")
+            return decoded
+            
+        except Exception as e:
+            debug_print(f"❌ [{method_name}] Failed: {e}")
+            return None
+    
     def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0, interface=None):
         """
         Decrypt an encrypted Meshtastic packet using AES-128-CTR.
         
-        Meshtastic 2.7.15+ encrypts DM messages. This method decrypts packets
-        sent to our node using the channel PSK (Pre-Shared Key).
+        Supports multiple decryption methods for compatibility with different Meshtastic firmware versions:
+        - Meshtastic 2.7.15+: Uses nonce = packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
+        - Meshtastic 2.6.x: May use different nonce construction (tries alternative methods)
         
         Encryption details:
         - Algorithm: AES-128-CTR
         - Key: Channel PSK (from interface or default "1PG7OiApB1nwvP+rz05pAQ==" base64)
-        - Nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 bytes zero)
+        - Nonce: Varies by firmware version (tries multiple methods)
         
         Args:
             encrypted_data: Encrypted data from packet['encrypted'] (bytes or base64 string)
@@ -244,37 +289,48 @@ class TrafficMonitor:
             else:
                 encrypted_bytes = encrypted_data
             
-            # Get PSK (currently always returns default PSK)
+            # Get PSK
             psk = self._get_channel_psk(channel_index, interface=interface)
             
-            # Construct nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
-            nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
-            nonce = nonce_bytes + b'\x00' * 4  # block_counter = 0
+            # Try multiple decryption methods for compatibility with different firmware versions
+            decryption_methods = []
             
-            # Create AES-128-CTR cipher
-            cipher = Cipher(
-                algorithms.AES(psk),
-                modes.CTR(nonce),
-                backend=default_backend()
-            )
-            decryptor = cipher.decryptor()
+            # Method 1: Meshtastic 2.7.15+ standard format
+            # Nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
+            nonce_2715 = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 4
+            decryption_methods.append(("Meshtastic 2.7.15+", nonce_2715))
             
-            # Decrypt
-            decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
+            # Method 2: Meshtastic 2.6.x alternative format (packet_id only)
+            # Some older versions might use shorter packet ID
+            try:
+                nonce_26x_short = packet_id.to_bytes(4, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 8
+                decryption_methods.append(("Meshtastic 2.6.x (short ID)", nonce_26x_short))
+            except OverflowError:
+                pass  # packet_id too large for 4 bytes
             
-            # Debug: log decrypted data info
-            debug_print(f"🔍 Decrypted {len(decrypted_bytes)} bytes from 0x{from_id:08x}")
-            if len(decrypted_bytes) > 0:
-                # Show first few bytes in hex for debugging
-                hex_preview = ' '.join(f'{b:02x}' for b in decrypted_bytes[:min(16, len(decrypted_bytes))])
-                debug_print(f"🔍 First bytes (hex): {hex_preview}")
+            # Method 3: Alternative nonce with big-endian encoding
+            try:
+                nonce_be = packet_id.to_bytes(8, 'big') + from_id.to_bytes(4, 'big') + b'\x00' * 4
+                decryption_methods.append(("Big-endian variant", nonce_be))
+            except OverflowError:
+                pass
             
-            # Parse as Data protobuf
-            decoded = mesh_pb2.Data()
-            decoded.ParseFromString(decrypted_bytes)
+            # Method 4: Reversed order (from_id first, then packet_id)
+            try:
+                nonce_reversed = from_id.to_bytes(4, 'little') + packet_id.to_bytes(8, 'little') + b'\x00' * 4
+                decryption_methods.append(("Reversed order", nonce_reversed))
+            except OverflowError:
+                pass
             
-            debug_print(f"✅ Successfully decrypted DM packet from 0x{from_id:08x}")
-            return decoded
+            # Try each decryption method
+            for method_name, nonce in decryption_methods:
+                result = self._try_decrypt_with_nonce(encrypted_bytes, psk, nonce, from_id, method_name)
+                if result:
+                    return result
+            
+            # All methods failed
+            debug_print(f"⚠️ Failed to decrypt packet from 0x{from_id:08x} with all {len(decryption_methods)} methods")
+            return None
             
         except Exception as e:
             debug_print(f"⚠️ Failed to decrypt packet from 0x{from_id:08x}: {e}")

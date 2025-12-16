@@ -47,7 +47,32 @@ Meshtastic uses **AES-128-CTR** encryption:
 - **Key**: Channel 0 PSK (configurable via `CHANNEL_0_PSK` in `config.py`)
   - Default: `1PG7OiApB1nwvP+rz05pAQ==` (base64) - the standard Meshtastic default PSK
   - Custom: Set `CHANNEL_0_PSK = "your_base64_psk"` for networks with custom PSK
+- **Nonce**: Varies by firmware version (see Multi-Version Support below)
+
+### Multi-Version Support
+
+The bot now supports **multiple decryption methods** to handle different Meshtastic firmware versions:
+
+#### Method 1: Meshtastic 2.7.15+ (Standard)
 - **Nonce**: `packet_id (8 bytes LE) + from_id (4 bytes LE) + counter (4 bytes zeros)`
+- This is the primary method used by firmware 2.7.15 and newer
+
+#### Method 2: Meshtastic 2.6.x (Alternative)
+- **Nonce**: `packet_id (4 bytes LE) + from_id (4 bytes LE) + counter (8 bytes zeros)`
+- Supports older firmware versions that may use shorter packet IDs
+
+#### Method 3: Big-Endian Variant
+- **Nonce**: `packet_id (8 bytes BE) + from_id (4 bytes BE) + counter (4 bytes zeros)`
+- Handles potential endianness variations
+
+#### Method 4: Reversed Order
+- **Nonce**: `from_id (4 bytes LE) + packet_id (8 bytes LE) + counter (4 bytes zeros)`
+- Alternative nonce construction order
+
+The bot **automatically tries all methods** in sequence until one succeeds. This ensures compatibility across:
+- Meshtastic 2.6.x (older firmware with optional DM encryption)
+- Meshtastic 2.7.15+ (newer firmware with mandatory DM encryption)
+- Mixed-version networks (nodes on different firmware versions)
 - **Mode**: CTR (Counter) mode
 
 ### Detection Logic
