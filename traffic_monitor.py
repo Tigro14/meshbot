@@ -561,7 +561,8 @@ class TrafficMonitor:
                                 
                                 # Extract message text if it's TEXT_MESSAGE_APP
                                 if portnum_value == portnums_pb2.PortNum.TEXT_MESSAGE_APP:
-                                    if decrypted.HasField('payload'):
+                                    # Check if payload exists (don't use HasField for bytes field)
+                                    if decrypted.payload:
                                         try:
                                             message_text = decrypted.payload.decode('utf-8')
                                             decoded_dict['payload'] = decrypted.payload
