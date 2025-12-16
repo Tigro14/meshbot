@@ -208,11 +208,33 @@ class TrafficMonitor:
                             debug_print(f"🔍 PSK lookup: channel settings found")
                             
                             if hasattr(channel.settings, 'psk') and channel.settings.psk:
-                                # PSK is already in bytes format from protobuf
-                                # Don't wrap in bytes() as it may cause issues
-                                psk = channel.settings.psk
-                                debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
-                                return psk
+                                psk_raw = channel.settings.psk
+                                debug_print(f"🔍 PSK lookup: psk type={type(psk_raw)}, len={len(psk_raw) if hasattr(psk_raw, '__len__') else 'N/A'}")
+                                
+                                # PSK might be base64 encoded string in protobuf
+                                # Try to decode if it's a string
+                                if isinstance(psk_raw, str):
+                                    debug_print(f"🔍 PSK lookup: psk is string, attempting base64 decode")
+                                    try:
+                                        psk = base64.b64decode(psk_raw)
+                                        debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes, decoded from base64)")
+                                        return psk
+                                    except Exception as e:
+                                        debug_print(f"⚠️ Failed to base64 decode PSK string: {e}")
+                                        # Try using as-is if decode fails
+                                        psk = psk_raw.encode('utf-8') if isinstance(psk_raw, str) else psk_raw
+                                elif isinstance(psk_raw, bytes):
+                                    # If it's bytes but very short (like 1 byte), it might be an index or enum
+                                    # In that case, fall back to default PSK
+                                    if len(psk_raw) < 16:
+                                        debug_print(f"⚠️ PSK too short ({len(psk_raw)} bytes), may be enum/index, falling back to default")
+                                        return None
+                                    psk = psk_raw
+                                    debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
+                                    return psk
+                                else:
+                                    debug_print(f"⚠️ PSK has unexpected type: {type(psk_raw)}")
+                                    return None
                             else:
                                 debug_print(f"🔍 PSK lookup: channel.settings.psk not found or empty")
                         else:
