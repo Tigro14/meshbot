@@ -186,7 +186,7 @@ class TrafficMonitor:
         - Nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 bytes zero)
         
         Args:
-            encrypted_data: Encrypted bytes from packet['encrypted']
+            encrypted_data: Encrypted data from packet['encrypted'] (bytes or base64 string)
             packet_id: Packet ID (int)
             from_id: Sender node ID (int)
             channel_index: Channel index (default 0 for Primary channel)
@@ -198,6 +198,13 @@ class TrafficMonitor:
             return None
         
         try:
+            # Convert encrypted_data to bytes if it's a string (base64-encoded)
+            # Meshtastic Python library may return encrypted field as base64 string
+            if isinstance(encrypted_data, str):
+                encrypted_bytes = base64.b64decode(encrypted_data)
+            else:
+                encrypted_bytes = encrypted_data
+            
             # Default PSK for channel 0 (Primary channel)
             # This is the default Meshtastic PSK: base64 "1PG7OiApB1nwvP+rz05pAQ=="
             # Users should configure their own PSK for security, but this works for default configs
@@ -216,7 +223,7 @@ class TrafficMonitor:
             decryptor = cipher.decryptor()
             
             # Decrypt
-            decrypted_bytes = decryptor.update(encrypted_data) + decryptor.finalize()
+            decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
             
             # Parse as Data protobuf
             decoded = mesh_pb2.Data()

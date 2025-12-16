@@ -90,9 +90,85 @@ def test_decrypt_packet():
         print("   This is expected in environments without cryptography/protobuf")
         return True  # Not a failure, just not testable
 
+def test_decrypt_packet_base64():
+    """Test the _decrypt_packet method with base64-encoded string"""
+    print("\n=== Test 2: _decrypt_packet with Base64 String ===")
+    
+    # Create a mock node manager
+    node_manager = NodeManager(None)
+    
+    # Create traffic monitor
+    monitor = TrafficMonitor(node_manager)
+    
+    # Check if crypto is available
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        from cryptography.hazmat.backends import default_backend
+        from meshtastic.protobuf import mesh_pb2, portnums_pb2
+        import base64
+        print("✅ Cryptography and protobuf libraries available")
+        
+        # Create a test encrypted packet
+        psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
+        packet_id = 12345678
+        from_id = 0x16fad3dc
+        
+        # Create a Data protobuf
+        data = mesh_pb2.Data()
+        data.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
+        data.payload = "Base64 test message!".encode('utf-8')
+        
+        # Serialize
+        plaintext = data.SerializeToString()
+        
+        # Encrypt
+        nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
+        nonce = nonce_bytes + b'\x00' * 4
+        
+        cipher = Cipher(
+            algorithms.AES(psk),
+            modes.CTR(nonce),
+            backend=default_backend()
+        )
+        encryptor = cipher.encryptor()
+        encrypted_bytes = encryptor.update(plaintext) + encryptor.finalize()
+        
+        # Convert to base64 string (like Meshtastic Python lib does)
+        encrypted_string = base64.b64encode(encrypted_bytes).decode('ascii')
+        
+        print(f"✅ Created test encrypted packet as base64 string")
+        print(f"   Length: {len(encrypted_string)} chars")
+        
+        # Now test decryption with base64 string
+        decrypted = monitor._decrypt_packet(encrypted_string, packet_id, from_id)
+        
+        if decrypted:
+            print(f"✅ Decryption successful from base64 string!")
+            print(f"   Portnum: {decrypted.portnum}")
+            print(f"   Payload: {decrypted.payload.decode('utf-8')}")
+            
+            if decrypted.portnum == portnums_pb2.PortNum.TEXT_MESSAGE_APP:
+                if decrypted.payload.decode('utf-8') == "Base64 test message!":
+                    print("✅ TEST PASSED: Base64 string decrypted correctly!")
+                    return True
+                else:
+                    print("❌ TEST FAILED: Message content mismatch")
+                    return False
+            else:
+                print("❌ TEST FAILED: Wrong portnum")
+                return False
+        else:
+            print("❌ TEST FAILED: Decryption returned None")
+            return False
+            
+    except ImportError as e:
+        print(f"⚠️  Libraries not available: {e}")
+        print("   This is expected in environments without cryptography/protobuf")
+        return True  # Not a failure, just not testable
+
 def test_encrypted_packet_handling():
     """Test add_packet with encrypted DM"""
-    print("\n=== Test 2: Encrypted Packet Handling ===")
+    print("\n=== Test 3: Encrypted Packet Handling ===")
     
     try:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -180,7 +256,7 @@ def test_encrypted_packet_handling():
 
 def test_broadcast_not_decrypted():
     """Test that broadcast messages are not decrypted"""
-    print("\n=== Test 3: Broadcast Messages Not Decrypted ===")
+    print("\n=== Test 4: Broadcast Messages Not Decrypted ===")
     
     try:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -253,13 +329,16 @@ def main():
     
     results = []
     
-    # Test 1: Decrypt method
-    results.append(("Decrypt Method", test_decrypt_packet()))
+    # Test 1: Decrypt method (bytes)
+    results.append(("Decrypt Method (bytes)", test_decrypt_packet()))
     
-    # Test 2: Encrypted packet handling
+    # Test 2: Decrypt method (base64 string)
+    results.append(("Decrypt Method (base64)", test_decrypt_packet_base64()))
+    
+    # Test 3: Encrypted packet handling
     results.append(("Encrypted Packet Handling", test_encrypted_packet_handling()))
     
-    # Test 3: Broadcast not decrypted
+    # Test 4: Broadcast not decrypted
     results.append(("Broadcast Not Decrypted", test_broadcast_not_decrypted()))
     
     # Summary
