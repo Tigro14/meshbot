@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo: Telemetry History Graphs</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        h1 {
+            color: #1a73e8;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #5f6368;
+            margin-bottom: 40px;
+        }
+        
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 40px 0;
+        }
+        
+        .popup-demo {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+        }
+        
+        .popup-demo h2 {
+            margin-top: 0;
+            color: #5f6368;
+            font-size: 1rem;
+            font-weight: 500;
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 15px;
+        }
+        
+        .popup-title {
+            font-weight: 700;
+            font-size: 1.3rem;
+            color: #1a73e8;
+            margin-bottom: 12px;
+        }
+        
+        .popup-info {
+            color: #5f6368;
+            line-height: 1.8;
+        }
+        
+        .popup-info strong {
+            color: #202124;
+        }
+        
+        .new-section {
+            background: #e8f4fd;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 4px solid #1a73e8;
+        }
+        
+        .benefits {
+            background: #e8f5e9;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 40px 0;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .benefits h3 {
+            color: #2e7d32;
+            margin-top: 0;
+        }
+        
+        .benefits ul {
+            line-height: 2;
+        }
+        
+        .highlight {
+            background: #ffeb3b;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #1a73e8;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .code-section {
+            background: #263238;
+            color: #aed581;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            margin: 20px 0;
+        }
+        
+        .example-json {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        .example-json pre {
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+        
+        @media (max-width: 968px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>📈 Telemetry History Graphs <span class="badge">NEW</span></h1>
+    <div class="subtitle">7-day battery and voltage sparkline graphs on node cards</div>
+    
+    <div class="comparison">
+        <!-- BEFORE -->
+        <div class="popup-demo">
+            <h2>❌ AVANT (Static Values Only)</h2>
+            
+            <div class="popup-title">Tigro G2 PV</div>
+            <div class="popup-info">
+                <strong>ID:</strong> TG2PV<br>
+                <strong>Modèle:</strong> TBEAM<br>
+                <strong>Hops:</strong> 0<br>
+                <strong>SNR:</strong> 9.5 dB<br>
+                <strong>Voisins directs:</strong> 12<br>
+                
+                <br><strong>📡 Télémétrie:</strong><br>
+                <div style="margin-left: 10px;">
+                    🔋 Batterie: <strong>92%</strong><br>
+                    ⚡ Voltage: <strong>4.18V</strong><br>
+                    🌡️ Température: <strong>23.5°C</strong><br>
+                </div>
+                
+                <br><strong>Dernier contact:</strong> 16/12/2025 10:35:22<br>
+                <em>Il y a 3 minutes</em>
+            </div>
+        </div>
+        
+        <!-- AFTER -->
+        <div class="popup-demo">
+            <h2>✅ APRÈS (With History Graphs)</h2>
+            
+            <div class="popup-title">Tigro G2 PV</div>
+            <div class="popup-info">
+                <strong>ID:</strong> TG2PV<br>
+                <strong>Modèle:</strong> TBEAM<br>
+                <strong>Hops:</strong> 0<br>
+                <strong>SNR:</strong> 9.5 dB<br>
+                <strong>Voisins directs:</strong> 12<br>
+                
+                <br><strong>📡 Télémétrie:</strong><br>
+                <div style="margin-left: 10px;">
+                    🔋 Batterie: <strong>92%</strong><br>
+                    ⚡ Voltage: <strong>4.18V</strong><br>
+                    🌡️ Température: <strong>23.5°C</strong><br>
+                </div>
+                
+                <!-- NEW: Telemetry History Graphs -->
+                <div class="new-section" style="background: #f8f9fa; border-left: 4px solid #4CAF50;">
+                    <strong>📈 Historique 7 jours:</strong><br>
+                    <div style="margin-left: 10px;">
+                        <div style="margin-bottom: 8px;">
+                            🔋 Batterie: 
+                            <svg width="120" height="30" style="vertical-align: middle; margin-left: 5px; background: rgba(0,0,0,0.05); border-radius: 3px;">
+                                <polyline points="0,25 12,22 24,18 36,15 48,12 60,10 72,8 84,7 96,6 108,8 120,12" 
+                                          fill="none" 
+                                          stroke="#4CAF50" 
+                                          stroke-width="1.5" 
+                                          stroke-linejoin="round"/>
+                            </svg>
+                            <span style="margin-left: 5px; font-size: 0.9em;">
+                                <strong>92%</strong>
+                                <span style="color: #888; font-size: 0.85em;">(min: 85, max: 98)</span>
+                            </span>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            ⚡ Voltage: 
+                            <svg width="120" height="30" style="vertical-align: middle; margin-left: 5px; background: rgba(0,0,0,0.05); border-radius: 3px;">
+                                <polyline points="0,20 12,18 24,15 36,12 48,10 60,8 72,7 84,8 96,10 108,14 120,18" 
+                                          fill="none" 
+                                          stroke="#2196F3" 
+                                          stroke-width="1.5" 
+                                          stroke-linejoin="round"/>
+                            </svg>
+                            <span style="margin-left: 5px; font-size: 0.9em;">
+                                <strong>4.18V</strong>
+                                <span style="color: #888; font-size: 0.85em;">(min: 4.05, max: 4.25)</span>
+                            </span>
+                        </div>
+                        <span style="font-size: 0.85em; color: #888;">87 mesures sur 7j</span>
+                    </div>
+                </div>
+                
+                <br><strong>Dernier contact:</strong> 16/12/2025 10:35:22<br>
+                <em>Il y a 3 minutes</em>
+            </div>
+        </div>
+    </div>
+    
+    <div class="benefits">
+        <h3>✨ Avantages des graphiques d'historique</h3>
+        <ul>
+            <li>📊 <strong>Visualisation des tendances</strong> - Voir l'évolution de la batterie sur 7 jours</li>
+            <li>🔋 <strong>Santé des nœuds</strong> - Identifier les nœuds avec décharge rapide</li>
+            <li>⚡ <strong>Qualité d'alimentation</strong> - Surveiller les variations de tension</li>
+            <li>🌞 <strong>Panneaux solaires</strong> - Vérifier l'efficacité de la recharge</li>
+            <li>📈 <strong>Compact et lisible</strong> - Sparklines SVG de 120x30px</li>
+            <li>🎯 <strong>Min/Max affichés</strong> - Voir l'amplitude des variations</li>
+            <li>📉 <strong>Performance optimisée</strong> - Max 100 points par nœud</li>
+        </ul>
+    </div>
+    
+    <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); margin: 40px 0;">
+        <h3 style="color: #1a73e8; margin-top: 0;">📦 Format de données: telemetryHistory</h3>
+        
+        <p>Le fichier <code>info.json</code> contient maintenant un tableau <code>telemetryHistory</code> pour chaque nœud:</p>
+        
+        <div class="example-json">
+            <pre>{
+  "!16fa4fdc": {
+    "num": 385503196,
+    "user": {
+      "id": "!16fa4fdc",
+      "longName": "Tigro G2 PV",
+      "shortName": "TG2PV",
+      "hwModel": "TBEAM"
+    },
+    "position": { "latitude": 48.8566, "longitude": 2.3522 },
+    "deviceMetrics": {
+      "batteryLevel": 92,
+      "voltage": 4.18
+    },
+    <span class="highlight">"telemetryHistory": [
+      { "t": 1734259200, "b": 85, "v": 4.05 },
+      { "t": 1734262800, "b": 87, "v": 4.08 },
+      { "t": 1734266400, "b": 89, "v": 4.12 },
+      ...
+      { "t": 1734864000, "b": 92, "v": 4.18 }
+    ]</span>
+  }
+}</pre>
+        </div>
+        
+        <h4>Champs du tableau telemetryHistory:</h4>
+        <ul style="line-height: 2;">
+            <li><code>t</code> - Timestamp Unix (secondes)</li>
+            <li><code>b</code> - Battery level (%, optionnel)</li>
+            <li><code>v</code> - Voltage (V, optionnel)</li>
+            <li><code>c</code> - Channel utilization (%, optionnel)</li>
+            <li><code>a</code> - Air utilization (%, optionnel)</li>
+        </ul>
+        
+        <p><strong>Note:</strong> Le tableau est automatiquement sous-échantillonné à 100 points maximum pour optimiser les performances.</p>
+    </div>
+    
+    <div class="code-section">
+        <h3 style="color: #aed581; margin-top: 0;">🔧 Implémentation technique</h3>
+        <pre>// export_nodes_from_db.py
+# Extract 7-day telemetry history
+cursor.execute("""
+    SELECT from_id, timestamp, telemetry
+    FROM packets
+    WHERE packet_type = 'TELEMETRY_APP' 
+    AND timestamp > ?
+    ORDER BY from_id, timestamp ASC
+""", (history_cutoff,))
+
+# Downsample to max 100 points per node
+if len(history) > max_points:
+    step = len(history) // max_points
+    telemetry_history[node_id_str] = history[::step][:max_points]
+
+// map.html
+function generateSparkline(data, width, height, color, unit) {
+    const min = Math.min(...validData);
+    const max = Math.max(...validData);
+    const range = max - min || 1;
+    
+    const points = data.map((value, index) => {
+        const x = (index / (data.length - 1)) * width;
+        const y = height - ((value - min) / range) * height;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    
+    return `&lt;svg&gt;&lt;polyline points="${points}" ... /&gt;&lt;/svg&gt;`;
+}</pre>
+    </div>
+    
+    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #ffc107; margin: 40px 0;">
+        <h3 style="color: #856404; margin-top: 0;">💡 Utilisation</h3>
+        <ol style="line-height: 2;">
+            <li>Le bot collecte automatiquement les paquets TELEMETRY_APP dans la base SQLite</li>
+            <li>Le script <code>export_nodes_from_db.py</code> extrait l'historique des 7 derniers jours</li>
+            <li>Le fichier <code>info.json</code> contient le tableau <code>telemetryHistory</code></li>
+            <li>La carte <code>map.html</code> affiche les graphiques sparkline dans les popups</li>
+        </ol>
+        
+        <p><strong>Régénération des données:</strong></p>
+        <pre style="background: white; padding: 10px; border-radius: 4px; margin-top: 10px;">cd map/
+./infoup_db.sh</pre>
+    </div>
+</body>
+</html>
