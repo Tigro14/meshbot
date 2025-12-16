@@ -1520,6 +1520,11 @@
                         popupContent += `</div>`;
                     }
                     
+                    // Add telemetry history graphs if available
+                    if (node.telemetryHistory && node.telemetryHistory.length > 0) {
+                        popupContent += renderTelemetryGraphs(node.telemetryHistory);
+                    }
+                    
                     popupContent += `<br><strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
                     popupContent += `<em>${hoursAgoText}</em>`;
                     popupContent += `</div>`;
@@ -1692,6 +1697,99 @@
             });
             
             resultsListDiv.classList.add('visible');
+        }
+        
+        // Render telemetry history sparkline graphs
+        function renderTelemetryGraphs(telemetryHistory) {
+            if (!telemetryHistory || telemetryHistory.length === 0) {
+                return '';
+            }
+            
+            let graphsHtml = '<br><strong>📈 Historique 7 jours:</strong><br>';
+            graphsHtml += '<div style="margin-left: 10px;">';
+            
+            // Prepare data arrays
+            const batteryData = [];
+            const voltageData = [];
+            const timestamps = [];
+            
+            telemetryHistory.forEach(point => {
+                timestamps.push(point.t);
+                batteryData.push(point.b !== undefined ? point.b : null);
+                voltageData.push(point.v !== undefined ? point.v : null);
+            });
+            
+            // Generate battery sparkline if data available
+            const hasBattery = batteryData.some(v => v !== null);
+            const hasVoltage = voltageData.some(v => v !== null);
+            
+            if (hasBattery) {
+                const batterySparkline = generateSparkline(batteryData, 120, 30, '#4CAF50', '%');
+                graphsHtml += `<div style="margin-bottom: 8px;">`;
+                graphsHtml += `🔋 Batterie: ${batterySparkline}`;
+                graphsHtml += `</div>`;
+            }
+            
+            if (hasVoltage) {
+                const voltageSparkline = generateSparkline(voltageData, 120, 30, '#2196F3', 'V');
+                graphsHtml += `<div style="margin-bottom: 8px;">`;
+                graphsHtml += `⚡ Voltage: ${voltageSparkline}`;
+                graphsHtml += `</div>`;
+            }
+            
+            // Add time range info
+            if (timestamps.length > 0) {
+                const firstDate = new Date(timestamps[0] * 1000);
+                const lastDate = new Date(timestamps[timestamps.length - 1] * 1000);
+                const daysDiff = Math.round((lastDate - firstDate) / (1000 * 60 * 60 * 24));
+                graphsHtml += `<span style="font-size: 0.85em; color: #888;">${telemetryHistory.length} mesures sur ${daysDiff}j</span>`;
+            }
+            
+            graphsHtml += '</div>';
+            return graphsHtml;
+        }
+        
+        // Generate SVG sparkline from data array
+        function generateSparkline(data, width, height, color, unit) {
+            // Filter out null values for min/max calculation
+            const validData = data.filter(v => v !== null);
+            if (validData.length === 0) return '';
+            
+            const min = Math.min(...validData);
+            const max = Math.max(...validData);
+            const range = max - min || 1; // Avoid division by zero
+            
+            // Generate SVG path
+            const points = data.map((value, index) => {
+                if (value === null) return null;
+                const x = (index / (data.length - 1)) * width;
+                const y = height - ((value - min) / range) * height;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).filter(p => p !== null).join(' ');
+            
+            // Current value (last non-null)
+            const currentValue = validData[validData.length - 1];
+            const currentFormatted = unit === '%' ? `${currentValue.toFixed(0)}${unit}` : `${currentValue.toFixed(2)}${unit}`;
+            
+            // Min/max values
+            const minFormatted = unit === '%' ? `${min.toFixed(0)}` : `${min.toFixed(2)}`;
+            const maxFormatted = unit === '%' ? `${max.toFixed(0)}` : `${max.toFixed(2)}`;
+            
+            const svg = `
+                <svg width="${width}" height="${height}" style="vertical-align: middle; margin-left: 5px; background: rgba(0,0,0,0.05); border-radius: 3px;">
+                    <polyline points="${points}" 
+                              fill="none" 
+                              stroke="${color}" 
+                              stroke-width="1.5" 
+                              stroke-linejoin="round"/>
+                </svg>
+                <span style="margin-left: 5px; font-size: 0.9em;">
+                    <strong>${currentFormatted}</strong>
+                    <span style="color: #888; font-size: 0.85em;">(min: ${minFormatted}, max: ${maxFormatted})</span>
+                </span>
+            `;
+            
+            return svg;
         }
         
         function createSingleMarker(id, node, isSearchResult = false) {
@@ -1894,6 +1992,11 @@
                 }
                 
                 popupContent += `</div>`;
+            }
+            
+            // Add telemetry history graphs if available
+            if (node.telemetryHistory && node.telemetryHistory.length > 0) {
+                popupContent += renderTelemetryGraphs(node.telemetryHistory);
             }
             
             popupContent += `<br><strong>Dernier contact:</strong> ${lastHeardDate.toLocaleString('fr-FR')}<br>`;
