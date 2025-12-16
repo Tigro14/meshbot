@@ -186,23 +186,45 @@ class TrafficMonitor:
         try:
             # Try to get PSK from interface
             interface = getattr(self.node_manager, 'interface', None)
+            debug_print(f"🔍 PSK lookup: interface={interface is not None}")
+            
             if interface and hasattr(interface, 'localNode') and interface.localNode:
                 local_node = interface.localNode
+                debug_print(f"🔍 PSK lookup: localNode found")
                 
                 # Try to access channels
                 if hasattr(local_node, 'channels') and local_node.channels:
+                    channels_count = len(local_node.channels) if local_node.channels else 0
+                    debug_print(f"🔍 PSK lookup: {channels_count} channels available")
+                    
                     if channel_index < len(local_node.channels):
                         channel = local_node.channels[channel_index]
+                        debug_print(f"🔍 PSK lookup: channel {channel_index} found")
                         
                         # Try to get PSK from channel settings
                         if hasattr(channel, 'settings') and channel.settings:
+                            debug_print(f"🔍 PSK lookup: channel settings found")
+                            
                             if hasattr(channel.settings, 'psk') and channel.settings.psk:
                                 # PSK is in bytes format
                                 psk = bytes(channel.settings.psk)
                                 debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
                                 return psk
+                            else:
+                                debug_print(f"🔍 PSK lookup: channel.settings.psk not found or empty")
+                        else:
+                            debug_print(f"🔍 PSK lookup: channel.settings not found")
+                    else:
+                        debug_print(f"🔍 PSK lookup: channel_index {channel_index} >= {len(local_node.channels)}")
+                else:
+                    debug_print(f"🔍 PSK lookup: localNode.channels not found or empty")
+            else:
+                debug_print(f"🔍 PSK lookup: localNode not found")
+                
         except Exception as e:
             debug_print(f"⚠️ Could not get PSK from interface: {e}")
+            import traceback
+            debug_print(f"🔍 PSK lookup traceback: {traceback.format_exc()}")
         
         return None
     
