@@ -208,8 +208,9 @@ class TrafficMonitor:
                             debug_print(f"🔍 PSK lookup: channel settings found")
                             
                             if hasattr(channel.settings, 'psk') and channel.settings.psk:
-                                # PSK is in bytes format
-                                psk = bytes(channel.settings.psk)
+                                # PSK is already in bytes format from protobuf
+                                # Don't wrap in bytes() as it may cause issues
+                                psk = channel.settings.psk
                                 debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
                                 return psk
                             else:
