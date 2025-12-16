@@ -14,6 +14,24 @@ from utils import *
 from traffic_persistence import TrafficPersistence
 import logging
 
+# Import cryptography for decryption of encrypted DM packets
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import base64
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    debug_print("⚠️ cryptography library not available - encrypted DM decryption disabled")
+    CRYPTO_AVAILABLE = False
+
+# Import protobuf for parsing decrypted packets
+try:
+    from meshtastic.protobuf import mesh_pb2, portnums_pb2
+    PROTOBUF_AVAILABLE = True
+except ImportError:
+    debug_print("⚠️ meshtastic protobuf not available - encrypted DM decryption disabled")
+    PROTOBUF_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class TrafficMonitor:
@@ -154,6 +172,62 @@ class TrafficMonitor:
         # Format: {packet_id: timestamp} avec nettoyage automatique
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
+    
+    def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0):
+        """
+        Decrypt an encrypted Meshtastic packet using AES-128-CTR.
+        
+        Meshtastic 2.7.15+ encrypts DM messages. This method decrypts packets
+        sent to our node using the channel PSK (Pre-Shared Key).
+        
+        Encryption details:
+        - Algorithm: AES-128-CTR
+        - Key: Channel PSK (default channel 0: "1PG7OiApB1nwvP+rz05pAQ==" base64)
+        - Nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 bytes zero)
+        
+        Args:
+            encrypted_data: Encrypted bytes from packet['encrypted']
+            packet_id: Packet ID (int)
+            from_id: Sender node ID (int)
+            channel_index: Channel index (default 0 for Primary channel)
+            
+        Returns:
+            Decrypted Data protobuf object or None if decryption fails
+        """
+        if not CRYPTO_AVAILABLE or not PROTOBUF_AVAILABLE:
+            return None
+        
+        try:
+            # Default PSK for channel 0 (Primary channel)
+            # This is the default Meshtastic PSK: base64 "1PG7OiApB1nwvP+rz05pAQ=="
+            # Users should configure their own PSK for security, but this works for default configs
+            psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
+            
+            # Construct nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
+            nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
+            nonce = nonce_bytes + b'\x00' * 4  # block_counter = 0
+            
+            # Create AES-128-CTR cipher
+            cipher = Cipher(
+                algorithms.AES(psk),
+                modes.CTR(nonce),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            # Decrypt
+            decrypted_bytes = decryptor.update(encrypted_data) + decryptor.finalize()
+            
+            # Parse as Data protobuf
+            decoded = mesh_pb2.Data()
+            decoded.ParseFromString(decrypted_bytes)
+            
+            debug_print(f"✅ Successfully decrypted DM packet from 0x{from_id:08x}")
+            return decoded
+            
+        except Exception as e:
+            debug_print(f"⚠️ Failed to decrypt packet from 0x{from_id:08x}: {e}")
+            return None
     
     def populate_neighbors_from_interface(self, interface, wait_time=None, max_wait_time=None, poll_interval=None):
         """
@@ -448,12 +522,71 @@ class TrafficMonitor:
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
             elif 'encrypted' in packet:
-                # Paquet chiffré - on ne peut pas le lire mais on le compte
+                # Paquet chiffré - tentative de déchiffrement pour les DMs
                 is_encrypted = True
                 packet_type = 'ENCRYPTED'
-                # Essayer de déduire le type si possible depuis le paquet
+                
+                # Check if packet is PKI encrypted (different encryption scheme)
                 if 'pkiEncrypted' in packet:
                     packet_type = 'PKI_ENCRYPTED'
+                    # PKI encryption not supported yet
+                else:
+                    # Try to decrypt if this is a DM to our node
+                    # DMs are now encrypted in Meshtastic 2.7.15+
+                    is_dm_to_us = my_node_id and (to_id == my_node_id)
+                    
+                    if is_dm_to_us and packet.get('id'):
+                        debug_print(f"🔐 Attempting to decrypt DM from 0x{from_id:08x} to us")
+                        encrypted_data = packet.get('encrypted')
+                        packet_id = packet.get('id')
+                        
+                        if encrypted_data and packet_id:
+                            # Try decryption with default channel 0 PSK
+                            decrypted = self._decrypt_packet(encrypted_data, packet_id, from_id)
+                            
+                            if decrypted:
+                                # Successfully decrypted! Convert protobuf to dict format
+                                # Get portnum from protobuf
+                                portnum_value = decrypted.portnum
+                                
+                                # Map protobuf portnum to string name
+                                portnum_name = portnums_pb2.PortNum.Name(portnum_value)
+                                packet_type = portnum_name
+                                
+                                # Create decoded dict and update original packet
+                                # This allows main_bot.py to process the decrypted message
+                                decoded_dict = {
+                                    'portnum': portnum_name
+                                }
+                                
+                                # Extract message text if it's TEXT_MESSAGE_APP
+                                if portnum_value == portnums_pb2.PortNum.TEXT_MESSAGE_APP:
+                                    if decrypted.HasField('payload'):
+                                        try:
+                                            message_text = decrypted.payload.decode('utf-8')
+                                            decoded_dict['payload'] = decrypted.payload
+                                            decoded_dict['text'] = message_text
+                                            debug_print(f"📨 Decrypted DM message: {message_text[:50]}")
+                                        except:
+                                            pass
+                                
+                                # Update the original packet with decoded data
+                                # Remove 'encrypted' field and add 'decoded' field
+                                if 'encrypted' in packet:
+                                    del packet['encrypted']
+                                packet['decoded'] = decoded_dict
+                                
+                                # Mark as successfully decrypted (not encrypted anymore)
+                                is_encrypted = False
+                                debug_print(f"✅ DM decrypted successfully: {packet_type}")
+                            else:
+                                debug_print(f"⚠️ Failed to decrypt DM (may use different PSK)")
+                    else:
+                        # Not a DM to us, or missing packet ID - keep as encrypted
+                        if not is_dm_to_us:
+                            debug_print(f"🔐 Encrypted packet not for us (to=0x{to_id:08x})")
+                        else:
+                            debug_print(f"🔐 Encrypted packet missing ID, cannot decrypt")
         
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
