@@ -175,83 +175,28 @@ class TrafficMonitor:
     
     def _get_channel_psk(self, channel_index=0, interface=None):
         """
-        Get the PSK for the specified channel from the interface.
+        Get the PSK (Pre-Shared Key) for a specific channel.
+        
+        Currently returns the default Meshtastic channel 0 PSK, as the
+        interface.localNode.channels[].settings.psk field doesn't contain the
+        actual PSK bytes (it appears to be a configuration flag or index).
+        
+        This matches the approach used in mqtt_neighbor_collector.py which also
+        uses the hardcoded default PSK for decrypting MQTT packets.
         
         Args:
             channel_index: Channel index (default 0 for Primary channel)
-            interface: Meshtastic interface (if None, tries to get from node_manager)
+            interface: Meshtastic interface object (unused for now)
             
         Returns:
-            PSK bytes or None if not available
+            PSK bytes (16 bytes for AES-128) - the default Meshtastic PSK
         """
-        try:
-            # Try to get PSK from interface (use provided interface first, fallback to node_manager)
-            if interface is None:
-                interface = getattr(self.node_manager, 'interface', None)
-            debug_print(f"🔍 PSK lookup: interface={interface is not None}")
-            
-            if interface and hasattr(interface, 'localNode') and interface.localNode:
-                local_node = interface.localNode
-                debug_print(f"🔍 PSK lookup: localNode found")
-                
-                # Try to access channels
-                if hasattr(local_node, 'channels') and local_node.channels:
-                    channels_count = len(local_node.channels) if local_node.channels else 0
-                    debug_print(f"🔍 PSK lookup: {channels_count} channels available")
-                    
-                    if channel_index < len(local_node.channels):
-                        channel = local_node.channels[channel_index]
-                        debug_print(f"🔍 PSK lookup: channel {channel_index} found")
-                        
-                        # Try to get PSK from channel settings
-                        if hasattr(channel, 'settings') and channel.settings:
-                            debug_print(f"🔍 PSK lookup: channel settings found")
-                            
-                            if hasattr(channel.settings, 'psk') and channel.settings.psk:
-                                psk_raw = channel.settings.psk
-                                debug_print(f"🔍 PSK lookup: psk type={type(psk_raw)}, len={len(psk_raw) if hasattr(psk_raw, '__len__') else 'N/A'}")
-                                
-                                # PSK might be base64 encoded string in protobuf
-                                # Try to decode if it's a string
-                                if isinstance(psk_raw, str):
-                                    debug_print(f"🔍 PSK lookup: psk is string, attempting base64 decode")
-                                    try:
-                                        psk = base64.b64decode(psk_raw)
-                                        debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes, decoded from base64)")
-                                        return psk
-                                    except Exception as e:
-                                        debug_print(f"⚠️ Failed to base64 decode PSK string: {e}")
-                                        # Try using as-is if decode fails
-                                        psk = psk_raw.encode('utf-8') if isinstance(psk_raw, str) else psk_raw
-                                elif isinstance(psk_raw, bytes):
-                                    # If it's bytes but very short (like 1 byte), it might be an index or enum
-                                    # In that case, fall back to default PSK
-                                    if len(psk_raw) < 16:
-                                        debug_print(f"⚠️ PSK too short ({len(psk_raw)} bytes), may be enum/index, falling back to default")
-                                        return None
-                                    psk = psk_raw
-                                    debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
-                                    return psk
-                                else:
-                                    debug_print(f"⚠️ PSK has unexpected type: {type(psk_raw)}")
-                                    return None
-                            else:
-                                debug_print(f"🔍 PSK lookup: channel.settings.psk not found or empty")
-                        else:
-                            debug_print(f"🔍 PSK lookup: channel.settings not found")
-                    else:
-                        debug_print(f"🔍 PSK lookup: channel_index {channel_index} >= {len(local_node.channels)}")
-                else:
-                    debug_print(f"🔍 PSK lookup: localNode.channels not found or empty")
-            else:
-                debug_print(f"🔍 PSK lookup: localNode not found")
-                
-        except Exception as e:
-            debug_print(f"⚠️ Could not get PSK from interface: {e}")
-            import traceback
-            debug_print(f"🔍 PSK lookup traceback: {traceback.format_exc()}")
-        
-        return None
+        # Default Meshtastic channel 0 PSK (base64: "1PG7OiApB1nwvP+rz05pAQ==")
+        # This is the same default used in mqtt_neighbor_collector.py
+        # Reference: https://github.com/liamcottle/meshtastic-map/blob/main/src/mqtt.js#L658
+        psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
+        debug_print(f"🔑 Using default Meshtastic PSK for channel {channel_index} ({len(psk)} bytes)")
+        return psk
     
     def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0, interface=None):
         """
@@ -286,14 +231,8 @@ class TrafficMonitor:
             else:
                 encrypted_bytes = encrypted_data
             
-            # Try to get PSK from interface first, fall back to default
+            # Get PSK (currently always returns default PSK)
             psk = self._get_channel_psk(channel_index, interface=interface)
-            
-            if psk is None:
-                # Default PSK for channel 0 (Primary channel)
-                # This is the default Meshtastic PSK: base64 "1PG7OiApB1nwvP+rz05pAQ=="
-                psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
-                debug_print(f"🔑 Using default PSK (16 bytes)")
             
             # Construct nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
             nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
