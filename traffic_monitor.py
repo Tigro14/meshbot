@@ -225,6 +225,13 @@ class TrafficMonitor:
             # Decrypt
             decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
             
+            # Debug: log decrypted data info
+            debug_print(f"🔍 Decrypted {len(decrypted_bytes)} bytes from 0x{from_id:08x}")
+            if len(decrypted_bytes) > 0:
+                # Show first few bytes in hex for debugging
+                hex_preview = ' '.join(f'{b:02x}' for b in decrypted_bytes[:min(16, len(decrypted_bytes))])
+                debug_print(f"🔍 First bytes (hex): {hex_preview}")
+            
             # Parse as Data protobuf
             decoded = mesh_pb2.Data()
             decoded.ParseFromString(decrypted_bytes)
@@ -234,6 +241,8 @@ class TrafficMonitor:
             
         except Exception as e:
             debug_print(f"⚠️ Failed to decrypt packet from 0x{from_id:08x}: {e}")
+            import traceback
+            debug_print(f"🔍 Traceback: {traceback.format_exc()}")
             return None
     
     def populate_neighbors_from_interface(self, interface, wait_time=None, max_wait_time=None, poll_interval=None):
