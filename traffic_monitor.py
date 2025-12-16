@@ -177,20 +177,33 @@ class TrafficMonitor:
         """
         Get the PSK (Pre-Shared Key) for a specific channel.
         
-        Currently returns the default Meshtastic channel 0 PSK, as the
-        interface.localNode.channels[].settings.psk field doesn't contain the
-        actual PSK bytes (it appears to be a configuration flag or index).
+        Returns the configured PSK from config.CHANNEL_0_PSK if set, otherwise
+        returns the default Meshtastic PSK.
         
-        This matches the approach used in mqtt_neighbor_collector.py which also
-        uses the hardcoded default PSK for decrypting MQTT packets.
+        The interface.localNode.channels[].settings.psk field doesn't contain the
+        actual PSK bytes (it appears to be a configuration flag or index), so we
+        rely on configuration instead.
         
         Args:
             channel_index: Channel index (default 0 for Primary channel)
             interface: Meshtastic interface object (unused for now)
             
         Returns:
-            PSK bytes (16 bytes for AES-128) - the default Meshtastic PSK
+            PSK bytes (16 bytes for AES-128)
         """
+        # Try to get custom PSK from config
+        custom_psk = globals().get('CHANNEL_0_PSK', None)
+        
+        if custom_psk:
+            # Use custom PSK from configuration
+            try:
+                psk = base64.b64decode(custom_psk)
+                debug_print(f"🔑 Using custom PSK from config for channel {channel_index} ({len(psk)} bytes)")
+                return psk
+            except Exception as e:
+                error_print(f"Failed to decode custom PSK from config: {e}")
+                debug_print("Falling back to default Meshtastic PSK")
+        
         # Default Meshtastic channel 0 PSK (base64: "1PG7OiApB1nwvP+rz05pAQ==")
         # This is the same default used in mqtt_neighbor_collector.py
         # Reference: https://github.com/liamcottle/meshtastic-map/blob/main/src/mqtt.js#L658

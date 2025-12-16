@@ -44,7 +44,9 @@ Starting with Meshtastic firmware version 2.7.15, **Direct Messages (DMs) are no
 
 Meshtastic uses **AES-128-CTR** encryption:
 
-- **Key**: Channel PSK (default: `1PG7OiApB1nwvP+rz05pAQ==` in base64)
+- **Key**: Channel 0 PSK (configurable via `CHANNEL_0_PSK` in `config.py`)
+  - Default: `1PG7OiApB1nwvP+rz05pAQ==` (base64) - the standard Meshtastic default PSK
+  - Custom: Set `CHANNEL_0_PSK = "your_base64_psk"` for networks with custom PSK
 - **Nonce**: `packet_id (8 bytes LE) + from_id (4 bytes LE) + counter (4 bytes zeros)`
 - **Mode**: CTR (Counter) mode
 
@@ -98,8 +100,8 @@ The bot attempts decryption when ALL conditions are met:
 - ❌ **DMs to other nodes**: NOT decrypted (respects privacy)
 
 ### Security Considerations
-1. **Default PSK**: Uses Meshtastic's default channel 0 PSK
-2. **Custom PSK**: If network uses custom PSK, decryption fails gracefully
+1. **Configurable PSK**: Uses channel 0 PSK from config or default Meshtastic PSK
+2. **Graceful Fallback**: If decryption fails (wrong PSK), packet stays encrypted
 3. **Backward Compatible**: Non-encrypted messages work as before
 4. **Privacy Respected**: Only decrypts messages intended for us
 
@@ -110,17 +112,34 @@ The bot attempts decryption when ALL conditions are met:
 - **Meshtastic**: `meshtastic>=2.2.0` with protobuf support
 - **Firmware**: Works with Meshtastic 2.7.15+ (and earlier versions)
 
-### Optional: Custom PSK
+### PSK Configuration
 
-If your network uses a custom channel PSK, you can configure it:
+#### Using Default PSK (Standard Networks)
+
+By default, the bot uses the standard Meshtastic default PSK (`1PG7OiApB1nwvP+rz05pAQ==`). No configuration needed.
+
+#### Using Custom PSK (Private Networks)
+
+If your Meshtastic network uses a custom PSK on channel 0, configure it in `config.py`:
 
 ```python
-# In traffic_monitor.py, modify _decrypt_packet() method
-# Replace the default PSK with your custom one:
-psk = base64.b64decode("YOUR_CUSTOM_PSK_BASE64==")
+# In config.py
+CHANNEL_0_PSK = "your_base64_encoded_psk_here"
 ```
 
-**Note**: Future enhancement could add PSK configuration to `config.py`.
+**How to get your PSK**:
+1. **Via Meshtastic App**: Settings → Channels → Primary (Channel 0) → View encryption key
+2. **Via CLI**: `meshtastic --info` (look in channels section)
+3. **Via Python API**: `interface.localNode.channels[0].settings.psk` (already base64 encoded)
+
+**Example**:
+```python
+# Leave as None to use default Meshtastic PSK
+CHANNEL_0_PSK = None
+
+# Or set your custom PSK (base64 encoded)
+CHANNEL_0_PSK = "ABCDEFGHIJKLMNOPQRSTuw=="
+```
 
 ## Testing
 
