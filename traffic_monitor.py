@@ -173,19 +173,21 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
-    def _get_channel_psk(self, channel_index=0):
+    def _get_channel_psk(self, channel_index=0, interface=None):
         """
         Get the PSK for the specified channel from the interface.
         
         Args:
             channel_index: Channel index (default 0 for Primary channel)
+            interface: Meshtastic interface (if None, tries to get from node_manager)
             
         Returns:
             PSK bytes or None if not available
         """
         try:
-            # Try to get PSK from interface
-            interface = getattr(self.node_manager, 'interface', None)
+            # Try to get PSK from interface (use provided interface first, fallback to node_manager)
+            if interface is None:
+                interface = getattr(self.node_manager, 'interface', None)
             debug_print(f"🔍 PSK lookup: interface={interface is not None}")
             
             if interface and hasattr(interface, 'localNode') and interface.localNode:
@@ -228,7 +230,7 @@ class TrafficMonitor:
         
         return None
     
-    def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0):
+    def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0, interface=None):
         """
         Decrypt an encrypted Meshtastic packet using AES-128-CTR.
         
@@ -245,6 +247,7 @@ class TrafficMonitor:
             packet_id: Packet ID (int)
             from_id: Sender node ID (int)
             channel_index: Channel index (default 0 for Primary channel)
+            interface: Meshtastic interface (for accessing PSK configuration)
             
         Returns:
             Decrypted Data protobuf object or None if decryption fails
@@ -261,7 +264,7 @@ class TrafficMonitor:
                 encrypted_bytes = encrypted_data
             
             # Try to get PSK from interface first, fall back to default
-            psk = self._get_channel_psk(channel_index)
+            psk = self._get_channel_psk(channel_index, interface=interface)
             
             if psk is None:
                 # Default PSK for channel 0 (Primary channel)
@@ -520,7 +523,7 @@ class TrafficMonitor:
             error_print(traceback.format_exc())
             return 0
     
-    def add_packet(self, packet, source='unknown', my_node_id=None):
+    def add_packet(self, packet, source='unknown', my_node_id=None, interface=None):
         """
         Enregistrer TOUT type de paquet avec statistiques complètes
 
@@ -534,6 +537,7 @@ class TrafficMonitor:
             packet: Paquet Meshtastic à enregistrer
             source: Source du paquet ('local', 'tcp', ou 'tigrog2' en mode legacy)
             my_node_id: ID du nœud local (pour filtrer auto-génération)
+            interface: Interface Meshtastic (for accessing PSK configuration)
         """
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
@@ -616,8 +620,8 @@ class TrafficMonitor:
                         packet_id = packet.get('id')
                         
                         if encrypted_data and packet_id:
-                            # Try decryption with default channel 0 PSK
-                            decrypted = self._decrypt_packet(encrypted_data, packet_id, from_id)
+                            # Try decryption with channel PSK (from interface or default)
+                            decrypted = self._decrypt_packet(encrypted_data, packet_id, from_id, interface=interface)
                             
                             if decrypted:
                                 # Successfully decrypted! Convert protobuf to dict format
