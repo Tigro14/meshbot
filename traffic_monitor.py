@@ -173,6 +173,39 @@ class TrafficMonitor:
         self._recent_packets = {}
         self._dedup_window = 5.0  # 5 secondes de fenêtre de déduplication
     
+    def _get_channel_psk(self, channel_index=0):
+        """
+        Get the PSK for the specified channel from the interface.
+        
+        Args:
+            channel_index: Channel index (default 0 for Primary channel)
+            
+        Returns:
+            PSK bytes or None if not available
+        """
+        try:
+            # Try to get PSK from interface
+            interface = getattr(self.node_manager, 'interface', None)
+            if interface and hasattr(interface, 'localNode') and interface.localNode:
+                local_node = interface.localNode
+                
+                # Try to access channels
+                if hasattr(local_node, 'channels') and local_node.channels:
+                    if channel_index < len(local_node.channels):
+                        channel = local_node.channels[channel_index]
+                        
+                        # Try to get PSK from channel settings
+                        if hasattr(channel, 'settings') and channel.settings:
+                            if hasattr(channel.settings, 'psk') and channel.settings.psk:
+                                # PSK is in bytes format
+                                psk = bytes(channel.settings.psk)
+                                debug_print(f"🔑 Using PSK from channel {channel_index} ({len(psk)} bytes)")
+                                return psk
+        except Exception as e:
+            debug_print(f"⚠️ Could not get PSK from interface: {e}")
+        
+        return None
+    
     def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0):
         """
         Decrypt an encrypted Meshtastic packet using AES-128-CTR.
@@ -182,7 +215,7 @@ class TrafficMonitor:
         
         Encryption details:
         - Algorithm: AES-128-CTR
-        - Key: Channel PSK (default channel 0: "1PG7OiApB1nwvP+rz05pAQ==" base64)
+        - Key: Channel PSK (from interface or default "1PG7OiApB1nwvP+rz05pAQ==" base64)
         - Nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 bytes zero)
         
         Args:
@@ -205,10 +238,14 @@ class TrafficMonitor:
             else:
                 encrypted_bytes = encrypted_data
             
-            # Default PSK for channel 0 (Primary channel)
-            # This is the default Meshtastic PSK: base64 "1PG7OiApB1nwvP+rz05pAQ=="
-            # Users should configure their own PSK for security, but this works for default configs
-            psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
+            # Try to get PSK from interface first, fall back to default
+            psk = self._get_channel_psk(channel_index)
+            
+            if psk is None:
+                # Default PSK for channel 0 (Primary channel)
+                # This is the default Meshtastic PSK: base64 "1PG7OiApB1nwvP+rz05pAQ=="
+                psk = base64.b64decode("1PG7OiApB1nwvP+rz05pAQ==")
+                debug_print(f"🔑 Using default PSK (16 bytes)")
             
             # Construct nonce: packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
             nonce_bytes = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little')
