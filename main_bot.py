@@ -1117,7 +1117,7 @@ class MeshBot:
                     debug_print(f"📊 ch1_voltage: {sensor_values['battery_voltage']}")
                 
                 if sensor_values.get('battery_current') is not None:
-                    power_telemetry.power_metrics.ch1_current = sensor_values['battery_current']
+                    power_telemetry.power_metrics.ch1_current = int(sensor_values['battery_current']*100)
                     has_power_data = True
                     debug_print(f"📊 ch1_current: {sensor_values['battery_current']}")
             
