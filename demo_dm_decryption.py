@@ -1,7 +1,26 @@
 #!/usr/bin/env python3
 """
-Demo: Meshtastic 2.7.15 DM Decryption
+⚠️ DEPRECATED DEMO - DO NOT USE
 
+This demo file is DEPRECATED and demonstrates incorrect functionality.
+
+IMPORTANT:
+- Meshtastic 2.5.0+ uses PKI (Public Key Cryptography) for DMs, NOT channel PSK
+- The Meshtastic Python library automatically decrypts PKI DMs if keys are available
+- This demo incorrectly shows PSK-based DM decryption (wrong approach)
+- PSK decryption only works for channel/broadcast messages, NOT DMs
+
+If you see encrypted DMs in production:
+1. It means the Meshtastic library couldn't decrypt them (missing public keys)
+2. Fix: Ensure both nodes have exchanged public keys via NODEINFO_APP packets
+3. Do NOT attempt to decrypt with channel PSK (will produce garbage)
+
+See DM_DECRYPTION_2715.md for correct information about DM encryption.
+
+═══════════════════════════════════════════════════════════════════════════
+
+Original demo description (INCORRECT):
+Demo: Meshtastic 2.7.15 DM Decryption
 This script demonstrates how the bot now decrypts DM messages
 that are encrypted in Meshtastic 2.7.15+.
 """

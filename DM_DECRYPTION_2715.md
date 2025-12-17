@@ -1,256 +1,310 @@
-# Meshtastic 2.7.15 DM Decryption
+# Meshtastic DM Encryption - Important Update
 
-## Overview
+## ⚠️ IMPORTANT: This Document Contains Outdated Information
 
-Starting with Meshtastic firmware version 2.7.15, **Direct Messages (DMs) are now encrypted** by default. This document explains how the MeshBot handles this change.
+**The original implementation was based on incorrect assumptions about Meshtastic encryption.**
 
-## The Problem
+## Correct Information About Meshtastic Encryption
 
-### Before Meshtastic 2.7.15
-- DM messages were sent in plaintext (only broadcast on Primary channel)
-- Bot could read any DM sent to it directly
-- Only messages on secondary channels with different PSK were encrypted
+### Encryption Methods by Message Type
 
-### With Meshtastic 2.7.15+
-- DMs are now encrypted using the channel PSK
-- Packets arrive with `encrypted` field instead of `decoded` field
-- Without decryption, DMs appeared as "ENCRYPTED" in logs and were not processed
+Starting with **Meshtastic firmware 2.5.0** (not 2.7.15), encryption works as follows:
 
-### User Impact
+| Message Type | Encryption Method | Key Used |
+|-------------|------------------|----------|
+| **Channel/Broadcast Messages** | AES256-CTR | Channel PSK (Pre-Shared Key) |
+| **Direct Messages (DMs)** | **PKI (Public Key Cryptography)** | Recipient's Public Key + Sender's Private Key |
+| **Admin Messages** | PKC (DH) + AES-CTR | Session Secret |
+
+### The Real Problem
+
+#### Before Meshtastic 2.5.0
+- DM messages MAY have been sent with channel PSK encryption
+- Less secure (anyone with channel key could read DMs)
+
+#### With Meshtastic 2.5.0+ (including 2.6.x and 2.7.x)
+- **DMs use PKI encryption**, NOT channel PSK
+- Each node has a unique public/private key pair
+- Sender encrypts DM with recipient's public key
+- Only recipient can decrypt with their private key
+- Message is signed with sender's private key for authentication
+- **Meshtastic Python library automatically decrypts PKI DMs** if keys are available
+
+### Why Encrypted DMs Appear in Logs
+
+If you see encrypted DMs in logs:
 ```
-❌ Log message (before fix):
 [DEBUG] 📦 ENCRYPTED de tigro t1000E f40da [direct] (SNR:12.0dB)
-
-✅ Log message (after fix):
-[DEBUG] 🔐 Attempting to decrypt DM from 0x0de3331e to us
-[DEBUG] ✅ Successfully decrypted DM packet from 0x0de3331e
-[DEBUG] 📨 Decrypted DM message: /help
-[DEBUG] 📦 TEXT_MESSAGE_APP de tigro t1000E f40da [direct] (SNR:12.0dB)
+[DEBUG] 🔐 Encrypted DM from 0xa76f40da to us - likely PKI encrypted
+[DEBUG] 💡 If this is a DM, ensure both nodes have exchanged public keys
 ```
 
-## The Solution
+**This means:**
+1. ✅ The Meshtastic Python library received the packet
+2. ❌ The library could NOT automatically decrypt it with PKI
+3. ⚠️ **Public key exchange is missing or incomplete**
 
-### Implementation Details
+## The Correct Solution
 
-**File**: `traffic_monitor.py`
+### How PKI Encryption Works
 
-**Key Changes**:
-1. Added cryptography imports for AES-128-CTR decryption
-2. Added protobuf imports for parsing decrypted data
-3. Implemented `_decrypt_packet()` method
-4. Enhanced `add_packet()` to detect and decrypt DM packets
+**Meshtastic Python library handles PKI decryption automatically:**
+- When a DM is received, the library checks if it's encrypted with PKI
+- If the receiving node has the sender's public key, decryption happens automatically
+- The bot receives the packet with a `decoded` field (plaintext)
+- **No manual decryption needed by the bot**
 
-### Decryption Algorithm
+### Why Manual PSK Decryption is Wrong
 
-Meshtastic uses **AES-128-CTR** encryption:
+**The previous implementation (PR #179) was incorrect:**
+- ❌ Tried to decrypt PKI-encrypted DMs with channel PSK
+- ❌ Produced garbage data (e.g., "dix" instead of "/help")
+- ❌ Even if "decryption" appeared successful, result was invalid protobuf
+- ❌ This is fundamentally the wrong encryption method
 
-- **Key**: Channel 0 PSK (configurable via `CHANNEL_0_PSK` in `config.py`)
-  - Default: `1PG7OiApB1nwvP+rz05pAQ==` (base64) - the standard Meshtastic default PSK
-  - Custom: Set `CHANNEL_0_PSK = "your_base64_psk"` for networks with custom PSK
-- **Nonce**: Varies by firmware version (see Multi-Version Support below)
+**Channel PSK decryption should only be used for:**
+- ✅ Channel/broadcast messages (to `0xFFFFFFFF`)
+- ❌ NOT for Direct Messages (DMs have unique recipient)
 
-### Multi-Version Support
+### Fixing Encrypted DM Issues
 
-The bot now supports **multiple decryption methods** to handle different Meshtastic firmware versions:
+If DMs appear as ENCRYPTED, the issue is at the **node level**, not the bot:
 
-#### Method 1: Meshtastic 2.7.15+ (Standard)
-- **Nonce**: `packet_id (8 bytes LE) + from_id (4 bytes LE) + counter (4 bytes zeros)`
-- This is the primary method used by firmware 2.7.15 and newer
+1. **Check Public Key Exchange:**
+   ```bash
+   meshtastic --info
+   # Look for "nodes" section - each node should have a "user" field with "publicKey"
+   ```
 
-#### Method 2: Meshtastic 2.6.x (Alternative)
-- **Nonce**: `packet_id (4 bytes LE) + from_id (4 bytes LE) + counter (8 bytes zeros)`
-- Supports older firmware versions that may use shorter packet IDs
+2. **Verify Node Database:**
+   - The receiving node must have the sender's public key in its node database
+   - The sender must have the receiver's public key
+   - Keys are exchanged via NODEINFO_APP packets
 
-#### Method 3: Big-Endian Variant
-- **Nonce**: `packet_id (8 bytes BE) + from_id (4 bytes BE) + counter (4 bytes zeros)`
-- Handles potential endianness variations
+3. **Force Node Database Refresh:**
+   ```bash
+   # Request nodeinfo from sender
+   meshtastic --request-telemetry --dest <sender_node_id>
+   ```
 
-#### Method 4: Reversed Order
-- **Nonce**: `from_id (4 bytes LE) + packet_id (8 bytes LE) + counter (4 bytes zeros)`
-- Alternative nonce construction order
+4. **Check for Duplicate/Conflicted Keys:**
+   - Some vendors shipped devices with duplicate keys (security issue)
+   - Regenerate keys if needed
+   - See Meshtastic security advisories
 
-The bot **automatically tries all methods** in sequence until one succeeds. This ensures compatibility across:
-- Meshtastic 2.6.x (older firmware with optional DM encryption)
-- Meshtastic 2.7.15+ (newer firmware with mandatory DM encryption)
-- Mixed-version networks (nodes on different firmware versions)
-- **Mode**: CTR (Counter) mode
+### Detection Logic (Updated)
 
-### Detection Logic
-
-The bot attempts decryption when ALL conditions are met:
+The bot now correctly handles encrypted packets:
 1. ✅ Packet has `encrypted` field (not `decoded`)
-2. ✅ Packet is addressed to our node (`to_id == my_node_id`)
-3. ✅ Packet has a valid `id` field
+2. ✅ Check if it's a DM to our node (`to_id == my_node_id`)
+3. ⚠️ **Do NOT attempt PSK decryption** (will produce garbage)
+4. ✅ Log helpful message about key exchange
+5. ✅ Keep packet as ENCRYPTED in statistics
 
-### Processing Flow
+### Processing Flow (Correct)
 
 ```
 ┌─────────────────────────────────────────────┐
 │  Packet Received                            │
-│  'encrypted' field present                  │
+│  from Meshtastic Python Library             │
 └────────────────┬────────────────────────────┘
                  │
                  ▼
-         ┌───────────────┐
-         │ Is DM to us?  │
-         └───────┬───────┘
-                 │
-        ┌────────┴────────┐
-        │ Yes             │ No
-        ▼                 ▼
-┌────────────────┐  ┌──────────────────┐
-│ Try Decrypt    │  │ Keep ENCRYPTED   │
-│ with PSK       │  │ (not for us)     │
-└───────┬────────┘  └──────────────────┘
-        │
-   ┌────┴─────┐
-   │ Success? │
-   └────┬─────┘
-        │
-   ┌────┴────┐
-   │ Yes     │ No
-   ▼         ▼
-┌────────┐  ┌─────────────┐
-│ Parse  │  │ Keep as     │
-│ Decode │  │ ENCRYPTED   │
-│ Process│  │ (wrong PSK) │
-└────────┘  └─────────────┘
+         ┌───────────────────┐
+         │ Has 'decoded'     │
+         │ field?            │
+         └─────────┬─────────┘
+                   │
+        ┌──────────┴──────────┐
+        │ Yes                 │ No ('encrypted' present)
+        ▼                     ▼
+┌──────────────────┐  ┌──────────────────────────┐
+│ Library already  │  │ Library couldn't decrypt │
+│ decrypted PKI    │  │ (missing public key)     │
+│ → Process!       │  │ → Keep as ENCRYPTED      │
+└──────────────────┘  └──────────┬───────────────┘
+                                 │
+                                 ▼
+                        ┌────────────────────┐
+                        │ Is DM to us?       │
+                        └────────┬───────────┘
+                                 │
+                        ┌────────┴─────────┐
+                        │ Yes              │ No
+                        ▼                  ▼
+                ┌──────────────────┐  ┌──────────────┐
+                │ Log: Check key   │  │ Log: Not     │
+                │ exchange status  │  │ for us       │
+                └──────────────────┘  └──────────────┘
 ```
 
 ## Privacy & Security
 
 ### What is Decrypted
-- ✅ **DMs to our node**: Decrypted and processed
-- ❌ **Broadcast messages**: NOT decrypted (even if encrypted)
-- ❌ **DMs to other nodes**: NOT decrypted (respects privacy)
+- ✅ **DMs with PKI**: Automatically decrypted by Meshtastic library if keys available
+- ✅ **Channel messages**: Decrypted by library if correct channel PSK configured
+- ❌ **DMs without keys**: Remain encrypted (node database issue)
+- ❌ **DMs to other nodes**: NOT decrypted by us (respects privacy)
 
 ### Security Considerations
-1. **Configurable PSK**: Uses channel 0 PSK from config or default Meshtastic PSK
-2. **Graceful Fallback**: If decryption fails (wrong PSK), packet stays encrypted
-3. **Backward Compatible**: Non-encrypted messages work as before
-4. **Privacy Respected**: Only decrypts messages intended for us
+1. **PKI Security**: Each node has unique public/private key pair
+2. **End-to-End Encryption**: Only sender and recipient can read DMs
+3. **Message Authentication**: Sender's signature verifies message integrity
+4. **Key Management**: Public keys exchanged via NODEINFO_APP packets
+5. **No PSK for DMs**: Channel PSK only for broadcast, NOT for DMs
 
 ## Configuration
 
 ### Requirements
-- **Python Library**: `cryptography>=41.0.0` (already in requirements.txt)
-- **Meshtastic**: `meshtastic>=2.2.0` with protobuf support
-- **Firmware**: Works with Meshtastic 2.7.15+ (and earlier versions)
+- **Meshtastic**: `meshtastic>=2.2.0` with PKI support
+- **Firmware**: Meshtastic 2.5.0+ (all versions with PKI encryption)
+- **No special configuration needed**: PKI handled by Meshtastic library
 
-### PSK Configuration
+### Key Management
 
-#### Using Default PSK (Standard Networks)
+**Public/Private keys are managed at the node level, not in bot config:**
 
-By default, the bot uses the standard Meshtastic default PSK (`1PG7OiApB1nwvP+rz05pAQ==`). No configuration needed.
+1. **Check Node Keys:**
+   ```bash
+   meshtastic --info
+   ```
+   Look for:
+   - `user.id`: Your node ID
+   - `user.publicKey`: Your public key (hex string)
+   - In `nodes` section: Other nodes' public keys
 
-#### Using Custom PSK (Private Networks)
+2. **Verify Key Exchange:**
+   ```bash
+   meshtastic --nodes
+   ```
+   Each node should show `publicKey` field
 
-If your Meshtastic network uses a custom PSK on channel 0, configure it in `config.py`:
+3. **Regenerate Keys (if needed):**
+   ```bash
+   # WARNING: This will change your node identity
+   # Other nodes will need to re-learn your public key
+   meshtastic --set security.private_key ""
+   meshtastic --reboot
+   ```
 
-```python
-# In config.py
-CHANNEL_0_PSK = "your_base64_encoded_psk_here"
-```
+### Channel PSK Configuration (For Broadcasts Only)
 
-**How to get your PSK**:
-1. **Via Meshtastic App**: Settings → Channels → Primary (Channel 0) → View encryption key
-2. **Via CLI**: `meshtastic --info` (look in channels section)
-3. **Via Python API**: `interface.localNode.channels[0].settings.psk` (already base64 encoded)
+Channel PSK is for broadcast messages, NOT DMs. To configure:
 
-**Example**:
-```python
-# Leave as None to use default Meshtastic PSK
-CHANNEL_0_PSK = None
-
-# Or set your custom PSK (base64 encoded)
-CHANNEL_0_PSK = "ABCDEFGHIJKLMNOPQRSTuw=="
-```
-
-## Testing
-
-### Run Tests
 ```bash
-python3 test_dm_decryption.py
+# View current channel config
+meshtastic --ch-index 0 --ch-get
+
+# Set custom PSK for channel 0
+meshtastic --ch-set psk base64:YOUR_PSK_HERE --ch-index 0
 ```
 
-### Test Coverage
-1. ✅ Decrypt method correctness
-2. ✅ Full encrypted DM packet handling
-3. ✅ Broadcast packets remain encrypted
-4. ✅ Privacy: only our DMs are decrypted
-
-### Demo Script
-```bash
-python3 demo_dm_decryption.py
-```
-
-Shows before/after comparison and explains how decryption works.
+**Note**: Changing channel PSK does NOT affect DM encryption (uses PKI).
 
 ## Troubleshooting
 
 ### DMs Still Show as ENCRYPTED
 
-**Possible Causes**:
-1. **Custom PSK**: Network uses non-default channel PSK
-2. **Missing Libraries**: `cryptography` or `meshtastic` not installed
-3. **Wrong Channel**: DM sent on secondary channel we don't have
+**Log Example**:
+```
+[DEBUG] 📦 ENCRYPTED de tigro t1000E f40da [direct] (SNR:12.0dB)
+[DEBUG] 🔐 Encrypted DM from 0xa76f40da to us - likely PKI encrypted
+[DEBUG] 💡 If this is a DM, ensure both nodes have exchanged public keys
+```
+
+**Root Cause**: Missing public key exchange between nodes
 
 **Solutions**:
-1. Configure custom PSK in `_decrypt_packet()` method
-2. Install dependencies: `pip install -r requirements.txt`
-3. Ensure sender uses Primary channel (channel 0)
 
-### Decryption Fails
+1. **Check if sender's public key is in your node database:**
+   ```bash
+   meshtastic --nodes | grep -A 5 "a76f40da"
+   ```
+   Should show `publicKey` field. If missing, node hasn't received sender's NODEINFO.
 
-**Check Logs**:
+2. **Request sender's node info:**
+   ```bash
+   # Request NODEINFO from sender (triggers key broadcast)
+   meshtastic --request-telemetry --dest a76f40da
+   ```
+
+3. **Wait for automatic key exchange:**
+   - Nodes broadcast NODEINFO periodically (every 15-30 minutes)
+   - Key will be exchanged automatically over time
+   - Check logs for "Received NODEINFO from..." messages
+
+4. **Check for duplicate keys (security issue):**
+   ```bash
+   meshtastic --info | grep "publicKey"
+   ```
+   If your key matches known compromised keys, regenerate it.
+
+5. **Verify sender can send DMs:**
+   - Sender must also have YOUR public key
+   - Ask sender to check their node database
+   - Both directions need key exchange
+
+### Testing Key Exchange
+
+**Send test DM from sender's device:**
+```bash
+# From sender (e.g., 2.7.11 node)
+meshtastic --sendtext "test" --dest YOUR_NODE_ID
 ```
-[DEBUG] 🔐 Attempting to decrypt DM from 0xABCDEF to us
-[DEBUG] ⚠️ Failed to decrypt packet from 0xABCDEF: <error>
-```
 
-**Common Issues**:
-- Sender uses different channel PSK
-- Packet corrupted in transit
-- Missing packet ID field
+**Expected outcomes:**
+- ✅ **If keys exchanged**: DM appears with `decoded` field, bot processes it
+- ❌ **If keys missing**: DM appears as ENCRYPTED in logs
+
+**Note**: The first DM after key exchange may fail. Subsequent DMs should work.
 
 ## Performance Impact
 
-### Minimal Overhead
-- Decryption only attempted for DMs to our node
-- AES-CTR is fast (~1ms per packet on Raspberry Pi 5)
+### No Bot-Side Decryption Overhead
+- PKI decryption handled by Meshtastic library (C++ code)
+- Bot receives pre-decrypted packets (if keys available)
+- Zero additional CPU/memory overhead in Python
 - No impact on broadcast or relay performance
 
 ### Memory Usage
-- Single additional protobuf object per decrypted DM
-- Immediate cleanup after conversion to dict
-- No persistent memory increase
+- No additional memory needed for decryption
+- Library handles key management internally
+- Bot only processes final decoded packets
 
 ## Future Enhancements
 
 ### Potential Improvements
-1. **Configurable PSK**: Add PSK setting to `config.py`
-2. **Multi-Channel Support**: Try multiple PSKs automatically
-3. **PSK Detection**: Auto-detect PSK from interface channels
-4. **Statistics**: Track decryption success/failure rates
+1. **Key Exchange Monitoring**: Alert when new nodes lack public keys
+2. **Statistics**: Track encrypted vs decrypted DM ratio
+3. **Auto-diagnostics**: Detect and report key exchange issues
+4. **Key Validation**: Check for duplicate/compromised keys
 
 ## References
 
-- **Meshtastic Encryption**: https://meshtastic.org/docs/overview/encryption/
-- **Protobuf Format**: https://github.com/meshtastic/protobufs
-- **AES-CTR Mode**: https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)
-- **Cryptography Library**: https://cryptography.io/
+- **Meshtastic Encryption (Official)**: https://meshtastic.org/docs/overview/encryption/
+- **PKI Implementation Details**: https://meshtastic.org/docs/development/reference/encryption-technical/
+- **Meshtastic Python Library**: https://meshtastic.org/docs/development/python/library/
+- **Public Key Cryptography**: https://en.wikipedia.org/wiki/Public-key_cryptography
+- **Firmware Releases**: https://github.com/meshtastic/firmware/releases
 
 ## Changelog
 
-### 2025-12-16 - Initial Implementation
-- Added DM decryption for Meshtastic 2.7.15+
-- Implemented `_decrypt_packet()` method
-- Enhanced `add_packet()` with decryption logic
-- Added comprehensive tests
-- Created demo and documentation
+### 2025-12-17 - Major Correction
+- ⚠️ **CORRECTED**: Removed incorrect PSK-based DM decryption
+- ✅ **UPDATED**: Documentation reflects correct PKI encryption for DMs
+- ✅ **FIXED**: Bot no longer attempts to decrypt PKI DMs with PSK
+- ✅ **ADDED**: Proper guidance for key exchange troubleshooting
+- ✅ **CLARIFIED**: Distinction between channel PSK and DM PKI encryption
+
+### 2025-12-16 - Initial Implementation (INCORRECT)
+- ❌ Added PSK-based DM decryption (wrong approach)
+- ❌ Implemented `_decrypt_packet()` method (not needed for DMs)
+- ❌ Documentation incorrectly stated DMs use channel PSK
 
 ---
 
-**Status**: ✅ Fully Implemented and Tested  
-**Version**: 1.0  
-**Last Updated**: 2025-12-16
+**Status**: ✅ Corrected and Updated  
+**Version**: 2.0 (Major Revision)  
+**Last Updated**: 2025-12-17
+
+**IMPORTANT**: If you implemented the previous version (1.0), please update to this corrected version immediately. The old implementation will produce garbage data when attempting to decrypt PKI-encrypted DMs with channel PSK.
