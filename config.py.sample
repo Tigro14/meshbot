@@ -33,6 +33,22 @@ TCP_AUTO_REBOOT_ON_FAILURE = True
 TCP_REBOOT_WAIT_TIME = 45
 
 # ========================================
+# DÉCHIFFREMENT DES MESSAGES DIRECTS (DM)
+# ========================================
+# Meshtastic 2.7.15+ chiffre tous les DMs avec la PSK du canal 0
+# 
+# PSK du canal 0 de votre réseau (encodée en base64)
+# - Laisser None pour utiliser la PSK par défaut de Meshtastic ("1PG7OiApB1nwvP+rz05pAQ==")
+# - Pour un réseau avec PSK personnalisée, spécifier la PSK encodée en base64
+# - Exemple: CHANNEL_0_PSK = "votre_psk_base64_ici"
+#
+# Pour obtenir votre PSK:
+#   1. Via l'app Meshtastic: Paramètres → Canaux → Canal 0 → Voir la clé
+#   2. Via CLI: meshtastic --info (section channels)
+#   3. Via Python: interface.localNode.channels[0].settings.psk (en base64)
+CHANNEL_0_PSK = None  # None = utiliser la PSK par défaut Meshtastic
+
+# ========================================
 # CONFIGURATION NŒUD DISTANT (OPTIONNEL)
 # ========================================
 # Configuration pour monitorer un nœud distant via TCP (ex: tigrog2)

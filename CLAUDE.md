@@ -84,6 +84,46 @@ A sophisticated Meshtastic bot running on Raspberry Pi 5 that integrates:
 
 ## Recent Architectural Changes (November 2025)
 
+### DM Decryption for Meshtastic 2.7.15+ (December 2025)
+
+Added support for decrypting DM messages in Meshtastic firmware 2.7.15+:
+
+**Problem Solved:**
+- Meshtastic 2.7.15+ encrypts all DM (Direct Messages) by default
+- Bot received encrypted DMs but couldn't read them
+- DMs appeared as "ENCRYPTED" in logs and were not processed
+- Users couldn't send commands via DM to the bot
+
+**Implementation:**
+- Added `_decrypt_packet()` method in `traffic_monitor.py` using AES-128-CTR
+- Detects encrypted DMs addressed to our node
+- Decrypts using default channel 0 PSK
+- Converts decrypted protobuf to dict format
+- Updates original packet with decoded data
+- Logs decryption status (success/failure)
+
+**Benefits:**
+1. ✅ Bot can now read and process DM messages in Meshtastic 2.7.15+
+2. ✅ Respects privacy: only decrypts DMs to our node
+3. ✅ Backward compatible: non-encrypted messages work as before
+4. ✅ Graceful fallback: keeps as ENCRYPTED if decryption fails
+5. ✅ Comprehensive testing: test suite verifies all scenarios
+
+**Files Modified:**
+- `traffic_monitor.py` - Added decryption logic and imports
+- `test_dm_decryption.py` - Comprehensive test suite (NEW)
+- `demo_dm_decryption.py` - Interactive demo (NEW)
+- `DM_DECRYPTION_2715.md` - Complete documentation (NEW)
+
+**Log Example:**
+```
+[DEBUG] 🔐 Attempting to decrypt DM from 0x0de3331e to us
+[DEBUG] ✅ Successfully decrypted DM packet from 0x0de3331e
+[DEBUG] 📨 Decrypted DM message: /help
+[DEBUG] ✅ DM decrypted successfully: TEXT_MESSAGE_APP
+[DEBUG] 📦 TEXT_MESSAGE_APP de tigro t1000E f40da [direct] (SNR:12.0dB)
+```
+
 ### Neighbor Data Retention Extension (December 2025)
 
 Extended neighbor data retention from 48 hours to 30 days for better network visualization:
@@ -2719,9 +2759,22 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-12-03
+**Last updated**: 2025-12-16
 **Updated by**: GitHub Copilot
-**Changes in this update (2025-12-03)**:
+**Changes in this update (2025-12-16)**:
+- **NEW: DM Decryption for Meshtastic 2.7.15+** - Support for encrypted Direct Messages
+  - Added `_decrypt_packet()` method in `traffic_monitor.py` using AES-128-CTR
+  - Automatic detection and decryption of DMs addressed to our node
+  - Uses default channel 0 PSK (configurable for custom networks)
+  - Converts decrypted protobuf to dict format for processing
+  - Added comprehensive test suite: `test_dm_decryption.py`
+  - Added interactive demo: `demo_dm_decryption.py`
+  - Added documentation: `DM_DECRYPTION_2715.md`
+  - Benefits: Bot can now process DM commands in Meshtastic 2.7.15+
+  - Privacy: Only decrypts DMs to our node, respects other nodes' privacy
+  - Backward compatible: Non-encrypted messages work as before
+
+**Previous changes (2025-12-03)**:
 - **NEW: MQTT Neighbor Collection** - Enhanced network topology visibility
   - Added `mqtt_neighbor_collector.py` - Collect neighbor data from MQTT server
   - Subscribe to Meshtastic MQTT topics for NEIGHBORINFO_APP packets
