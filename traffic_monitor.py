@@ -257,11 +257,25 @@ class TrafficMonitor:
     
     def _decrypt_packet(self, encrypted_data, packet_id, from_id, channel_index=0, interface=None):
         """
-        Decrypt an encrypted Meshtastic packet using AES-128-CTR.
+        ⚠️ WARNING: This method is DEPRECATED and should NOT be used for Direct Messages (DMs).
         
-        Supports multiple decryption methods for compatibility with different Meshtastic firmware versions:
-        - Meshtastic 2.7.15+: Uses nonce = packet_id (8 bytes LE) + from_id (4 bytes LE) + block_counter (4 zeros)
-        - Meshtastic 2.6.x: May use different nonce construction (tries alternative methods)
+        IMPORTANT INFORMATION:
+        - Meshtastic 2.5.0+ uses PKI (Public Key Cryptography) for DMs, NOT channel PSK
+        - The Meshtastic Python library automatically decrypts PKI DMs if keys are available
+        - This PSK-based decryption only works for CHANNEL/BROADCAST messages
+        - Attempting to decrypt PKI DMs with channel PSK produces garbage data
+        
+        If you see encrypted DMs, the issue is missing public key exchange, NOT wrong PSK.
+        Fix: Ensure both nodes have each other's public keys (via NODEINFO_APP packets).
+        
+        This method is kept for potential future use with channel-encrypted broadcasts,
+        but is NOT called for DM processing.
+        
+        ═══════════════════════════════════════════════════════════════════════════
+        
+        Decrypt an encrypted Meshtastic packet using AES-128-CTR with channel PSK.
+        
+        ⚠️ ONLY for channel/broadcast messages, NOT for Direct Messages!
         
         Encryption details:
         - Algorithm: AES-128-CTR
@@ -632,72 +646,38 @@ class TrafficMonitor:
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
             elif 'encrypted' in packet:
-                # Paquet chiffré - tentative de déchiffrement pour les DMs
+                # Paquet chiffré
                 is_encrypted = True
                 packet_type = 'ENCRYPTED'
                 
                 # Check if packet is PKI encrypted (different encryption scheme)
                 if 'pkiEncrypted' in packet:
                     packet_type = 'PKI_ENCRYPTED'
-                    # PKI encryption not supported yet
+                
+                # Note: Depuis Meshtastic 2.5.0+, les DMs utilisent PKI (Public Key Cryptography)
+                # La bibliothèque Meshtastic Python décrypte automatiquement les DMs PKI si les clés sont échangées.
+                # Si un DM arrive avec le champ 'encrypted', cela signifie que la bibliothèque ne peut pas le décrypter,
+                # probablement parce que :
+                #   - Le nœud récepteur n'a pas la clé publique de l'expéditeur
+                #   - L'expéditeur n'a pas la clé publique du récepteur
+                #   - L'échange de clés n'a pas eu lieu
+                #
+                # IMPORTANT: NE PAS essayer de décrypter avec PSK de canal !
+                # - Les messages de canal/broadcast utilisent PSK
+                # - Les DMs utilisent PKI (clés publiques/privées)
+                # - Tenter de décrypter un DM PKI avec PSK produit des données invalides
+                #
+                # Solution: Garder le paquet comme ENCRYPTED et informer l'utilisateur
+                # de vérifier l'échange de clés entre les nœuds
+                
+                is_dm_to_us = my_node_id and (to_id == my_node_id)
+                
+                if is_dm_to_us:
+                    debug_print(f"🔐 Encrypted DM from 0x{from_id:08x} to us - likely PKI encrypted")
+                    debug_print(f"💡 If this is a DM, ensure both nodes have exchanged public keys")
+                    debug_print(f"   Run 'meshtastic --info' to check node database and keys")
                 else:
-                    # Try to decrypt if this is a DM to our node
-                    # DMs are now encrypted in Meshtastic 2.7.15+
-                    is_dm_to_us = my_node_id and (to_id == my_node_id)
-                    
-                    if is_dm_to_us and packet.get('id'):
-                        debug_print(f"🔐 Attempting to decrypt DM from 0x{from_id:08x} to us")
-                        encrypted_data = packet.get('encrypted')
-                        packet_id = packet.get('id')
-                        
-                        if encrypted_data and packet_id:
-                            # Try decryption with channel PSK (from interface or default)
-                            decrypted = self._decrypt_packet(encrypted_data, packet_id, from_id, interface=interface)
-                            
-                            if decrypted:
-                                # Successfully decrypted! Convert protobuf to dict format
-                                # Get portnum from protobuf
-                                portnum_value = decrypted.portnum
-                                
-                                # Map protobuf portnum to string name
-                                portnum_name = portnums_pb2.PortNum.Name(portnum_value)
-                                packet_type = portnum_name
-                                
-                                # Create decoded dict and update original packet
-                                # This allows main_bot.py to process the decrypted message
-                                decoded_dict = {
-                                    'portnum': portnum_name
-                                }
-                                
-                                # Extract message text if it's TEXT_MESSAGE_APP
-                                if portnum_value == portnums_pb2.PortNum.TEXT_MESSAGE_APP:
-                                    # Check if payload exists (don't use HasField for bytes field)
-                                    if decrypted.payload:
-                                        try:
-                                            message_text = decrypted.payload.decode('utf-8')
-                                            decoded_dict['payload'] = decrypted.payload
-                                            decoded_dict['text'] = message_text
-                                            debug_print(f"📨 Decrypted DM message: {message_text[:50]}")
-                                        except:
-                                            pass
-                                
-                                # Update the original packet with decoded data
-                                # Remove 'encrypted' field and add 'decoded' field
-                                if 'encrypted' in packet:
-                                    del packet['encrypted']
-                                packet['decoded'] = decoded_dict
-                                
-                                # Mark as successfully decrypted (not encrypted anymore)
-                                is_encrypted = False
-                                debug_print(f"✅ DM decrypted successfully: {packet_type}")
-                            else:
-                                debug_print(f"⚠️ Failed to decrypt DM (may use different PSK)")
-                    else:
-                        # Not a DM to us, or missing packet ID - keep as encrypted
-                        if not is_dm_to_us:
-                            debug_print(f"🔐 Encrypted packet not for us (to=0x{to_id:08x})")
-                        else:
-                            debug_print(f"🔐 Encrypted packet missing ID, cannot decrypt")
+                    debug_print(f"🔐 Encrypted packet not for us (to=0x{to_id:08x})")
         
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
