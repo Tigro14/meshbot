@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
 """
-Test DM decryption for Meshtastic 2.7.15 encrypted messages
+⚠️ DEPRECATED TEST - DO NOT USE
 
+This test file is DEPRECATED and tests incorrect functionality.
+
+IMPORTANT:
+- Meshtastic 2.5.0+ uses PKI (Public Key Cryptography) for DMs, NOT channel PSK
+- The Meshtastic Python library automatically decrypts PKI DMs if keys are available
+- This test incorrectly verifies PSK-based DM decryption (wrong approach)
+- PSK decryption only works for channel/broadcast messages, NOT DMs
+
+The _decrypt_packet() method is kept in traffic_monitor.py for potential future use
+with channel-encrypted broadcasts, but should NOT be used for DMs.
+
+If you see encrypted DMs in production:
+1. It means the Meshtastic library couldn't decrypt them (missing public keys)
+2. Fix: Ensure both nodes have exchanged public keys via NODEINFO_APP packets
+3. Do NOT attempt to decrypt with channel PSK (will produce garbage)
+
+See DM_DECRYPTION_2715.md for correct information about DM encryption.
+
+═══════════════════════════════════════════════════════════════════════════
+
+Original test description (INCORRECT):
+Test DM decryption for Meshtastic 2.7.15 encrypted messages
 This test verifies that the bot can decrypt DM messages sent to it.
 """
 
