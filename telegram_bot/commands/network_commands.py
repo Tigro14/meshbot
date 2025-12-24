@@ -477,17 +477,6 @@ class NetworkCommands(TelegramCommandBase):
         
         def get_keys_info():
             try:
-                # Construire le message pour le handler mesh
-                if node_name:
-                    message = f"/keys {node_name}"
-                else:
-                    message = "/keys"
-                
-                # Mapper l'ID Telegram à un ID Meshtastic si nécessaire
-                mesh_identity = self.get_mesh_identity(user.id)
-                sender_id = mesh_identity['node_id'] if mesh_identity else (user.id & 0xFFFFFFFF)
-                sender_info = f"telegram:{user.id}"
-                
                 # Vérifier que network_handler est disponible
                 # Le network_handler est dans le router du message_handler
                 if not hasattr(self.message_handler, 'router') or not hasattr(self.message_handler.router, 'network_handler'):
@@ -495,49 +484,14 @@ class NetworkCommands(TelegramCommandBase):
                 
                 network_handler = self.message_handler.router.network_handler
                 
-                # Appeler la méthode handle_keys du network_handler
-                # Note: handle_keys envoie directement via sender, donc on doit capturer la sortie
-                # On va créer un sender temporaire qui capture le texte
+                # Appeler directement les méthodes internes (sans threading)
+                # Format détaillé pour Telegram (compact=False)
+                if node_name:
+                    response = network_handler._check_node_keys(node_name, compact=False)
+                else:
+                    response = network_handler._check_all_keys(compact=False)
                 
-                class ResponseCapture:
-                    def __init__(self):
-                        self.response = None
-                    
-                    def send_single(self, text, *args, **kwargs):
-                        self.response = text
-                    
-                    def send_chunks(self, text, *args, **kwargs):
-                        self.response = text
-                    
-                    def log_conversation(self, *args, **kwargs):
-                        pass
-                    
-                    def check_throttling(self, *args, **kwargs):
-                        return True
-                
-                # Sauvegarder le sender original
-                original_sender = network_handler.sender
-                
-                # Créer un capture temporaire
-                capture = ResponseCapture()
-                network_handler.sender = capture
-                
-                try:
-                    # Appeler handle_keys
-                    network_handler.handle_keys(message, sender_id, sender_info)
-                    
-                    # Attendre un peu que le thread se termine (handle_keys utilise un thread)
-                    import time
-                    time.sleep(0.5)
-                    
-                    # Récupérer la réponse
-                    if capture.response:
-                        return capture.response
-                    else:
-                        return "⚠️ Pas de réponse du handler"
-                finally:
-                    # Restaurer le sender original
-                    network_handler.sender = original_sender
+                return response
                     
             except Exception as e:
                 error_print(f"Erreur /keys: {e}")
