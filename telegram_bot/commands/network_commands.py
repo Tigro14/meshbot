@@ -484,7 +484,8 @@ class NetworkCommands(TelegramCommandBase):
                     message = "/keys"
                 
                 # Mapper l'ID Telegram à un ID Meshtastic si nécessaire
-                sender_id = self.get_mesh_id_for_user(user.id)
+                mesh_identity = self.get_mesh_identity(user.id)
+                sender_id = mesh_identity['node_id'] if mesh_identity else (user.id & 0xFFFFFFFF)
                 sender_info = f"telegram:{user.id}"
                 
                 # Vérifier que network_handler est disponible
