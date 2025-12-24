@@ -674,8 +674,34 @@ class TrafficMonitor:
                 
                 if is_dm_to_us:
                     debug_print(f"🔐 Encrypted DM from 0x{from_id:08x} to us - likely PKI encrypted")
-                    debug_print(f"💡 If this is a DM, ensure both nodes have exchanged public keys")
-                    debug_print(f"   Run 'meshtastic --info' to check node database and keys")
+                    
+                    # Check if we have sender's public key
+                    has_key = False
+                    if self.interface and hasattr(self.interface, 'nodes'):
+                        nodes = getattr(self.interface, 'nodes', {})
+                        node_info = nodes.get(from_id)
+                        if node_info and isinstance(node_info, dict):
+                            user_info = node_info.get('user', {})
+                            if isinstance(user_info, dict):
+                                public_key = user_info.get('publicKey')
+                                if public_key:
+                                    has_key = True
+                    
+                    if not has_key:
+                        debug_print(f"❌ Missing public key for sender 0x{from_id:08x}")
+                        debug_print(f"💡 Solution: The sender's node needs to broadcast NODEINFO")
+                        debug_print(f"   - Wait for automatic NODEINFO broadcast (every 15-30 min)")
+                        debug_print(f"   - Or manually request: meshtastic --request-telemetry --dest {from_id:08x}")
+                        debug_print(f"   - Or use: /keys {from_id:08x} to check key exchange status")
+                    else:
+                        debug_print(f"✅ Sender's public key is present in node database")
+                        debug_print(f"⚠️ Yet Meshtastic library couldn't decrypt - this is unexpected!")
+                        debug_print(f"   Possible causes:")
+                        debug_print(f"   - Key might be outdated/incorrect")
+                        debug_print(f"   - Firmware incompatibility (<2.5.0)")
+                        debug_print(f"   - Try: /keys {from_id:08x} for more details")
+                    
+                    debug_print(f"📖 More info: https://meshtastic.org/docs/overview/encryption/")
                 else:
                     debug_print(f"🔐 Encrypted packet not for us (to=0x{to_id:08x})")
         
