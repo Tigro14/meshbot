@@ -1195,10 +1195,28 @@ class NetworkCommands:
         node_info = nodes.get(node_id)
         
         if not node_info:
+            # Le nœud est connu (dans node_manager) mais pas dans interface.nodes
+            # Cela signifie que l'interface n'a pas reçu de NODEINFO de ce nœud
             if compact:
-                return f"⚠️ {node_name}: Pas dans DB"
+                return f"⚠️ {node_name}: Pas de NODEINFO reçu"
             else:
-                return f"⚠️ Nœud {node_name} (0x{node_id:08x})\n   Pas dans la base de données du nœud"
+                lines = []
+                lines.append(f"⚠️ Nœud {node_name} (0x{node_id:08x})")
+                lines.append("")
+                lines.append("ℹ️ Statut:")
+                lines.append("   • Nœud connu (messages reçus)")
+                lines.append("   • NODEINFO non reçu par l'interface")
+                lines.append("   • Clé publique non disponible")
+                lines.append("")
+                lines.append("💡 Solution:")
+                lines.append("   1. Attendre réception automatique NODEINFO")
+                lines.append("   2. Ou demander NODEINFO:")
+                lines.append(f"      meshtastic --request-telemetry --dest {node_id:08x}")
+                lines.append("")
+                lines.append("⚠️ Sans NODEINFO:")
+                lines.append("   • Pas d'accès à la clé publique")
+                lines.append("   • DM resteront encryptés si envoyés")
+                return "\n".join(lines)
         
         # Extraire les informations utilisateur
         user_info = node_info.get('user', {}) if isinstance(node_info, dict) else {}
