@@ -489,10 +489,11 @@ class NetworkCommands(TelegramCommandBase):
                 sender_info = f"telegram:{user.id}"
                 
                 # Vérifier que network_handler est disponible
-                if not hasattr(self.message_handler, 'network_handler'):
+                # Le network_handler est dans le router du message_handler
+                if not hasattr(self.message_handler, 'router') or not hasattr(self.message_handler.router, 'network_handler'):
                     return "❌ Network handler non disponible"
                 
-                network_handler = self.message_handler.network_handler
+                network_handler = self.message_handler.router.network_handler
                 
                 # Appeler la méthode handle_keys du network_handler
                 # Note: handle_keys envoie directement via sender, donc on doit capturer la sortie
