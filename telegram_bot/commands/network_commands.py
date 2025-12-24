@@ -445,6 +445,109 @@ class NetworkCommands(TelegramCommandBase):
         # Envoyer la réponse (sans Markdown pour éviter les erreurs de parsing)
         await update.effective_message.reply_text(response)
 
+    async def keys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /keys [node] - Vérifier l'état des clés publiques PKI
+        
+        Diagnostic pour les problèmes de DM encryptés dans Meshtastic 2.7.15+.
+        Affiche l'état de l'échange de clés publiques PKI entre les nœuds.
+        
+        Usage:
+            /keys              -> État global des clés (tous les nœuds)
+            /keys tigro        -> Vérifier si 'tigro' a échangé sa clé
+            /keys a76f40da     -> Vérifier clé d'un nœud par ID
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le nom de nœud optionnel
+        node_name = None
+        if context.args and len(context.args) > 0:
+            node_name = ' '.join(context.args)
+        
+        # Logger la requête
+        if node_name:
+            info_print(f"📱 Telegram /keys {node_name}: {user.username}")
+        else:
+            info_print(f"📱 Telegram /keys: {user.username}")
+        
+        def get_keys_info():
+            try:
+                # Construire le message pour le handler mesh
+                if node_name:
+                    message = f"/keys {node_name}"
+                else:
+                    message = "/keys"
+                
+                # Mapper l'ID Telegram à un ID Meshtastic si nécessaire
+                sender_id = self.get_mesh_id_for_user(user.id)
+                sender_info = f"telegram:{user.id}"
+                
+                # Vérifier que network_handler est disponible
+                if not hasattr(self.message_handler, 'network_handler'):
+                    return "❌ Network handler non disponible"
+                
+                network_handler = self.message_handler.network_handler
+                
+                # Appeler la méthode handle_keys du network_handler
+                # Note: handle_keys envoie directement via sender, donc on doit capturer la sortie
+                # On va créer un sender temporaire qui capture le texte
+                
+                class ResponseCapture:
+                    def __init__(self):
+                        self.response = None
+                    
+                    def send_single(self, text, *args, **kwargs):
+                        self.response = text
+                    
+                    def send_chunks(self, text, *args, **kwargs):
+                        self.response = text
+                    
+                    def log_conversation(self, *args, **kwargs):
+                        pass
+                    
+                    def check_throttling(self, *args, **kwargs):
+                        return True
+                
+                # Sauvegarder le sender original
+                original_sender = network_handler.sender
+                
+                # Créer un capture temporaire
+                capture = ResponseCapture()
+                network_handler.sender = capture
+                
+                try:
+                    # Appeler handle_keys
+                    network_handler.handle_keys(message, sender_id, sender_info)
+                    
+                    # Attendre un peu que le thread se termine (handle_keys utilise un thread)
+                    import time
+                    time.sleep(0.5)
+                    
+                    # Récupérer la réponse
+                    if capture.response:
+                        return capture.response
+                    else:
+                        return "⚠️ Pas de réponse du handler"
+                finally:
+                    # Restaurer le sender original
+                    network_handler.sender = original_sender
+                    
+            except Exception as e:
+                error_print(f"Erreur /keys: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:200]}"
+        
+        # Exécuter dans un thread pour ne pas bloquer
+        response = await asyncio.to_thread(get_keys_info)
+        
+        # Envoyer la réponse
+        await update.effective_message.reply_text(response)
+
     async def propag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Commande /propag - Afficher les plus longues liaisons radio

@@ -248,6 +248,7 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("rx", self.network_commands.rx_command))
         self.application.add_handler(CommandHandler("neighbors", self.network_commands.neighbors_command))
         self.application.add_handler(CommandHandler("mqtt", self.network_commands.mqtt_command))
+        self.application.add_handler(CommandHandler("keys", self.network_commands.keys_command))
         info_print("🔍 DEBUG: Enregistrement du handler /propag...")
         self.application.add_handler(CommandHandler("propag", self.network_commands.propag_command))
         info_print(f"✅ DEBUG: Handler /propag enregistré (méthode: {self.network_commands.propag_command})")
