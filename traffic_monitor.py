@@ -677,8 +677,9 @@ class TrafficMonitor:
                     
                     # Check if we have sender's public key
                     has_key = False
-                    if self.interface and hasattr(self.interface, 'nodes'):
-                        nodes = getattr(self.interface, 'nodes', {})
+                    interface = getattr(self.node_manager, 'interface', None)
+                    if interface and hasattr(interface, 'nodes'):
+                        nodes = getattr(interface, 'nodes', {})
                         node_info = nodes.get(from_id)
                         if node_info and isinstance(node_info, dict):
                             user_info = node_info.get('user', {})
