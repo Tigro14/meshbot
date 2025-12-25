@@ -1379,6 +1379,9 @@ class NetworkCommands:
         
         total_seen = len(nodes_in_traffic)
         
+        # Détecter si on est en mode TCP avec interface.nodes vide
+        tcp_mode_empty = (len(nodes) < 5 and total_seen > 20)
+        
         if compact:
             # Format ultra-court pour mesh
             if nodes_without_keys:
@@ -1395,6 +1398,29 @@ class NetworkCommands:
             lines.append(f"✅ Avec clé publique: {nodes_with_keys_count}")
             lines.append(f"❌ Sans clé publique: {len(nodes_without_keys)}")
             lines.append("")
+            
+            # Avertissement spécial pour mode TCP avec interface.nodes vide
+            if tcp_mode_empty:
+                lines.append("⚠️ LIMITATION MODE TCP DÉTECTÉE")
+                lines.append("")
+                lines.append("Le bot se connecte via TCP mais interface.nodes est vide.")
+                lines.append("En mode TCP, les clés ne sont disponibles qu'après")
+                lines.append("réception des paquets NODEINFO (15-30 min par nœud).")
+                lines.append("")
+                lines.append("🔍 Vérification:")
+                lines.append("   Les clés existent probablement dans la base de")
+                lines.append("   données du nœud Meshtastic (vérifier avec:")
+                lines.append("   meshtastic --host <ip> --nodes)")
+                lines.append("")
+                lines.append("💡 Solutions:")
+                lines.append("   1. Attendre les broadcasts NODEINFO automatiques")
+                lines.append("   2. Demander NODEINFO pour nœuds importants:")
+                lines.append("      meshtastic --host <ip> --request-telemetry --dest <id>")
+                lines.append("   3. Connexion série (accès DB immédiat)")
+                lines.append("")
+                lines.append("📖 Documentation:")
+                lines.append("   Voir TCP_PKI_KEYS_LIMITATION.md pour détails")
+                lines.append("")
             
             if nodes_without_keys:
                 lines.append("⚠️ Nœuds sans clé publique:")
