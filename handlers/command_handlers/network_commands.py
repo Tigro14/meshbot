@@ -1360,7 +1360,7 @@ class NetworkCommands:
                 user_info = node_info.get('user', {})
                 if isinstance(user_info, dict):
                     public_key = user_info.get('publicKey')
-                    node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int}"
+                    node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}"
                     
                     if public_key:
                         nodes_with_keys_count += 1
@@ -1369,12 +1369,12 @@ class NetworkCommands:
                         nodes_without_keys.append((node_id_int, node_name))
                 else:
                     # user info malformed - treat as no key
-                    node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int}"
+                    node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int:08x}"
                     nodes_without_keys.append((node_id_int, node_name))
             else:
                 # Nœud vu dans le trafic mais pas dans interface.nodes
                 # Récupérer le nom depuis node_manager ou traffic_monitor
-                node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int}"
+                node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int:08x}"
                 nodes_without_keys.append((node_id_int, node_name))
         
         total_seen = len(nodes_in_traffic)
