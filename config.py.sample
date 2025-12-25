@@ -49,22 +49,6 @@ TCP_REBOOT_WAIT_TIME = 45
 CHANNEL_0_PSK = None  # None = utiliser la PSK par défaut Meshtastic
 
 # ========================================
-# SYNCHRONISATION CLÉS PKI (MODE TCP)
-# ========================================
-# Meshtastic 2.7.15+ utilise le chiffrement PKI pour les DMs.
-# En mode TCP, le bot doit synchroniser les clés publiques depuis
-# le nœud distant pour pouvoir déchiffrer les DMs reçus.
-#
-# Active la synchronisation automatique des clés publiques
-PKI_KEY_SYNC_ENABLED = True
-
-# Intervalle de synchronisation en secondes (300s = 5 minutes)
-# Plus l'intervalle est court, plus les nouvelles clés sont détectées rapidement,
-# mais cela augmente légèrement la charge réseau.
-# Recommandé: 300-600s (5-10 minutes)
-PKI_KEY_SYNC_INTERVAL = 300
-
-# ========================================
 # CONFIGURATION NŒUD DISTANT (OPTIONNEL)
 # ========================================
 # Configuration pour monitorer un nœud distant via TCP (ex: tigrog2)

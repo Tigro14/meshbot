@@ -36,7 +36,6 @@ from mqtt_neighbor_collector import MQTTNeighborCollector
 from mesh_traceroute_manager import MeshTracerouteManager
 from db_error_monitor import DBErrorMonitor
 from reboot_semaphore import RebootSemaphore
-from key_sync_manager import KeySyncManager
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -101,9 +100,6 @@ class MeshBot:
 
         # Collecteur de voisins MQTT (initialisé après traffic_monitor dans start())
         self.mqtt_neighbor_collector = None
-
-        # Synchronisateur de clés PKI (initialisé après interface dans start() pour TCP mode)
-        self.key_sync_manager = None
 
         # Gestionnaire de traceroute mesh (initialisé après message_handler dans start())
         self.mesh_traceroute = None
@@ -1775,13 +1771,6 @@ class MeshBot:
                     self.mqtt_neighbor_collector.stop_monitoring()
             except Exception as e:
                 error_print(f"⚠️ Erreur arrêt mqtt_neighbor_collector: {e}")
-            
-            # 3c. Arrêter le synchronisateur de clés PKI
-            try:
-                if self.key_sync_manager:
-                    self.key_sync_manager.stop()
-            except Exception as e:
-                error_print(f"⚠️ Erreur arrêt key_sync_manager: {e}")
 
             # 4. Arrêter toutes les plateformes (peut bloquer sur Telegram asyncio)
             try:
