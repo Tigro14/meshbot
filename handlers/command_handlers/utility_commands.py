@@ -580,6 +580,7 @@ class UtilityCommands:
             "/neighbors",
             "/propag",
             "/info",
+            "/keys",
             "/mqtt",
             "/stats [cmd]",
             "/db [cmd]",
@@ -637,6 +638,12 @@ class UtilityCommands:
           /info F547F → Infos du nœud par ID
           Affiche: nom, GPS, distance, signal, stats mesh
           Support broadcast pour partage public
+        • /keys [node] - Diagnostiquer les clés publiques PKI
+          /keys → État global des clés (toutes les nodes)
+          /keys tigro → Vérifier si "tigro" a échangé sa clé
+          /keys F547F → Vérifier clé d'un nœud par ID
+          Aide à résoudre DM encryptés (Meshtastic 2.7.15+)
+          PKI: Chaque nœud a une clé publique/privée unique
         • /mqtt [heures] - Nœuds MQTT entendus directement
           Liste nœuds ayant envoyé NEIGHBORINFO via MQTT
           /mqtt → Tous les nœuds MQTT (48h)

@@ -445,6 +445,65 @@ class NetworkCommands(TelegramCommandBase):
         # Envoyer la réponse (sans Markdown pour éviter les erreurs de parsing)
         await update.effective_message.reply_text(response)
 
+    async def keys_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /keys [node] - Vérifier l'état des clés publiques PKI
+        
+        Diagnostic pour les problèmes de DM encryptés dans Meshtastic 2.7.15+.
+        Affiche l'état de l'échange de clés publiques PKI entre les nœuds.
+        
+        Usage:
+            /keys              -> État global des clés (tous les nœuds)
+            /keys tigro        -> Vérifier si 'tigro' a échangé sa clé
+            /keys a76f40da     -> Vérifier clé d'un nœud par ID
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le nom de nœud optionnel
+        node_name = None
+        if context.args and len(context.args) > 0:
+            node_name = ' '.join(context.args)
+        
+        # Logger la requête
+        if node_name:
+            info_print(f"📱 Telegram /keys {node_name}: {user.username}")
+        else:
+            info_print(f"📱 Telegram /keys: {user.username}")
+        
+        def get_keys_info():
+            try:
+                # Vérifier que network_handler est disponible
+                # Le network_handler est dans le router du message_handler
+                if not hasattr(self.message_handler, 'router') or not hasattr(self.message_handler.router, 'network_handler'):
+                    return "❌ Network handler non disponible"
+                
+                network_handler = self.message_handler.router.network_handler
+                
+                # Appeler directement les méthodes internes (sans threading)
+                # Format détaillé pour Telegram (compact=False)
+                if node_name:
+                    response = network_handler._check_node_keys(node_name, compact=False)
+                else:
+                    response = network_handler._check_all_keys(compact=False)
+                
+                return response
+                    
+            except Exception as e:
+                error_print(f"Erreur /keys: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:200]}"
+        
+        # Exécuter dans un thread pour ne pas bloquer
+        response = await asyncio.to_thread(get_keys_info)
+        
+        # Envoyer la réponse
+        await update.effective_message.reply_text(response)
+
     async def propag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Commande /propag - Afficher les plus longues liaisons radio

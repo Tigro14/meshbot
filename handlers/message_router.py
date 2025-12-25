@@ -132,6 +132,8 @@ class MessageRouter:
             self.network_handler.handle_propag(message, sender_id, sender_info)
         elif message.startswith('/info'):
             self.network_handler.handle_info(message, sender_id, sender_info)
+        elif message.startswith('/keys'):
+            self.network_handler.handle_keys(message, sender_id, sender_info)
         
         # ===================================================================
         # Commandes système avec authentification
