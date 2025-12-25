@@ -183,7 +183,9 @@ class KeySyncManager:
                         # Node doesn't exist locally - add complete entry
                         local_nodes[node_id] = remote_node_info.copy()
                         keys_added_this_sync += 1
-                        debug_print(f"✅ Added node 0x{node_id:08x} with public key")
+                        # Format node_id safely (can be int or str)
+                        node_id_str = f"0x{node_id:08x}" if isinstance(node_id, int) else str(node_id)
+                        debug_print(f"✅ Added node {node_id_str} with public key")
                     
                     elif isinstance(local_node_info, dict):
                         # Node exists - check if it has the public key
@@ -198,13 +200,17 @@ class KeySyncManager:
                             # Missing key - add it
                             local_user['publicKey'] = remote_public_key
                             keys_added_this_sync += 1
-                            debug_print(f"✅ Added public key for node 0x{node_id:08x}")
+                            # Format node_id safely (can be int or str)
+                            node_id_str = f"0x{node_id:08x}" if isinstance(node_id, int) else str(node_id)
+                            debug_print(f"✅ Added public key for node {node_id_str}")
                         
                         elif local_public_key != remote_public_key:
                             # Key exists but differs - update it
                             local_user['publicKey'] = remote_public_key
                             keys_updated_this_sync += 1
-                            debug_print(f"🔄 Updated public key for node 0x{node_id:08x}")
+                            # Format node_id safely (can be int or str)
+                            node_id_str = f"0x{node_id:08x}" if isinstance(node_id, int) else str(node_id)
+                            debug_print(f"🔄 Updated public key for node {node_id_str}")
                 
                 # Update total stats
                 self._keys_added += keys_added_this_sync + keys_updated_this_sync
