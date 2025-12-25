@@ -1349,24 +1349,32 @@ class NetworkCommands:
             else:
                 node_id_int = node_id
             
-            # Chercher dans interface.nodes
-            node_info = nodes.get(node_id_int) or nodes.get(f"!{node_id_int:08x}")
+            # Chercher dans interface.nodes - essayer plusieurs formats de clés
+            node_info = None
+            for key in [node_id_int, str(node_id_int), f"!{node_id_int:08x}", f"{node_id_int:08x}"]:
+                if key in nodes:
+                    node_info = nodes[key]
+                    break
             
             if node_info and isinstance(node_info, dict):
                 user_info = node_info.get('user', {})
                 if isinstance(user_info, dict):
                     public_key = user_info.get('publicKey')
-                    node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}"
+                    node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int}"
                     
                     if public_key:
                         nodes_with_keys_count += 1
                     else:
                         # Nœud vu mais sans clé publique
                         nodes_without_keys.append((node_id_int, node_name))
+                else:
+                    # user info malformed - treat as no key
+                    node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int}"
+                    nodes_without_keys.append((node_id_int, node_name))
             else:
                 # Nœud vu dans le trafic mais pas dans interface.nodes
                 # Récupérer le nom depuis node_manager ou traffic_monitor
-                node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int:08x}"
+                node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int}"
                 nodes_without_keys.append((node_id_int, node_name))
         
         total_seen = len(nodes_in_traffic)
