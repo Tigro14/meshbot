@@ -866,6 +866,40 @@ class NetworkCommands:
                     elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
                         matching_nodes.append(node)
         
+        # PRIORITÉ 3: Si toujours aucun résultat, chercher dans interface.nodes (en mémoire)
+        # Ceci permet de trouver les nœuds détectés par la radio mais pas encore dans la base de données
+        if len(exact_matches) == 0 and len(matching_nodes) == 0:
+            if self.interface and hasattr(self.interface, 'nodes'):
+                nodes = getattr(self.interface, 'nodes', {})
+                for node_id, node_info in nodes.items():
+                    if not isinstance(node_info, dict):
+                        continue
+                    
+                    # Convertir node_id en int si string
+                    if isinstance(node_id, str):
+                        try:
+                            if node_id.startswith('!'):
+                                node_id_int = int(node_id[1:], 16)
+                            else:
+                                node_id_int = int(node_id, 16) if 'x' not in node_id else int(node_id, 0)
+                        except ValueError:
+                            continue
+                    else:
+                        node_id_int = node_id
+                    
+                    # Get node name from user info
+                    user_info = node_info.get('user', {}) if isinstance(node_info, dict) else {}
+                    node_name = (user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}").lower()
+                    node_id_hex = f"{node_id_int:x}".lower()
+                    node_id_hex_padded = f"{node_id_int:08x}".lower()
+                    
+                    if target_search == node_name or target_search == node_id_hex or target_search == node_id_hex_padded:
+                        result = {'name': user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}", 'id': node_id_int}
+                        exact_matches.append(result)
+                    elif target_search in node_name or target_search in node_id_hex or target_search in node_id_hex_padded:
+                        result = {'name': user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}", 'id': node_id_int}
+                        matching_nodes.append(result)
+        
         # Retourner le résultat
         if len(exact_matches) == 1:
             return exact_matches[0]
@@ -1266,82 +1300,121 @@ class NetworkCommands:
     
     def _check_all_keys(self, compact=False):
         """
-        Vérifier l'état global des clés publiques dans le réseau
+        Vérifier l'état des clés publiques pour les nœuds vus dans le trafic
+        
+        Affiche uniquement les nœuds qui ont été vus dans le trafic récent (48h)
+        mais n'ont pas de clé publique disponible localement.
         
         Args:
             compact: Si True, format court pour mesh (≤180 chars)
             
         Returns:
-            str: Rapport sur l'état des clés
+            str: Rapport sur les nœuds sans clés
         """
         # Vérifier si l'interface est disponible
         if not self.interface or not hasattr(self.interface, 'nodes'):
             return "⚠️ Interface non disponible"
         
+        # Obtenir les nœuds vus dans le trafic récent (depuis traffic_monitor)
+        nodes_in_traffic = set()
+        if self.traffic_monitor:
+            try:
+                # Obtenir les paquets des dernières 48h
+                packets = self.traffic_monitor.persistence.load_packets(hours=48)
+                for packet in packets:
+                    from_id = packet.get('from_id')
+                    if from_id:
+                        nodes_in_traffic.add(from_id)
+            except Exception as e:
+                debug_print(f"⚠️ Erreur lecture trafic: {e}")
+        
+        if not nodes_in_traffic:
+            return "⚠️ Aucun trafic récent détecté"
+        
+        # Vérifier les clés dans interface.nodes pour les nœuds vus
         nodes = getattr(self.interface, 'nodes', {})
-        
-        if not nodes:
-            return "⚠️ Aucun nœud dans la base"
-        
-        # Compter les nœuds avec/sans clés
-        total_nodes = 0
-        nodes_with_keys = 0
         nodes_without_keys = []
+        nodes_with_keys_count = 0
         
-        for node_id, node_info in nodes.items():
-            if not isinstance(node_info, dict):
-                continue
+        for node_id in nodes_in_traffic:
+            # Normaliser node_id (peut être int ou string)
+            if isinstance(node_id, str):
+                try:
+                    if node_id.startswith('!'):
+                        node_id_int = int(node_id[1:], 16)
+                    else:
+                        node_id_int = int(node_id, 16) if 'x' not in node_id else int(node_id, 0)
+                except ValueError:
+                    continue
+            else:
+                node_id_int = node_id
             
-            total_nodes += 1
-            user_info = node_info.get('user', {})
+            # Chercher dans interface.nodes
+            node_info = nodes.get(node_id_int) or nodes.get(f"!{node_id_int:08x}")
             
-            if isinstance(user_info, dict):
-                public_key = user_info.get('publicKey')
-                node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id:08x}"
-                
-                if public_key:
-                    nodes_with_keys += 1
-                else:
-                    nodes_without_keys.append((node_id, node_name))
+            if node_info and isinstance(node_info, dict):
+                user_info = node_info.get('user', {})
+                if isinstance(user_info, dict):
+                    public_key = user_info.get('publicKey')
+                    node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}"
+                    
+                    if public_key:
+                        nodes_with_keys_count += 1
+                    else:
+                        # Nœud vu mais sans clé publique
+                        nodes_without_keys.append((node_id_int, node_name))
+            else:
+                # Nœud vu dans le trafic mais pas dans interface.nodes
+                # Récupérer le nom depuis node_manager ou traffic_monitor
+                node_name = self.node_manager.get_node_name(node_id_int) if self.node_manager else f"Node-{node_id_int:08x}"
+                nodes_without_keys.append((node_id_int, node_name))
+        
+        total_seen = len(nodes_in_traffic)
         
         if compact:
             # Format ultra-court pour mesh
             if nodes_without_keys:
-                return f"🔑 {nodes_with_keys}/{total_nodes} avec clés. {len(nodes_without_keys)} sans."
+                return f"🔑 Vus: {total_seen}. {len(nodes_without_keys)} sans clés"
             else:
-                return f"✅ Clés: {nodes_with_keys}/{total_nodes} OK"
+                return f"✅ {total_seen} nœuds vus, tous avec clés"
         else:
             # Format détaillé pour Telegram/CLI
             lines = []
             lines.append("🔑 État des clés publiques PKI")
+            lines.append("   (Nœuds vus dans les 48h)")
             lines.append("")
-            lines.append(f"Total nœuds: {total_nodes}")
-            lines.append(f"✅ Avec clé publique: {nodes_with_keys}")
+            lines.append(f"Nœuds actifs: {total_seen}")
+            lines.append(f"✅ Avec clé publique: {nodes_with_keys_count}")
             lines.append(f"❌ Sans clé publique: {len(nodes_without_keys)}")
             lines.append("")
             
             if nodes_without_keys:
                 lines.append("⚠️ Nœuds sans clé publique:")
-                lines.append("   (Vous ne pouvez pas recevoir leurs DM)")
+                lines.append("   (Vous ne pouvez PAS recevoir leurs DM)")
                 lines.append("")
                 
-                # Limiter à 10 nœuds pour ne pas surcharger
-                for node_id, node_name in nodes_without_keys[:10]:
-                    lines.append(f"   • {node_name} (0x{node_id:08x})")
+                # Trier par nom
+                nodes_without_keys.sort(key=lambda x: x[1])
                 
-                if len(nodes_without_keys) > 10:
-                    lines.append(f"   ... et {len(nodes_without_keys) - 10} autres")
+                # Limiter à 15 nœuds pour ne pas surcharger
+                for node_id, node_name in nodes_without_keys[:15]:
+                    lines.append(f"   • {node_name} (!{node_id:08x})")
+                
+                if len(nodes_without_keys) > 15:
+                    lines.append(f"   ... et {len(nodes_without_keys) - 15} autres")
                 
                 lines.append("")
-                lines.append("💡 Les clés s'échangent automatiquement via")
-                lines.append("   les paquets NODEINFO (broadcasts périodiques)")
+                lines.append("💡 Solutions:")
+                lines.append("   • Attendre échange automatique (15-30 min)")
+                lines.append("   • Demander NODEINFO manuel:")
+                lines.append("     meshtastic --request-telemetry --dest <node_id>")
                 lines.append("")
                 lines.append("📖 Plus d'info:")
                 lines.append("   /keys <node_name> pour un nœud spécifique")
             else:
-                lines.append("✅ Tous les nœuds ont échangé leurs clés!")
+                lines.append("✅ Tous les nœuds actifs ont échangé leurs clés!")
                 lines.append("")
-                lines.append("Vous pouvez recevoir des DM de tous les nœuds.")
+                lines.append("Vous pouvez recevoir des DM de tous les nœuds actifs.")
             
             return "\n".join(lines)
 
