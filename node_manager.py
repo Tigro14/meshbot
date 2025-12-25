@@ -311,6 +311,9 @@ class NodeManager:
                             name = clean_node_name(long_name or short_name_raw)
                             short_name = clean_node_name(short_name_raw) if short_name_raw else None
                             
+                            # Extract public key if present (for DM decryption)
+                            public_key = user_info.get('publicKey')
+                            
                             if name and len(name) > 0:
                                 # Initialiser l'entrée si nécessaire
                                 if node_id_int not in self.node_names:
@@ -321,9 +324,12 @@ class NodeManager:
                                         'lat': None,
                                         'lon': None,
                                         'alt': None,
-                                        'last_update': None
+                                        'last_update': None,
+                                        'publicKey': public_key  # Store public key for DM decryption
                                     }
                                     updated_count += 1
+                                    if public_key:
+                                        debug_print(f"🔑 Clé publique extraite pour {name}")
                                 elif self.node_names[node_id_int]['name'] != name:
                                     old_name = self.node_names[node_id_int]['name']
                                     self.node_names[node_id_int]['name'] = name
@@ -332,6 +338,13 @@ class NodeManager:
                                     self.node_names[node_id_int]['hwModel'] = hw_model or None
                                     debug_print(f"🔄 {node_id_int:08x}: '{old_name}' -> '{name}'")
                                     updated_count += 1
+                                
+                                # Always update public key if available (even if name didn't change)
+                                if public_key:
+                                    old_key = self.node_names[node_id_int].get('publicKey')
+                                    if old_key != public_key:
+                                        self.node_names[node_id_int]['publicKey'] = public_key
+                                        debug_print(f"🔑 Clé publique mise à jour pour {name}")
                     
                     # Mise à jour de la position si disponible
                     if isinstance(node_info, dict) and 'position' in node_info:
@@ -454,6 +467,9 @@ class NodeManager:
                     name = clean_node_name(long_name or short_name_raw)
                     short_name = clean_node_name(short_name_raw) if short_name_raw else None
                     
+                    # Extract public key if present (for DM decryption)
+                    public_key = user_info.get('publicKey')
+                    
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas
                         if node_id not in self.node_names:
@@ -464,9 +480,12 @@ class NodeManager:
                                 'lat': None,
                                 'lon': None,
                                 'alt': None,
-                                'last_update': None
+                                'last_update': None,
+                                'publicKey': public_key  # Store public key for DM decryption
                             }
                             debug_print(f"📱 Nouveau: {name} ({node_id:08x})")
+                            if public_key:
+                                debug_print(f"🔑 Clé publique extraite pour {name}")
                         else:
                             old_name = self.node_names[node_id]['name']
                             if old_name != name:
@@ -475,6 +494,12 @@ class NodeManager:
                             # Always update shortName and hwModel even if name didn't change
                             self.node_names[node_id]['shortName'] = short_name
                             self.node_names[node_id]['hwModel'] = hw_model or None
+                            
+                            # Update public key if present (for DM decryption)
+                            old_key = self.node_names[node_id].get('publicKey')
+                            if public_key and public_key != old_key:
+                                self.node_names[node_id]['publicKey'] = public_key
+                                debug_print(f"🔑 Clé publique mise à jour pour {name}")
                         
                         # Sauvegarde différée
                         threading.Timer(10.0, lambda: self.save_node_names()).start()
@@ -531,6 +556,83 @@ class NodeManager:
                     
         except Exception as e:
             debug_print(f"Erreur MAJ RX history: {e}")
+    
+    def sync_pubkeys_to_interface(self, interface):
+        """
+        Synchronize public keys from node_names.json to interface.nodes
+        
+        This is critical for DM decryption in TCP mode where interface.nodes
+        starts empty. We inject public keys from our persistent database
+        to enable PKI decryption without violating ESP32 single-connection limit.
+        
+        Args:
+            interface: Meshtastic interface (serial or TCP)
+        
+        Returns:
+            int: Number of public keys injected
+        """
+        if not interface or not hasattr(interface, 'nodes'):
+            debug_print("⚠️ Interface doesn't have nodes attribute")
+            return 0
+        
+        injected_count = 0
+        nodes = getattr(interface, 'nodes', {})
+        
+        for node_id, node_data in self.node_names.items():
+            # Get public key from our database
+            public_key = node_data.get('publicKey')
+            if not public_key:
+                continue
+            
+            # Try to find node in interface.nodes with various key formats
+            node_info = None
+            possible_keys = [
+                node_id,
+                str(node_id),
+                f"!{node_id:08x}",
+                f"{node_id:08x}"
+            ]
+            
+            for key in possible_keys:
+                if key in nodes:
+                    node_info = nodes[key]
+                    break
+            
+            if node_info and isinstance(node_info, dict):
+                # Node exists in interface.nodes
+                user_info = node_info.get('user', {})
+                if isinstance(user_info, dict):
+                    existing_key = user_info.get('publicKey')
+                    if not existing_key or existing_key != public_key:
+                        # Inject public key
+                        user_info['publicKey'] = public_key
+                        injected_count += 1
+                        node_name = node_data.get('name', f"Node-{node_id:08x}")
+                        debug_print(f"🔑 Clé publique injectée pour {node_name}")
+            else:
+                # Node doesn't exist in interface.nodes yet
+                # Create minimal entry with public key
+                node_name = node_data.get('name', f"Node-{node_id:08x}")
+                short_name = node_data.get('shortName', '')
+                hw_model = node_data.get('hwModel', '')
+                
+                nodes[node_id] = {
+                    'num': node_id,
+                    'user': {
+                        'id': f"!{node_id:08x}",
+                        'longName': node_name,
+                        'shortName': short_name,
+                        'hwModel': hw_model,
+                        'publicKey': public_key
+                    }
+                }
+                injected_count += 1
+                debug_print(f"🔑 Nœud créé dans interface.nodes avec clé: {node_name}")
+        
+        if injected_count > 0:
+            info_print(f"✅ {injected_count} clés publiques synchronisées vers interface.nodes")
+        
+        return injected_count
     
     def track_packet_type(self, packet):
         """Suivre les types de paquets par heure pour l'histogramme"""

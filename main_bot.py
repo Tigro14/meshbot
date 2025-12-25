@@ -949,6 +949,16 @@ class MeshBot:
                 self.mesh_traceroute.cleanup_expired_traces()
             except Exception as e:
                 debug_print(f"Erreur cleanup traceroutes: {e}")
+        
+        # Synchroniser les clés publiques périodiquement (toutes les 5 min)
+        # Cela garantit que les nouvelles clés extraites des NODEINFO sont injectées
+        if self.interface and self.node_manager:
+            try:
+                injected = self.node_manager.sync_pubkeys_to_interface(self.interface)
+                if injected > 0:
+                    debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
+            except Exception as e:
+                debug_print(f"⚠️ Erreur sync périodique clés: {e}")
 
         gc.collect()
 
@@ -1378,6 +1388,28 @@ class MeshBot:
             # de créer des connexions TCP supplémentaires
             self.remote_nodes_client.interface = self.interface
             info_print("♻️ Interface partagée avec RemoteNodesClient")
+            
+            # ========================================
+            # SYNCHRONISATION DES CLÉS PUBLIQUES
+            # ========================================
+            # Inject public keys from node_names.json into interface.nodes
+            # This is critical for DM decryption in TCP mode where interface.nodes
+            # starts empty. We restore keys from our persistent database without
+            # violating ESP32 single-connection limitation.
+            try:
+                info_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
+                injected = self.node_manager.sync_pubkeys_to_interface(self.interface)
+                if injected > 0:
+                    info_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
+                else:
+                    info_print("ℹ️  Aucune clé publique à synchroniser (collection continue)")
+            except Exception as e:
+                error_print(f"⚠️  Erreur synchronisation clés publiques: {e}")
+                error_print(traceback.format_exc())
+                info_print("   → Déchiffrement DM limité jusqu'à réception NODEINFO")
+            
+            # Set interface reference in node_manager for get_node_name() calls
+            self.node_manager.set_interface(self.interface)
             
             # ========================================
             # CHARGEMENT INITIAL DES VOISINS
