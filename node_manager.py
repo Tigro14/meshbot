@@ -312,7 +312,8 @@ class NodeManager:
                             short_name = clean_node_name(short_name_raw) if short_name_raw else None
                             
                             # Extract public key if present (for DM decryption)
-                            public_key = user_info.get('publicKey')
+                            # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+                            public_key = user_info.get('public_key') or user_info.get('publicKey')
                             
                             if name and len(name) > 0:
                                 # Initialiser l'entrée si nécessaire
@@ -468,7 +469,8 @@ class NodeManager:
                     short_name = clean_node_name(short_name_raw) if short_name_raw else None
                     
                     # Extract public key if present (for DM decryption)
-                    public_key = user_info.get('publicKey')
+                    # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+                    public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas
@@ -602,10 +604,12 @@ class NodeManager:
                 # Node exists in interface.nodes
                 user_info = node_info.get('user', {})
                 if isinstance(user_info, dict):
-                    existing_key = user_info.get('publicKey')
+                    # Try both field names when checking existing key
+                    existing_key = user_info.get('public_key') or user_info.get('publicKey')
                     if not existing_key or existing_key != public_key:
-                        # Inject public key
-                        user_info['publicKey'] = public_key
+                        # Inject public key using both field names for compatibility
+                        user_info['public_key'] = public_key  # Protobuf style
+                        user_info['publicKey'] = public_key   # Dict style
                         injected_count += 1
                         node_name = node_data.get('name', f"Node-{node_id:08x}")
                         debug_print(f"🔑 Clé publique injectée pour {node_name}")
@@ -623,7 +627,8 @@ class NodeManager:
                         'longName': node_name,
                         'shortName': short_name,
                         'hwModel': hw_model,
-                        'publicKey': public_key
+                        'public_key': public_key,  # Protobuf style
+                        'publicKey': public_key    # Dict style
                     }
                 }
                 injected_count += 1

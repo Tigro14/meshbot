@@ -29,34 +29,58 @@ def test_pubkey_extraction_from_nodeinfo():
     # Create node manager
     nm = NodeManager()
     
-    # Mock NODEINFO packet with public key
-    packet = {
+    # Test with protobuf-style field name (public_key)
+    packet_protobuf = {
         'from': 0x16fad3dc,
         'decoded': {
             'portnum': 'NODEINFO_APP',
             'user': {
-                'longName': 'TestNode',
-                'shortName': 'TEST',
+                'longName': 'TestNodeProto',
+                'shortName': 'TEST1',
                 'hwModel': 'T1000E',
-                'publicKey': 'ABC123XYZ789PublicKeyData=='
+                'public_key': b'\x01\x02\x03\x04'  # Protobuf style (underscore)
             }
         }
     }
     
     # Process packet
-    nm.update_node_from_packet(packet)
+    nm.update_node_from_packet(packet_protobuf)
     
     # Verify node was added with public key
     assert 0x16fad3dc in nm.node_names, "Node should be in database"
     node_data = nm.node_names[0x16fad3dc]
     
-    print(f"✅ Node added: {node_data['name']}")
-    print(f"   Public key: {node_data.get('publicKey', 'MISSING')[:30]}...")
+    print(f"✅ Node added (protobuf style): {node_data['name']}")
+    print(f"   Public key: {node_data.get('publicKey', 'MISSING')}")
     
     assert 'publicKey' in node_data, "Public key should be in node data"
-    assert node_data['publicKey'] == 'ABC123XYZ789PublicKeyData==', "Public key should match"
+    assert node_data['publicKey'] == b'\x01\x02\x03\x04', "Public key should match"
     
-    print("✅ Public key correctly extracted from NODEINFO packet\n")
+    # Test with dict-style field name (publicKey)
+    packet_dict = {
+        'from': 0x12345678,
+        'decoded': {
+            'portnum': 'NODEINFO_APP',
+            'user': {
+                'longName': 'TestNodeDict',
+                'shortName': 'TEST2',
+                'hwModel': 'T1000E',
+                'publicKey': 'ABC123XYZ789PublicKeyData=='  # Dict style (camelCase)
+            }
+        }
+    }
+    
+    nm.update_node_from_packet(packet_dict)
+    
+    assert 0x12345678 in nm.node_names, "Second node should be in database"
+    node_data2 = nm.node_names[0x12345678]
+    
+    print(f"✅ Node added (dict style): {node_data2['name']}")
+    print(f"   Public key: {node_data2.get('publicKey', 'MISSING')[:30]}...")
+    
+    assert node_data2['publicKey'] == 'ABC123XYZ789PublicKeyData==', "Public key should match"
+    
+    print("✅ Public key correctly extracted from NODEINFO packets (both field names)\n")
 
 
 def test_pubkey_update_on_change():

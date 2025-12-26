@@ -1254,7 +1254,10 @@ class NetworkCommands:
         
         # Extraire les informations utilisateur
         user_info = node_info.get('user', {}) if isinstance(node_info, dict) else {}
-        public_key = user_info.get('publicKey', None) if isinstance(user_info, dict) else None
+        # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+        public_key = None
+        if isinstance(user_info, dict):
+            public_key = user_info.get('public_key') or user_info.get('publicKey')
         
         if compact:
             # Format court pour mesh
@@ -1359,7 +1362,8 @@ class NetworkCommands:
             if node_info and isinstance(node_info, dict):
                 user_info = node_info.get('user', {})
                 if isinstance(user_info, dict):
-                    public_key = user_info.get('publicKey')
+                    # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+                    public_key = user_info.get('public_key') or user_info.get('publicKey')
                     node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}"
                     
                     if public_key:
