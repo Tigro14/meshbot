@@ -1339,6 +1339,20 @@ class NetworkCommands:
         nodes_without_keys = []
         nodes_with_keys_count = 0
         
+        # CRITICAL DEBUG: Log interface.nodes state when /keys runs
+        debug_print(f"DEBUG /keys: interface.nodes has {len(nodes)} entries")
+        debug_print(f"DEBUG /keys: Checking {len(nodes_in_traffic)} nodes from traffic")
+        if len(nodes) > 0:
+            sample_keys = list(nodes.keys())[:3]
+            debug_print(f"DEBUG /keys: Sample node IDs in interface.nodes: {sample_keys}")
+            for node_key in sample_keys:
+                node_info = nodes[node_key]
+                if isinstance(node_info, dict):
+                    user_info = node_info.get('user', {})
+                    if isinstance(user_info, dict):
+                        has_key = user_info.get('public_key') or user_info.get('publicKey')
+                        debug_print(f"DEBUG /keys: Node {node_key} has key: {bool(has_key)}")
+        
         for node_id in nodes_in_traffic:
             # Normaliser node_id (peut être int ou string)
             if isinstance(node_id, str):

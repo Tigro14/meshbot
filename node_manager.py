@@ -683,6 +683,12 @@ class NodeManager:
                         info_print(f"      ✅ Injected key into existing node")
                     else:
                         info_print(f"      ℹ️ Key already present and matches")
+                        # CRITICAL DEBUG: Verify the key is actually accessible
+                        verify_key = user_info.get('public_key') or user_info.get('publicKey')
+                        if verify_key:
+                            debug_print(f"      ✓ DEBUG: Key verified present (len={len(verify_key)})")
+                        else:
+                            error_print(f"      ✗ BUG: Key shows as present but NOT accessible!")
             else:
                 # Node doesn't exist in interface.nodes yet
                 # Create minimal entry with public key
@@ -709,6 +715,23 @@ class NodeManager:
             info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
         else:
             info_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
+        
+        # CRITICAL DEBUG: Verify interface.nodes state after sync
+        total_nodes_in_interface = len(nodes)
+        nodes_with_keys_in_interface = 0
+        for node_id, node_info in list(nodes.items())[:5]:  # Check first 5 for debugging
+            if isinstance(node_info, dict):
+                user_info = node_info.get('user', {})
+                if isinstance(user_info, dict):
+                    has_key = user_info.get('public_key') or user_info.get('publicKey')
+                    if has_key:
+                        nodes_with_keys_in_interface += 1
+                        debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
+                    else:
+                        debug_print(f"   DEBUG: Node {node_id} NO key")
+        
+        debug_print(f"   DEBUG SUMMARY: interface.nodes has {total_nodes_in_interface} total nodes")
+        debug_print(f"   DEBUG SUMMARY: Checked {min(5, total_nodes_in_interface)} nodes, {nodes_with_keys_in_interface} have keys")
         
         return injected_count
     
