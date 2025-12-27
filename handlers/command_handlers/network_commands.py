@@ -1254,7 +1254,10 @@ class NetworkCommands:
         
         # Extraire les informations utilisateur
         user_info = node_info.get('user', {}) if isinstance(node_info, dict) else {}
-        public_key = user_info.get('publicKey', None) if isinstance(user_info, dict) else None
+        # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+        public_key = None
+        if isinstance(user_info, dict):
+            public_key = user_info.get('public_key') or user_info.get('publicKey')
         
         if compact:
             # Format court pour mesh
@@ -1359,7 +1362,8 @@ class NetworkCommands:
             if node_info and isinstance(node_info, dict):
                 user_info = node_info.get('user', {})
                 if isinstance(user_info, dict):
-                    public_key = user_info.get('publicKey')
+                    # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+                    public_key = user_info.get('public_key') or user_info.get('publicKey')
                     node_name = user_info.get('longName') or user_info.get('shortName') or f"Node-{node_id_int:08x}"
                     
                     if public_key:
@@ -1398,6 +1402,31 @@ class NetworkCommands:
             lines.append(f"✅ Avec clé publique: {nodes_with_keys_count}")
             lines.append(f"❌ Sans clé publique: {len(nodes_without_keys)}")
             lines.append("")
+            
+            # CRITICAL: Add firmware version warning if NO keys found at all
+            if nodes_with_keys_count == 0 and len(nodes_without_keys) > 0:
+                lines.append("⚠️ AUCUNE CLÉ PUBLIQUE DÉTECTÉE")
+                lines.append("")
+                lines.append("Causes possibles:")
+                lines.append("   1. 🔴 Firmware < 2.5.0 (pas de PKI)")
+                lines.append("      → Les nœuds doivent être en 2.5.0+ pour PKI")
+                lines.append("      → Vérifier: meshtastic --info | grep firmware")
+                lines.append("")
+                lines.append("   2. ⚙️ PKI désactivé dans les paramètres")
+                lines.append("      → Activer dans: Settings → Security → PKI")
+                lines.append("")
+                lines.append("   3. ⏳ Échange de clés pas encore complété")
+                lines.append("      → Attendre 15-30 min après démarrage")
+                lines.append("")
+                lines.append("   4. 📦 NODEINFO pas encore reçus")
+                lines.append("      → En mode TCP, attendre les broadcasts")
+                lines.append("")
+                lines.append("🔍 Pour diagnostiquer:")
+                lines.append("   • Activer DEBUG_MODE=True dans config.py")
+                lines.append("   • Chercher logs: 'NODEINFO sans champ public_key'")
+                lines.append("   • Si présent → firmware < 2.5.0 ou PKI off")
+                lines.append("")
+                return "\n".join(lines)
             
             # Avertissement spécial pour mode TCP avec interface.nodes vide
             if tcp_mode_empty:
