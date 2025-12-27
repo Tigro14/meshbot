@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""
+Deep diagnostic for /keys issue
+
+This script analyzes the exact state of interface.nodes and compares it
+to what /keys command expects to find.
+"""
+
+import sys
+import json
+
+print("="*70)
+print("DEEP DIAGNOSTIC: Why /keys shows '157 sans clés'")
+print("="*70)
+print()
+
+print("HYPOTHESIS:")
+print("-----------")
+print()
+print("The periodic sync shows 'Key already present' for ~13 nodes.")
+print("But /keys reports '157 sans clés' (ALL nodes without keys).")
+print()
+print("This means one of:")
+print("  A) The 13 nodes with keys are NOT in the 157 nodes from traffic")
+print("  B) The keys ARE there but /keys can't find them (data structure issue)")
+print("  C) interface.nodes gets cleared between sync and /keys")
+print()
+
+print("="*70)
+print("DIAGNOSIS STEPS:")
+print("="*70)
+print()
+
+print("1. Check if DEBUG_MODE is enabled")
+print("   → If yes, you should see '[DEBUG] 🔑 Created interface.nodes entry'")
+print("   → Or '[DEBUG] 🔑 Immediately synced key'")
+print()
+
+print("2. Right after periodic sync, check interface.nodes directly:")
+print("   → In Python debug console or add print statement")
+print("   → print(f'interface.nodes count: {len(interface.nodes)}')")
+print("   → print(f'interface.nodes keys: {list(interface.nodes.keys())[:10]}')")
+print()
+
+print("3. Check if keys have the expected structure:")
+print("   → For each node in interface.nodes:")
+print("   → Check if 'user' key exists")
+print("   → Check if 'user' has 'publicKey' or 'public_key'")
+print("   → Print type and value")
+print()
+
+print("4. Compare node IDs:")
+print("   → Print node IDs from traffic (what /keys checks)")
+print("   → Print node IDs from interface.nodes (what has keys)")
+print("   → Look for format mismatches")
+print()
+
+print("="*70)
+print("POTENTIAL BUGS TO CHECK:")
+print("="*70)
+print()
+
+print("Bug #1: TCP mode interface.nodes different object")
+print("--------")
+print("In TCP mode, the Meshtastic library might maintain interface.nodes")
+print("differently. The periodic sync modifies one object, but /keys checks")
+print("a different one.")
+print()
+print("Test: Add logging in both places to print id(interface.nodes)")
+print("If the memory addresses are different, this is the bug.")
+print()
+
+print("Bug #2: user_info not being modified in place")
+print("--------")
+print("When sync does: user_info['publicKey'] = key")
+print("If user_info is a copy instead of a reference, the original won't update.")
+print()
+print("Test: Check if user_info = node_info.get('user', {}) returns a reference")
+print("It should, but maybe in some Python versions or with special dict types it doesn't.")
+print()
+
+print("Bug #3: Key field name mismatch")
+print("--------")
+print("Sync sets: 'publicKey' and 'public_key'")
+print("/keys checks: 'public_key' or 'publicKey'")
+print()
+print("But maybe the original node has 'user': {...} where user is NOT a dict?")
+print("Or user is a protobuf object that doesn't support dict-style assignment?")
+print()
+
+print("Bug #4: nodes reference vs interface.nodes")
+print("--------")
+print("Sync does: nodes = getattr(interface, 'nodes', {})")
+print("Then modifies: nodes[node_id]['user']['publicKey'] = key")
+print()
+print("If getattr returns a COPY (which it shouldn't for dicts), modifications")
+print("won't affect the original interface.nodes.")
+print()
+
+print("="*70)
+print("IMMEDIATE ACTIONS:")
+print("="*70)
+print()
+
+print("1. Add this debug code to sync_pubkeys_to_interface() AFTER injecting keys:")
+print()
+print("```python")
+print("# After line 685 (Key already present message)")
+print("# Add verification:")
+print("verify_key = user_info.get('public_key') or user_info.get('publicKey')")
+print("if verify_key:")
+print("    debug_print(f'      ✓ Verified: Key IS in user_info after check')")
+print("else:")
+print("    error_print(f'      ✗ BUG: Key MISSING from user_info!')")
+print("```")
+print()
+
+print("2. Add this debug code to /keys command BEFORE checking keys:")
+print()
+print("```python")
+print("# After line 1338 (nodes = getattr(...))")
+print("debug_print(f'DEBUG /keys: interface.nodes has {len(nodes)} entries')")
+print("debug_print(f'DEBUG /keys: First 5 node IDs: {list(nodes.keys())[:5]}')")
+print("for node_id in list(nodes.keys())[:3]:")
+print("    node = nodes[node_id]")
+print("    user = node.get('user', {}) if isinstance(node, dict) else None")
+print("    if user:")
+print("        has_key = 'publicKey' in user or 'public_key' in user")
+print("        debug_print(f'DEBUG: Node {node_id} has key: {has_key}')")
+print("```")
+print()
+
+print("3. Restart bot with DEBUG_MODE=True and capture logs")
+print()
+
+print("4. Run /keys and compare:")
+print("   → How many nodes in interface.nodes?")
+print("   → How many have keys?")
+print("   → Do the IDs match the sync logs?")
+print()
+
+print("="*70)
+print("EXPECTED OUTPUT:")
+print("="*70)
+print()
+
+print("If working correctly, you should see:")
+print("  - Periodic sync: 'Processing CHATO PCS1... Key already present'")
+print("  - DEBUG: interface.nodes has 50+ entries")
+print("  - DEBUG: Node !db295204 has key: True")
+print("  - /keys: Shows 13-50 nodes with keys (not 0)")
+print()
+
+print("If bug exists, you'll see:")
+print("  - Periodic sync: 'Processing CHATO PCS1... Key already present'")
+print("  - DEBUG: interface.nodes has 0-5 entries OR")
+print("  - DEBUG: Node !db295204 has key: False OR")
+print("  - /keys: Shows 0 nodes with keys")
+print()
+
+print("="*70)

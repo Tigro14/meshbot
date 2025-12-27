@@ -524,6 +524,9 @@ class NodeManager:
                                     info_print(f"   ✓ Verified: Key is in node_names[{node_id}]")
                                 else:
                                     info_print(f"   ✗ ERROR: Key NOT in node_names[{node_id}]!")
+                                
+                                # Immediately sync to interface.nodes for DM decryption
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             else:
                                 info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
                         else:
@@ -541,9 +544,17 @@ class NodeManager:
                                 self.node_names[node_id]['publicKey'] = public_key
                                 info_print(f"✅ Public key UPDATED for {name}")
                                 info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                                
+                                # Immediately sync to interface.nodes for DM decryption
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
                                 info_print(f"ℹ️ Public key already stored for {name} (unchanged)")
+                                
+                                # CRITICAL: Still sync to interface.nodes even if unchanged
+                                # After bot restart, interface.nodes is empty but node_names.json has keys
+                                # Without this sync, /keys will report nodes as "without keys"
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             elif not public_key and not old_key:
                                 info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
                             
@@ -672,6 +683,12 @@ class NodeManager:
                         info_print(f"      ✅ Injected key into existing node")
                     else:
                         info_print(f"      ℹ️ Key already present and matches")
+                        # CRITICAL DEBUG: Verify the key is actually accessible
+                        verify_key = user_info.get('public_key') or user_info.get('publicKey')
+                        if verify_key:
+                            debug_print(f"      ✓ DEBUG: Key verified present (len={len(verify_key)})")
+                        else:
+                            error_print(f"      ✗ BUG: Key shows as present but NOT accessible!")
             else:
                 # Node doesn't exist in interface.nodes yet
                 # Create minimal entry with public key
@@ -699,7 +716,79 @@ class NodeManager:
         else:
             info_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
         
+        # CRITICAL DEBUG: Verify interface.nodes state after sync
+        total_nodes_in_interface = len(nodes)
+        nodes_with_keys_in_interface = 0
+        for node_id, node_info in list(nodes.items())[:5]:  # Check first 5 for debugging
+            if isinstance(node_info, dict):
+                user_info = node_info.get('user', {})
+                if isinstance(user_info, dict):
+                    has_key = user_info.get('public_key') or user_info.get('publicKey')
+                    if has_key:
+                        nodes_with_keys_in_interface += 1
+                        debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
+                    else:
+                        debug_print(f"   DEBUG: Node {node_id} NO key")
+        
+        debug_print(f"   DEBUG SUMMARY: interface.nodes has {total_nodes_in_interface} total nodes")
+        debug_print(f"   DEBUG SUMMARY: Checked {min(5, total_nodes_in_interface)} nodes, {nodes_with_keys_in_interface} have keys")
+        
         return injected_count
+    
+    def _sync_single_pubkey_to_interface(self, node_id, node_data):
+        """
+        Immediately sync a single public key to interface.nodes
+        
+        This is called when a new public key is extracted from NODEINFO
+        to make it available for DM decryption without waiting for periodic sync.
+        
+        Args:
+            node_id: Node ID (integer)
+            node_data: Node data dict from node_names
+        """
+        if not self.interface or not hasattr(self.interface, 'nodes'):
+            debug_print("⚠️ Interface not available for immediate key sync")
+            return
+        
+        public_key = node_data.get('publicKey')
+        if not public_key:
+            return
+        
+        node_name = node_data.get('name', f"Node-{node_id:08x}")
+        nodes = getattr(self.interface, 'nodes', {})
+        
+        # Try to find node in interface.nodes with various key formats
+        node_info = None
+        possible_keys = [node_id, str(node_id), f"!{node_id:08x}", f"{node_id:08x}"]
+        
+        for key in possible_keys:
+            if key in nodes:
+                node_info = nodes[key]
+                break
+        
+        if node_info and isinstance(node_info, dict):
+            # Node exists - inject key
+            user_info = node_info.get('user', {})
+            if isinstance(user_info, dict):
+                user_info['public_key'] = public_key   # Protobuf style
+                user_info['publicKey'] = public_key    # Dict style
+                debug_print(f"   🔑 Immediately synced key to interface.nodes for {node_name}")
+        else:
+            # Create minimal entry
+            short_name = node_data.get('shortName', '')
+            hw_model = node_data.get('hwModel', '')
+            nodes[node_id] = {
+                'num': node_id,
+                'user': {
+                    'id': f"!{node_id:08x}",
+                    'longName': node_name,
+                    'shortName': short_name,
+                    'hwModel': hw_model,
+                    'public_key': public_key,  # Protobuf style
+                    'publicKey': public_key    # Dict style
+                }
+            }
+            debug_print(f"   🔑 Created interface.nodes entry with key for {node_name}")
     
     def track_packet_type(self, packet):
         """Suivre les types de paquets par heure pour l'histogramme"""

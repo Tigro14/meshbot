@@ -1549,40 +1549,12 @@ class MeshBot:
                 debug_print("ℹ️ Collecteur MQTT de voisins désactivé (MQTT_NEIGHBOR_ENABLED=False)")
 
             # ========================================
-            # SYNCHRONISATION CLÉS PKI (MODE TCP)
+            # SYNCHRONISATION CLÉS PKI
             # ========================================
-            # En mode TCP, les clés publiques du nœud distant ne sont pas
-            # automatiquement synchronisées dans interface.nodes en mémoire.
-            # Le KeySyncManager résout ce problème en interrogeant périodiquement
-            # le nœud TCP pour récupérer ses clés et les fusionner localement.
-            if connection_mode == 'tcp' and globals().get('PKI_KEY_SYNC_ENABLED', True):
-                try:
-                    info_print("🔑 Initialisation du synchronisateur de clés PKI...")
-                    
-                    tcp_host = globals().get('TCP_HOST', '192.168.1.38')
-                    tcp_port = globals().get('TCP_PORT', 4403)
-                    sync_interval = globals().get('PKI_KEY_SYNC_INTERVAL', 300)  # 5 minutes par défaut
-                    
-                    self.key_sync_manager = KeySyncManager(
-                        interface=self.interface,
-                        remote_host=tcp_host,
-                        remote_port=tcp_port,
-                        sync_interval=sync_interval
-                    )
-                    
-                    self.key_sync_manager.start()
-                    info_print("✅ Synchronisateur de clés PKI démarré")
-                    info_print(f"   Synchronisation toutes les {sync_interval}s ({sync_interval // 60} minutes)")
-                    
-                except Exception as e:
-                    error_print(f"Erreur initialisation key sync manager: {e}")
-                    error_print(traceback.format_exc())
-                    self.key_sync_manager = None
-            else:
-                if connection_mode != 'tcp':
-                    debug_print("ℹ️ Synchronisateur de clés PKI désactivé (mode serial)")
-                else:
-                    debug_print("ℹ️ Synchronisateur de clés PKI désactivé (PKI_KEY_SYNC_ENABLED=False)")
+            # Public keys are automatically synced from node_names.json to interface.nodes
+            # This happens at startup (see line ~1401) and periodically (see periodic_cleanup ~line 957)
+            # No separate KeySyncManager needed - NodeManager.sync_pubkeys_to_interface() handles it
+            debug_print("ℹ️ Synchronisation clés PKI: Gérée par NodeManager.sync_pubkeys_to_interface()")
 
             # ========================================
             # INITIALISATION DES GESTIONNAIRES
