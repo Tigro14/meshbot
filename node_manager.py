@@ -468,20 +468,38 @@ class NodeManager:
                     name = clean_node_name(long_name or short_name_raw)
                     short_name = clean_node_name(short_name_raw) if short_name_raw else None
                     
-                    # DEBUG: Log NODEINFO packet structure to diagnose missing keys
-                    if globals().get('DEBUG_MODE', False):
-                        debug_print(f"🔍 NODEINFO from {name} (0x{node_id:08x}):")
-                        debug_print(f"   Available fields: {list(user_info.keys())}")
-                        debug_print(f"   Has 'public_key': {'public_key' in user_info}")
-                        debug_print(f"   Has 'publicKey': {'publicKey' in user_info}")
-                    
                     # Extract public key if present (for DM decryption)
                     # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
+                    # ALWAYS log detailed info about public key presence for diagnosis
+                    info_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
+                    info_print(f"   Fields in packet: {list(user_info.keys())}")
+                    info_print(f"   Has 'public_key' field: {'public_key' in user_info}")
+                    info_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
+                    if 'public_key' in user_info:
+                        pk_value = user_info.get('public_key')
+                        pk_type = type(pk_value).__name__
+                        pk_len = len(pk_value) if pk_value else 0
+                        info_print(f"   public_key value type: {pk_type}, length: {pk_len}")
+                        if pk_value:
+                            info_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
+                    if 'publicKey' in user_info:
+                        pk_value = user_info.get('publicKey')
+                        pk_type = type(pk_value).__name__
+                        pk_len = len(pk_value) if pk_value else 0
+                        info_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
+                        if pk_value:
+                            info_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
+                    info_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
+                    
+                    # DEBUG: Additional packet structure logging (only in DEBUG_MODE)
+                    if globals().get('DEBUG_MODE', False):
+                        debug_print(f"🔍 Full user_info structure: {user_info}")
+                    
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
-                        debug_print(f"⚠️ {name}: NODEINFO sans champ public_key (firmware < 2.5.0?)")
+                        info_print(f"⚠️ {name}: NODEINFO without public_key field (firmware < 2.5.0?)")
                     
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas
@@ -496,14 +514,17 @@ class NodeManager:
                                 'last_update': None,
                                 'publicKey': public_key  # Store public key for DM decryption
                             }
-                            debug_print(f"📱 Nouveau: {name} ({node_id:08x})")
+                            info_print(f"📱 New node added: {name} (0x{node_id:08x})")
                             if public_key:
-                                debug_print(f"🔑 Clé publique extraite pour {name}")
+                                info_print(f"✅ Public key EXTRACTED and STORED for {name}")
+                                info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                            else:
+                                info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
                         else:
                             old_name = self.node_names[node_id]['name']
                             if old_name != name:
                                 self.node_names[node_id]['name'] = name
-                                debug_print(f"📱 Renommé: {old_name} → {name} ({node_id:08x})")
+                                info_print(f"📱 Node renamed: {old_name} → {name} (0x{node_id:08x})")
                             # Always update shortName and hwModel even if name didn't change
                             self.node_names[node_id]['shortName'] = short_name
                             self.node_names[node_id]['hwModel'] = hw_model or None
@@ -512,7 +533,10 @@ class NodeManager:
                             old_key = self.node_names[node_id].get('publicKey')
                             if public_key and public_key != old_key:
                                 self.node_names[node_id]['publicKey'] = public_key
-                                debug_print(f"🔑 Clé publique mise à jour pour {name}")
+                                info_print(f"✅ Public key UPDATED for {name}")
+                                info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                            elif not public_key and not old_key:
+                                info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
                         
                         # Sauvegarde différée
                         threading.Timer(10.0, lambda: self.save_node_names()).start()
@@ -585,17 +609,23 @@ class NodeManager:
             int: Number of public keys injected
         """
         if not interface or not hasattr(interface, 'nodes'):
-            debug_print("⚠️ Interface doesn't have nodes attribute")
+            info_print("⚠️ Interface doesn't have nodes attribute")
             return 0
         
+        info_print("🔄 Starting public key synchronization to interface.nodes...")
         injected_count = 0
         nodes = getattr(interface, 'nodes', {})
+        info_print(f"   Current interface.nodes count: {len(nodes)}")
+        info_print(f"   Keys to sync from node_names: {sum(1 for n in self.node_names.values() if n.get('publicKey'))}")
         
         for node_id, node_data in self.node_names.items():
             # Get public key from our database
             public_key = node_data.get('publicKey')
             if not public_key:
                 continue
+            
+            node_name = node_data.get('name', f"Node-{node_id:08x}")
+            info_print(f"   Processing {node_name} (0x{node_id:08x}): has key in DB")
             
             # Try to find node in interface.nodes with various key formats
             node_info = None
@@ -609,6 +639,7 @@ class NodeManager:
             for key in possible_keys:
                 if key in nodes:
                     node_info = nodes[key]
+                    info_print(f"      Found in interface.nodes with key: {key}")
                     break
             
             if node_info and isinstance(node_info, dict):
@@ -622,8 +653,9 @@ class NodeManager:
                         user_info['public_key'] = public_key  # Protobuf style
                         user_info['publicKey'] = public_key   # Dict style
                         injected_count += 1
-                        node_name = node_data.get('name', f"Node-{node_id:08x}")
-                        debug_print(f"🔑 Clé publique injectée pour {node_name}")
+                        info_print(f"      ✅ Injected key into existing node")
+                    else:
+                        info_print(f"      ℹ️ Key already present and matches")
             else:
                 # Node doesn't exist in interface.nodes yet
                 # Create minimal entry with public key
@@ -631,6 +663,7 @@ class NodeManager:
                 short_name = node_data.get('shortName', '')
                 hw_model = node_data.get('hwModel', '')
                 
+                info_print(f"      Not in interface.nodes yet - creating entry")
                 nodes[node_id] = {
                     'num': node_id,
                     'user': {
@@ -643,10 +676,12 @@ class NodeManager:
                     }
                 }
                 injected_count += 1
-                debug_print(f"🔑 Nœud créé dans interface.nodes avec clé: {node_name}")
+                info_print(f"      ✅ Created node in interface.nodes with key")
         
         if injected_count > 0:
-            info_print(f"✅ {injected_count} clés publiques synchronisées vers interface.nodes")
+            info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
+        else:
+            info_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
         
         return injected_count
     
