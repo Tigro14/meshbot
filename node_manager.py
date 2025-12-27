@@ -518,6 +518,12 @@ class NodeManager:
                             if public_key:
                                 info_print(f"✅ Public key EXTRACTED and STORED for {name}")
                                 info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                                # Verify it's actually in the dict
+                                stored_key = self.node_names[node_id].get('publicKey')
+                                if stored_key == public_key:
+                                    info_print(f"   ✓ Verified: Key is in node_names[{node_id}]")
+                                else:
+                                    info_print(f"   ✗ ERROR: Key NOT in node_names[{node_id}]!")
                             else:
                                 info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
                         else:
@@ -535,8 +541,18 @@ class NodeManager:
                                 self.node_names[node_id]['publicKey'] = public_key
                                 info_print(f"✅ Public key UPDATED for {name}")
                                 info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                            elif public_key and old_key:
+                                # Key already exists and matches - this is the common case
+                                info_print(f"ℹ️ Public key already stored for {name} (unchanged)")
                             elif not public_key and not old_key:
                                 info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
+                            
+                            # Log final status for this node
+                            final_key = self.node_names[node_id].get('publicKey')
+                            if final_key:
+                                info_print(f"✓ Node {name} now has publicKey in DB (len={len(final_key)})")
+                            else:
+                                info_print(f"✗ Node {name} still MISSING publicKey in DB")
                         
                         # Sauvegarde différée
                         threading.Timer(10.0, lambda: self.save_node_names()).start()
