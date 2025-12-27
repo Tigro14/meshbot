@@ -468,9 +468,20 @@ class NodeManager:
                     name = clean_node_name(long_name or short_name_raw)
                     short_name = clean_node_name(short_name_raw) if short_name_raw else None
                     
+                    # DEBUG: Log NODEINFO packet structure to diagnose missing keys
+                    if globals().get('DEBUG_MODE', False):
+                        debug_print(f"🔍 NODEINFO from {name} (0x{node_id:08x}):")
+                        debug_print(f"   Available fields: {list(user_info.keys())}")
+                        debug_print(f"   Has 'public_key': {'public_key' in user_info}")
+                        debug_print(f"   Has 'publicKey': {'publicKey' in user_info}")
+                    
                     # Extract public key if present (for DM decryption)
                     # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
+                    
+                    # Log when public key field is completely absent (firmware < 2.5.0)
+                    if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
+                        debug_print(f"⚠️ {name}: NODEINFO sans champ public_key (firmware < 2.5.0?)")
                     
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas

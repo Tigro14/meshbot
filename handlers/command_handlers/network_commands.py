@@ -1403,6 +1403,31 @@ class NetworkCommands:
             lines.append(f"❌ Sans clé publique: {len(nodes_without_keys)}")
             lines.append("")
             
+            # CRITICAL: Add firmware version warning if NO keys found at all
+            if nodes_with_keys_count == 0 and len(nodes_without_keys) > 0:
+                lines.append("⚠️ AUCUNE CLÉ PUBLIQUE DÉTECTÉE")
+                lines.append("")
+                lines.append("Causes possibles:")
+                lines.append("   1. 🔴 Firmware < 2.5.0 (pas de PKI)")
+                lines.append("      → Les nœuds doivent être en 2.5.0+ pour PKI")
+                lines.append("      → Vérifier: meshtastic --info | grep firmware")
+                lines.append("")
+                lines.append("   2. ⚙️ PKI désactivé dans les paramètres")
+                lines.append("      → Activer dans: Settings → Security → PKI")
+                lines.append("")
+                lines.append("   3. ⏳ Échange de clés pas encore complété")
+                lines.append("      → Attendre 15-30 min après démarrage")
+                lines.append("")
+                lines.append("   4. 📦 NODEINFO pas encore reçus")
+                lines.append("      → En mode TCP, attendre les broadcasts")
+                lines.append("")
+                lines.append("🔍 Pour diagnostiquer:")
+                lines.append("   • Activer DEBUG_MODE=True dans config.py")
+                lines.append("   • Chercher logs: 'NODEINFO sans champ public_key'")
+                lines.append("   • Si présent → firmware < 2.5.0 ou PKI off")
+                lines.append("")
+                return "\n".join(lines)
+            
             # Avertissement spécial pour mode TCP avec interface.nodes vide
             if tcp_mode_empty:
                 lines.append("⚠️ LIMITATION MODE TCP DÉTECTÉE")
