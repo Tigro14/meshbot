@@ -550,6 +550,11 @@ class NodeManager:
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
                                 info_print(f"ℹ️ Public key already stored for {name} (unchanged)")
+                                
+                                # CRITICAL: Still sync to interface.nodes even if unchanged
+                                # After bot restart, interface.nodes is empty but node_names.json has keys
+                                # Without this sync, /keys will report nodes as "without keys"
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             elif not public_key and not old_key:
                                 info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
                             
