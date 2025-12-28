@@ -477,32 +477,46 @@ class NetworkCommands(TelegramCommandBase):
         
         def get_keys_info():
             try:
+                info_print(f"🔍 DEBUG /keys: Starting get_keys_info() for node_name={node_name}")
+                
                 # Vérifier que network_handler est disponible
                 # Le network_handler est dans le router du message_handler
-                if not hasattr(self.message_handler, 'router') or not hasattr(self.message_handler.router, 'network_handler'):
-                    return "❌ Network handler non disponible"
+                if not hasattr(self.message_handler, 'router'):
+                    error_print(f"❌ DEBUG /keys: message_handler has no 'router' attribute")
+                    return "❌ Network handler non disponible (pas de router)"
+                
+                if not hasattr(self.message_handler.router, 'network_handler'):
+                    error_print(f"❌ DEBUG /keys: router has no 'network_handler' attribute")
+                    return "❌ Network handler non disponible (pas de network_handler)"
                 
                 network_handler = self.message_handler.router.network_handler
+                info_print(f"✅ DEBUG /keys: network_handler found")
                 
                 # Appeler directement les méthodes internes (sans threading)
                 # Format détaillé pour Telegram (compact=False)
                 if node_name:
+                    info_print(f"🔍 DEBUG /keys: Calling _check_node_keys('{node_name}', compact=False)")
                     response = network_handler._check_node_keys(node_name, compact=False)
                 else:
+                    info_print(f"🔍 DEBUG /keys: Calling _check_all_keys(compact=False)")
                     response = network_handler._check_all_keys(compact=False)
                 
+                info_print(f"✅ DEBUG /keys: Got response (len={len(response)})")
                 return response
                     
             except Exception as e:
-                error_print(f"Erreur /keys: {e}")
+                error_print(f"❌ Erreur /keys: {e}")
                 error_print(traceback.format_exc())
                 return f"❌ Erreur: {str(e)[:200]}"
         
         # Exécuter dans un thread pour ne pas bloquer
+        info_print(f"🔍 DEBUG /keys: Calling asyncio.to_thread(get_keys_info)")
         response = await asyncio.to_thread(get_keys_info)
         
         # Envoyer la réponse
+        info_print(f"📤 DEBUG /keys: Sending response (len={len(response)})")
         await update.effective_message.reply_text(response)
+        info_print(f"✅ DEBUG /keys: Response sent successfully")
 
     async def propag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
