@@ -509,11 +509,14 @@ class NetworkCommands(TelegramCommandBase):
                 if node_name:
                     info_print(f"🔍 DEBUG /keys: Calling _check_node_keys('{node_name}', compact=False)")
                     response = network_handler._check_node_keys(node_name, compact=False)
+                    info_print(f"✅ DEBUG /keys: _check_node_keys returned: type={type(response).__name__}, len={len(response) if response else 'None'}")
+                    info_print(f"✅ DEBUG /keys: Response preview: '{response[:100] if response else 'None'}'")
                 else:
                     info_print(f"🔍 DEBUG /keys: Calling _check_all_keys(compact=False)")
                     response = network_handler._check_all_keys(compact=False)
+                    info_print(f"✅ DEBUG /keys: _check_all_keys returned: type={type(response).__name__}, len={len(response) if response else 'None'}")
                 
-                info_print(f"✅ DEBUG /keys: Got response (len={len(response)})")
+                info_print(f"✅ DEBUG /keys: Got response (len={len(response) if response else 'None'})")
                 return response
                     
             except Exception as e:
@@ -526,9 +529,23 @@ class NetworkCommands(TelegramCommandBase):
         response = await asyncio.to_thread(get_keys_info)
         
         # Envoyer la réponse
-        info_print(f"📤 DEBUG /keys: Sending response (len={len(response)})")
-        await update.effective_message.reply_text(response)
-        info_print(f"✅ DEBUG /keys: Response sent successfully")
+        info_print(f"📤 DEBUG /keys: Sending response (len={len(response) if response else 'None'})")
+        info_print(f"📤 DEBUG /keys: Response preview: {response[:100] if response else 'None'}")
+        
+        try:
+            if not response:
+                error_print(f"❌ DEBUG /keys: Response is empty or None!")
+                await update.effective_message.reply_text("❌ Erreur: Pas de réponse générée")
+            else:
+                await update.effective_message.reply_text(response)
+                info_print(f"✅ DEBUG /keys: Response sent successfully")
+        except Exception as e:
+            error_print(f"❌ DEBUG /keys: Exception while sending response: {e}")
+            error_print(traceback.format_exc())
+            try:
+                await update.effective_message.reply_text(f"❌ Erreur d'envoi: {str(e)[:100]}")
+            except:
+                pass
 
     async def propag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
