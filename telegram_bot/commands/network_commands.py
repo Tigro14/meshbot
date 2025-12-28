@@ -457,12 +457,24 @@ class NetworkCommands(TelegramCommandBase):
             /keys tigro        -> Vérifier si 'tigro' a échangé sa clé
             /keys a76f40da     -> Vérifier clé d'un nœud par ID
         """
-        user = update.effective_user
+        # Log IMMEDIATELY when command is called
+        info_print(f"🚨 DEBUG /keys: Command handler CALLED! update={update is not None}, context={context is not None}")
         
-        # Vérifier l'autorisation
-        if not self.check_authorization(user.id):
-            await update.effective_message.reply_text("❌ Non autorisé")
-            return
+        try:
+            user = update.effective_user
+            info_print(f"🚨 DEBUG /keys: User ID={user.id}, Username={user.username}")
+            
+            # Vérifier l'autorisation
+            if not self.check_authorization(user.id):
+                info_print(f"🚨 DEBUG /keys: Authorization FAILED for user {user.id}")
+                await update.effective_message.reply_text("❌ Non autorisé")
+                return
+            
+            info_print(f"🚨 DEBUG /keys: Authorization OK for user {user.id}")
+        except Exception as e:
+            error_print(f"🚨 DEBUG /keys: Exception in command entry: {e}")
+            error_print(traceback.format_exc())
+            raise
         
         # Extraire le nom de nœud optionnel
         node_name = None
