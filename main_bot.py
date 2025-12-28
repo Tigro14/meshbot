@@ -763,6 +763,21 @@ class MeshBot:
                         # Reset backoff counter on successful reconnection
                         self._tcp_reconnection_attempts = 0
                         
+                        # CRITICAL: Sync public keys to new interface
+                        # After reconnection, interface.nodes is empty, so we need to
+                        # re-inject all public keys from node_names.json for DM decryption
+                        if self.node_manager:
+                            try:
+                                info_print("🔑 Re-synchronisation clés publiques après reconnexion...")
+                                injected = self.node_manager.sync_pubkeys_to_interface(new_interface)
+                                if injected > 0:
+                                    info_print(f"✅ {injected} clés publiques re-synchronisées")
+                                else:
+                                    info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
+                            except Exception as sync_error:
+                                error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
+                                error_print(traceback.format_exc())
+                        
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
                         return  # Success - exit loop
