@@ -1224,9 +1224,22 @@ class NetworkCommands:
         if not self.interface or not hasattr(self.interface, 'nodes'):
             return "⚠️ Interface non disponible"
         
-        # Vérifier les clés dans interface.nodes
+        # Vérifier les clés dans interface.nodes - essayer plusieurs formats de clés
+        # interface.nodes peut utiliser différents formats: int, str, "!hex", "hex"
         nodes = getattr(self.interface, 'nodes', {})
-        node_info = nodes.get(node_id)
+        node_info = None
+        search_keys = [node_id, str(node_id), f"!{node_id:08x}", f"{node_id:08x}"]
+        
+        debug_print(f"DEBUG /keys {search_term}: Trying keys {search_keys[:2]}... for node_id={node_id}")
+        
+        for key in search_keys:
+            if key in nodes:
+                node_info = nodes[key]
+                debug_print(f"DEBUG /keys {search_term}: FOUND with key={key} (type={type(key).__name__})")
+                break
+        
+        if node_info is None:
+            debug_print(f"DEBUG /keys {search_term}: NOT FOUND in interface.nodes with any key format")
         
         if not node_info:
             # Le nœud est connu (dans node_manager) mais pas dans interface.nodes
