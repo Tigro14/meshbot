@@ -1358,12 +1358,18 @@ class NetworkCommands:
         
         for node_id in nodes_in_traffic:
             # Normaliser node_id (peut être int ou string)
+            # IMPORTANT: Traffic DB stores node IDs as decimal TEXT, not hex!
             if isinstance(node_id, str):
                 try:
                     if node_id.startswith('!'):
+                        # Format "!a2e175ac" → hex parsing
                         node_id_int = int(node_id[1:], 16)
+                    elif 'x' in node_id.lower():
+                        # Format "0xa2e175ac" → hex parsing
+                        node_id_int = int(node_id, 0)
                     else:
-                        node_id_int = int(node_id, 16) if 'x' not in node_id else int(node_id, 0)
+                        # Format "2732684716" → decimal string from DB
+                        node_id_int = int(node_id)
                 except ValueError:
                     continue
             else:
