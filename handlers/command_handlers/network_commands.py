@@ -1353,6 +1353,9 @@ class NetworkCommands:
                         has_key = user_info.get('public_key') or user_info.get('publicKey')
                         debug_print(f"DEBUG /keys: Node {node_key} has key: {bool(has_key)}")
         
+        # DEBUG: Log first few nodes being checked
+        debug_count = 0
+        
         for node_id in nodes_in_traffic:
             # Normaliser node_id (peut être int ou string)
             if isinstance(node_id, str):
@@ -1368,10 +1371,23 @@ class NetworkCommands:
             
             # Chercher dans interface.nodes - essayer plusieurs formats de clés
             node_info = None
-            for key in [node_id_int, str(node_id_int), f"!{node_id_int:08x}", f"{node_id_int:08x}"]:
+            search_keys = [node_id_int, str(node_id_int), f"!{node_id_int:08x}", f"{node_id_int:08x}"]
+            
+            # DEBUG: Log first 3 searches
+            if debug_count < 3:
+                debug_print(f"DEBUG /keys: Searching for node_id={node_id} (int={node_id_int})")
+                debug_print(f"DEBUG /keys: Trying keys: {search_keys}")
+                debug_count += 1
+            
+            for key in search_keys:
                 if key in nodes:
                     node_info = nodes[key]
+                    if debug_count <= 3:
+                        debug_print(f"DEBUG /keys: FOUND with key={key}")
                     break
+            
+            if debug_count <= 3 and node_info is None:
+                debug_print(f"DEBUG /keys: NOT FOUND in interface.nodes")
             
             if node_info and isinstance(node_info, dict):
                 user_info = node_info.get('user', {})
