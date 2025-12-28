@@ -1339,14 +1339,37 @@ class NetworkCommands:
         nodes_without_keys = []
         nodes_with_keys_count = 0
         
+        # CRITICAL DEBUG: Log interface.nodes state when /keys runs
+        debug_print(f"DEBUG /keys: interface.nodes has {len(nodes)} entries")
+        debug_print(f"DEBUG /keys: Checking {len(nodes_in_traffic)} nodes from traffic")
+        if len(nodes) > 0:
+            sample_keys = list(nodes.keys())[:3]
+            debug_print(f"DEBUG /keys: Sample node IDs in interface.nodes: {sample_keys}")
+            for node_key in sample_keys:
+                node_info = nodes[node_key]
+                if isinstance(node_info, dict):
+                    user_info = node_info.get('user', {})
+                    if isinstance(user_info, dict):
+                        has_key = user_info.get('public_key') or user_info.get('publicKey')
+                        debug_print(f"DEBUG /keys: Node {node_key} has key: {bool(has_key)}")
+        
+        # DEBUG: Log first few nodes being checked
+        debug_count = 0
+        
         for node_id in nodes_in_traffic:
             # Normaliser node_id (peut être int ou string)
+            # IMPORTANT: Traffic DB stores node IDs as decimal TEXT, not hex!
             if isinstance(node_id, str):
                 try:
                     if node_id.startswith('!'):
+                        # Format "!a2e175ac" → hex parsing
                         node_id_int = int(node_id[1:], 16)
+                    elif 'x' in node_id.lower():
+                        # Format "0xa2e175ac" → hex parsing
+                        node_id_int = int(node_id, 0)
                     else:
-                        node_id_int = int(node_id, 16) if 'x' not in node_id else int(node_id, 0)
+                        # Format "2732684716" → decimal string from DB
+                        node_id_int = int(node_id)
                 except ValueError:
                     continue
             else:
@@ -1354,10 +1377,23 @@ class NetworkCommands:
             
             # Chercher dans interface.nodes - essayer plusieurs formats de clés
             node_info = None
-            for key in [node_id_int, str(node_id_int), f"!{node_id_int:08x}", f"{node_id_int:08x}"]:
+            search_keys = [node_id_int, str(node_id_int), f"!{node_id_int:08x}", f"{node_id_int:08x}"]
+            
+            # DEBUG: Log first 3 searches
+            if debug_count < 3:
+                debug_print(f"DEBUG /keys: Searching for node_id={node_id} (int={node_id_int})")
+                debug_print(f"DEBUG /keys: Trying keys: {search_keys}")
+                debug_count += 1
+            
+            for key in search_keys:
                 if key in nodes:
                     node_info = nodes[key]
+                    if debug_count <= 3:
+                        debug_print(f"DEBUG /keys: FOUND with key={key}")
                     break
+            
+            if debug_count <= 3 and node_info is None:
+                debug_print(f"DEBUG /keys: NOT FOUND in interface.nodes")
             
             if node_info and isinstance(node_info, dict):
                 user_info = node_info.get('user', {})
