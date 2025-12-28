@@ -287,6 +287,31 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("dbstats", self.admin_commands.dbstats_command))
         self.application.add_handler(CommandHandler("cleanup", self.admin_commands.cleanup_command))
 
+        # EXTREME DEBUG: Log ALL incoming updates to diagnose /keys routing issue
+        async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Log every update that comes in from Telegram"""
+            try:
+                if update.message and update.message.text:
+                    user = update.effective_user
+                    text = update.message.text
+                    info_print(f"🔍🔍🔍 TELEGRAM UPDATE: user={user.id} ({user.username}), text='{text}'")
+                    
+                    # Check if it's a /keys command
+                    if text.startswith('/keys'):
+                        info_print(f"🚨🚨🚨 DETECTED /keys COMMAND: '{text}'")
+                        info_print(f"🚨🚨🚨 Command parts: {text.split()}")
+                        info_print(f"🚨🚨🚨 Has args: {len(text.split()) > 1}")
+            except Exception as e:
+                error_print(f"Error in log_all_updates: {e}")
+        
+        # Add this as a pre-processing handler (group -1 to run before normal handlers)
+        from telegram.ext import MessageHandler, filters as telegram_filters
+        self.application.add_handler(
+            MessageHandler(telegram_filters.TEXT & telegram_filters.COMMAND, log_all_updates),
+            group=-1
+        )
+        info_print("🔍 DEBUG: Global update logger registered (group -1)")
+        
         info_print(f"✅ {len(self.application.handlers[0])} handlers enregistrés")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
