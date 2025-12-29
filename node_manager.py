@@ -639,7 +639,7 @@ class NodeManager:
         except Exception as e:
             debug_print(f"Erreur MAJ RX history: {e}")
     
-    def sync_pubkeys_to_interface(self, interface):
+    def sync_pubkeys_to_interface(self, interface, force=False):
         """
         Synchronize public keys from node_names.json to interface.nodes
         
@@ -649,6 +649,8 @@ class NodeManager:
         
         Args:
             interface: Meshtastic interface (serial or TCP)
+            force: If True, skip the quick check and always perform full sync
+                   Used at startup and after reconnection
         
         Returns:
             int: Number of public keys injected
@@ -657,11 +659,43 @@ class NodeManager:
             info_print("⚠️ Interface doesn't have nodes attribute")
             return 0
         
+        nodes = getattr(interface, 'nodes', {})
+        keys_in_db = sum(1 for n in self.node_names.values() if n.get('publicKey'))
+        
+        # Quick check: if not forced and we have no keys in DB, skip immediately
+        if not force and keys_in_db == 0:
+            debug_print("⏭️ Skipping pubkey sync: no keys in database")
+            return 0
+        
+        # Quick check: if not forced, count keys already in interface.nodes
+        if not force:
+            keys_in_interface = 0
+            for node_id, node_data in self.node_names.items():
+                if not node_data.get('publicKey'):
+                    continue
+                # Check if key is already present in interface.nodes
+                possible_keys = [node_id, str(node_id), f"!{node_id:08x}", f"{node_id:08x}"]
+                for key in possible_keys:
+                    if key in nodes:
+                        node_info = nodes[key]
+                        if isinstance(node_info, dict):
+                            user_info = node_info.get('user', {})
+                            if isinstance(user_info, dict):
+                                existing_key = user_info.get('public_key') or user_info.get('publicKey')
+                                if existing_key:
+                                    keys_in_interface += 1
+                                    break
+            
+            # If all keys are already present, skip the sync
+            if keys_in_interface == keys_in_db:
+                debug_print(f"⏭️ Skipping pubkey sync: all {keys_in_db} keys already present in interface.nodes")
+                return 0
+        
+        # Perform full sync (forced or keys missing)
         info_print("🔄 Starting public key synchronization to interface.nodes...")
         injected_count = 0
-        nodes = getattr(interface, 'nodes', {})
         info_print(f"   Current interface.nodes count: {len(nodes)}")
-        info_print(f"   Keys to sync from node_names: {sum(1 for n in self.node_names.values() if n.get('publicKey'))}")
+        info_print(f"   Keys to sync from node_names: {keys_in_db}")
         
         for node_id, node_data in self.node_names.items():
             # Get public key from our database

@@ -769,7 +769,7 @@ class MeshBot:
                         if self.node_manager:
                             try:
                                 info_print("🔑 Re-synchronisation clés publiques après reconnexion...")
-                                injected = self.node_manager.sync_pubkeys_to_interface(new_interface)
+                                injected = self.node_manager.sync_pubkeys_to_interface(new_interface, force=True)
                                 if injected > 0:
                                     info_print(f"✅ {injected} clés publiques re-synchronisées")
                                 else:
@@ -966,12 +966,14 @@ class MeshBot:
                 debug_print(f"Erreur cleanup traceroutes: {e}")
         
         # Synchroniser les clés publiques périodiquement (toutes les 5 min)
-        # Cela garantit que les nouvelles clés extraites des NODEINFO sont injectées
+        # Sert de filet de sécurité en cas d'échec de sync immédiate ou corruption
+        # Avec la logique intelligente, skip automatiquement si toutes les clés sont déjà présentes
         if self.interface and self.node_manager:
             try:
-                injected = self.node_manager.sync_pubkeys_to_interface(self.interface)
+                injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=False)
                 if injected > 0:
                     debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
+                # Note: Si injected == 0, la méthode aura déjà loggé le skip en mode debug
             except Exception as e:
                 debug_print(f"⚠️ Erreur sync périodique clés: {e}")
 
@@ -1413,7 +1415,7 @@ class MeshBot:
             # violating ESP32 single-connection limitation.
             try:
                 info_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
-                injected = self.node_manager.sync_pubkeys_to_interface(self.interface)
+                injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
                 if injected > 0:
                     info_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
                 else:
