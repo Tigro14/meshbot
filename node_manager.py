@@ -472,26 +472,26 @@ class NodeManager:
                     # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
-                    # ALWAYS log detailed info about public key presence for diagnosis
-                    info_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
-                    info_print(f"   Fields in packet: {list(user_info.keys())}")
-                    info_print(f"   Has 'public_key' field: {'public_key' in user_info}")
-                    info_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
+                    # Log detailed info about public key presence (DEBUG mode only for routine updates)
+                    debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
+                    debug_print(f"   Fields in packet: {list(user_info.keys())}")
+                    debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
+                    debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
                     if 'public_key' in user_info:
                         pk_value = user_info.get('public_key')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        info_print(f"   public_key value type: {pk_type}, length: {pk_len}")
+                        debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
                         if pk_value:
-                            info_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
+                            debug_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
                     if 'publicKey' in user_info:
                         pk_value = user_info.get('publicKey')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        info_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
+                        debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
                         if pk_value:
-                            info_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
-                    info_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
+                            debug_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
+                    debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
                     
                     # DEBUG: Additional packet structure logging (only in DEBUG_MODE)
                     if globals().get('DEBUG_MODE', False):
@@ -529,12 +529,23 @@ class NodeManager:
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             else:
                                 info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
+                            
+                            # New node - schedule DB save
+                            threading.Timer(10.0, lambda: self.save_node_names()).start()
                         else:
+                            # Track whether any data actually changed
+                            data_changed = False
+                            
                             old_name = self.node_names[node_id]['name']
                             if old_name != name:
                                 self.node_names[node_id]['name'] = name
                                 info_print(f"📱 Node renamed: {old_name} → {name} (0x{node_id:08x})")
+                                data_changed = True
                             # Always update shortName and hwModel even if name didn't change
+                            old_short_name = self.node_names[node_id].get('shortName')
+                            old_hw_model = self.node_names[node_id].get('hwModel')
+                            if old_short_name != short_name or old_hw_model != hw_model:
+                                data_changed = True
                             self.node_names[node_id]['shortName'] = short_name
                             self.node_names[node_id]['hwModel'] = hw_model or None
                             
@@ -544,12 +555,13 @@ class NodeManager:
                                 self.node_names[node_id]['publicKey'] = public_key
                                 info_print(f"✅ Public key UPDATED for {name}")
                                 info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                                data_changed = True
                                 
                                 # Immediately sync to interface.nodes for DM decryption
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
-                                info_print(f"ℹ️ Public key already stored for {name} (unchanged)")
+                                debug_print(f"ℹ️ Public key already stored for {name} (unchanged)")
                                 
                                 # CRITICAL: Still sync to interface.nodes even if unchanged
                                 # After bot restart, interface.nodes is empty but node_names.json has keys
@@ -558,15 +570,21 @@ class NodeManager:
                             elif not public_key and not old_key:
                                 info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
                             
-                            # Log final status for this node
+                            # Log final status only in DEBUG mode when key is unchanged
                             final_key = self.node_names[node_id].get('publicKey')
                             if final_key:
-                                info_print(f"✓ Node {name} now has publicKey in DB (len={len(final_key)})")
+                                if data_changed or not old_key:
+                                    # Only log at INFO level if data changed or key is new
+                                    info_print(f"✓ Node {name} now has publicKey in DB (len={len(final_key)})")
+                                else:
+                                    # Routine update with no changes - debug only
+                                    debug_print(f"✓ Node {name} publicKey in DB (len={len(final_key)}, unchanged)")
                             else:
                                 info_print(f"✗ Node {name} still MISSING publicKey in DB")
-                        
-                        # Sauvegarde différée
-                        threading.Timer(10.0, lambda: self.save_node_names()).start()
+                            
+                            # Only schedule DB save if data actually changed
+                            if data_changed:
+                                threading.Timer(10.0, lambda: self.save_node_names()).start()
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
 
