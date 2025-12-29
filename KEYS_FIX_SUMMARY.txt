@@ -1,0 +1,77 @@
+================================================================================
+SUMMARY: Fix for /keys Command with Node Argument
+================================================================================
+
+ISSUE REPORTED:
+---------------
+The bot command "/keys a76f40d" does not give any response.
+"/keys" alone works OK.
+
+ROOT CAUSE:
+-----------
+The _check_node_keys() method only tried ONE key format:
+  node_info = nodes.get(node_id)
+
+But interface.nodes can use FOUR different formats:
+  - Integer:      2809086170
+  - String:       "2809086170"
+  - Hex with !:   "!a76f40da"
+  - Hex without:  "a76f40da"
+
+When formats didn't match → lookup failed → no response
+
+SOLUTION:
+---------
+Apply the same multi-format search used in _check_all_keys():
+
+  node_info = None
+  search_keys = [node_id, str(node_id), f"!{node_id:08x}", f"{node_id:08x}"]
+  
+  for key in search_keys:
+      if key in nodes:
+          node_info = nodes[key]
+          break
+
+Now finds the node regardless of format!
+
+FILES CHANGED:
+--------------
+1. handlers/command_handlers/network_commands.py
+   - Modified _check_node_keys() method
+   - Added multi-format key search loop
+   - Added debug logging
+
+2. test_keys_multiformat.py (NEW)
+   - Comprehensive test for all 4 formats
+   - All tests pass ✅
+
+3. demo_keys_fix.py (NEW)
+   - Demonstration of before/after behavior
+
+4. FIX_KEYS_COMMAND.md (NEW)
+   - Complete technical documentation
+
+TEST RESULTS:
+-------------
+✅ test_keys_command.py        - Basic key checking (PASS)
+✅ test_keys_multiformat.py    - All 4 formats (PASS)
+✅ test_keys_string_fix.py     - String compatibility (PASS)
+✅ test_keys_decimal_fix.py    - Decimal parsing (PASS)
+
+IMPACT:
+-------
+✅ /keys <node_id> now works with ANY format
+✅ No breaking changes
+✅ Consistent with /keys (no argument)
+✅ Users get responses instead of silence
+
+EXAMPLE:
+--------
+Before: /keys a76f40d → (no response)
+After:  /keys a76f40d → ✅ tigro t1000E: Clé OK (lMLv2Yk1...)
+
+LINES CHANGED: 15 lines in network_commands.py
+RISK LEVEL: LOW (same pattern used elsewhere, well tested)
+BACKWARD COMPATIBLE: YES
+
+================================================================================
