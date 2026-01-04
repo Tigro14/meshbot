@@ -704,7 +704,7 @@ class NodeManager:
                 continue
             
             node_name = node_data.get('name', f"Node-{node_id:08x}")
-            info_print(f"   Processing {node_name} (0x{node_id:08x}): has key in DB")
+            debug_print(f"   Processing {node_name} (0x{node_id:08x}): has key in DB")
             
             # Try to find node in interface.nodes with various key formats
             node_info = None
@@ -718,7 +718,7 @@ class NodeManager:
             for key in possible_keys:
                 if key in nodes:
                     node_info = nodes[key]
-                    info_print(f"      Found in interface.nodes with key: {key}")
+                    debug_print(f"      Found in interface.nodes with key: {key}")
                     break
             
             if node_info and isinstance(node_info, dict):
@@ -732,9 +732,9 @@ class NodeManager:
                         user_info['public_key'] = public_key  # Protobuf style
                         user_info['publicKey'] = public_key   # Dict style
                         injected_count += 1
-                        info_print(f"      ✅ Injected key into existing node")
+                        debug_print(f"      ✅ Injected key into existing node")
                     else:
-                        info_print(f"      ℹ️ Key already present and matches")
+                        debug_print(f"      ℹ️ Key already present and matches")
                         # CRITICAL DEBUG: Verify the key is actually accessible
                         verify_key = user_info.get('public_key') or user_info.get('publicKey')
                         if verify_key:
@@ -748,7 +748,7 @@ class NodeManager:
                 short_name = node_data.get('shortName', '')
                 hw_model = node_data.get('hwModel', '')
                 
-                info_print(f"      Not in interface.nodes yet - creating entry")
+                debug_print(f"      Not in interface.nodes yet - creating entry")
                 nodes[node_id] = {
                     'num': node_id,
                     'user': {
@@ -761,7 +761,7 @@ class NodeManager:
                     }
                 }
                 injected_count += 1
-                info_print(f"      ✅ Created node in interface.nodes with key")
+                debug_print(f"      ✅ Created node in interface.nodes with key")
         
         if injected_count > 0:
             info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
