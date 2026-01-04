@@ -211,6 +211,48 @@ class TrafficMonitor:
         debug_print(f"🔑 Using default Meshtastic PSK for channel {channel_index} ({len(psk)} bytes)")
         return psk
     
+    def _find_node_in_interface(self, node_id, interface):
+        """
+        Find node info in interface.nodes trying multiple key formats.
+        
+        Interface.nodes can store nodes with different key formats:
+        - Integer: 2812625114
+        - String: "2812625114"
+        - Hex with prefix: "!a76f40da"
+        - Hex without prefix: "a76f40da"
+        
+        This method tries all formats to find the node, matching the logic
+        used by the /keys command for consistency.
+        
+        Args:
+            node_id: Node ID as integer
+            interface: Meshtastic interface object
+            
+        Returns:
+            tuple: (node_info dict, matched_key) or (None, None) if not found
+        """
+        if not interface or not hasattr(interface, 'nodes'):
+            return None, None
+        
+        nodes = getattr(interface, 'nodes', {})
+        if not nodes:
+            return None, None
+        
+        # Try multiple key formats
+        search_keys = [
+            node_id,                    # Integer format
+            str(node_id),              # String decimal format
+            f"!{node_id:08x}",         # Hex with "!" prefix
+            f"{node_id:08x}"           # Hex without prefix
+        ]
+        
+        for key in search_keys:
+            if key in nodes:
+                debug_print(f"🔍 Found node 0x{node_id:08x} in interface.nodes with key={key} (type={type(key).__name__})")
+                return nodes[key], key
+        
+        return None, None
+    
     def _try_decrypt_with_nonce(self, encrypted_bytes, psk, nonce, from_id, method_name):
         """
         Try to decrypt with a specific nonce construction.
@@ -675,16 +717,21 @@ class TrafficMonitor:
                 if is_dm_to_us:
                     debug_print(f"🔐 Encrypted DM from 0x{from_id:08x} to us - likely PKI encrypted")
                     
-                    # Check if we have sender's public key
+                    # Check if we have sender's public key using multi-format search
                     has_key = False
+                    public_key = None
+                    matched_key_format = None
+                    
                     interface = getattr(self.node_manager, 'interface', None)
-                    if interface and hasattr(interface, 'nodes'):
-                        nodes = getattr(interface, 'nodes', {})
-                        node_info = nodes.get(from_id)
+                    if interface:
+                        # Use helper method to find node with multiple key formats
+                        node_info, matched_key_format = self._find_node_in_interface(from_id, interface)
+                        
                         if node_info and isinstance(node_info, dict):
                             user_info = node_info.get('user', {})
                             if isinstance(user_info, dict):
-                                public_key = user_info.get('publicKey')
+                                # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+                                public_key = user_info.get('public_key') or user_info.get('publicKey')
                                 if public_key:
                                     has_key = True
                     
@@ -695,7 +742,9 @@ class TrafficMonitor:
                         debug_print(f"   - Or manually request: meshtastic --request-telemetry --dest {from_id:08x}")
                         debug_print(f"   - Or use: /keys {from_id:08x} to check key exchange status")
                     else:
-                        debug_print(f"✅ Sender's public key is present in node database")
+                        key_preview = public_key[:16] if isinstance(public_key, str) else f"{len(public_key)} bytes"
+                        debug_print(f"✅ Sender's public key FOUND (matched with key format: {matched_key_format})")
+                        debug_print(f"   Key preview: {key_preview}...")
                         debug_print(f"⚠️ Yet Meshtastic library couldn't decrypt - this is unexpected!")
                         debug_print(f"   Possible causes:")
                         debug_print(f"   - Key might be outdated/incorrect")
