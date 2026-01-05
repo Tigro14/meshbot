@@ -344,6 +344,9 @@ class UtilityCommands:
                 "/weather vigi → VIGILANCE"
             )
 
+            # Log conversation (pour tous les modes)
+            self.sender.log_conversation(sender_id, sender_info, "/weather help", help_text)
+
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
                 self._send_broadcast_via_tigrog2(help_text, sender_id, sender_info, "/weather help")
@@ -982,6 +985,9 @@ class UtilityCommands:
 
         Note: Utilise l'interface existante au lieu de créer une nouvelle connexion TCP.
         Cela évite les conflits de socket avec la connexion principale.
+        
+        Note: Ne log PAS la conversation ici - c'est fait par l'appelant avant l'envoi.
+        Cela évite les logs en double.
         """
         try:
             # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
@@ -1001,7 +1007,6 @@ class UtilityCommands:
             interface.sendText(message)
             
             info_print(f"✅ Broadcast {command} diffusé")
-            self.sender.log_conversation(sender_id, sender_info, command, message)
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")
