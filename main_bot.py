@@ -52,6 +52,7 @@ class MeshBot:
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
     TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
+    TCP_PUBKEY_SYNC_DELAY = 15  # Délai après reconnexion avant de synchroniser les clés publiques (permet à l'interface de se stabiliser)
     
     def __init__(self):
         self.interface = None
@@ -763,20 +764,34 @@ class MeshBot:
                         # Reset backoff counter on successful reconnection
                         self._tcp_reconnection_attempts = 0
                         
-                        # CRITICAL: Sync public keys to new interface
-                        # After reconnection, interface.nodes is empty, so we need to
-                        # re-inject all public keys from node_names.json for DM decryption
+                        # DEFERRED: Schedule public key sync after interface is fully stable
+                        # Accessing interface.nodes immediately after reconnection can hang/block
+                        # because the interface needs time to fully initialize its internal state.
+                        # We defer this operation to run in background after TCP_PUBKEY_SYNC_DELAY.
                         if self.node_manager:
-                            try:
-                                info_print("🔑 Re-synchronisation clés publiques après reconnexion...")
-                                injected = self.node_manager.sync_pubkeys_to_interface(new_interface, force=True)
-                                if injected > 0:
-                                    info_print(f"✅ {injected} clés publiques re-synchronisées")
-                                else:
-                                    info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
-                            except Exception as sync_error:
-                                error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
-                                error_print(traceback.format_exc())
+                            info_print(f"🔑 Synchronisation clés publiques programmée dans {self.TCP_PUBKEY_SYNC_DELAY}s...")
+                            
+                            def deferred_pubkey_sync():
+                                """Sync public keys after delay to avoid blocking reconnection"""
+                                try:
+                                    time.sleep(self.TCP_PUBKEY_SYNC_DELAY)
+                                    info_print("🔑 Démarrage synchronisation clés publiques différée...")
+                                    injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
+                                    if injected > 0:
+                                        info_print(f"✅ {injected} clés publiques re-synchronisées")
+                                    else:
+                                        info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
+                                except Exception as sync_error:
+                                    error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
+                                    error_print(traceback.format_exc())
+                            
+                            # Launch in daemon thread so it doesn't block shutdown
+                            pubkey_thread = threading.Thread(
+                                target=deferred_pubkey_sync,
+                                daemon=True,
+                                name="TCP-PubkeySync"
+                            )
+                            pubkey_thread.start()
                         
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
