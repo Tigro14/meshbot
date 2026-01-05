@@ -230,15 +230,16 @@ class MeshBot:
             packet: Packet Meshtastic reçu
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
+        # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
+        # This prevents false "silence" detections when packets arrive during reconnection
+        # Even if we ignore the packet for processing, we need to record that we received it
+        self._last_packet_time = time.time()
+        
         # Protection contre les traitements pendant la reconnexion TCP
         # Évite les race conditions et les messages provenant de l'ancienne interface
         if self._tcp_reconnection_in_progress:
             debug_print("⏸️ Message ignoré: reconnexion TCP en cours")
             return
-        
-        # ✅ IMPORTANT: Enregistrer le timestamp de réception du paquet
-        # Utilisé pour détecter les silences TCP et forcer la reconnexion
-        self._last_packet_time = time.time()
 
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
