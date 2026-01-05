@@ -52,7 +52,8 @@ class MeshBot:
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
     TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
-    TCP_PUBKEY_SYNC_DELAY = 15  # Délai après reconnexion avant de synchroniser les clés publiques (permet à l'interface de se stabiliser)
+    TCP_PUBKEY_SYNC_DELAY = 30  # Délai après reconnexion avant de synchroniser les clés publiques (AUGMENTÉ à 30s pour ESP32 lents)
+    TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = False  # Si True, skip le sync immédiat et attend le sync périodique (5min)
     
     def __init__(self):
         self.interface = None
@@ -768,15 +769,32 @@ class MeshBot:
                         # Accessing interface.nodes immediately after reconnection can hang/block
                         # because the interface needs time to fully initialize its internal state.
                         # We defer this operation to run in background after TCP_PUBKEY_SYNC_DELAY.
-                        if self.node_manager:
+                        # 
+                        # OPTION: Can be disabled via TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT to rely
+                        # entirely on periodic sync (every 5min) if sync causes TCP disconnections.
+                        if self.node_manager and not self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
                             info_print(f"🔑 Synchronisation clés publiques programmée dans {self.TCP_PUBKEY_SYNC_DELAY}s...")
+                            
+                            # Capture the interface reference at scheduling time to avoid race conditions
+                            interface_ref = new_interface
                             
                             def deferred_pubkey_sync():
                                 """Sync public keys after delay to avoid blocking reconnection"""
                                 try:
                                     time.sleep(self.TCP_PUBKEY_SYNC_DELAY)
+                                    
+                                    # Check if interface is still valid and hasn't been replaced
+                                    if interface_ref != self.interface:
+                                        info_print("ℹ️ Interface changée pendant le délai, skip sync")
+                                        return
+                                    
+                                    # Check if another reconnection is in progress
+                                    if self._tcp_reconnection_in_progress:
+                                        info_print("ℹ️ Reconnexion en cours, skip sync différé")
+                                        return
+                                    
                                     info_print("🔑 Démarrage synchronisation clés publiques différée...")
-                                    injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
+                                    injected = self.node_manager.sync_pubkeys_to_interface(interface_ref, force=True)
                                     if injected > 0:
                                         info_print(f"✅ {injected} clés publiques re-synchronisées")
                                     else:
@@ -792,6 +810,9 @@ class MeshBot:
                                 name="TCP-PubkeySync"
                             )
                             pubkey_thread.start()
+                        elif self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
+                            info_print("ℹ️ Synchronisation clés publiques skippée (TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT=True)")
+                            info_print("   Prochaine sync au prochain cycle périodique (5min)")
                         
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
