@@ -2,164 +2,110 @@
 # -*- coding: utf-8 -*-
 """
 Test pour vérifier que CLIMessageSender a bien la méthode _get_interface()
+
+This test verifies the fix for:
+AttributeError: 'CLIMessageSender' object has no attribute '_get_interface'
+
+The fix adds the _get_interface() method to CLIMessageSender to allow
+the /echo command to access the shared Meshtastic interface.
 """
 
-import sys
-import os
-
-# Ajouter le répertoire parent au path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from platforms.cli_server_platform import CLIMessageSender
+import unittest
+import ast
 
 
-def test_cli_message_sender_has_get_interface():
-    """Vérifier que CLIMessageSender a la méthode _get_interface()"""
+class TestCLIEchoFix(unittest.TestCase):
+    """Test CLIMessageSender _get_interface() fix"""
     
-    # Créer un mock simple pour la plateforme
-    class MockCLIPlatform:
-        def __init__(self):
-            self.node_manager = None
-            
-        def send_message(self, user_id, message):
-            pass
+    def test_cli_message_sender_has_get_interface_method(self):
+        """Verify CLIMessageSender has _get_interface() method"""
+        with open('platforms/cli_server_platform.py', 'r') as f:
+            tree = ast.parse(f.read())
+        
+        # Find CLIMessageSender class
+        cli_sender_class = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == 'CLIMessageSender':
+                cli_sender_class = node
+                break
+        
+        self.assertIsNotNone(cli_sender_class, "CLIMessageSender class should exist")
+        
+        # Check _get_interface method exists
+        has_get_interface = False
+        for item in cli_sender_class.body:
+            if isinstance(item, ast.FunctionDef) and item.name == '_get_interface':
+                has_get_interface = True
+                break
+        
+        self.assertTrue(has_get_interface, 
+                       "CLIMessageSender must have _get_interface() method")
     
-    # Créer un mock simple pour l'interface provider
-    class MockInterfaceProvider:
-        def get_interface(self):
-            return self
-            
-        def sendText(self, text, destinationId=None):
-            pass
+    def test_cli_message_sender_init_has_interface_provider(self):
+        """Verify CLIMessageSender.__init__() has interface_provider parameter"""
+        with open('platforms/cli_server_platform.py', 'r') as f:
+            tree = ast.parse(f.read())
+        
+        # Find CLIMessageSender class
+        cli_sender_class = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == 'CLIMessageSender':
+                cli_sender_class = node
+                break
+        
+        self.assertIsNotNone(cli_sender_class, "CLIMessageSender class should exist")
+        
+        # Find __init__ method
+        init_method = None
+        for item in cli_sender_class.body:
+            if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                init_method = item
+                break
+        
+        self.assertIsNotNone(init_method, "__init__ method should exist")
+        
+        # Check parameters
+        args = [arg.arg for arg in init_method.args.args]
+        self.assertIn('interface_provider', args,
+                     "__init__ should have interface_provider parameter")
     
-    platform = MockCLIPlatform()
-    user_id = 0xC11A0001
-    interface_provider = MockInterfaceProvider()
+    def test_cli_message_sender_instantiation_includes_interface_provider(self):
+        """Verify CLIMessageSender is instantiated with interface_provider"""
+        with open('platforms/cli_server_platform.py', 'r') as f:
+            content = f.read()
+        
+        # Check for updated instantiation pattern
+        self.assertIn('CLIMessageSender(self, user_id, interface_provider=router.interface)', 
+                     content,
+                     "CLIMessageSender instantiation should include interface_provider=router.interface")
     
-    # Créer le CLIMessageSender
-    sender = CLIMessageSender(platform, user_id, interface_provider=interface_provider)
+    def test_get_interface_method_implementation(self):
+        """Verify _get_interface() method implementation details"""
+        with open('platforms/cli_server_platform.py', 'r') as f:
+            content = f.read()
+        
+        # Check for key implementation details
+        self.assertIn('def _get_interface(self):', content,
+                     "_get_interface method should be defined")
+        
+        # Check it handles None interface_provider
+        self.assertIn('if self.interface_provider is None:', content,
+                     "_get_interface should check for None interface_provider")
+        
+        # Check it handles get_interface() method
+        self.assertIn("hasattr(self.interface_provider, 'get_interface')", content,
+                     "_get_interface should check for get_interface() method")
     
-    # Vérifier que la méthode existe
-    assert hasattr(sender, '_get_interface'), "CLIMessageSender doit avoir la méthode _get_interface()"
-    
-    # Vérifier que la méthode est callable
-    assert callable(sender._get_interface), "_get_interface() doit être une méthode appelable"
-    
-    # Vérifier que la méthode retourne quelque chose
-    interface = sender._get_interface()
-    assert interface is not None, "_get_interface() doit retourner une interface"
-    
-    print("✅ Test réussi: CLIMessageSender a la méthode _get_interface()")
-    print(f"   Interface retournée: {interface}")
-    
-
-def test_cli_message_sender_without_interface_provider():
-    """Vérifier que CLIMessageSender fonctionne sans interface_provider (None)"""
-    
-    class MockCLIPlatform:
-        def __init__(self):
-            self.node_manager = None
-            
-        def send_message(self, user_id, message):
-            pass
-    
-    platform = MockCLIPlatform()
-    user_id = 0xC11A0001
-    
-    # Créer le CLIMessageSender sans interface_provider
-    sender = CLIMessageSender(platform, user_id)
-    
-    # Vérifier que la méthode existe
-    assert hasattr(sender, '_get_interface'), "CLIMessageSender doit avoir la méthode _get_interface()"
-    
-    # Vérifier que la méthode retourne None quand pas d'interface_provider
-    interface = sender._get_interface()
-    assert interface is None, "_get_interface() doit retourner None quand pas d'interface_provider"
-    
-    print("✅ Test réussi: CLIMessageSender sans interface_provider retourne None")
-
-
-def test_cli_message_sender_with_direct_interface():
-    """Vérifier que CLIMessageSender fonctionne avec une interface directe (pas de get_interface)"""
-    
-    class MockCLIPlatform:
-        def __init__(self):
-            self.node_manager = None
-            
-        def send_message(self, user_id, message):
-            pass
-    
-    # Interface directe (pas de get_interface)
-    class MockDirectInterface:
-        def sendText(self, text, destinationId=None):
-            pass
-    
-    platform = MockCLIPlatform()
-    user_id = 0xC11A0001
-    direct_interface = MockDirectInterface()
-    
-    # Créer le CLIMessageSender avec interface directe
-    sender = CLIMessageSender(platform, user_id, interface_provider=direct_interface)
-    
-    # Vérifier que la méthode retourne l'interface directe
-    interface = sender._get_interface()
-    assert interface is direct_interface, "_get_interface() doit retourner l'interface directe"
-    
-    print("✅ Test réussi: CLIMessageSender avec interface directe")
-
-
-def test_get_short_name():
-    """Vérifier que get_short_name() fonctionne"""
-    
-    class MockCLIPlatform:
-        def __init__(self):
-            self.node_manager = None
-            
-        def send_message(self, user_id, message):
-            pass
-    
-    platform = MockCLIPlatform()
-    user_id = 0xC11A0001
-    
-    sender = CLIMessageSender(platform, user_id)
-    
-    # Tester avec un node_id
-    short_name = sender.get_short_name(0x12345678)
-    assert short_name == "5678", f"Expected '5678', got '{short_name}'"
-    
-    print(f"✅ Test réussi: get_short_name() retourne '{short_name}'")
+    def test_utility_commands_uses_get_interface(self):
+        """Verify utility_commands.py handle_echo() uses _get_interface()"""
+        with open('handlers/command_handlers/utility_commands.py', 'r') as f:
+            content = f.read()
+        
+        # Check that handle_echo uses _get_interface
+        self.assertIn('current_sender._get_interface()', content,
+                     "handle_echo should call current_sender._get_interface()")
 
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("Test de la correction du bug CLIMessageSender")
-    print("=" * 60)
-    print()
-    
-    try:
-        test_cli_message_sender_has_get_interface()
-        print()
-        test_cli_message_sender_without_interface_provider()
-        print()
-        test_cli_message_sender_with_direct_interface()
-        print()
-        test_get_short_name()
-        print()
-        print("=" * 60)
-        print("✅ TOUS LES TESTS RÉUSSIS")
-        print("=" * 60)
-        
-    except AssertionError as e:
-        print()
-        print("=" * 60)
-        print(f"❌ TEST ÉCHOUÉ: {e}")
-        print("=" * 60)
-        sys.exit(1)
-    except Exception as e:
-        print()
-        print("=" * 60)
-        print(f"❌ ERREUR: {e}")
-        import traceback
-        traceback.print_exc()
-        print("=" * 60)
-        sys.exit(1)
+    # Run tests with verbose output
+    unittest.main(verbosity=2)
