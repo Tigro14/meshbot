@@ -50,7 +50,6 @@ class MeshBot:
     TCP_INTERFACE_CLEANUP_DELAY = 15  # Secondes à attendre après fermeture ancienne interface
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface (réduit car vérification socket directe)
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
-    TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     TCP_PUBKEY_SYNC_DELAY = 30  # Délai après reconnexion avant de synchroniser les clés publiques (AUGMENTÉ à 30s pour ESP32 lents)
     TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = True  # DEFAULT: Skip sync on reconnect to avoid overloading ESP32 (use periodic sync instead)
@@ -60,6 +59,12 @@ class MeshBot:
         self.running = False
         
         self.start_time = time.time()
+        
+        # Load TCP_SILENT_TIMEOUT from config if available, otherwise use default 120s
+        # This allows users to adjust timeout for sparse networks without code changes
+        import config as cfg
+        self.TCP_SILENT_TIMEOUT = getattr(cfg, 'TCP_SILENT_TIMEOUT', 120)
+        debug_print(f"🔧 TCP_SILENT_TIMEOUT configuré: {self.TCP_SILENT_TIMEOUT}s")
         
         # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
         self.db_error_monitor = None
