@@ -28,6 +28,11 @@ class NodeManager:
         }
         self.last_packet_hour = None
         
+        # Cache state for pubkey sync to avoid excessive interface.nodes access
+        # which can cause TCP disconnections on ESP32-based nodes
+        self._last_sync_time = 0
+        self._last_synced_keys_hash = None
+        
         # Position du bot (à récupérer depuis config.py)
         try:
             from config import BOT_POSITION
@@ -346,6 +351,8 @@ class NodeManager:
                                     if old_key != public_key:
                                         self.node_names[node_id_int]['publicKey'] = public_key
                                         debug_print(f"🔑 Clé publique mise à jour pour {name}")
+                                        # Invalidate sync cache since we updated a key
+                                        self._last_synced_keys_hash = None
                     
                     # Mise à jour de la position si disponible
                     if isinstance(node_info, dict) and 'position' in node_info:
@@ -527,6 +534,9 @@ class NodeManager:
                                 
                                 # Immediately sync to interface.nodes for DM decryption
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
+                                
+                                # Invalidate sync cache since we added a new key
+                                self._last_synced_keys_hash = None
                             else:
                                 info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
                             
@@ -559,6 +569,9 @@ class NodeManager:
                                 
                                 # Immediately sync to interface.nodes for DM decryption
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
+                                
+                                # Invalidate sync cache since we updated a key
+                                self._last_synced_keys_hash = None
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
                                 debug_print(f"ℹ️ Public key already stored for {name} (unchanged)")
@@ -647,9 +660,12 @@ class NodeManager:
         starts empty. We inject public keys from our persistent database
         to enable PKI decryption without violating ESP32 single-connection limit.
         
+        OPTIMIZATION: Uses hash-based caching to avoid excessive interface.nodes access
+        which can cause TCP disconnections on ESP32-based Meshtastic nodes.
+        
         Args:
             interface: Meshtastic interface (serial or TCP)
-            force: If True, skip the quick check and always perform full sync
+            force: If True, skip the cache check and always perform full sync
                    Used at startup and after reconnection
         
         Returns:
@@ -659,37 +675,44 @@ class NodeManager:
             info_print("⚠️ Interface doesn't have nodes attribute")
             return 0
         
-        nodes = getattr(interface, 'nodes', {})
-        keys_in_db = sum(1 for n in self.node_names.values() if n.get('publicKey'))
-        
         # Quick check: if not forced and we have no keys in DB, skip immediately
+        keys_in_db = sum(1 for n in self.node_names.values() if n.get('publicKey'))
         if not force and keys_in_db == 0:
             debug_print("⏭️ Skipping pubkey sync: no keys in database")
             return 0
         
-        # Quick check: if not forced, count keys already in interface.nodes
+        # OPTIMIZATION: Cache-based skip to avoid excessive interface.nodes access
+        # Compute a hash of current keys to detect if anything changed
         if not force:
-            keys_in_interface = 0
-            for node_id, node_data in self.node_names.items():
-                if not node_data.get('publicKey'):
-                    continue
-                # Check if key is already present in interface.nodes
-                possible_keys = [node_id, str(node_id), f"!{node_id:08x}", f"{node_id:08x}"]
-                for key in possible_keys:
-                    if key in nodes:
-                        node_info = nodes[key]
-                        if isinstance(node_info, dict):
-                            user_info = node_info.get('user', {})
-                            if isinstance(user_info, dict):
-                                existing_key = user_info.get('public_key') or user_info.get('publicKey')
-                                if existing_key:
-                                    keys_in_interface += 1
-                                    break
+            # Create a simple hash of all public keys in our database
+            # Format: "node_id:key_length,node_id:key_length,..."
+            current_keys_list = []
+            for node_id in sorted(self.node_names.keys()):
+                node_data = self.node_names[node_id]
+                public_key = node_data.get('publicKey')
+                if public_key:
+                    # Use node_id and key length as a lightweight fingerprint
+                    current_keys_list.append(f"{node_id}:{len(public_key)}")
             
-            # If all keys are already present, skip the sync
-            if keys_in_interface == keys_in_db:
-                debug_print(f"⏭️ Skipping pubkey sync: all {keys_in_db} keys already present in interface.nodes")
+            current_keys_hash = ','.join(current_keys_list)
+            
+            # Check if keys haven't changed since last sync (within last 4 minutes)
+            # This avoids the expensive interface.nodes iteration every 5 minutes
+            current_time = time.time()
+            time_since_last_sync = current_time - self._last_sync_time
+            
+            if (self._last_synced_keys_hash == current_keys_hash and 
+                time_since_last_sync < 240):  # 4 minutes
+                debug_print(f"⏭️ Skipping pubkey sync: keys unchanged since last sync ({time_since_last_sync:.0f}s ago)")
                 return 0
+        
+        # If we reach here, either:
+        # - force=True (startup/reconnection)
+        # - keys changed in our database
+        # - more than 4 minutes since last sync
+        # Perform the actual sync
+        
+        nodes = getattr(interface, 'nodes', {})
         
         # Perform full sync (forced or keys missing)
         info_print("🔄 Starting public key synchronization to interface.nodes...")
@@ -767,6 +790,18 @@ class NodeManager:
             info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
         else:
             info_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
+        
+        # Update cache to avoid re-checking unnecessarily
+        # This prevents the expensive interface.nodes iteration on next periodic sync
+        current_keys_list = []
+        for node_id in sorted(self.node_names.keys()):
+            node_data = self.node_names[node_id]
+            public_key = node_data.get('publicKey')
+            if public_key:
+                current_keys_list.append(f"{node_id}:{len(public_key)}")
+        self._last_synced_keys_hash = ','.join(current_keys_list)
+        self._last_sync_time = time.time()
+        debug_print(f"📌 Sync cache updated: {len(current_keys_list)} keys tracked")
         
         # CRITICAL DEBUG: Verify interface.nodes state after sync
         total_nodes_in_interface = len(nodes)
