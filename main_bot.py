@@ -50,7 +50,7 @@ class MeshBot:
     TCP_INTERFACE_CLEANUP_DELAY = 15  # Secondes à attendre après fermeture ancienne interface
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface (réduit car vérification socket directe)
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
-    TCP_SILENT_TIMEOUT = 90  # Secondes sans paquet avant de forcer une reconnexion (augmenté pour éviter faux positifs)
+    TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     
     def __init__(self):
@@ -889,11 +889,11 @@ class MeshBot:
         """
         Thread de surveillance santé TCP (RAPIDE)
         
-        Ce thread vérifie fréquemment (toutes les 60s) si:
+        Ce thread vérifie fréquemment (toutes les 30s) si:
         1. L'interface TCP est toujours connectée
         2. Des paquets sont reçus régulièrement
         
-        Si aucun paquet n'est reçu depuis TCP_SILENT_TIMEOUT (2 min),
+        Si aucun paquet n'est reçu depuis TCP_SILENT_TIMEOUT (120s),
         on force une reconnexion car l'interface est probablement morte
         même si le socket semble "vivant".
         
@@ -1372,7 +1372,7 @@ class MeshBot:
                     return False
                 
                 # Configurer le callback pour reconnexion immédiate quand le socket meurt
-                # Cela permet de ne pas attendre le health monitor (2 minutes)
+                # Cela permet de ne pas attendre le health monitor (120 secondes)
                 # IMPORTANT: Utilise la méthode d'instance, pas de classe!
                 # Ceci garantit que seule l'interface principale déclenche la reconnexion,
                 # pas les connexions temporaires (SafeTCPConnection/RemoteNodesClient)
@@ -1703,7 +1703,7 @@ class MeshBot:
             # THREAD MONITEUR SANTÉ TCP (RAPIDE)
             # ========================================
             # Ce thread vérifie fréquemment si l'interface TCP reçoit des paquets
-            # Si silence > 2 min, force une reconnexion (plus rapide que le health check normal)
+            # Si silence > 120s, force une reconnexion (plus rapide que le health check normal)
             if self._is_tcp_mode():
                 self._tcp_health_thread = threading.Thread(
                     target=self.tcp_health_monitor_thread,
