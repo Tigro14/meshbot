@@ -53,7 +53,7 @@ class MeshBot:
     TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     TCP_PUBKEY_SYNC_DELAY = 30  # Délai après reconnexion avant de synchroniser les clés publiques (AUGMENTÉ à 30s pour ESP32 lents)
-    TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = False  # Si True, skip le sync immédiat et attend le sync périodique (5min)
+    TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = True  # DEFAULT: Skip sync on reconnect to avoid overloading ESP32 (use periodic sync instead)
     
     def __init__(self):
         self.interface = None
