@@ -18,9 +18,10 @@ class CLIMessageSender:
     au lieu de l'interface Meshtastic
     """
 
-    def __init__(self, cli_platform, user_id):
+    def __init__(self, cli_platform, user_id, interface_provider=None):
         self.cli_platform = cli_platform
         self.user_id = user_id
+        self.interface_provider = interface_provider  # Store interface provider for _get_interface()
 
     def send_message(self, message, recipient_id, recipient_info):
         """Envoyer un message au client CLI"""
@@ -75,6 +76,32 @@ class CLIMessageSender:
         except Exception as e:
             error_print(f"Erreur get_short_name CLI: {e}")
             return f"{node_id:08x}"[-4:]
+
+    def _get_interface(self):
+        """
+        Récupérer l'interface Meshtastic partagée
+        Nécessaire pour des commandes comme /echo qui ont besoin d'accéder à l'interface
+        """
+        try:
+            if self.interface_provider is None:
+                debug_print("[CLI] No interface_provider available")
+                return None
+                
+            # Si c'est un serial_manager, get_interface() retourne l'interface connectée
+            if hasattr(self.interface_provider, 'get_interface'):
+                interface = self.interface_provider.get_interface()
+                debug_print(f"[CLI] Got interface via get_interface(): {interface}")
+                return interface
+            
+            # Sinon, c'est déjà l'interface directe
+            debug_print(f"[CLI] Using interface_provider directly: {self.interface_provider}")
+            return self.interface_provider
+            
+        except Exception as e:
+            error_print(f"[CLI] Error getting interface: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return None
 
 
 class CLIInterfaceWrapper:
@@ -365,7 +392,8 @@ class CLIServerPlatform(MessagingPlatform):
                 router = self.message_handler.router
 
                 # Créer un sender spécial CLI pour cet utilisateur
-                cli_sender = CLIMessageSender(self, user_id)
+                # Pass router.interface so _get_interface() works for /echo command
+                cli_sender = CLIMessageSender(self, user_id, interface_provider=router.interface)
 
                 # Créer un pseudo-packet Mesh
                 mesh_id, mesh_name = self.get_user_mapping(user_id)
