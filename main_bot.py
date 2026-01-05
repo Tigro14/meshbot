@@ -131,6 +131,9 @@ class MeshBot:
         self._last_packet_time = time.time()
         self._tcp_health_thread = None  # Thread de vérification santé TCP rapide
         
+        # Timestamp pour synchronisation périodique des clés publiques
+        self._last_pubkey_sync_time = 0  # Permettre sync immédiate au premier cycle
+        
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
         #self._packets_analyzed = 0
@@ -771,7 +774,7 @@ class MeshBot:
                         # We defer this operation to run in background after TCP_PUBKEY_SYNC_DELAY.
                         # 
                         # OPTION: Can be disabled via TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT to rely
-                        # entirely on periodic sync (every 5min) if sync causes TCP disconnections.
+                        # entirely on periodic sync (every PUBKEY_SYNC_INTERVAL) if sync causes TCP disconnections.
                         if self.node_manager and not self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
                             info_print(f"🔑 Synchronisation clés publiques programmée dans {self.TCP_PUBKEY_SYNC_DELAY}s...")
                             
@@ -812,7 +815,7 @@ class MeshBot:
                             pubkey_thread.start()
                         elif self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
                             info_print("ℹ️ Synchronisation clés publiques skippée (TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT=True)")
-                            info_print("   Prochaine sync au prochain cycle périodique (5min)")
+                            info_print(f"   Prochaine sync au prochain cycle périodique ({PUBKEY_SYNC_INTERVAL//60}min)")
                         
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
@@ -1001,15 +1004,24 @@ class MeshBot:
             except Exception as e:
                 debug_print(f"Erreur cleanup traceroutes: {e}")
         
-        # Synchroniser les clés publiques périodiquement (toutes les 5 min)
+        # Synchroniser les clés publiques périodiquement (selon PUBKEY_SYNC_INTERVAL)
         # Sert de filet de sécurité en cas d'échec de sync immédiate ou corruption
         # Avec la logique intelligente, skip automatiquement si toutes les clés sont déjà présentes
         if self.interface and self.node_manager:
             try:
-                injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=False)
-                if injected > 0:
-                    debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
-                # Note: Si injected == 0, la méthode aura déjà loggé le skip en mode debug
+                current_time = time.time()
+                time_since_last_sync = current_time - self._last_pubkey_sync_time
+                
+                # Vérifier si assez de temps s'est écoulé depuis la dernière sync
+                if time_since_last_sync >= PUBKEY_SYNC_INTERVAL:
+                    injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=False)
+                    if injected > 0:
+                        debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
+                    # Mettre à jour le timestamp de dernière sync
+                    self._last_pubkey_sync_time = current_time
+                    # Note: Si injected == 0, la méthode aura déjà loggé le skip en mode debug
+                else:
+                    debug_print(f"⏭️ Skip sync clés publiques: dernière sync il y a {time_since_last_sync:.0f}s (intervalle: {PUBKEY_SYNC_INTERVAL}s)")
             except Exception as e:
                 debug_print(f"⚠️ Erreur sync périodique clés: {e}")
 

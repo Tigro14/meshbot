@@ -101,6 +101,7 @@ ESPHOME_TELEMETRY_INTERVAL = 3600  # Intervalle en secondes (3600s = 1h)
 # Configuration base de données des nœuds
 NODE_NAMES_FILE = "node_names.json"
 NODE_UPDATE_INTERVAL = 300  # 5 minutes
+PUBKEY_SYNC_INTERVAL = 900  # 15 minutes - Intervalle pour synchronisation clés publiques périodique
 
 # Configuration chargement initial des voisins au démarrage
 # Polling mechanism pour attendre que interface.nodes se charge complètement
