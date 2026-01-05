@@ -33,6 +33,7 @@ class AICommands:
             response = self.llama_client.query_llama_mesh(prompt, sender_id)
             end_time = time.time()
             
+            # Log conversation (pour tous les modes)
             self.sender.log_conversation(sender_id, sender_info, prompt, response, end_time - start_time)
             
             # Envoyer selon le mode (broadcast ou direct)
@@ -56,6 +57,9 @@ class AICommands:
         
         Note: Utilise l'interface existante au lieu de créer une nouvelle connexion TCP.
         Cela évite les conflits de socket avec la connexion principale.
+        
+        Note: Ne log PAS la conversation ici - c'est fait par l'appelant avant l'envoi.
+        Cela évite les logs en double.
         """
         try:
             # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
@@ -75,7 +79,6 @@ class AICommands:
             interface.sendText(message)
             
             info_print(f"✅ Broadcast {command} diffusé")
-            self.sender.log_conversation(sender_id, sender_info, command, message)
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")

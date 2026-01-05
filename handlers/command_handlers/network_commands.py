@@ -83,12 +83,14 @@ class NetworkCommands:
                 else:
                     response = self._format_my_not_found(remote_nodes)
 
+                # Log conversation (pour tous les modes)
+                current_sender.log_conversation(sender_id, sender_info, "/my", response)
+
                 if is_broadcast:
                     # Réponse publique sans préfixe (utilisateur sait déjà qui il est)
                     self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/my")
                 else:
                     # Réponse privée
-                    current_sender.log_conversation(sender_id, sender_info, "/my", response)
                     current_sender.send_single(response, sender_id, sender_info)
 
             except Exception as e:
@@ -241,6 +243,9 @@ class NetworkCommands:
         
         Note: Utilise l'interface existante au lieu de créer une nouvelle connexion TCP.
         Cela évite les conflits de socket avec la connexion principale.
+        
+        Note: Ne log PAS la conversation ici - c'est fait par l'appelant avant l'envoi.
+        Cela évite les logs en double.
         """
         try:
             # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
@@ -260,7 +265,6 @@ class NetworkCommands:
             interface.sendText(message)
             
             info_print(f"✅ Broadcast {command} diffusé")
-            self.sender.log_conversation(sender_id, sender_info, command, message)
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")
@@ -653,6 +657,7 @@ class NetworkCommands:
         """
         if not self.traffic_monitor:
             error_msg = "❌ TrafficMonitor non disponible"
+            self.sender.log_conversation(sender_id, sender_info, "/propag", error_msg)
             if is_broadcast:
                 self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
             else:
@@ -675,6 +680,7 @@ class NetworkCommands:
                 top_n = max(1, min(10, top_n))  # Limiter entre 1 et 10
         except ValueError:
             error_msg = "❌ Usage: /propag [hours] [top_n]"
+            self.sender.log_conversation(sender_id, sender_info, "/propag", error_msg)
             if is_broadcast:
                 self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
             else:
@@ -700,14 +706,15 @@ class NetworkCommands:
             else:
                 command_log = "/propag"
             
+            # Log conversation (pour tous les modes)
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
+            
             # Envoyer la réponse
             if is_broadcast:
                 # Réponse publique via broadcast
                 self._send_broadcast_via_tigrog2(report, sender_id, sender_info, command_log)
             else:
                 # Réponse privée
-                self.sender.log_conversation(sender_id, sender_info, command_log, report)
-                
                 if compact:
                     # Pour LoRa, envoyer tel quel (déjà optimisé pour 180 chars)
                     self.sender.send_single(report, sender_id, sender_info)
@@ -719,6 +726,7 @@ class NetworkCommands:
             error_print(f"Erreur commande /propag: {e}")
             error_print(traceback.format_exc())
             error_msg = f"⚠️ Erreur: {str(e)[:30]}"
+            self.sender.log_conversation(sender_id, sender_info, "/propag", error_msg)
             if is_broadcast:
                 self._send_broadcast_via_tigrog2(error_msg, sender_id, sender_info, "/propag")
             else:
@@ -789,14 +797,16 @@ class NetworkCommands:
                 else:
                     response = self._format_info_detailed(target_node, node_stats)
                 
+                # Log conversation (pour tous les modes)
+                command_log = f"/info {target_node_name}"
+                current_sender.log_conversation(sender_id, sender_info, command_log, response)
+                
                 # Envoyer la réponse
                 if is_broadcast:
                     # Réponse publique en broadcast
-                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, f"/info {target_node_name}")
+                    self._send_broadcast_via_tigrog2(response, sender_id, sender_info, command_log)
                 else:
                     # Réponse privée
-                    command_log = f"/info {target_node_name}"
-                    current_sender.log_conversation(sender_id, sender_info, command_log, response)
                     
                     if compact:
                         current_sender.send_single(response, sender_id, sender_info)
