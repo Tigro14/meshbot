@@ -1007,7 +1007,8 @@ class MeshBot:
         # Synchroniser les clés publiques périodiquement (selon PUBKEY_SYNC_INTERVAL)
         # Sert de filet de sécurité en cas d'échec de sync immédiate ou corruption
         # Avec la logique intelligente, skip automatiquement si toutes les clés sont déjà présentes
-        if self.interface and self.node_manager:
+        # Peut être désactivé via PUBKEY_SYNC_ENABLE pour tests
+        if PUBKEY_SYNC_ENABLE and self.interface and self.node_manager:
             try:
                 current_time = time.time()
                 time_since_last_sync = current_time - self._last_pubkey_sync_time
@@ -1024,6 +1025,8 @@ class MeshBot:
                     debug_print(f"⏭️ Skip sync clés publiques: dernière sync il y a {time_since_last_sync:.0f}s (intervalle: {PUBKEY_SYNC_INTERVAL}s)")
             except Exception as e:
                 debug_print(f"⚠️ Erreur sync périodique clés: {e}")
+        elif not PUBKEY_SYNC_ENABLE:
+            debug_print("⏭️ Sync clés publiques désactivée (PUBKEY_SYNC_ENABLE=False)")
 
         gc.collect()
 
