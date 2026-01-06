@@ -727,7 +727,7 @@ class NodeManager:
                 continue
             
             node_name = node_data.get('name', f"Node-{node_id:08x}")
-            debug_print(f"   Processing {node_name} (0x{node_id:08x}): has key in DB")
+            #debug_print(f"   Processing {node_name} (0x{node_id:08x}): has key in DB")
             
             # Try to find node in interface.nodes with various key formats
             node_info = None
@@ -741,7 +741,7 @@ class NodeManager:
             for key in possible_keys:
                 if key in nodes:
                     node_info = nodes[key]
-                    debug_print(f"      Found in interface.nodes with key: {key}")
+                    #debug_print(f"      Found in interface.nodes with key: {key}")
                     break
             
             if node_info and isinstance(node_info, dict):
@@ -757,13 +757,13 @@ class NodeManager:
                         injected_count += 1
                         debug_print(f"      ✅ Injected key into existing node")
                     else:
-                        debug_print(f"      ℹ️ Key already present and matches")
+                        #debug_print(f"      ℹ️ Key already present and matches")
                         # CRITICAL DEBUG: Verify the key is actually accessible
                         verify_key = user_info.get('public_key') or user_info.get('publicKey')
-                        if verify_key:
-                            debug_print(f"      ✓ DEBUG: Key verified present (len={len(verify_key)})")
-                        else:
-                            error_print(f"      ✗ BUG: Key shows as present but NOT accessible!")
+                        #if verify_key:
+                            #debug_print(f"      ✓ DEBUG: Key verified present (len={len(verify_key)})")
+                        #else:
+                            #error_print(f"      ✗ BUG: Key shows as present but NOT accessible!")
             else:
                 # Node doesn't exist in interface.nodes yet
                 # Create minimal entry with public key
