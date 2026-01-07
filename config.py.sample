@@ -124,6 +124,31 @@ TCP_SILENT_TIMEOUT = 120  # 120 secondes (2 minutes) - Timeout par défaut
 # Note: Plus fréquent = détection plus rapide mais plus de wake-ups CPU
 TCP_HEALTH_CHECK_INTERVAL = 30  # 30 secondes - Intervalle vérification par défaut
 
+# ⚠️ IMPORTANT: Relation entre TIMEOUT et INTERVAL
+# Pour éviter les fausses alarmes ou détections trop tardives:
+#
+# Le ratio TIMEOUT/INTERVAL ne devrait PAS être un nombre entier (ou proche).
+# Sinon, la détection du timeout sera retardée d'un intervalle complet.
+#
+# Exemple PROBLÉMATIQUE:
+#   • TCP_HEALTH_CHECK_INTERVAL=15s avec TCP_SILENT_TIMEOUT=90s
+#   • Ratio: 90/15 = 6.0 (nombre entier!)
+#   • Dernier paquet à T+0, checks à: 15s, 30s, 45s, 60s, 75s, 90s (OK), 105s (TIMEOUT)
+#   • Détection à 105s au lieu de 90s → 15s de retard!
+#   • Avec un paquet qui arrive à T+0.1s, c'est 104.9s de silence détecté → fausse alarme
+#
+# Exemple BON:
+#   • TCP_HEALTH_CHECK_INTERVAL=15s avec TCP_SILENT_TIMEOUT=98s (ou 112s, ou 120s)
+#   • Ratio: 98/15 = 6.5 (pas un entier)
+#   • Détection à 105s avec 98s timeout → seulement 7s de retard
+#
+# Configurations RECOMMANDÉES (ratio avec marge):
+#   • INTERVAL=15s → TIMEOUT=98s, 112s, 120s, 135s... (éviter 90s, 105s, 120s si ratio entier gêne)
+#   • INTERVAL=30s → TIMEOUT=120s, 150s, 180s... (120=4.0× est OK car marge acceptable)
+#   • INTERVAL=60s → TIMEOUT=240s, 300s... (4× minimum)
+#
+# Le bot vous alertera au démarrage si votre configuration est problématique.
+
 # Configuration reconnexion TCP programmée (préventive)
 # Force une reconnexion TCP périodique même si la connexion semble stable
 # Utile pour contourner les bugs de firmware (ex: Meshtastic 2.7.15 Station G2)
