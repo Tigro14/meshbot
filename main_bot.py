@@ -50,14 +50,21 @@ class MeshBot:
     TCP_INTERFACE_CLEANUP_DELAY = 15  # Secondes à attendre après fermeture ancienne interface
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface (réduit car vérification socket directe)
     TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
-    TCP_SILENT_TIMEOUT = 120  # Secondes sans paquet avant de forcer une reconnexion (4× check interval pour éviter race conditions)
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
+    TCP_PUBKEY_SYNC_DELAY = 30  # Délai après reconnexion avant de synchroniser les clés publiques (AUGMENTÉ à 30s pour ESP32 lents)
+    TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = True  # DEFAULT: Skip sync on reconnect to avoid overloading ESP32 (use periodic sync instead)
     
     def __init__(self):
         self.interface = None
         self.running = False
         
         self.start_time = time.time()
+        
+        # Load TCP_SILENT_TIMEOUT from config if available, otherwise use default 120s
+        # This allows users to adjust timeout for sparse networks without code changes
+        import config as cfg
+        self.TCP_SILENT_TIMEOUT = getattr(cfg, 'TCP_SILENT_TIMEOUT', 120)
+        debug_print(f"🔧 TCP_SILENT_TIMEOUT configuré: {self.TCP_SILENT_TIMEOUT}s")
         
         # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
         self.db_error_monitor = None
@@ -128,6 +135,9 @@ class MeshBot:
         # Détection silence TCP - si pas de paquet reçu depuis trop longtemps, forcer reconnexion
         self._last_packet_time = time.time()
         self._tcp_health_thread = None  # Thread de vérification santé TCP rapide
+        
+        # Timestamp pour synchronisation périodique des clés publiques
+        self._last_pubkey_sync_time = 0  # Permettre sync immédiate au premier cycle
         
         # === DIAGNOSTIC CANAL - TEMPORAIRE ===
         #self._channel_analyzer = PacketChannelAnalyzer()
@@ -225,15 +235,16 @@ class MeshBot:
             packet: Packet Meshtastic reçu
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
+        # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
+        # This prevents false "silence" detections when packets arrive during reconnection
+        # Even if we ignore the packet for processing, we need to record that we received it
+        self._last_packet_time = time.time()
+        
         # Protection contre les traitements pendant la reconnexion TCP
         # Évite les race conditions et les messages provenant de l'ancienne interface
         if self._tcp_reconnection_in_progress:
             debug_print("⏸️ Message ignoré: reconnexion TCP en cours")
             return
-        
-        # ✅ IMPORTANT: Enregistrer le timestamp de réception du paquet
-        # Utilisé pour détecter les silences TCP et forcer la reconnexion
-        self._last_packet_time = time.time()
 
         try:
             # Si pas d'interface fournie, utiliser l'interface principale
@@ -763,20 +774,54 @@ class MeshBot:
                         # Reset backoff counter on successful reconnection
                         self._tcp_reconnection_attempts = 0
                         
-                        # CRITICAL: Sync public keys to new interface
-                        # After reconnection, interface.nodes is empty, so we need to
-                        # re-inject all public keys from node_names.json for DM decryption
-                        if self.node_manager:
-                            try:
-                                info_print("🔑 Re-synchronisation clés publiques après reconnexion...")
-                                injected = self.node_manager.sync_pubkeys_to_interface(new_interface, force=True)
-                                if injected > 0:
-                                    info_print(f"✅ {injected} clés publiques re-synchronisées")
-                                else:
-                                    info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
-                            except Exception as sync_error:
-                                error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
-                                error_print(traceback.format_exc())
+                        # DEFERRED: Schedule public key sync after interface is fully stable
+                        # Accessing interface.nodes immediately after reconnection can hang/block
+                        # because the interface needs time to fully initialize its internal state.
+                        # We defer this operation to run in background after TCP_PUBKEY_SYNC_DELAY.
+                        # 
+                        # OPTION: Can be disabled via TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT to rely
+                        # entirely on periodic sync (every PUBKEY_SYNC_INTERVAL) if sync causes TCP disconnections.
+                        if self.node_manager and not self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
+                            info_print(f"🔑 Synchronisation clés publiques programmée dans {self.TCP_PUBKEY_SYNC_DELAY}s...")
+                            
+                            # Capture the interface reference at scheduling time to avoid race conditions
+                            interface_ref = new_interface
+                            
+                            def deferred_pubkey_sync():
+                                """Sync public keys after delay to avoid blocking reconnection"""
+                                try:
+                                    time.sleep(self.TCP_PUBKEY_SYNC_DELAY)
+                                    
+                                    # Check if interface is still valid and hasn't been replaced
+                                    if interface_ref != self.interface:
+                                        info_print("ℹ️ Interface changée pendant le délai, skip sync")
+                                        return
+                                    
+                                    # Check if another reconnection is in progress
+                                    if self._tcp_reconnection_in_progress:
+                                        info_print("ℹ️ Reconnexion en cours, skip sync différé")
+                                        return
+                                    
+                                    info_print("🔑 Démarrage synchronisation clés publiques différée...")
+                                    injected = self.node_manager.sync_pubkeys_to_interface(interface_ref, force=True)
+                                    if injected > 0:
+                                        info_print(f"✅ {injected} clés publiques re-synchronisées")
+                                    else:
+                                        info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
+                                except Exception as sync_error:
+                                    error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
+                                    error_print(traceback.format_exc())
+                            
+                            # Launch in daemon thread so it doesn't block shutdown
+                            pubkey_thread = threading.Thread(
+                                target=deferred_pubkey_sync,
+                                daemon=True,
+                                name="TCP-PubkeySync"
+                            )
+                            pubkey_thread.start()
+                        elif self.TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT:
+                            info_print("ℹ️ Synchronisation clés publiques skippée (TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT=True)")
+                            info_print(f"   Prochaine sync au prochain cycle périodique ({PUBKEY_SYNC_INTERVAL//60}min)")
                         
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
@@ -965,17 +1010,29 @@ class MeshBot:
             except Exception as e:
                 debug_print(f"Erreur cleanup traceroutes: {e}")
         
-        # Synchroniser les clés publiques périodiquement (toutes les 5 min)
+        # Synchroniser les clés publiques périodiquement (selon PUBKEY_SYNC_INTERVAL)
         # Sert de filet de sécurité en cas d'échec de sync immédiate ou corruption
         # Avec la logique intelligente, skip automatiquement si toutes les clés sont déjà présentes
-        if self.interface and self.node_manager:
+        # Peut être désactivé via PUBKEY_SYNC_ENABLE pour tests
+        if PUBKEY_SYNC_ENABLE and self.interface and self.node_manager:
             try:
-                injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=False)
-                if injected > 0:
-                    debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
-                # Note: Si injected == 0, la méthode aura déjà loggé le skip en mode debug
+                current_time = time.time()
+                time_since_last_sync = current_time - self._last_pubkey_sync_time
+                
+                # Vérifier si assez de temps s'est écoulé depuis la dernière sync
+                if time_since_last_sync >= PUBKEY_SYNC_INTERVAL:
+                    injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=False)
+                    if injected > 0:
+                        debug_print(f"🔑 Synchronisation périodique: {injected} clés publiques mises à jour")
+                    # Mettre à jour le timestamp de dernière sync
+                    self._last_pubkey_sync_time = current_time
+                    # Note: Si injected == 0, la méthode aura déjà loggé le skip en mode debug
+                else:
+                    debug_print(f"⏭️ Skip sync clés publiques: dernière sync il y a {time_since_last_sync:.0f}s (intervalle: {PUBKEY_SYNC_INTERVAL}s)")
             except Exception as e:
                 debug_print(f"⚠️ Erreur sync périodique clés: {e}")
+        elif not PUBKEY_SYNC_ENABLE:
+            debug_print("⏭️ Sync clés publiques désactivée (PUBKEY_SYNC_ENABLE=False)")
 
         gc.collect()
 

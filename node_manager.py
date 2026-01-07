@@ -712,12 +712,35 @@ class NodeManager:
         # - more than 4 minutes since last sync
         # Perform the actual sync
         
-        nodes = getattr(interface, 'nodes', {})
+        # CRITICAL: Safely access interface.nodes with error handling
+        # After TCP reconnection, interface.nodes access can hang/block
+        nodes = None
+        
+        try:
+            # Attempt to access nodes dict
+            # If this hangs, the deferred sync (after 15s) gives the interface time to stabilize
+            nodes = getattr(interface, 'nodes', {})
+        except Exception as e:
+            error_print(f"⚠️ Error accessing interface.nodes: {e}")
+            error_print("❌ Cannot sync pubkeys: interface.nodes not accessible")
+            return 0
+        
+        if nodes is None:
+            error_print("❌ Cannot sync pubkeys: interface.nodes is None")
+            return 0
         
         # Perform full sync (forced or keys missing)
         info_print("🔄 Starting public key synchronization to interface.nodes...")
         injected_count = 0
-        info_print(f"   Current interface.nodes count: {len(nodes)}")
+        
+        # Safe access to nodes length with error handling
+        try:
+            nodes_count = len(nodes)
+            info_print(f"   Current interface.nodes count: {nodes_count}")
+        except Exception as e:
+            error_print(f"⚠️ Error getting nodes count: {e}")
+            nodes_count = 0
+        
         info_print(f"   Keys to sync from node_names: {keys_in_db}")
         
         for node_id, node_data in self.node_names.items():
