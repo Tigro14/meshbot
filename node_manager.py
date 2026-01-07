@@ -350,7 +350,7 @@ class NodeManager:
                                     old_key = self.node_names[node_id_int].get('publicKey')
                                     if old_key != public_key:
                                         self.node_names[node_id_int]['publicKey'] = public_key
-                                        debug_print(f"🔑 Clé publique mise à jour pour {name}")
+                                        #debug_print(f"🔑 Clé publique mise à jour pour {name}")
                                         # Invalidate sync cache since we updated a key
                                         self._last_synced_keys_hash = None
                     
