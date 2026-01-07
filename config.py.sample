@@ -115,6 +115,15 @@ PUBKEY_SYNC_INTERVAL = 900  # 15 minutes - Intervalle pour synchronisation clés
 # Note: Valeur trop faible = faux positifs, valeur trop élevée = détection lente des vrais problèmes
 TCP_SILENT_TIMEOUT = 120  # 120 secondes (2 minutes) - Timeout par défaut
 
+# Configuration intervalle de vérification santé TCP
+# Fréquence des vérifications de réception de paquets (en secondes)
+# Recommandations:
+#   - 30s (défaut) : Balance entre réactivité et charge système
+#   - 15s : Détection plus rapide (plus de checks)
+#   - 60s : Moins de checks (économie ressources pour systèmes contraints)
+# Note: Plus fréquent = détection plus rapide mais plus de wake-ups CPU
+TCP_HEALTH_CHECK_INTERVAL = 30  # 30 secondes - Intervalle vérification par défaut
+
 # Configuration chargement initial des voisins au démarrage
 # Polling mechanism pour attendre que interface.nodes se charge complètement
 NEIGHBOR_LOAD_INITIAL_WAIT = 10    # Attente initiale avant première vérification (secondes)

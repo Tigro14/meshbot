@@ -49,7 +49,6 @@ class MeshBot:
     # The ESP32 may keep the connection in TIME_WAIT state for up to 2 minutes
     TCP_INTERFACE_CLEANUP_DELAY = 15  # Secondes à attendre après fermeture ancienne interface
     TCP_INTERFACE_STABILIZATION_DELAY = 3  # Secondes à attendre après création nouvelle interface (réduit car vérification socket directe)
-    TCP_HEALTH_CHECK_INTERVAL = 30  # Secondes entre chaque vérification santé TCP
     TCP_HEALTH_MONITOR_INITIAL_DELAY = 30  # Délai initial avant de démarrer le monitoring TCP
     TCP_PUBKEY_SYNC_DELAY = 30  # Délai après reconnexion avant de synchroniser les clés publiques (AUGMENTÉ à 30s pour ESP32 lents)
     TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT = True  # DEFAULT: Skip sync on reconnect to avoid overloading ESP32 (use periodic sync instead)
@@ -60,11 +59,16 @@ class MeshBot:
         
         self.start_time = time.time()
         
-        # Load TCP_SILENT_TIMEOUT from config if available, otherwise use default 120s
-        # This allows users to adjust timeout for sparse networks without code changes
+        # Load TCP configuration from config if available
         import config as cfg
+        
+        # TCP silent timeout - max time without packets before reconnection
         self.TCP_SILENT_TIMEOUT = getattr(cfg, 'TCP_SILENT_TIMEOUT', 120)
         debug_print(f"🔧 TCP_SILENT_TIMEOUT configuré: {self.TCP_SILENT_TIMEOUT}s")
+        
+        # TCP health check interval - frequency of health checks
+        self.TCP_HEALTH_CHECK_INTERVAL = getattr(cfg, 'TCP_HEALTH_CHECK_INTERVAL', 30)
+        debug_print(f"🔧 TCP_HEALTH_CHECK_INTERVAL configuré: {self.TCP_HEALTH_CHECK_INTERVAL}s")
         
         # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
         self.db_error_monitor = None
@@ -135,6 +139,12 @@ class MeshBot:
         # Détection silence TCP - si pas de paquet reçu depuis trop longtemps, forcer reconnexion
         self._last_packet_time = time.time()
         self._tcp_health_thread = None  # Thread de vérification santé TCP rapide
+        
+        # Packet reception tracking for diagnostics
+        from collections import deque
+        self._packet_timestamps = deque(maxlen=100)  # Keep last 100 packet times for rate analysis
+        self._packets_this_session = 0  # Count packets per TCP session
+        self._session_start_time = time.time()  # Session start for rate calculation
         
         # Timestamp pour synchronisation périodique des clés publiques
         self._last_pubkey_sync_time = 0  # Permettre sync immédiate au premier cycle
@@ -238,7 +248,12 @@ class MeshBot:
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
         # Even if we ignore the packet for processing, we need to record that we received it
-        self._last_packet_time = time.time()
+        current_time = time.time()
+        self._last_packet_time = current_time
+        
+        # Track packet reception for diagnostics
+        self._packet_timestamps.append(current_time)
+        self._packets_this_session += 1
         
         # Protection contre les traitements pendant la reconnexion TCP
         # Évite les race conditions et les messages provenant de l'ancienne interface
@@ -823,6 +838,12 @@ class MeshBot:
                             info_print("ℹ️ Synchronisation clés publiques skippée (TCP_SKIP_PUBKEY_SYNC_ON_RECONNECT=True)")
                             info_print(f"   Prochaine sync au prochain cycle périodique ({PUBKEY_SYNC_INTERVAL//60}min)")
                         
+                        # Reset session statistics for new connection
+                        self._packets_this_session = 0
+                        self._session_start_time = time.time()
+                        self._packet_timestamps.clear()
+                        debug_print("📊 Statistiques session réinitialisées")
+                        
                         info_print("✅ Reconnexion TCP réussie (background)")
                         self._tcp_reconnection_in_progress = False
                         return  # Success - exit loop
@@ -930,6 +951,48 @@ class MeshBot:
             except Exception as e:
                 error_print(f"Erreur thread mise à jour: {e}")
 
+    def _get_packet_reception_rate(self, window_seconds=60):
+        """
+        Calculate packet reception rate over specified time window.
+        
+        Args:
+            window_seconds: Time window in seconds (default: 60)
+            
+        Returns:
+            float: Packets per minute, or None if insufficient data
+        """
+        if len(self._packet_timestamps) < 2:
+            return None
+            
+        current_time = time.time()
+        cutoff_time = current_time - window_seconds
+        
+        # Count packets in window
+        recent_packets = [ts for ts in self._packet_timestamps if ts >= cutoff_time]
+        
+        if len(recent_packets) < 2:
+            return None
+            
+        # Calculate rate (packets per minute)
+        time_span = recent_packets[-1] - recent_packets[0]
+        if time_span > 0:
+            return (len(recent_packets) / time_span) * 60
+        return None
+    
+    def _get_session_stats(self):
+        """Get current TCP session statistics."""
+        session_duration = time.time() - self._session_start_time
+        if session_duration > 0:
+            session_rate = (self._packets_this_session / session_duration) * 60
+        else:
+            session_rate = 0
+        
+        return {
+            'packets': self._packets_this_session,
+            'duration': session_duration,
+            'rate': session_rate
+        }
+
     def tcp_health_monitor_thread(self):
         """
         Thread de surveillance santé TCP (RAPIDE)
@@ -974,7 +1037,12 @@ class MeshBot:
                 if silence_duration > self.TCP_SILENT_TIMEOUT:
                     # Aucun paquet reçu depuis trop longtemps!
                     # L'interface est probablement morte
+                    
+                    # Get session stats for diagnostics
+                    session_stats = self._get_session_stats()
+                    
                     info_print(f"⚠️ SILENCE TCP: {silence_duration:.0f}s sans paquet (max: {self.TCP_SILENT_TIMEOUT}s)")
+                    info_print(f"📊 Session stats: {session_stats['packets']} paquets en {session_stats['duration']:.0f}s ({session_stats['rate']:.1f} pkt/min)")
                     info_print("🔄 Forçage reconnexion TCP (silence détecté)...")
                     
                     # Forcer la reconnexion
@@ -983,8 +1051,12 @@ class MeshBot:
                     # Réinitialiser le timer pour éviter les reconnexions en boucle
                     self._last_packet_time = time.time()
                 else:
-                    # Tout va bien
-                    debug_print(f"✅ Health TCP OK: dernier paquet il y a {silence_duration:.0f}s")
+                    # Tout va bien - log rate for diagnostics
+                    rate_1min = self._get_packet_reception_rate(60)
+                    if rate_1min is not None:
+                        debug_print(f"✅ Health TCP OK: dernier paquet il y a {silence_duration:.0f}s (débit: {rate_1min:.1f} pkt/min)")
+                    else:
+                        debug_print(f"✅ Health TCP OK: dernier paquet il y a {silence_duration:.0f}s")
                 
             except Exception as e:
                 error_print(f"Erreur thread health TCP: {e}")
