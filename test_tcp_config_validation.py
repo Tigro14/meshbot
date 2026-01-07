@@ -9,6 +9,11 @@ caused by misconfigured timeout/interval relationships.
 import sys
 import os
 
+# Validation constants (must match main_bot.py)
+FRACTIONAL_RATIO_THRESHOLD = 0.3  # Threshold for "close to integer" detection
+FAST_INTERVAL_THRESHOLD = 20      # seconds - intervals below this are considered "fast"
+MEDIUM_INTERVAL_THRESHOLD = 30    # seconds - intervals below this are considered "medium"
+
 # Mock config before importing main_bot
 class MockConfig:
     """Mock config with various TCP settings"""
@@ -32,7 +37,7 @@ def test_validation_logic():
     print("TEST 1: Validation Logic (Fractional Ratio Check)")
     print("=" * 80)
     print()
-    print("Rule: TIMEOUT/INTERVAL fractional part should be ≥ 0.3 to avoid detection latency")
+    print(f"Rule: TIMEOUT/INTERVAL fractional part should be ≥ {FRACTIONAL_RATIO_THRESHOLD} to avoid detection latency")
     print("      (If ratio is 6.0, 6.1, or 6.2, detection will be late by ~15s)")
     print()
     
@@ -59,11 +64,11 @@ def test_validation_logic():
         detection_time = (checks_before + 1) * interval
         latency = detection_time - timeout
         
-        # Same logic as main_bot.py
-        if fractional < 0.3:
-            if interval < 20:
+        # Same logic as main_bot.py (using shared constants)
+        if fractional < FRACTIONAL_RATIO_THRESHOLD:
+            if interval < FAST_INTERVAL_THRESHOLD:
                 is_risky = True
-            elif interval < 30:
+            elif interval < MEDIUM_INTERVAL_THRESHOLD:
                 is_risky = latency >= interval
             else:
                 is_risky = False
@@ -130,11 +135,11 @@ def test_config_combinations():
         detection_time = (checks_before + 1) * interval
         latency = detection_time - timeout
         
-        # Same logic as main_bot.py
-        if fractional < 0.3:
-            if interval < 20:
+        # Same logic as main_bot.py (using shared constants)
+        if fractional < FRACTIONAL_RATIO_THRESHOLD:
+            if interval < FAST_INTERVAL_THRESHOLD:
                 is_risky = True
-            elif interval < 30:
+            elif interval < MEDIUM_INTERVAL_THRESHOLD:
                 is_risky = latency >= interval
             else:
                 is_risky = False
@@ -149,7 +154,7 @@ def test_config_combinations():
             print(f"          Detection latency: ~{latency:.0f}s (acceptable)")
         else:
             print(f"  Result: ⚠️  Problematic configuration")
-            print(f"          Ratio: {ratio:.2f}× (fractional: {fractional:.2f} < 0.3)")
+            print(f"          Ratio: {ratio:.2f}× (fractional: {fractional:.2f} < {FRACTIONAL_RATIO_THRESHOLD})")
             print(f"          Detection latency: ~{latency:.0f}s (too high for interval={interval}s)")
         
         assert is_safe == scenario['expected'], f"Expected {'safe' if scenario['expected'] else 'unsafe'}, got {is_safe}"

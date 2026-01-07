@@ -218,6 +218,11 @@ class MeshBot:
         Recommendation: TIMEOUT ≥ (floor(DESIRED_TIMEOUT/INTERVAL) + 0.5) × INTERVAL
         Or simpler: Add 0.5×INTERVAL as safety margin to your desired timeout.
         """
+        # Configuration validation constants
+        FRACTIONAL_RATIO_THRESHOLD = 0.3  # Threshold for "close to integer" detection
+        FAST_INTERVAL_THRESHOLD = 20      # seconds - intervals below this are considered "fast"
+        MEDIUM_INTERVAL_THRESHOLD = 30    # seconds - intervals below this are considered "medium"
+        
         interval = self.TCP_HEALTH_CHECK_INTERVAL
         timeout = self.TCP_SILENT_TIMEOUT
         
@@ -234,20 +239,20 @@ class MeshBot:
         detection_latency = detection_time - timeout
         
         # Determine if configuration is risky:
-        # - Fractional part close to 0 (< 0.3) means integer ratio → full interval latency
-        # - For small intervals (<30s), this latency is problematic
-        # - For large intervals (≥30s), we're more tolerant: latency should be < interval
+        # - Fractional part close to 0 (< FRACTIONAL_RATIO_THRESHOLD) means integer ratio → full interval latency
+        # - For small intervals (<FAST_INTERVAL_THRESHOLD), this latency is problematic
+        # - For large intervals (≥MEDIUM_INTERVAL_THRESHOLD), we're more tolerant: latency should be < interval
         #
         # Example: 15s interval, 90s timeout → 6.0× ratio → 15s latency → RISKY
         # Example: 30s interval, 120s timeout → 4.0× ratio → 30s latency → OK (large interval)
         # Example: 60s interval, 240s timeout → 4.0× ratio → 60s latency → OK (large interval)
         
-        if ratio_fractional < 0.3:
+        if ratio_fractional < FRACTIONAL_RATIO_THRESHOLD:
             # Integer or near-integer ratio
-            if interval < 20:
+            if interval < FAST_INTERVAL_THRESHOLD:
                 # For fast checks (<20s), any full-interval latency is bad
                 is_risky = True
-            elif interval < 30:
+            elif interval < MEDIUM_INTERVAL_THRESHOLD:
                 # For medium checks (20-30s), latency should be < interval
                 is_risky = detection_latency >= interval
             else:
@@ -289,7 +294,9 @@ class MeshBot:
                 symbol = "✅" if silence <= timeout else "⚠️ "
                 error_print(f"  T+{check_time:3d}s: check trouve {silence:5.1f}s silence → {symbol} {status}")
                 if silence > timeout:
-                    if silence > timeout + 10:
+                    # Show additional context if latency is significantly high
+                    SIGNIFICANT_LATENCY_THRESHOLD = 10  # seconds
+                    if silence > timeout + SIGNIFICANT_LATENCY_THRESHOLD:
                         error_print(f"           Reconnexion {detection_latency:.0f}s après le timeout!")
                     break
             
@@ -310,7 +317,10 @@ class MeshBot:
             
             error_print(f"")
             error_print(f"  Option 2: Réduire l'intervalle de vérification")
-            new_interval = max(10, int(timeout / 8))  # Aim for ~8 checks before timeout
+            # Aim for ~8 checks before timeout to provide good balance
+            MIN_INTERVAL = 10  # Minimum practical check interval (seconds)
+            TARGET_CHECKS_BEFORE_TIMEOUT = 8
+            new_interval = max(MIN_INTERVAL, int(timeout / TARGET_CHECKS_BEFORE_TIMEOUT))
             error_print(f"    TCP_HEALTH_CHECK_INTERVAL = {new_interval}  # Détection plus fréquente")
             error_print(f"")
             error_print(f"  Option 3: Utiliser les valeurs par défaut")

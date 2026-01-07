@@ -143,8 +143,8 @@ TCP_HEALTH_CHECK_INTERVAL = 30  # 30 secondes - Intervalle vérification par dé
 #   • Détection à 105s avec 98s timeout → seulement 7s de retard
 #
 # Configurations RECOMMANDÉES (ratio avec marge):
-#   • INTERVAL=15s → TIMEOUT=98s, 112s, 120s, 135s... (éviter 90s, 105s, 120s si ratio entier gêne)
-#   • INTERVAL=30s → TIMEOUT=120s, 150s, 180s... (120=4.0× est OK car marge acceptable)
+#   • INTERVAL=15s → TIMEOUT=98s, 112s, 127s, 135s... (éviter 90s, 105s, 120s - ratios entiers)
+#   • INTERVAL=30s → TIMEOUT=120s, 150s, 180s... (120=4.0× est OK car intervalle large)
 #   • INTERVAL=60s → TIMEOUT=240s, 300s... (4× minimum)
 #
 # Le bot vous alertera au démarrage si votre configuration est problématique.
