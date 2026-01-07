@@ -2759,9 +2759,26 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2025-12-16
+**Last updated**: 2026-01-07
 **Updated by**: GitHub Copilot
-**Changes in this update (2025-12-16)**:
+**Changes in this update (2026-01-07)**:
+- **NEW: TCP Health Monitoring Improvements** - Configurable health checks and packet reception diagnostics
+  - Added `TCP_HEALTH_CHECK_INTERVAL` configuration option in config.py
+  - Made TCP health check interval user-configurable (default: 30s)
+  - Added packet reception rate tracking (packets/minute over 60s window)
+  - Implemented session statistics (packets, duration, rate per TCP session)
+  - Enhanced health check logging with packet rate information
+  - Added `_get_packet_reception_rate()` method for rate calculation
+  - Added `_get_session_stats()` method for session metrics
+  - Reset session counters on successful TCP reconnection
+  - Created comprehensive test suite: `test_tcp_health_improvements.py`
+  - Created documentation: `TCP_HEALTH_MONITORING_IMPROVEMENTS.md`
+  - Benefits: Better diagnostics for TCP issues, faster problem detection, data-driven troubleshooting
+  - Context: Addresses TCP stability issues after Meshtastic 2.7.15 firmware upgrade
+  - Users can now adjust check frequency without code changes
+  - Logs show actual packet rates to help identify gradual slowdown vs sudden stops
+
+**Previous changes (2025-12-16)**:
 - **NEW: DM Decryption for Meshtastic 2.7.15+** - Support for encrypted Direct Messages
   - Added `_decrypt_packet()` method in `traffic_monitor.py` using AES-128-CTR
   - Automatic detection and decryption of DMs addressed to our node
