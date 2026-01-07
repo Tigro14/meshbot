@@ -70,6 +70,13 @@ class MeshBot:
         self.TCP_HEALTH_CHECK_INTERVAL = getattr(cfg, 'TCP_HEALTH_CHECK_INTERVAL', 30)
         debug_print(f"🔧 TCP_HEALTH_CHECK_INTERVAL configuré: {self.TCP_HEALTH_CHECK_INTERVAL}s")
         
+        # TCP force reconnect interval - scheduled reconnection (0 = disabled)
+        self.TCP_FORCE_RECONNECT_INTERVAL = getattr(cfg, 'TCP_FORCE_RECONNECT_INTERVAL', 0)
+        if self.TCP_FORCE_RECONNECT_INTERVAL > 0:
+            info_print(f"🔧 TCP_FORCE_RECONNECT_INTERVAL configuré: {self.TCP_FORCE_RECONNECT_INTERVAL}s (reconnexion programmée activée)")
+        else:
+            debug_print("🔧 TCP_FORCE_RECONNECT_INTERVAL: désactivé (0)")
+        
         # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
         self.db_error_monitor = None
         self._init_db_error_monitor()
@@ -145,6 +152,9 @@ class MeshBot:
         self._packet_timestamps = deque(maxlen=100)  # Keep last 100 packet times for rate analysis
         self._packets_this_session = 0  # Count packets per TCP session
         self._session_start_time = time.time()  # Session start for rate calculation
+        
+        # Scheduled reconnection tracking (for TCP_FORCE_RECONNECT_INTERVAL)
+        self._last_forced_reconnect = time.time()  # Track last scheduled reconnection
         
         # Timestamp pour synchronisation périodique des clés publiques
         self._last_pubkey_sync_time = 0  # Permettre sync immédiate au premier cycle
@@ -842,6 +852,7 @@ class MeshBot:
                         self._packets_this_session = 0
                         self._session_start_time = time.time()
                         self._packet_timestamps.clear()
+                        self._last_forced_reconnect = time.time()  # Reset scheduled reconnection timer
                         debug_print("📊 Statistiques session réinitialisées")
                         
                         info_print("✅ Reconnexion TCP réussie (background)")
@@ -1031,6 +1042,26 @@ class MeshBot:
                     debug_print("🔍 Health check: reconnexion en cours, skip")
                     continue
                 
+                # === SCHEDULED RECONNECTION (if enabled) ===
+                # Force reconnection at regular intervals to work around firmware bugs
+                if self.TCP_FORCE_RECONNECT_INTERVAL > 0:
+                    time_since_last_forced = time.time() - self._last_forced_reconnect
+                    
+                    if time_since_last_forced >= self.TCP_FORCE_RECONNECT_INTERVAL:
+                        # Time for scheduled reconnection
+                        session_stats = self._get_session_stats()
+                        
+                        info_print(f"🔄 Reconnexion TCP programmée (intervalle: {self.TCP_FORCE_RECONNECT_INTERVAL}s)")
+                        info_print(f"📊 Session stats: {session_stats['packets']} paquets en {session_stats['duration']:.0f}s ({session_stats['rate']:.1f} pkt/min)")
+                        
+                        # Trigger reconnection
+                        self._reconnect_tcp_interface()
+                        self._last_forced_reconnect = time.time()
+                        
+                        # Skip silence check after scheduled reconnection
+                        continue
+                
+                # === SILENCE DETECTION (existing logic) ===
                 # Vérifier le temps depuis le dernier paquet
                 silence_duration = time.time() - self._last_packet_time
                 

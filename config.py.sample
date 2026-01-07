@@ -124,6 +124,17 @@ TCP_SILENT_TIMEOUT = 120  # 120 secondes (2 minutes) - Timeout par défaut
 # Note: Plus fréquent = détection plus rapide mais plus de wake-ups CPU
 TCP_HEALTH_CHECK_INTERVAL = 30  # 30 secondes - Intervalle vérification par défaut
 
+# Configuration reconnexion TCP programmée (préventive)
+# Force une reconnexion TCP périodique même si la connexion semble stable
+# Utile pour contourner les bugs de firmware (ex: Meshtastic 2.7.15 Station G2)
+# où la connexion TCP se dégrade progressivement sans déconnexion détectable
+# Recommandations:
+#   - 0 (défaut) : Désactivé - Se fier uniquement à la détection de silence
+#   - 180s (3 min) : Recommandé pour Station G2 avec firmware 2.7.15
+#   - 300s (5 min) : Alternative plus conservatrice
+# Note: Valeur trop faible = reconnexions inutiles, valeur trop élevée = dégradation prolongée
+TCP_FORCE_RECONNECT_INTERVAL = 0  # 0 = désactivé, >0 = intervalle en secondes
+
 # Configuration chargement initial des voisins au démarrage
 # Polling mechanism pour attendre que interface.nodes se charge complètement
 NEIGHBOR_LOAD_INITIAL_WAIT = 10    # Attente initiale avant première vérification (secondes)
