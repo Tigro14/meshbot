@@ -77,6 +77,9 @@ class MeshBot:
         else:
             debug_print("🔧 TCP_FORCE_RECONNECT_INTERVAL: désactivé (0)")
         
+        # Validate TCP configuration to avoid false alarms
+        self._validate_tcp_health_config()
+        
         # Moniteur d'erreurs DB (initialisé avant TrafficMonitor pour callback)
         self.db_error_monitor = None
         self._init_db_error_monitor()
@@ -174,6 +177,165 @@ class MeshBot:
             bool: True si CONNECTION_MODE == 'tcp', False sinon
         """
         return globals().get('CONNECTION_MODE', 'serial').lower() == 'tcp'
+
+    def _validate_tcp_health_config(self):
+        """
+        Validate TCP health check configuration to prevent false alarms.
+        
+        The health check monitors silence duration with this logic:
+            if (time.time() - last_packet_time) > TCP_SILENT_TIMEOUT:
+                # Trigger reconnection
+        
+        Problem: Checks run at fixed intervals, but packets arrive at random times.
+        
+        Worst-case scenario:
+        - Packet arrives at T+0.1s (just after a check at T+0)
+        - Timeout set to 90s
+        - Checks at: T+15, T+30, T+45, T+60, T+75, T+90, T+105...
+        - At T+90: silence=89.9s, 89.9>90 is FALSE → OK
+        - At T+105: silence=104.9s, 104.9>90 is TRUE → FALSE ALARM!
+        
+        The timeout triggered 14.9s "late" because the check interval is 15s.
+        
+        Safe configuration requires avoiding this off-by-one-interval issue:
+        1. TIMEOUT should allow the check that occurs at floor(TIMEOUT/INTERVAL)×INTERVAL to pass
+        2. This means we need: floor(TIMEOUT/INTERVAL)×INTERVAL ≤ TIMEOUT (always true)
+        3. But next check at [floor(TIMEOUT/INTERVAL)+1]×INTERVAL should fail
+        4. For clean detection: TIMEOUT + INTERVAL should be > TIMEOUT (obviously true)
+        
+        The issue occurs when TIMEOUT is "close to" but not exactly at a multiple of INTERVAL.
+        
+        Pragmatic rule: TIMEOUT should either be:
+        - A clean multiple of INTERVAL (e.g., 90s with 15s → 6×15=90s)
+        - OR have at least 0.5×INTERVAL margin above a multiple
+        
+        Example:
+        - INTERVAL=15s, TIMEOUT=90s: 90/15=6.0 → at boundary, will trigger at 105s (15s late)
+        - INTERVAL=15s, TIMEOUT=98s: 98/15=6.5 → safe margin, will trigger at 105s (7s late)
+        - INTERVAL=15s, TIMEOUT=105s: 105/15=7.0 → at boundary, will trigger at 120s (15s late)
+        - INTERVAL=15s, TIMEOUT=112s: 112/15=7.5 → safe margin, will trigger at 120s (8s late)
+        
+        Recommendation: TIMEOUT ≥ (floor(DESIRED_TIMEOUT/INTERVAL) + 0.5) × INTERVAL
+        Or simpler: Add 0.5×INTERVAL as safety margin to your desired timeout.
+        """
+        # Configuration validation constants
+        FRACTIONAL_RATIO_THRESHOLD = 0.3  # Threshold for "close to integer" detection
+        FAST_INTERVAL_THRESHOLD = 20      # seconds - intervals below this are considered "fast"
+        MEDIUM_INTERVAL_THRESHOLD = 30    # seconds - intervals below this are considered "medium"
+        
+        interval = self.TCP_HEALTH_CHECK_INTERVAL
+        timeout = self.TCP_SILENT_TIMEOUT
+        
+        if interval <= 0 or timeout <= 0:
+            return  # Invalid config, will fail elsewhere
+        
+        # Calculate the ratio and check if it's too close to an integer
+        ratio = timeout / interval
+        ratio_fractional = ratio - int(ratio)
+        
+        # Calculate detection latency
+        checks_before_timeout = int(ratio)
+        detection_time = (checks_before_timeout + 1) * interval
+        detection_latency = detection_time - timeout
+        
+        # Determine if configuration is risky:
+        # - Fractional part close to 0 (< FRACTIONAL_RATIO_THRESHOLD) means integer ratio → full interval latency
+        # - For small intervals (<FAST_INTERVAL_THRESHOLD), this latency is problematic
+        # - For large intervals (≥MEDIUM_INTERVAL_THRESHOLD), we're more tolerant: latency should be < interval
+        #
+        # Example: 15s interval, 90s timeout → 6.0× ratio → 15s latency → RISKY
+        # Example: 30s interval, 120s timeout → 4.0× ratio → 30s latency → OK (large interval)
+        # Example: 60s interval, 240s timeout → 4.0× ratio → 60s latency → OK (large interval)
+        
+        if ratio_fractional < FRACTIONAL_RATIO_THRESHOLD:
+            # Integer or near-integer ratio
+            if interval < FAST_INTERVAL_THRESHOLD:
+                # For fast checks (<20s), any full-interval latency is bad
+                is_risky = True
+            elif interval < MEDIUM_INTERVAL_THRESHOLD:
+                # For medium checks (20-30s), latency should be < interval
+                is_risky = detection_latency >= interval
+            else:
+                # For slow checks (≥30s), we're more tolerant
+                # Latency is expected to be ~interval, which is acceptable
+                is_risky = False
+        else:
+            # Fractional ratio is good (≥0.3), latency will be < full interval
+            is_risky = False
+        
+        if is_risky:
+            # Configuration will cause false alarms or very late detection
+            error_print("=" * 80)
+            error_print("⚠️  ATTENTION: CONFIGURATION TCP NON-OPTIMALE DÉTECTÉE")
+            error_print("=" * 80)
+            error_print(f"")
+            error_print(f"Votre configuration actuelle peut causer des problèmes:")
+            error_print(f"")
+            error_print(f"  TCP_HEALTH_CHECK_INTERVAL = {interval}s")
+            error_print(f"  TCP_SILENT_TIMEOUT        = {timeout}s")
+            error_print(f"  Ratio: {ratio:.2f}× (fractional part: {ratio_fractional:.2f})")
+            error_print(f"")
+            error_print(f"Problème: Le timeout ({timeout}s) est trop proche d'un multiple")
+            error_print(f"de l'intervalle ({checks_before_timeout}×{interval}s = {checks_before_timeout*interval}s).")
+            error_print(f"")
+            error_print(f"Impact: La détection du timeout sera retardée de ~{detection_latency:.0f}s")
+            error_print(f"  • Timeout configuré: {timeout}s")
+            error_print(f"  • Détection réelle:  {detection_time}s (au prochain check)")
+            error_print(f"  • Retard:            {detection_latency:.0f}s")
+            error_print(f"")
+            
+            # Show realistic timeline
+            error_print(f"Exemple: Si paquet arrive juste après un check (T+0.1s):")
+            packet_time = 0.1
+            for i in range(1, checks_before_timeout + 3):
+                check_time = i * interval
+                silence = check_time - packet_time
+                status = "OK" if silence <= timeout else "TIMEOUT"
+                symbol = "✅" if silence <= timeout else "⚠️ "
+                error_print(f"  T+{check_time:3d}s: check trouve {silence:5.1f}s silence → {symbol} {status}")
+                if silence > timeout:
+                    # Show additional context if latency is significantly high
+                    SIGNIFICANT_LATENCY_THRESHOLD = 10  # seconds
+                    if silence > timeout + SIGNIFICANT_LATENCY_THRESHOLD:
+                        error_print(f"           Reconnexion {detection_latency:.0f}s après le timeout!")
+                    break
+            
+            error_print(f"")
+            error_print(f"Solutions recommandées:")
+            error_print(f"")
+            
+            # Suggest adding margin
+            suggested_timeout = int((checks_before_timeout + 0.6) * interval)
+            error_print(f"  Option 1 (RECOMMANDÉE): Ajouter une marge de sécurité")
+            error_print(f"    TCP_SILENT_TIMEOUT = {suggested_timeout}  # Ajoute ~{suggested_timeout-timeout}s de marge")
+            
+            # Suggest nicer round numbers
+            nice_timeouts = [120, 150, 180, 240, 300]
+            recommended = next((t for t in nice_timeouts if t >= suggested_timeout), suggested_timeout)
+            if recommended > suggested_timeout:
+                error_print(f"    TCP_SILENT_TIMEOUT = {recommended}  # Valeur arrondie (encore mieux)")
+            
+            error_print(f"")
+            error_print(f"  Option 2: Réduire l'intervalle de vérification")
+            # Aim for ~8 checks before timeout to provide good balance
+            MIN_INTERVAL = 10  # Minimum practical check interval (seconds)
+            TARGET_CHECKS_BEFORE_TIMEOUT = 8
+            new_interval = max(MIN_INTERVAL, int(timeout / TARGET_CHECKS_BEFORE_TIMEOUT))
+            error_print(f"    TCP_HEALTH_CHECK_INTERVAL = {new_interval}  # Détection plus fréquente")
+            error_print(f"")
+            error_print(f"  Option 3: Utiliser les valeurs par défaut")
+            error_print(f"    TCP_HEALTH_CHECK_INTERVAL = 30")
+            error_print(f"    TCP_SILENT_TIMEOUT = 120  # Ratio 4.0×, pas de retard excessif")
+            error_print(f"")
+            error_print("=" * 80)
+            error_print("")
+            
+            # Don't crash, just warn
+            info_print(f"⚠️  Le bot continuera, mais la détection de silence aura {detection_latency:.0f}s")
+            info_print(f"    de retard, ce qui peut causer des reconnexions tardives ou fausses.")
+        else:
+            # Config is OK
+            debug_print(f"✅ Configuration TCP validée: timeout {timeout}s (ratio {ratio:.2f}×, latence détection: ~{detection_latency:.0f}s)")
 
     def _track_broadcast(self, message):
         """
