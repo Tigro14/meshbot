@@ -4,9 +4,9 @@ Bot pour réseau Meshtastic (+ Telegram, optionnel) avec intégration Llama et f
 
 ## Architectures supportées
 
-Le bot fonctionne en **mode single-node** : une seule connexion au réseau Meshtastic, soit via USB/UART (Serial), soit via TCP/IP (WiFi/Ethernet).
+Le bot supporte plusieurs modes de fonctionnement :
 
-### Mode Serial (recommandé pour la plupart des utilisateurs)
+### Mode Meshtastic Serial (recommandé)
 Connexion directe via USB/UART - Configuration simple et stable
 
 ```mermaid
@@ -29,7 +29,7 @@ graph TD
 **Avantages** : Simple, stable, latence minimale  
 **Inconvénient** : Node doit être proche du Raspberry Pi
 
-### Mode TCP (pour placement optimal du node)
+### Mode Meshtastic TCP (placement optimal)
 Connexion réseau - Le node peut être placé à distance (extérieur, meilleure antenne)
 
 ```mermaid
@@ -51,6 +51,35 @@ graph TD
 
 **Avantages** : Node peut être à distance, meilleur placement d'antenne  
 **Inconvénients** : Configuration réseau requise, dépend de la stabilité WiFi/Ethernet
+
+### Mode MeshCore Companion (NOUVEAU) 
+Connexion série MeshCore uniquement - Bot fonctionnant sans Meshtastic
+
+```mermaid
+graph TD
+    %% Styles
+    classDef node fill:#9f9,color:#000
+    classDef rpi fill:#bbf,color:#000
+    classDef connection stroke:#333,color:#000
+
+    %% Nodes
+    RPi5["Raspberry Pi 5<br/>(Bot + Llama.cpp)"]:::rpi
+    MeshCoreNode["MeshCore Device<br/>(Serial USB/UART)"]:::node
+    MeshCoreNetwork["Réseau MeshCore<br/>LoRa"]:::node
+
+    %% Connections
+    RPi5 -- "/dev/ttyUSB0<br/>(USB Serial)" --> MeshCoreNode
+    MeshCoreNode -- "LoRa" --> MeshCoreNetwork
+```
+
+**Mode companion** : Le bot reçoit uniquement des DM (Direct Messages) via MeshCore
+- ✅ Fonctionnalités disponibles : `/bot`, `/weather`, `/rain`, `/power`, `/sys`, `/help`, `/blitz`, `/vigilance`
+- ❌ Fonctionnalités désactivées : `/nodes`, `/my`, `/trace`, `/neighbors`, `/stats` (requièrent Meshtastic)
+
+**Avantages** : Utilisation avec MeshCore, pas besoin de matériel Meshtastic  
+**Inconvénients** : Fonctionnalités réseau Meshtastic non disponibles
+
+**Configuration** : Voir `config.meshcore.example` pour un exemple complet
 
 ```markdown
 ## Fonctionnalités

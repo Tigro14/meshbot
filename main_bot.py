@@ -43,6 +43,9 @@ from platforms.telegram_platform import TelegramPlatform
 from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
+# Import de l'interface MeshCore (mode companion)
+from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
+
 class MeshBot:
     # Configuration pour la reconnexion TCP
     # ESP32 needs time to fully release the old connection before accepting a new one
@@ -1584,7 +1587,7 @@ class MeshBot:
             self.db_error_monitor = None
     
     def start(self):
-        """Démarrage du bot - version simplifiée avec support TCP/Serial"""
+        """Démarrage du bot - version simplifiée avec support TCP/Serial/MeshCore"""
         info_print("🤖 Bot Meshtastic-Llama avec architecture modulaire")
         
         # ========================================
@@ -1610,9 +1613,41 @@ class MeshBot:
             # ========================================
             # DÉTECTION DU MODE DE CONNEXION
             # ========================================
+            meshtastic_enabled = globals().get('MESHTASTIC_ENABLED', True)
+            meshcore_enabled = globals().get('MESHCORE_ENABLED', False)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
-            if connection_mode == 'tcp':
+            if not meshtastic_enabled and not meshcore_enabled:
+                # Mode standalone - aucune connexion radio
+                info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
+                info_print("   → Bot en mode test uniquement (commandes limitées)")
+                self.interface = MeshCoreStandaloneInterface()
+                
+            elif meshcore_enabled:
+                # ========================================
+                # MODE MESHCORE COMPANION - Connexion série MeshCore
+                # ========================================
+                meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                info_print(f"🔗 Mode MESHCORE COMPANION: Connexion série {meshcore_port}")
+                info_print("   → Fonctionnalités disponibles: /bot, /weather, /power, /sys, /help")
+                info_print("   → Fonctionnalités désactivées: /nodes, /my, /trace, /stats (Meshtastic requis)")
+                
+                self.interface = MeshCoreSerialInterface(meshcore_port)
+                
+                if not self.interface.connect():
+                    error_print("❌ Échec connexion série MeshCore")
+                    return False
+                
+                # Démarrer la lecture des messages
+                if not self.interface.start_reading():
+                    error_print("❌ Échec démarrage lecture MeshCore")
+                    return False
+                
+                # Configurer le callback pour les messages reçus
+                self.interface.set_message_callback(self.on_message)
+                info_print("✅ Connexion MeshCore établie")
+                
+            elif meshtastic_enabled and connection_mode == 'tcp':
                 # ========================================
                 # MODE TCP - Connexion réseau
                 # ========================================
@@ -1706,13 +1741,13 @@ class MeshBot:
                 time.sleep(5)
                 info_print("✅ Connexion TCP stable")
                 
-            else:
+            elif meshtastic_enabled:
                 # ========================================
-                # MODE SERIAL - Connexion série (défaut)
+                # MODE SERIAL - Connexion série Meshtastic (défaut)
                 # ========================================
                 serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
                 
-                info_print(f"🔌 Mode Serial: Connexion série {serial_port}")
+                info_print(f"🔌 Mode SERIAL MESHTASTIC: Connexion série {serial_port}")
                 self.interface = meshtastic.serial_interface.SerialInterface(serial_port)
                 info_print("✅ Interface série créée")
                 
@@ -1725,62 +1760,72 @@ class MeshBot:
             # ========================================
             # Partager l'interface avec RemoteNodesClient pour éviter
             # de créer des connexions TCP supplémentaires
-            self.remote_nodes_client.interface = self.interface
-            info_print("♻️ Interface partagée avec RemoteNodesClient")
+            # (Uniquement si Meshtastic est actif)
+            if meshtastic_enabled:
+                self.remote_nodes_client.interface = self.interface
+                info_print("♻️ Interface partagée avec RemoteNodesClient")
             
             # ========================================
-            # SYNCHRONISATION DES CLÉS PUBLIQUES
+            # SYNCHRONISATION DES CLÉS PUBLIQUES (Meshtastic uniquement)
             # ========================================
             # Inject public keys from node_names.json into interface.nodes
             # This is critical for DM decryption in TCP mode where interface.nodes
             # starts empty. We restore keys from our persistent database without
             # violating ESP32 single-connection limitation.
-            try:
-                info_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
-                injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
-                if injected > 0:
-                    info_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
-                else:
-                    info_print("ℹ️  Aucune clé publique à synchroniser (collection continue)")
-            except Exception as e:
-                error_print(f"⚠️  Erreur synchronisation clés publiques: {e}")
-                error_print(traceback.format_exc())
-                info_print("   → Déchiffrement DM limité jusqu'à réception NODEINFO")
+            if meshtastic_enabled:
+                try:
+                    info_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
+                    injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
+                    if injected > 0:
+                        info_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
+                    else:
+                        info_print("ℹ️  Aucune clé publique à synchroniser (collection continue)")
+                except Exception as e:
+                    error_print(f"⚠️  Erreur synchronisation clés publiques: {e}")
+                    error_print(traceback.format_exc())
+                    info_print("   → Déchiffrement DM limité jusqu'à réception NODEINFO")
             
             # Set interface reference in node_manager for get_node_name() calls
             self.node_manager.set_interface(self.interface)
             
             # ========================================
-            # CHARGEMENT INITIAL DES VOISINS
+            # CHARGEMENT INITIAL DES VOISINS (Meshtastic uniquement)
             # ========================================
             # Populate neighbor database from interface at startup
             # This provides an initial complete view of the network topology
             # Passive collection will continue via NEIGHBORINFO_APP packets
-            try:
-                total_neighbors = self.traffic_monitor.populate_neighbors_from_interface(self.interface)
-                if total_neighbors > 0:
-                    info_print(f"👥 Base de voisinage initialisée avec {total_neighbors} relations")
-                else:
-                    info_print("ℹ️  Aucun voisin trouvé au démarrage (collection continue en tâche de fond)")
-            except Exception as e:
-                error_print(f"⚠️  Erreur lors du chargement initial des voisins: {e}")
-                info_print("   → Collection continue via NEIGHBORINFO_APP packets")
+            if meshtastic_enabled:
+                try:
+                    total_neighbors = self.traffic_monitor.populate_neighbors_from_interface(self.interface)
+                    if total_neighbors > 0:
+                        info_print(f"👥 Base de voisinage initialisée avec {total_neighbors} relations")
+                    else:
+                        info_print("ℹ️  Aucun voisin trouvé au démarrage (collection continue en tâche de fond)")
+                except Exception as e:
+                    error_print(f"⚠️  Erreur lors du chargement initial des voisins: {e}")
+                    info_print("   → Collection continue via NEIGHBORINFO_APP packets")
             
             # ========================================
-            # ABONNEMENT AUX MESSAGES (CRITIQUE!)
+            # ABONNEMENT AUX MESSAGES
             # ========================================
-            # DOIT être fait immédiatement après la création de l'interface
-            # S'abonner aux différents types de messages Meshtastic
-            # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
-            # - meshtastic.receive.data : messages de données
-            # - meshtastic.receive : messages génériques (fallback)
+            # En mode Meshtastic: S'abonner aux messages via pubsub
+            # En mode MeshCore: Le callback est déjà configuré
+            if meshtastic_enabled:
+                # DOIT être fait immédiatement après la création de l'interface
+                # S'abonner aux différents types de messages Meshtastic
+                # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
+                # - meshtastic.receive.data : messages de données
+                # - meshtastic.receive : messages génériques (fallback)
+                
+                # S'abonner avec le callback principal
+                # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
+                # (ce topic catch ALL messages: text, data, position, etc.)
+                pub.subscribe(self.on_message, "meshtastic.receive")
+                
+                info_print("✅ Abonné aux messages Meshtastic (receive)")
+            else:
+                info_print("ℹ️  Mode companion: Messages gérés par interface MeshCore")
             
-            # S'abonner avec le callback principal
-            # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
-            # (ce topic catch ALL messages: text, data, position, etc.)
-            pub.subscribe(self.on_message, "meshtastic.receive")
-            
-            info_print("✅ Abonné aux messages Meshtastic (receive)")
             self.running = True
 
             # ========================================
@@ -1911,7 +1956,8 @@ class MeshBot:
                 self.blitz_monitor,
                 self.vigilance_monitor,
                 broadcast_tracker=self._track_broadcast,  # Callback pour tracker les broadcasts
-                mqtt_neighbor_collector=self.mqtt_neighbor_collector  # MQTT collector reference
+                mqtt_neighbor_collector=self.mqtt_neighbor_collector,  # MQTT collector reference
+                companion_mode=(meshcore_enabled or not meshtastic_enabled)  # Mode companion si pas Meshtastic
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)

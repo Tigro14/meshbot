@@ -21,13 +21,26 @@ class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
                  bot_start_time=None, blitz_monitor=None, vigilance_monitor=None,
-                 broadcast_tracker=None):
+                 broadcast_tracker=None, companion_mode=False):
 
         # Dépendances
         self.node_manager = node_manager
         self.interface = interface
         self.traffic_monitor = traffic_monitor
         self.broadcast_tracker = broadcast_tracker  # Callback pour tracker les broadcasts
+        self.companion_mode = companion_mode  # Mode companion (MeshCore sans Meshtastic)
+        
+        # Commandes supportées en mode companion (non-Meshtastic)
+        self.companion_commands = [
+            '/bot',      # AI
+            '/weather',  # Météo
+            '/rain',     # Graphiques pluie
+            '/power',    # ESPHome telemetry
+            '/sys',      # Système (CPU, RAM, uptime)
+            '/help',     # Aide
+            '/blitz',    # Lightning (si activé)
+            '/vigilance' # Vigilance météo (si activé)
+        ]
 
         # Message sender (gère envoi et throttling)
         self.sender = MessageSender(interface, node_manager)
@@ -116,6 +129,17 @@ class MessageRouter:
             return
 
         command = text_parts[0].lower()
+        
+        # En mode companion, filtrer les commandes non supportées
+        if self.companion_mode:
+            command_supported = any(message.startswith(cmd) for cmd in self.companion_commands)
+            if not command_supported:
+                info_print(f"⚠️ Commande {command} non supportée en mode companion (Meshtastic requis)")
+                self.sender.send_single(
+                    f"⚠️ Commande {command} désactivée en mode companion.\nCommandes dispo: {', '.join(self.companion_commands)}",
+                    sender_id, sender_info
+                )
+                return
         
         # Commandes IA
         if message.startswith('/bot'):
