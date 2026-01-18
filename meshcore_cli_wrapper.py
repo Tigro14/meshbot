@@ -12,7 +12,7 @@ import traceback
 
 # Try to import meshcore-cli
 try:
-    from meshcore import MeshCore
+    from meshcore import MeshCore, EventType
     MESHCORE_CLI_AVAILABLE = True
     info_print("✅ [MESHCORE] Library meshcore-cli disponible")
 except ImportError:
@@ -20,6 +20,7 @@ except ImportError:
     info_print("⚠️ [MESHCORE] Library meshcore-cli non disponible (pip install meshcore)")
     # Fallback to basic implementation
     MeshCore = None
+    EventType = None
 
 
 class MeshCoreCLIWrapper:
@@ -94,83 +95,95 @@ class MeshCoreCLIWrapper:
             error_print(traceback.format_exc())
             return False
     
+    def set_message_callback(self, callback):
+        """
+        Définit le callback pour les messages reçus
+        Compatible avec l'interface Meshtastic
+        
+        Args:
+            callback: Fonction à appeler lors de la réception d'un message
+        """
+        self.message_callback = callback
+        info_print("✅ [MESHCORE-CLI] Callback message défini")
+    
     def start_reading(self):
         """Démarre la lecture des messages en arrière-plan"""
         if not self.meshcore:
             error_print("❌ [MESHCORE-CLI] Non connecté, impossible de démarrer la lecture")
             return False
         
+        # Subscribe to contact (DM) messages via dispatcher
+        try:
+            self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
+            info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (CONTACT_MSG_RECV)")
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-CLI] Erreur souscription: {e}")
+            error_print(traceback.format_exc())
+            return False
+        
         self.running = True
+        
+        # Lancer une boucle asyncio dans un thread séparé pour traiter les événements
         self.message_thread = threading.Thread(
-            target=self._message_loop,
-            name="MeshCore-CLI-Reader",
+            target=self._async_event_loop,
+            name="MeshCore-CLI-AsyncLoop",
             daemon=True
         )
         self.message_thread.start()
-        info_print("✅ [MESHCORE-CLI] Thread de lecture démarré")
+        info_print("✅ [MESHCORE-CLI] Thread événements démarré")
         return True
     
-    def _message_loop(self):
-        """Boucle de lecture des messages"""
-        info_print("📡 [MESHCORE-CLI] Début lecture messages...")
+    def _async_event_loop(self):
+        """Boucle asyncio pour gérer les événements MeshCore"""
+        info_print("📡 [MESHCORE-CLI] Début écoute événements...")
         
-        while self.running:
-            try:
-                # Synchroniser les messages en attente avec l'API async
-                messages = self._loop.run_until_complete(
-                    self.meshcore.sync_messages()
-                )
-                
-                if messages:
-                    for msg in messages:
-                        self._process_message(msg)
-                
-                # Pause courte pour ne pas surcharger le CPU
-                time.sleep(0.5)
-                
-            except Exception as e:
-                error_print(f"❌ [MESHCORE-CLI] Erreur lecture: {e}")
-                error_print(traceback.format_exc())
-                time.sleep(1)
+        try:
+            # Garder la boucle ouverte pour recevoir les événements
+            while self.running:
+                time.sleep(0.1)  # Petite pause pour ne pas surcharger
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-CLI] Erreur boucle événements: {e}")
+            error_print(traceback.format_exc())
         
-        info_print("📡 [MESHCORE-CLI] Arrêt lecture messages")
+        info_print("📡 [MESHCORE-CLI] Arrêt écoute événements")
     
-    def _process_message(self, msg):
+    def _on_contact_message(self, event):
         """
-        Traite un message reçu de meshcore-cli
+        Callback pour les messages de contact (DM)
+        Appelé par le dispatcher de meshcore-cli
         
         Args:
-            msg: Message dict from meshcore-cli
+            event: Event object from meshcore dispatcher
         """
         try:
-            # Extraire les informations du message
-            sender_id = msg.get('sender_id')
-            text = msg.get('text', '')
-            msg_type = msg.get('type', 'contact')  # 'contact' (DM) ou 'channel'
+            # Extraire les informations de l'événement
+            # L'API meshcore fournit un objet event avec payload
+            payload = event.payload if hasattr(event, 'payload') else event
             
-            if msg_type == 'contact':  # DM uniquement pour le bot
-                info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
-                
-                # Créer un pseudo-packet compatible avec le code existant
-                packet = {
-                    'from': sender_id,
-                    'to': self.localNode.nodeNum,
-                    'decoded': {
-                        'portnum': 'TEXT_MESSAGE_APP',
-                        'payload': text.encode('utf-8')
-                    }
+            sender_id = payload.get('contact_id') or payload.get('sender_id')
+            text = payload.get('text', '')
+            
+            info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+            
+            # Créer un pseudo-packet compatible avec le code existant
+            packet = {
+                'from': sender_id,
+                'to': self.localNode.nodeNum,
+                'decoded': {
+                    'portnum': 'TEXT_MESSAGE_APP',
+                    'payload': text.encode('utf-8')
                 }
-                
-                # Appeler le callback
-                if self.message_callback:
-                    self.message_callback(packet, None)
-            else:
-                debug_print(f"📢 [MESHCORE-CHANNEL] Message canal ignoré (mode companion)")
+            }
+            
+            # Appeler le callback
+            if self.message_callback:
+                self.message_callback(packet, None)
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")
             error_print(traceback.format_exc())
     
+
     def sendText(self, text, destinationId, wantAck=False, channelIndex=0):
         """
         Envoie un message texte via MeshCore

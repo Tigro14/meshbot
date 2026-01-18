@@ -1,10 +1,37 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.1)
+## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.2)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
 
-### 🆕 Version 1.3.1 (2026-01-18)
+### 🆕 Version 1.3.2 (2026-01-18)
+
+**Correctif API événements meshcore-cli** : Utilisation correcte du dispatcher async
+
+- ✅ **Event dispatcher** : Utilise `dispatcher.subscribe(EventType.CONTACT_MSG_RECV, callback)`
+- ✅ **Suppression sync_messages()** : Méthode inexistante remplacée par modèle événementiel
+- ✅ **Ajout set_message_callback()** : Méthode manquante pour compatibilité interface
+- ✅ **Async event loop** : Thread dédié pour gérer les événements asynchrones
+
+**Problème résolu** :
+```
+AttributeError: 'MeshCore' object has no attribute 'sync_messages'
+AttributeError: 'MeshCoreCLIWrapper' object has no attribute 'set_message_callback'
+```
+
+**Solution** :
+```python
+# API meshcore-cli utilise un modèle événementiel:
+self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
+
+# Callback défini pour compatibilité interface:
+def set_message_callback(self, callback):
+    self.message_callback = callback
+```
+
+**Référence** : [meshcore-py Events API](https://github.com/meshcore-dev/meshcore_py/blob/main/src/meshcore/events.py)
+
+### Version 1.3.1 (2026-01-18)
 
 **Correctif API meshcore-cli** : Utilisation correcte de l'API officielle
 
