@@ -6,6 +6,7 @@ Intégration avec le bot MeshBot en mode companion
 
 import threading
 import time
+import asyncio
 from utils import info_print, debug_print, error_print
 import traceback
 
@@ -61,28 +62,30 @@ class MeshCoreCLIWrapper:
         try:
             info_print(f"🔌 [MESHCORE-CLI] Connexion à {self.port}...")
             
-            # Créer l'objet MeshCore
-            self.meshcore = MeshCore(serial_port=self.port, baud_rate=self.baudrate)
+            # Créer l'objet MeshCore via factory method async
+            # MeshCore utilise des factory methods: create_serial, create_ble, create_tcp
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            # Se connecter
-            self.meshcore.connect()
+            # Créer la connexion série avec la factory method
+            self.meshcore = loop.run_until_complete(
+                MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=False)
+            )
             
-            # Attendre que le device soit prêt
-            time.sleep(2)
+            # Sauvegarder l'event loop pour les opérations futures
+            self._loop = loop
             
-            # Récupérer les infos du device
-            device_info = self.meshcore.get_device_info()
-            if device_info:
-                info_print(f"✅ [MESHCORE-CLI] Device connecté: {device_info.get('manufacturer_model', 'Unknown')}")
-                info_print(f"   Firmware: v{device_info.get('firmware_ver', '?')}")
+            info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
             
-            # Récupérer les infos self
-            self_info = self.meshcore.get_self_info()
-            if self_info:
-                node_id = self_info.get('node_id')
-                if node_id:
-                    self.localNode.nodeNum = node_id
-                    info_print(f"   Node ID: 0x{node_id:08x}")
+            # Récupérer le node ID si possible
+            try:
+                # Essayer de récupérer les infos du device
+                # Note: l'API meshcore-cli peut varier selon la version
+                if hasattr(self.meshcore, 'node_id'):
+                    self.localNode.nodeNum = self.meshcore.node_id
+                    info_print(f"   Node ID: 0x{self.localNode.nodeNum:08x}")
+            except Exception as e:
+                debug_print(f"⚠️ [MESHCORE-CLI] Impossible de récupérer node_id: {e}")
             
             return True
             
@@ -113,8 +116,10 @@ class MeshCoreCLIWrapper:
         
         while self.running:
             try:
-                # Synchroniser les messages en attente
-                messages = self.meshcore.sync_messages()
+                # Synchroniser les messages en attente avec l'API async
+                messages = self._loop.run_until_complete(
+                    self.meshcore.sync_messages()
+                )
                 
                 if messages:
                     for msg in messages:
@@ -186,10 +191,12 @@ class MeshCoreCLIWrapper:
         try:
             debug_print(f"📤 [MESHCORE-DM] Envoi à 0x{destinationId:08x}: {text[:50]}{'...' if len(text) > 50 else ''}")
             
-            # Envoyer via meshcore-cli
-            result = self.meshcore.send_text_message(
-                text=text,
-                contact_id=destinationId
+            # Envoyer via meshcore-cli avec l'API async
+            result = self._loop.run_until_complete(
+                self.meshcore.send_text_message(
+                    text=text,
+                    contact_id=destinationId
+                )
             )
             
             if result:
@@ -215,9 +222,16 @@ class MeshCoreCLIWrapper:
         
         if self.meshcore:
             try:
-                self.meshcore.disconnect()
+                # Fermer avec l'API async
+                self._loop.run_until_complete(self.meshcore.disconnect())
             except Exception as e:
                 error_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture: {e}")
+        
+        if hasattr(self, '_loop'):
+            try:
+                self._loop.close()
+            except Exception:
+                pass
         
         info_print("✅ [MESHCORE-CLI] Connexion fermée")
 

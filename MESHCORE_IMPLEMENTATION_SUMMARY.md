@@ -1,8 +1,31 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3)
+## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.1)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
+
+### 🆕 Version 1.3.1 (2026-01-18)
+
+**Correctif API meshcore-cli** : Utilisation correcte de l'API officielle
+
+- ✅ **API async fixée** : Utilise `MeshCore.create_serial()` au lieu de `__init__()`
+- ✅ **Event loop** : Gestion correcte de asyncio avec `run_until_complete()`
+- ✅ **Factory methods** : Respect de l'API officielle meshcore-cli
+- ✅ **Compatible** : Fonctionne avec meshcore-cli installé localement
+
+**Changements techniques** :
+```python
+# Avant (v1.3 - incorrect) :
+self.meshcore = MeshCore(serial_port=self.port, baud_rate=self.baudrate)
+
+# Après (v1.3.1 - correct) :
+loop = asyncio.new_event_loop()
+self.meshcore = loop.run_until_complete(
+    MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=False)
+)
+```
+
+**Référence API** : [meshcore-py GitHub](https://github.com/meshcore-dev/meshcore_py)
 
 ### 🆕 Version 1.3 (2026-01-18)
 
