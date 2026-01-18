@@ -24,10 +24,13 @@ Le mode MeshCore Companion permet au bot de fonctionner sans connexion Meshtasti
 
 ## Protocole MeshCore (implémentation actuelle)
 
-L'implémentation actuelle utilise un **protocole texte simple** pour la communication MeshCore. Ce protocole devra être adapté selon le protocole binaire réel de MeshCore.
+L'implémentation actuelle supporte **deux formats** de communication MeshCore :
 
-### Format de réception (DM entrant)
+### 1. Format texte (simple)
 
+Format texte pour compatibilité et tests rapides.
+
+**Format de réception (DM entrant)** :
 ```
 DM:<sender_id_hex>:<message_text>
 ```
@@ -37,19 +40,25 @@ DM:<sender_id_hex>:<message_text>
 DM:12345678:/bot hello
 ```
 
-Cela se traduit en :
-- `sender_id` = `0x12345678`
-- `message` = `/bot hello`
-
-### Format d'envoi (DM sortant)
-
+**Format d'envoi (DM sortant)** :
 ```
 SEND_DM:<destination_id_hex>:<message_text>\n
 ```
 
-**Exemple** :
+### 2. Format binaire (protobuf)
+
+Support automatique des données binaires protobuf. Lorsque des données binaires sont reçues :
+- Détection automatique (échec décodage UTF-8)
+- Logging différencié : `[MESHCORE-BINARY]` vs `[MESHCORE-TEXT]`
+- Empêche l'affichage de "blob data" dans les logs
+- Stub pour décodage protobuf (à implémenter selon spec MeshCore)
+
+**Logs différenciés** :
 ```
-SEND_DM:12345678:Bonjour! Comment puis-je vous aider?\n
+📨 [MESHCORE-TEXT] Reçu: DM:12345678:/help
+📨 [MESHCORE-BINARY] Reçu: 156 octets (protobuf)
+📬 [MESHCORE-DM] De: 0x12345678 | Message: /help
+📤 [MESHCORE-DM] Envoyé à 0x12345678: Voici l'aide...
 ```
 
 ### Protocole binaire MeshCore

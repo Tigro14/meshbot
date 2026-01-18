@@ -44,7 +44,7 @@ class MeshCoreSerialInterface:
             'nodeNum': 0xFFFFFFFF,  # ID fictif pour mode companion
         })()
         
-        info_print(f"🔧 Initialisation interface série MeshCore: {port}")
+        info_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
         
     def connect(self):
         """Établit la connexion série avec MeshCore"""
@@ -54,20 +54,20 @@ class MeshCoreSerialInterface:
                 baudrate=self.baudrate,
                 timeout=1.0
             )
-            info_print(f"✅ Connexion série MeshCore établie: {self.port}")
+            info_print(f"✅ [MESHCORE] Connexion série établie: {self.port}")
             return True
         except serial.SerialException as e:
-            error_print(f"❌ Erreur connexion série MeshCore: {e}")
+            error_print(f"❌ [MESHCORE] Erreur connexion série: {e}")
             return False
         except Exception as e:
-            error_print(f"❌ Erreur inattendue connexion MeshCore: {e}")
+            error_print(f"❌ [MESHCORE] Erreur inattendue connexion: {e}")
             error_print(traceback.format_exc())
             return False
     
     def start_reading(self):
         """Démarre la lecture en arrière-plan des messages MeshCore"""
         if not self.serial or not self.serial.is_open:
-            error_print("❌ Port série non ouvert, impossible de démarrer la lecture")
+            error_print("❌ [MESHCORE] Port série non ouvert, impossible de démarrer la lecture")
             return False
         
         self.running = True
@@ -77,38 +77,46 @@ class MeshCoreSerialInterface:
             daemon=True
         )
         self.read_thread.start()
-        info_print("✅ Thread de lecture MeshCore démarré")
+        info_print("✅ [MESHCORE] Thread de lecture démarré")
         return True
     
     def _read_loop(self):
         """Boucle de lecture des messages série (exécutée dans un thread)"""
-        info_print("📡 Début lecture messages MeshCore...")
+        info_print("📡 [MESHCORE] Début lecture messages MeshCore...")
         
         while self.running and self.serial and self.serial.is_open:
             try:
-                # Lecture ligne par ligne (protocole texte simple)
-                # TODO: Adapter selon le protocole binaire MeshCore réel
+                # Lecture des données disponibles
                 if self.serial.in_waiting > 0:
-                    line = self.serial.readline().decode('utf-8', errors='ignore').strip()
+                    # Lire les données brutes
+                    raw_data = self.serial.read(self.serial.in_waiting)
                     
-                    if line:
-                        debug_print(f"📨 MeshCore reçu: {line}")
-                        self._process_meshcore_line(line)
+                    # Vérifier si c'est du texte ou du binaire
+                    try:
+                        # Tenter de décoder comme texte UTF-8
+                        line = raw_data.decode('utf-8', errors='strict').strip()
+                        if line:
+                            debug_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
+                            self._process_meshcore_line(line)
+                    except UnicodeDecodeError:
+                        # Données binaires (probablement protobuf)
+                        debug_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protobuf)")
+                        self._process_meshcore_binary(raw_data)
                 
                 time.sleep(0.1)  # Éviter de saturer le CPU
                 
             except serial.SerialException as e:
-                error_print(f"❌ Erreur lecture série MeshCore: {e}")
+                error_print(f"❌ [MESHCORE] Erreur lecture série: {e}")
                 break
             except Exception as e:
-                error_print(f"❌ Erreur traitement message MeshCore: {e}")
+                error_print(f"❌ [MESHCORE] Erreur traitement message: {e}")
                 error_print(traceback.format_exc())
         
-        info_print("🛑 Thread de lecture MeshCore arrêté")
+        info_print("🛑 [MESHCORE] Thread de lecture arrêté")
     
     def _process_meshcore_line(self, line):
         """
-        Traite une ligne reçue de MeshCore
+        Traite une ligne texte reçue de MeshCore
         
         Format attendu (à adapter selon protocole MeshCore):
         DM:<sender_id>:<message_text>
@@ -124,6 +132,8 @@ class MeshCoreSerialInterface:
                     sender_id = int(parts[0], 16)  # ID en hexa
                     message = parts[1]
                     
+                    info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {message[:50]}{'...' if len(message) > 50 else ''}")
+                    
                     # Créer un pseudo-packet compatible avec le code existant
                     packet = {
                         'from': sender_id,
@@ -137,9 +147,37 @@ class MeshCoreSerialInterface:
                     # Appeler le callback si défini
                     if self.message_callback:
                         self.message_callback(packet, None)
+            else:
+                debug_print(f"⚠️ [MESHCORE] Ligne non reconnue: {line[:80]}")
         
         except Exception as e:
-            error_print(f"❌ Erreur parsing message MeshCore: {e}")
+            error_print(f"❌ [MESHCORE] Erreur parsing message texte: {e}")
+            error_print(traceback.format_exc())
+    
+    def _process_meshcore_binary(self, raw_data):
+        """
+        Traite des données binaires (protobuf) reçues de MeshCore
+        
+        Args:
+            raw_data: Données binaires brutes
+        """
+        try:
+            # Pour l'instant, logger les données binaires sans les afficher
+            debug_print(f"🔍 [MESHCORE-PROTOBUF] Tentative de décodage protobuf ({len(raw_data)} octets)")
+            
+            # TODO: Implémenter le décodage protobuf MeshCore
+            # Pour l'instant, on ignore les données binaires
+            # Le protocole protobuf de MeshCore devra être documenté et implémenté ici
+            
+            # Exemple de structure attendue (à adapter):
+            # - Magic bytes
+            # - Message type
+            # - Protobuf payload
+            
+            debug_print(f"⚠️ [MESHCORE-PROTOBUF] Décodage protobuf non implémenté - données ignorées")
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE] Erreur traitement données binaires: {e}")
             error_print(traceback.format_exc())
     
     def sendText(self, message, destinationId=None):
@@ -151,12 +189,12 @@ class MeshCoreSerialInterface:
             destinationId: ID du destinataire (None = broadcast, mais désactivé en mode companion)
         """
         if not self.serial or not self.serial.is_open:
-            error_print("❌ Port série non ouvert, impossible d'envoyer")
+            error_print("❌ [MESHCORE] Port série non ouvert, impossible d'envoyer")
             return False
         
         # En mode companion, on envoie uniquement des DM (pas de broadcast)
         if destinationId is None:
-            debug_print("⚠️ Broadcast désactivé en mode companion MeshCore")
+            debug_print("⚠️ [MESHCORE] Broadcast désactivé en mode companion")
             return False
         
         try:
@@ -164,21 +202,21 @@ class MeshCoreSerialInterface:
             # TODO: Adapter selon le protocole binaire MeshCore réel
             cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
             self.serial.write(cmd.encode('utf-8'))
-            debug_print(f"📤 MeshCore envoyé: {cmd.strip()}")
+            debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
             return True
         
         except Exception as e:
-            error_print(f"❌ Erreur envoi message MeshCore: {e}")
+            error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
             return False
     
     def set_message_callback(self, callback):
         """Définit le callback pour les messages reçus"""
         self.message_callback = callback
-        debug_print("✅ Callback message MeshCore configuré")
+        debug_print("✅ [MESHCORE] Callback message configuré")
     
     def close(self):
         """Ferme la connexion série MeshCore"""
-        info_print("🛑 Fermeture interface MeshCore...")
+        info_print("🛑 [MESHCORE] Fermeture interface...")
         self.running = False
         
         if self.read_thread and self.read_thread.is_alive():
@@ -187,7 +225,7 @@ class MeshCoreSerialInterface:
         if self.serial and self.serial.is_open:
             self.serial.close()
         
-        info_print("✅ Interface MeshCore fermée")
+        info_print("✅ [MESHCORE] Interface fermée")
     
     def __enter__(self):
         """Support du context manager"""

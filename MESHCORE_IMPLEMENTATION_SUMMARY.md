@@ -1,8 +1,19 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète
+## ✅ Implémentation complète (mise à jour 2026-01-18)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
+
+### 🆕 Améliorations récentes (v1.1)
+
+- **Logs différenciés** : Tous les messages MeshCore sont préfixés `[MESHCORE]`
+- **Support binaire/protobuf** : Détection automatique et gestion des données binaires
+- **Prévention blob data** : Les données binaires ne sont plus affichées directement dans les logs
+- **Logging structuré** :
+  - `[MESHCORE-TEXT]` - Messages texte
+  - `[MESHCORE-BINARY]` - Données binaires (protobuf)
+  - `[MESHCORE-DM]` - Messages directs avec détails (expéditeur, contenu)
+  - `[MESHCORE-PROTOBUF]` - Tentatives de décodage protobuf
 
 ## 📦 Fichiers créés/modifiés
 
