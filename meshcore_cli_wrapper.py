@@ -112,11 +112,20 @@ class MeshCoreCLIWrapper:
             error_print("❌ [MESHCORE-CLI] Non connecté, impossible de démarrer la lecture")
             return False
         
-        # Subscribe to contact (DM) messages via dispatcher
+        # Subscribe to contact (DM) messages via dispatcher/events
         try:
-            self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-            info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (CONTACT_MSG_RECV)")
-            debug_print(f"[MESHCORE-CLI] Dispatcher: {self.meshcore.dispatcher}")
+            # MeshCore uses 'events' attribute for subscriptions
+            if hasattr(self.meshcore, 'events'):
+                self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
+                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (events.subscribe)")
+            elif hasattr(self.meshcore, 'dispatcher'):
+                self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
+                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (dispatcher.subscribe)")
+            else:
+                error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
+                return False
+            
+            debug_print(f"[MESHCORE-CLI] MeshCore object: {self.meshcore}")
             debug_print(f"[MESHCORE-CLI] EventType.CONTACT_MSG_RECV: {EventType.CONTACT_MSG_RECV}")
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur souscription: {e}")
@@ -146,6 +155,18 @@ class MeshCoreCLIWrapper:
             
             # Créer une coroutine qui tourne tant que running est True
             async def event_loop_task():
+                # CRITICAL: Start auto message fetching to receive events
+                try:
+                    if hasattr(self.meshcore, 'start_auto_message_fetching'):
+                        await self.meshcore.start_auto_message_fetching()
+                        info_print("✅ [MESHCORE-CLI] Auto message fetching démarré")
+                    else:
+                        info_print("⚠️ [MESHCORE-CLI] start_auto_message_fetching() non disponible")
+                except Exception as e:
+                    error_print(f"❌ [MESHCORE-CLI] Erreur start_auto_message_fetching: {e}")
+                    error_print(traceback.format_exc())
+                
+                # Boucle pour maintenir l'event loop actif
                 while self.running:
                     await asyncio.sleep(0.1)  # Pause async pour laisser le dispatcher fonctionner
             

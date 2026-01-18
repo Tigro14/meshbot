@@ -1,10 +1,35 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.3)
+## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.4)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
 
-### 🆕 Version 1.3.3 (2026-01-18)
+### 🆕 Version 1.3.4 (2026-01-18)
+
+**Fix auto message fetching** : Activation explicite de la réception d'événements
+
+- ✅ **start_auto_message_fetching()** : Appel requis pour activer la réception
+- ✅ **Support events/dispatcher** : Compatible avec différentes versions de meshcore-cli
+- ✅ **Logs détaillés** : Identification de la méthode utilisée (events vs dispatcher)
+
+**Problème résolu** :
+```
+Aucun paquet MeshCore reçu - auto message fetching non démarré
+```
+
+**Solution** :
+```python
+async def event_loop_task():
+    # CRITICAL: Démarrer la récupération automatique des messages
+    await self.meshcore.start_auto_message_fetching()
+    info_print("✅ Auto message fetching démarré")
+    
+    # Maintenir la boucle active
+    while self.running:
+        await asyncio.sleep(0.1)
+```
+
+### Version 1.3.3 (2026-01-18)
 
 **Fix asyncio event loop** : Boucle async active pour dispatcher meshcore-cli
 
