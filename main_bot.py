@@ -44,7 +44,14 @@ from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
 # Import de l'interface MeshCore (mode companion)
-from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
+# Tente d'utiliser meshcore-cli library si disponible, sinon fallback vers impl basique
+try:
+    from meshcore_cli_wrapper import MeshCoreCLIWrapper as MeshCoreSerialInterface
+    from meshcore_serial_interface import MeshCoreStandaloneInterface
+    info_print("✅ [MESHCORE] Using meshcore-cli library")
+except ImportError:
+    from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
+    info_print("⚠️ [MESHCORE] Using basic implementation (meshcore-cli not available)")
 
 class MeshBot:
     # Configuration pour la reconnexion TCP

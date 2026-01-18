@@ -1,10 +1,29 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète (mise à jour 2026-01-18)
+## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
 
-### 🆕 Améliorations récentes (v1.2)
+### 🆕 Version 1.3 (2026-01-18)
+
+**Intégration meshcore-cli** : Support de la library Python officielle MeshCore
+
+- ✅ **Library officielle** : Utilise meshcore-cli (pip install meshcore) si disponible
+- ✅ **Fallback intelligent** : Bascule automatiquement vers implémentation basique si lib absente
+- ✅ **Wrapper unifié** : `meshcore_cli_wrapper.py` encapsule la library avec interface compatible
+- ✅ **Transparent** : Aucun changement pour l'utilisateur final
+- ✅ **Protocole complet** : Support du protocole binaire MeshCore officiel via la library
+
+**Fichiers ajoutés** :
+- `meshcore_cli_wrapper.py` - Wrapper pour meshcore-cli library
+- `meshcore_protocol_impl.py` - Implémentation protocole (référence)
+
+**Installation** :
+```bash
+pip install meshcore  # Library officielle meshcore-cli
+```
+
+### Version 1.2 (2026-01-18)
 
 **Clarification protocole** : MeshCore utilise son propre protocole binaire, pas protobuf
 

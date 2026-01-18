@@ -40,6 +40,11 @@ pygeohash>=3.2.0
 # AES encryption for decrypting Meshtastic packets
 cryptography>=41.0.0
 
+# === MeshCore Support (Optional) ===
+# Official MeshCore Python library for MeshCore companion mode
+# Install only if using MeshCore companion mode (MESHCORE_ENABLED=True)
+# meshcore>=0.1.0
+
 # === Optional Dependencies ===
 # For development/debugging
 # ipython>=8.0.0

@@ -55,6 +55,8 @@ graph TD
 ### Mode MeshCore Companion (NOUVEAU) 
 Connexion série MeshCore uniquement - Bot fonctionnant sans Meshtastic
 
+**⭐ Utilise la library officielle [meshcore-cli](https://github.com/fdlamotte/meshcore-cli) si disponible**
+
 ```mermaid
 graph TD
     %% Styles
@@ -76,7 +78,12 @@ graph TD
 - ✅ Fonctionnalités disponibles : `/bot`, `/weather`, `/rain`, `/power`, `/sys`, `/help`, `/blitz`, `/vigilance`
 - ❌ Fonctionnalités désactivées : `/nodes`, `/my`, `/trace`, `/neighbors`, `/stats` (requièrent Meshtastic)
 
-**Avantages** : Utilisation avec MeshCore, pas besoin de matériel Meshtastic  
+**Installation** : 
+```bash
+pip install meshcore  # Library officielle (recommandé)
+```
+
+**Avantages** : Utilisation avec MeshCore, pas besoin de matériel Meshtastic, support protocole officiel  
 **Inconvénients** : Fonctionnalités réseau Meshtastic non disponibles
 
 **Configuration** : Voir `config.meshcore.example` pour un exemple complet
