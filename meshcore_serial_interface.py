@@ -1,27 +1,59 @@
 #!/usr/bin/env python3
 """
 Interface série MeshCore pour le bot en mode companion
-Permet de recevoir des DM depuis MeshCore et d'envoyer des réponses
+Implémentation du protocole binaire MeshCore selon:
+https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol
 """
 
 import serial
 import threading
 import time
+import struct
 from utils import info_print, debug_print, error_print
 import traceback
 
 
+# Command codes (app -> radio)
+CMD_APP_START = 1
+CMD_SEND_TXT_MSG = 2
+CMD_SEND_CHANNEL_TXT_MSG = 3
+CMD_GET_CONTACTS = 4
+CMD_GET_DEVICE_TIME = 5
+CMD_SET_DEVICE_TIME = 6
+CMD_SEND_SELF_ADVERT = 7
+CMD_SET_ADVERT_NAME = 8
+CMD_ADD_UPDATE_CONTACT = 9
+CMD_SYNC_NEXT_MESSAGE = 10
+CMD_DEVICE_QUERY = 22
+
+# Response codes (radio -> app)
+RESP_CODE_OK = 0
+RESP_CODE_ERR = 1
+RESP_CODE_CONTACTS_START = 2
+RESP_CODE_CONTACT = 3
+RESP_CODE_END_OF_CONTACTS = 4
+RESP_CODE_SELF_INFO = 5
+RESP_CODE_SENT = 6
+RESP_CODE_CONTACT_MSG_RECV = 7
+RESP_CODE_CHANNEL_MSG_RECV = 8
+RESP_CODE_CURR_TIME = 9
+RESP_CODE_NO_MORE_MESSAGES = 10
+RESP_CODE_DEVICE_INFO = 13
+
+# Push notification codes
+PUSH_CODE_ADVERT = 0x80
+PUSH_CODE_PATH_UPDATED = 0x81
+PUSH_CODE_SEND_CONFIRMED = 0x82
+PUSH_CODE_MSG_WAITING = 0x83
+
+
 class MeshCoreSerialInterface:
     """
-    Interface série simple pour MeshCore
+    Interface série MeshCore avec support du protocole binaire complet
     
-    En mode companion, le bot:
-    - Reçoit uniquement des DM via serial MeshCore
-    - Envoie des réponses en DM
-    - Ne gère pas les broadcasts ni les fonctionnalités Meshtastic
-    
-    Note: Cette implémentation est basique et devra être adaptée
-    selon le protocole exact de MeshCore utilisé.
+    Protocole de framing:
+    - Outbound (radio -> app): 0x3E ('>') + 2 bytes length (little-endian) + payload
+    - Inbound (app -> radio): 0x3C ('<') + 2 bytes length (little-endian) + payload
     """
     
     def __init__(self, port, baudrate=115200):
@@ -38,6 +70,14 @@ class MeshCoreSerialInterface:
         self.running = False
         self.read_thread = None
         self.message_callback = None
+        
+        # Buffer pour assembly de trames
+        self.read_buffer = bytearray()
+        
+        # Informations du device MeshCore
+        self.device_info = None
+        self.self_info = None
+        self.contacts = {}
         
         # Simulation d'un localNode pour compatibilité avec le code existant
         self.localNode = type('obj', (object,), {
