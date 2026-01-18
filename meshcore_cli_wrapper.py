@@ -116,6 +116,8 @@ class MeshCoreCLIWrapper:
         try:
             self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
             info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (CONTACT_MSG_RECV)")
+            debug_print(f"[MESHCORE-CLI] Dispatcher: {self.meshcore.dispatcher}")
+            debug_print(f"[MESHCORE-CLI] EventType.CONTACT_MSG_RECV: {EventType.CONTACT_MSG_RECV}")
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur souscription: {e}")
             error_print(traceback.format_exc())
@@ -138,9 +140,18 @@ class MeshCoreCLIWrapper:
         info_print("📡 [MESHCORE-CLI] Début écoute événements...")
         
         try:
-            # Garder la boucle ouverte pour recevoir les événements
-            while self.running:
-                time.sleep(0.1)  # Petite pause pour ne pas surcharger
+            # Exécuter la boucle asyncio pour traiter les événements
+            # Le dispatcher meshcore a besoin d'une boucle active
+            asyncio.set_event_loop(self._loop)
+            
+            # Créer une coroutine qui tourne tant que running est True
+            async def event_loop_task():
+                while self.running:
+                    await asyncio.sleep(0.1)  # Pause async pour laisser le dispatcher fonctionner
+            
+            # Exécuter la coroutine dans la boucle
+            self._loop.run_until_complete(event_loop_task())
+            
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur boucle événements: {e}")
             error_print(traceback.format_exc())
@@ -156,9 +167,13 @@ class MeshCoreCLIWrapper:
             event: Event object from meshcore dispatcher
         """
         try:
+            debug_print(f"🔔 [MESHCORE-CLI] Event reçu: {event}")
+            
             # Extraire les informations de l'événement
             # L'API meshcore fournit un objet event avec payload
             payload = event.payload if hasattr(event, 'payload') else event
+            
+            debug_print(f"📦 [MESHCORE-CLI] Payload: {payload}")
             
             sender_id = payload.get('contact_id') or payload.get('sender_id')
             text = payload.get('text', '')
@@ -178,6 +193,8 @@ class MeshCoreCLIWrapper:
             # Appeler le callback
             if self.message_callback:
                 self.message_callback(packet, None)
+            else:
+                debug_print("⚠️ [MESHCORE-CLI] Pas de callback défini")
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")

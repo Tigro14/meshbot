@@ -1,10 +1,38 @@
 # MeshCore Companion Mode - Résumé d'implémentation
 
-## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.2)
+## ✅ Implémentation complète (mise à jour 2026-01-18 v1.3.3)
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
 
-### 🆕 Version 1.3.2 (2026-01-18)
+### 🆕 Version 1.3.3 (2026-01-18)
+
+**Fix asyncio event loop** : Boucle async active pour dispatcher meshcore-cli
+
+- ✅ **Boucle async active** : `run_until_complete()` avec coroutine `await asyncio.sleep()`
+- ✅ **Debug logging amélioré** : Logs détaillés pour troubleshooting événements
+- ✅ **Event dispatcher fonctionnel** : Le dispatcher peut maintenant émettre les événements
+
+**Problème résolu** :
+```
+Aucun paquet MeshCore reçu dans les logs - boucle événements inactive
+```
+
+**Solution** :
+```python
+# La boucle asyncio doit exécuter des coroutines async:
+async def event_loop_task():
+    while self.running:
+        await asyncio.sleep(0.1)  # Pause async pour dispatcher
+
+self._loop.run_until_complete(event_loop_task())
+```
+
+**Debug amélioré** :
+- Logs dispatcher et EventType lors de la souscription
+- Logs détaillés des événements reçus
+- Logs payload complets pour analyse
+
+### Version 1.3.2 (2026-01-18)
 
 **Correctif API événements meshcore-cli** : Utilisation correcte du dispatcher async
 
