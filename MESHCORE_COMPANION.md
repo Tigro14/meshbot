@@ -45,32 +45,41 @@ DM:12345678:/bot hello
 SEND_DM:<destination_id_hex>:<message_text>\n
 ```
 
-### 2. Format binaire (protobuf)
+### 2. Format binaire (protocole natif MeshCore)
 
-Support automatique des données binaires protobuf. Lorsque des données binaires sont reçues :
+Support automatique des données binaires du protocole MeshCore. Lorsque des données binaires sont reçues :
 - Détection automatique (échec décodage UTF-8)
 - Logging différencié : `[MESHCORE-BINARY]` vs `[MESHCORE-TEXT]`
 - Empêche l'affichage de "blob data" dans les logs
-- Stub pour décodage protobuf (à implémenter selon spec MeshCore)
+- Stub pour décodage du protocole binaire MeshCore (à implémenter selon spec)
+
+**Note importante** : MeshCore utilise son **propre protocole binaire**, pas protobuf.
+Le protocole binaire MeshCore utilise :
+- Magic bytes pour synchronisation
+- Command codes (CMD_SEND_TXT_MSG, CMD_RCV_TXT_MSG, etc.)
+- Length field
+- Payload
+- CRC checksum
 
 **Logs différenciés** :
 ```
 📨 [MESHCORE-TEXT] Reçu: DM:12345678:/help
-📨 [MESHCORE-BINARY] Reçu: 156 octets (protobuf)
+📨 [MESHCORE-BINARY] Reçu: 28 octets (protocole binaire MeshCore)
 📬 [MESHCORE-DM] De: 0x12345678 | Message: /help
 📤 [MESHCORE-DM] Envoyé à 0x12345678: Voici l'aide...
+🔍 [MESHCORE-BINARY] Tentative de décodage protocole MeshCore (28 octets)
 ```
 
 ### Protocole binaire MeshCore
 
-Le protocole réel de MeshCore utilise un format binaire avec :
-- **Framing** : Messages encapsulés avec longueur et CRC
+Le protocole natif de MeshCore utilise un format binaire propriétaire (pas protobuf) avec :
+- **Framing** : Messages encapsulés avec magic bytes, longueur et CRC
 - **Command codes** : Codes de commande pour différentes opérations
   - `CMD_SEND_TXT_MSG` : Envoyer un message texte
   - `CMD_RCV_TXT_MSG` : Recevoir un message texte
   - Autres codes pour configuration, statut, etc.
 
-**TODO** : Adapter l'implémentation pour supporter le protocole binaire réel.
+**TODO** : Implémenter le décodage complet du protocole binaire MeshCore selon la spécification officielle.
 
 ## Adaptation du protocole
 

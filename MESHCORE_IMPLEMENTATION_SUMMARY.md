@@ -4,16 +4,23 @@
 
 L'implémentation du support MeshCore companion est **terminée et testée**.
 
-### 🆕 Améliorations récentes (v1.1)
+### 🆕 Améliorations récentes (v1.2)
+
+**Clarification protocole** : MeshCore utilise son propre protocole binaire, pas protobuf
+
+- **Logs précis** : Les messages binaires sont loggués comme "protocole binaire MeshCore" (pas protobuf)
+- **Documentation corrigée** : Clarification que MeshCore n'utilise pas protobuf mais son propre format binaire
+- **Stub prêt** : `_process_meshcore_binary()` prêt pour implémentation du protocole natif MeshCore
+
+### Améliorations v1.1
 
 - **Logs différenciés** : Tous les messages MeshCore sont préfixés `[MESHCORE]`
-- **Support binaire/protobuf** : Détection automatique et gestion des données binaires
+- **Support binaire** : Détection automatique et gestion des données binaires
 - **Prévention blob data** : Les données binaires ne sont plus affichées directement dans les logs
 - **Logging structuré** :
   - `[MESHCORE-TEXT]` - Messages texte
-  - `[MESHCORE-BINARY]` - Données binaires (protobuf)
+  - `[MESHCORE-BINARY]` - Données binaires (protocole MeshCore natif)
   - `[MESHCORE-DM]` - Messages directs avec détails (expéditeur, contenu)
-  - `[MESHCORE-PROTOBUF]` - Tentatives de décodage protobuf
 
 ## 📦 Fichiers créés/modifiés
 

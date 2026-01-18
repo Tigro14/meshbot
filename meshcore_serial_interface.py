@@ -99,8 +99,8 @@ class MeshCoreSerialInterface:
                             debug_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
                             self._process_meshcore_line(line)
                     except UnicodeDecodeError:
-                        # Données binaires (probablement protobuf)
-                        debug_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protobuf)")
+                        # Données binaires (protocole binaire MeshCore natif)
+                        debug_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protocole binaire MeshCore)")
                         self._process_meshcore_binary(raw_data)
                 
                 time.sleep(0.1)  # Éviter de saturer le CPU
@@ -156,25 +156,30 @@ class MeshCoreSerialInterface:
     
     def _process_meshcore_binary(self, raw_data):
         """
-        Traite des données binaires (protobuf) reçues de MeshCore
+        Traite des données binaires reçues de MeshCore
+        
+        MeshCore utilise son propre protocole binaire (pas protobuf).
+        Format attendu : framing avec magic bytes, command codes, longueur, CRC
         
         Args:
             raw_data: Données binaires brutes
         """
         try:
             # Pour l'instant, logger les données binaires sans les afficher
-            debug_print(f"🔍 [MESHCORE-PROTOBUF] Tentative de décodage protobuf ({len(raw_data)} octets)")
+            debug_print(f"🔍 [MESHCORE-BINARY] Tentative de décodage protocole MeshCore ({len(raw_data)} octets)")
             
-            # TODO: Implémenter le décodage protobuf MeshCore
+            # TODO: Implémenter le décodage du protocole binaire MeshCore
             # Pour l'instant, on ignore les données binaires
-            # Le protocole protobuf de MeshCore devra être documenté et implémenté ici
+            # Le protocole binaire de MeshCore devra être documenté et implémenté ici
             
-            # Exemple de structure attendue (à adapter):
-            # - Magic bytes
-            # - Message type
-            # - Protobuf payload
+            # Structure attendue (à documenter/adapter selon spec MeshCore):
+            # - Magic bytes (sync)
+            # - Command code (CMD_SEND_TXT_MSG, CMD_RCV_TXT_MSG, etc.)
+            # - Length field
+            # - Payload
+            # - CRC checksum
             
-            debug_print(f"⚠️ [MESHCORE-PROTOBUF] Décodage protobuf non implémenté - données ignorées")
+            debug_print(f"⚠️ [MESHCORE-BINARY] Décodage protocole MeshCore non implémenté - données ignorées")
             
         except Exception as e:
             error_print(f"❌ [MESHCORE] Erreur traitement données binaires: {e}")
