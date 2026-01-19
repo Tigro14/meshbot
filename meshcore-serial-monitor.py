@@ -148,8 +148,38 @@ class MeshCoreMonitor:
                     except Exception as e:
                         print(f"   ⚠️  Cannot access {attr}: {e}", flush=True)
             else:
-                print("   ⚠️  No private key attributes found", flush=True)
-                issues_found.append("No private key attributes found - encrypted messages cannot be decrypted")
+                print("   ⚠️  No private key attributes found in memory", flush=True)
+            
+            # Check for private key files
+            import os
+            import glob
+            key_file_patterns = ['*.priv', 'private_key*', 'node_key*', '*_priv.key']
+            found_key_files = []
+            for pattern in key_file_patterns:
+                files = glob.glob(pattern)
+                found_key_files.extend(files)
+            
+            if found_key_files:
+                print(f"   ✅ Found private key file(s): {', '.join(found_key_files)}", flush=True)
+                has_private_key = True
+                
+                # Try to check if files are readable and non-empty
+                for key_file in found_key_files:
+                    try:
+                        if os.path.exists(key_file) and os.path.isfile(key_file):
+                            file_size = os.path.getsize(key_file)
+                            if file_size > 0:
+                                print(f"   ✅ {key_file} is readable ({file_size} bytes)", flush=True)
+                            else:
+                                print(f"   ⚠️  {key_file} is empty", flush=True)
+                                issues_found.append(f"{key_file} is empty - cannot load private key")
+                    except Exception as e:
+                        print(f"   ⚠️  Cannot access {key_file}: {e}", flush=True)
+            else:
+                print("   ℹ️  No private key files found in current directory", flush=True)
+            
+            if not has_private_key:
+                issues_found.append("No private key found (neither in memory nor as file) - encrypted messages cannot be decrypted")
         except Exception as e:
             print(f"   ⚠️  Error checking private key: {e}", flush=True)
             issues_found.append(f"Error checking private key: {e}")

@@ -4,9 +4,13 @@ Demo script showing the MeshCore configuration diagnostics in action
 
 This demonstrates the enhanced diagnostic capabilities without requiring
 actual MeshCore hardware.
+
+Now includes private key file detection!
 """
 
 import asyncio
+import os
+import tempfile
 from unittest.mock import Mock
 
 
@@ -47,7 +51,7 @@ class DemoMeshCore:
         await asyncio.sleep(0)
 
 
-async def run_diagnostics(meshcore, scenario_name):
+async def run_diagnostics(meshcore, scenario_name, temp_dir=None):
     """Run configuration diagnostics on a MeshCore object"""
     print("\n" + "="*70)
     print(f"🔍 Configuration Diagnostics - Scenario: {scenario_name}")
@@ -57,11 +61,15 @@ async def run_diagnostics(meshcore, scenario_name):
     
     # Check 1: Private key access
     print("\n1️⃣  Checking private key access...")
+    has_private_key = False
+    
+    # Check for in-memory attributes
     key_attrs = ['private_key', 'key', 'node_key', 'device_key', 'crypto']
     found_key_attrs = [attr for attr in key_attrs if hasattr(meshcore, attr)]
     
     if found_key_attrs:
         print(f"   ✅ Found key-related attributes: {', '.join(found_key_attrs)}")
+        has_private_key = True
         
         for attr in found_key_attrs:
             value = getattr(meshcore, attr)
@@ -71,8 +79,36 @@ async def run_diagnostics(meshcore, scenario_name):
             else:
                 print(f"   ✅ {attr} is set")
     else:
-        print("   ⚠️  No private key attributes found")
-        issues_found.append("No private key found - encrypted messages cannot be decrypted")
+        print("   ⚠️  No private key attributes found in memory")
+    
+    # Check for private key files
+    import glob
+    key_file_patterns = ['*.priv', 'private_key*', 'node_key*', '*_priv.key']
+    found_key_files = []
+    for pattern in key_file_patterns:
+        files = glob.glob(pattern)
+        found_key_files.extend(files)
+    
+    if found_key_files:
+        print(f"   ✅ Found private key file(s): {', '.join(found_key_files)}")
+        has_private_key = True
+        
+        for key_file in found_key_files:
+            try:
+                if os.path.exists(key_file) and os.path.isfile(key_file):
+                    file_size = os.path.getsize(key_file)
+                    if file_size > 0:
+                        print(f"   ✅ {key_file} is readable ({file_size} bytes)")
+                    else:
+                        print(f"   ⚠️  {key_file} is empty")
+                        issues_found.append(f"{key_file} is empty - cannot load private key")
+            except Exception as e:
+                print(f"   ⚠️  Cannot access {key_file}: {e}")
+    else:
+        print("   ℹ️  No private key files found in current directory")
+    
+    if not has_private_key:
+        issues_found.append("No private key found (neither in memory nor as file) - encrypted messages cannot be decrypted")
     
     # Check 2: Contact sync capability
     print("\n2️⃣  Checking contact sync capability...")
@@ -134,6 +170,7 @@ async def main():
     print("="*70)
     print("\nThis demo shows how the enhanced diagnostics detect configuration")
     print("issues and provide troubleshooting guidance.")
+    print("\n✨ NEW: Now includes private key file detection!")
     
     # Scenario 1: Perfect configuration
     print("\n\n" + "🟢 SCENARIO 1: Perfect Configuration")
@@ -142,12 +179,24 @@ async def main():
     meshcore_perfect = DemoMeshCore(scenario="perfect")
     await run_diagnostics(meshcore_perfect, "Perfect Configuration")
     
-    # Scenario 2: Missing private key
-    print("\n\n" + "🟡 SCENARIO 2: Missing Private Key")
+    # Scenario 2: Missing private key (but will find file)
+    print("\n\n" + "🟡 SCENARIO 2: Private Key from File (like xiao.priv)")
     print("-" * 70)
-    print("Device has contacts and events, but no private key.")
-    meshcore_no_key = DemoMeshCore(scenario="no_key")
-    await run_diagnostics(meshcore_no_key, "Missing Private Key")
+    print("Device has no in-memory key, but key file exists.")
+    
+    # Create a temporary directory with a key file
+    original_dir = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.chdir(tmpdir)
+        
+        # Create a mock xiao.priv file
+        with open("xiao.priv", "w") as f:
+            f.write("mock_private_key_data_from_xiao_device")
+        
+        meshcore_file_key = DemoMeshCore(scenario="no_key")
+        await run_diagnostics(meshcore_file_key, "Private Key from File")
+        
+        os.chdir(original_dir)
     
     # Scenario 3: Empty contact list
     print("\n\n" + "🟡 SCENARIO 3: Empty Contact List")
@@ -169,13 +218,19 @@ async def main():
     print("="*70)
     print("\nThe diagnostics help identify:")
     print("  ✅ Perfect configuration (Scenario 1)")
-    print("  ⚠️  Missing private key (Scenario 2)")
+    print("  ✅ Private key from file - xiao.priv (Scenario 2) ← NEW!")
     print("  ⚠️  Empty contact list (Scenario 3)")
     print("  ❌ Multiple configuration issues (Scenario 4)")
     print("\nEach scenario provides:")
     print("  • Clear issue identification")
     print("  • Specific error messages")
     print("  • Actionable troubleshooting tips")
+    print("\n✨ NEW FEATURE: Detects private key files like xiao.priv!")
+    print("   The monitor now checks for:")
+    print("   - *.priv files (like xiao.priv)")
+    print("   - private_key* files")
+    print("   - node_key* files")
+    print("   - *_priv.key files")
     print("\n💡 Instead of adding decryption to the monitor, we help users")
     print("   fix their meshcore library configuration!")
     print("="*70 + "\n")

@@ -116,12 +116,14 @@ class MeshCoreCLIWrapper:
         
         # Check 1: Private key access
         debug_print("\n1️⃣  Vérification clé privée...")
+        has_private_key = False
         try:
             key_attrs = ['private_key', 'key', 'node_key', 'device_key', 'crypto']
             found_key_attrs = [attr for attr in key_attrs if hasattr(self.meshcore, attr)]
             
             if found_key_attrs:
                 info_print(f"   ✅ Attributs clé trouvés: {', '.join(found_key_attrs)}")
+                has_private_key = True
                 
                 for attr in found_key_attrs:
                     try:
@@ -134,8 +136,38 @@ class MeshCoreCLIWrapper:
                     except Exception as e:
                         error_print(f"   ⚠️  Impossible d'accéder à {attr}: {e}")
             else:
-                error_print("   ⚠️  Aucun attribut de clé privée trouvé")
-                issues_found.append("Aucune clé privée trouvée - les messages chiffrés ne peuvent pas être déchiffrés")
+                error_print("   ⚠️  Aucun attribut de clé privée trouvé en mémoire")
+            
+            # Check for private key files
+            import os
+            import glob
+            key_file_patterns = ['*.priv', 'private_key*', 'node_key*', '*_priv.key']
+            found_key_files = []
+            for pattern in key_file_patterns:
+                files = glob.glob(pattern)
+                found_key_files.extend(files)
+            
+            if found_key_files:
+                info_print(f"   ✅ Fichier(s) clé privée trouvé(s): {', '.join(found_key_files)}")
+                has_private_key = True
+                
+                # Try to check if files are readable and non-empty
+                for key_file in found_key_files:
+                    try:
+                        if os.path.exists(key_file) and os.path.isfile(key_file):
+                            file_size = os.path.getsize(key_file)
+                            if file_size > 0:
+                                info_print(f"   ✅ {key_file} est lisible ({file_size} octets)")
+                            else:
+                                error_print(f"   ⚠️  {key_file} est vide")
+                                issues_found.append(f"{key_file} est vide - impossible de charger la clé privée")
+                    except Exception as e:
+                        error_print(f"   ⚠️  Impossible d'accéder à {key_file}: {e}")
+            else:
+                debug_print("   ℹ️  Aucun fichier de clé privée trouvé dans le répertoire courant")
+            
+            if not has_private_key:
+                issues_found.append("Aucune clé privée trouvée (ni en mémoire ni sous forme de fichier) - les messages chiffrés ne peuvent pas être déchiffrés")
         except Exception as e:
             error_print(f"   ⚠️  Erreur vérification clé privée: {e}")
             issues_found.append(f"Erreur vérification clé privée: {e}")
