@@ -39,35 +39,76 @@ class MeshCoreMonitor:
         
         # Display event details
         print(f"Event type: {type(event).__name__}")
-        print(f"Event: {event}")
+        print(f"Event repr: {repr(event)}")
+        print(f"Event str: {str(event)}")
         
-        # Try to extract payload
-        if hasattr(event, '__dict__'):
-            print(f"\nEvent attributes:")
-            for key, value in event.__dict__.items():
-                print(f"  {key}: {value}")
+        # Show ALL attributes (including private ones for debugging)
+        print(f"\nALL event attributes (dir):")
+        all_attrs = dir(event)
+        for attr in all_attrs:
+            if not attr.startswith('__'):  # Skip double-underscore methods
+                try:
+                    value = getattr(event, attr)
+                    if not callable(value):  # Skip methods
+                        print(f"  {attr}: {value} (type: {type(value).__name__})")
+                except Exception as e:
+                    print(f"  {attr}: <error accessing: {e}>")
         
-        # Try common payload patterns
-        payload = None
+        # Try to extract payload using multiple methods
+        print(f"\n🔍 Trying to extract message data:")
+        
+        # Method 1: Check for payload attribute
         if hasattr(event, 'payload'):
-            payload = event.payload
-        elif hasattr(event, 'data'):
-            payload = event.data
-        elif hasattr(event, 'message'):
-            payload = event.message
-            
-        if payload:
-            print(f"\nPayload: {payload}")
-            
-            # Extract contact_id and text if present
-            if isinstance(payload, dict):
-                contact_id = payload.get('contact_id')
-                text = payload.get('text')
-                
-                if contact_id:
-                    print(f"  From: 0x{contact_id:08x}")
-                if text:
-                    print(f"  Text: {text}")
+            print(f"  ✓ event.payload found: {event.payload}")
+        
+        # Method 2: Check for data attribute
+        if hasattr(event, 'data'):
+            print(f"  ✓ event.data found: {event.data}")
+        
+        # Method 3: Check for message attribute
+        if hasattr(event, 'message'):
+            print(f"  ✓ event.message found: {event.message}")
+        
+        # Method 4: Check for contact_id and text directly on event
+        if hasattr(event, 'contact_id'):
+            print(f"  ✓ event.contact_id found: {event.contact_id} (0x{event.contact_id:08x})")
+        
+        if hasattr(event, 'text'):
+            print(f"  ✓ event.text found: {event.text}")
+        
+        # Method 5: Check if event itself is dict-like
+        if isinstance(event, dict):
+            print(f"  ✓ event is dict: {event}")
+        
+        # Try to extract and display the actual message
+        print(f"\n📨 Extracted message data:")
+        contact_id = None
+        text = None
+        
+        # Try direct attributes first
+        if hasattr(event, 'contact_id'):
+            contact_id = event.contact_id
+        if hasattr(event, 'text'):
+            text = event.text
+        
+        # Try payload
+        if not (contact_id and text):
+            for payload_attr in ['payload', 'data', 'message']:
+                if hasattr(event, payload_attr):
+                    payload = getattr(event, payload_attr)
+                    if isinstance(payload, dict):
+                        contact_id = contact_id or payload.get('contact_id')
+                        text = text or payload.get('text')
+        
+        if contact_id:
+            print(f"  From: 0x{contact_id:08x}")
+        else:
+            print(f"  From: <not found>")
+        
+        if text:
+            print(f"  Text: {text}")
+        else:
+            print(f"  Text: <not found>")
         
         print(f"{'='*60}\n")
         
