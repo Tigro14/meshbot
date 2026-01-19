@@ -136,8 +136,20 @@ class MeshCoreMonitor:
             
             # Display MeshCore object info
             print("📊 MeshCore object info:", flush=True)
-            print(f"   Type: {type(self.meshcore)}", flush=True)
-            print(f"   Attributes: {[a for a in dir(self.meshcore) if not a.startswith('_')]}", flush=True)
+            try:
+                print(f"   Type: {type(self.meshcore)}", flush=True)
+            except Exception as e:
+                print(f"   Type: <error: {e}>", flush=True)
+            
+            try:
+                attrs = [a for a in dir(self.meshcore) if not a.startswith('_')]
+                print(f"   Attributes ({len(attrs)} total):", flush=True)
+                # Print in smaller chunks
+                for i in range(0, len(attrs), 10):
+                    chunk = attrs[i:i+10]
+                    print(f"      {', '.join(chunk)}", flush=True)
+            except Exception as e:
+                print(f"   Attributes: <error: {e}>", flush=True)
             print(flush=True)
             
             # Subscribe to messages
