@@ -9,6 +9,10 @@ import sys
 import signal
 from datetime import datetime
 
+# Force unbuffered output for real-time logging
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 try:
     from meshcore import MeshCore, EventType
     MESHCORE_AVAILABLE = True
@@ -114,62 +118,62 @@ class MeshCoreMonitor:
         
     async def start(self):
         """Start monitoring"""
-        print("🔧 MeshCore Serial Monitor")
-        print(f"   Port: {self.port}")
-        print(f"   Baudrate: {self.baudrate}")
-        print()
+        print("🔧 MeshCore Serial Monitor", flush=True)
+        print(f"   Port: {self.port}", flush=True)
+        print(f"   Baudrate: {self.baudrate}", flush=True)
+        print(flush=True)
         
         try:
             # Connect to device
-            print("🔌 Connecting to MeshCore device...")
+            print("🔌 Connecting to MeshCore device...", flush=True)
             self.meshcore = await MeshCore.create_serial(
                 self.port,
                 baudrate=self.baudrate,
                 debug=False
             )
-            print("✅ Connected successfully!")
-            print()
+            print("✅ Connected successfully!", flush=True)
+            print(flush=True)
             
             # Display MeshCore object info
-            print("📊 MeshCore object info:")
-            print(f"   Type: {type(self.meshcore)}")
-            print(f"   Attributes: {[a for a in dir(self.meshcore) if not a.startswith('_')]}")
-            print()
+            print("📊 MeshCore object info:", flush=True)
+            print(f"   Type: {type(self.meshcore)}", flush=True)
+            print(f"   Attributes: {[a for a in dir(self.meshcore) if not a.startswith('_')]}", flush=True)
+            print(flush=True)
             
             # Subscribe to messages
-            print("📡 Setting up event subscription...")
+            print("📡 Setting up event subscription...", flush=True)
             
             # Try different subscription methods
             if hasattr(self.meshcore, 'events'):
-                print("   Using: meshcore.events.subscribe()")
+                print("   Using: meshcore.events.subscribe()", flush=True)
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self.on_message)
             elif hasattr(self.meshcore, 'dispatcher'):
-                print("   Using: meshcore.dispatcher.subscribe()")
+                print("   Using: meshcore.dispatcher.subscribe()", flush=True)
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self.on_message)
             else:
-                print("   ❌ No known subscription method found!")
-                print(f"   Available attributes: {dir(self.meshcore)}")
+                print("   ❌ No known subscription method found!", flush=True)
+                print(f"   Available attributes: {dir(self.meshcore)}", flush=True)
                 return
             
-            print("✅ Subscribed to CONTACT_MSG_RECV events")
-            print()
+            print("✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+            print(flush=True)
             
             # Start auto message fetching
-            print("🚀 Starting auto message fetching...")
+            print("🚀 Starting auto message fetching...", flush=True)
             if hasattr(self.meshcore, 'start_auto_message_fetching'):
                 await self.meshcore.start_auto_message_fetching()
-                print("✅ Auto message fetching started")
+                print("✅ Auto message fetching started", flush=True)
             else:
-                print("   ⚠️  start_auto_message_fetching() not available")
-                print("   Messages may not be received automatically")
-            print()
+                print("   ⚠️  start_auto_message_fetching() not available", flush=True)
+                print("   Messages may not be received automatically", flush=True)
+            print(flush=True)
             
-            print("="*60)
-            print("✅ Monitor ready! Waiting for messages...")
-            print("   Send a message to this device to test")
-            print("   Press Ctrl+C to exit")
-            print("="*60)
-            print()
+            print("="*60, flush=True)
+            print("✅ Monitor ready! Waiting for messages...", flush=True)
+            print("   Send a message to this device to test", flush=True)
+            print("   Press Ctrl+C to exit", flush=True)
+            print("="*60, flush=True)
+            print(flush=True)
             
             # Keep running
             while self.running:
