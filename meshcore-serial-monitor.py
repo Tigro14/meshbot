@@ -116,9 +116,120 @@ class MeshCoreMonitor:
         
         print(f"{'='*60}\n")
         
+    async def _check_configuration(self):
+        """Check MeshCore configuration and report potential issues"""
+        print("\n" + "="*60, flush=True)
+        print("🔍 Configuration Diagnostics", flush=True)
+        print("="*60, flush=True)
+        
+        issues_found = []
+        
+        # Check 1: Private key access
+        print("\n1️⃣  Checking private key access...", flush=True)
+        has_private_key = False
+        try:
+            # Check for various private key related attributes
+            key_attrs = ['private_key', 'key', 'node_key', 'device_key', 'crypto']
+            found_key_attrs = [attr for attr in key_attrs if hasattr(self.meshcore, attr)]
+            
+            if found_key_attrs:
+                print(f"   ✅ Found key-related attributes: {', '.join(found_key_attrs)}", flush=True)
+                has_private_key = True
+                
+                # Try to check if key is actually set
+                for attr in found_key_attrs:
+                    try:
+                        value = getattr(self.meshcore, attr)
+                        if value is None:
+                            print(f"   ⚠️  {attr} is None", flush=True)
+                            issues_found.append(f"{attr} is None - decryption may fail")
+                        else:
+                            print(f"   ✅ {attr} is set", flush=True)
+                    except Exception as e:
+                        print(f"   ⚠️  Cannot access {attr}: {e}", flush=True)
+            else:
+                print("   ⚠️  No private key attributes found", flush=True)
+                issues_found.append("No private key attributes found - encrypted messages cannot be decrypted")
+        except Exception as e:
+            print(f"   ⚠️  Error checking private key: {e}", flush=True)
+            issues_found.append(f"Error checking private key: {e}")
+        
+        # Check 2: Contact sync capability
+        print("\n2️⃣  Checking contact sync capability...", flush=True)
+        if hasattr(self.meshcore, 'sync_contacts'):
+            print("   ✅ sync_contacts() method available", flush=True)
+            
+            # Try to check contact list
+            if hasattr(self.meshcore, 'contacts') or hasattr(self.meshcore, 'get_contacts'):
+                try:
+                    contacts = None
+                    if hasattr(self.meshcore, 'contacts'):
+                        contacts = self.meshcore.contacts
+                    elif hasattr(self.meshcore, 'get_contacts'):
+                        contacts = await self.meshcore.get_contacts()
+                    
+                    if contacts:
+                        print(f"   ✅ Found {len(contacts)} contacts", flush=True)
+                    else:
+                        print("   ⚠️  Contact list is empty", flush=True)
+                        issues_found.append("No contacts found - DM decryption may fail")
+                except Exception as e:
+                    print(f"   ⚠️  Cannot retrieve contacts: {e}", flush=True)
+            else:
+                print("   ⚠️  No contact list accessor found", flush=True)
+        else:
+            print("   ❌ sync_contacts() method NOT available", flush=True)
+            issues_found.append("sync_contacts() not available - contact sync cannot be performed")
+        
+        # Check 3: Auto message fetching
+        print("\n3️⃣  Checking auto message fetching...", flush=True)
+        if hasattr(self.meshcore, 'start_auto_message_fetching'):
+            print("   ✅ start_auto_message_fetching() available", flush=True)
+        else:
+            print("   ❌ start_auto_message_fetching() NOT available", flush=True)
+            issues_found.append("start_auto_message_fetching() not available - messages must be fetched manually")
+        
+        # Check 4: Event dispatcher
+        print("\n4️⃣  Checking event dispatcher...", flush=True)
+        if hasattr(self.meshcore, 'events'):
+            print("   ✅ Event dispatcher (events) available", flush=True)
+        elif hasattr(self.meshcore, 'dispatcher'):
+            print("   ✅ Event dispatcher (dispatcher) available", flush=True)
+        else:
+            print("   ❌ No event dispatcher found", flush=True)
+            issues_found.append("No event dispatcher - events cannot be received")
+        
+        # Check 5: Debug mode
+        print("\n5️⃣  Checking debug mode...", flush=True)
+        if hasattr(self.meshcore, 'debug'):
+            debug_enabled = getattr(self.meshcore, 'debug', False)
+            if debug_enabled:
+                print("   ✅ Debug mode is enabled", flush=True)
+            else:
+                print("   ℹ️  Debug mode is disabled (enable for more verbose logging)", flush=True)
+        else:
+            print("   ℹ️  Debug mode attribute not found", flush=True)
+        
+        # Summary
+        print("\n" + "="*60, flush=True)
+        if issues_found:
+            print("⚠️  Configuration Issues Found:", flush=True)
+            for i, issue in enumerate(issues_found, 1):
+                print(f"   {i}. {issue}", flush=True)
+            print("\n💡 Troubleshooting Tips:", flush=True)
+            print("   • Ensure the MeshCore device has a private key configured", flush=True)
+            print("   • Check that contacts are properly synced", flush=True)
+            print("   • Verify auto message fetching is started", flush=True)
+            print("   • Try enabling debug mode for more detailed logs", flush=True)
+        else:
+            print("✅ No configuration issues detected", flush=True)
+        print("="*60 + "\n", flush=True)
+        
+        return len(issues_found) == 0
+    
     async def start(self):
         """Start monitoring"""
-        print("🔧 MeshCore Serial Monitor", flush=True)
+        print("🔧 MeshCore Serial Monitor - Diagnostic Tool", flush=True)
         print(f"   Port: {self.port}", flush=True)
         print(f"   Baudrate: {self.baudrate}", flush=True)
         print(flush=True)
@@ -152,6 +263,9 @@ class MeshCoreMonitor:
                 print(f"   Attributes: <error: {e}>", flush=True)
             print(flush=True)
             
+            # Run configuration diagnostics
+            config_ok = await self._check_configuration()
+            
             # Subscribe to messages
             print("📡 Setting up event subscription...", flush=True)
             
@@ -178,15 +292,21 @@ class MeshCoreMonitor:
                     print("✅ Contacts synced successfully", flush=True)
                 except Exception as e:
                     print(f"   ⚠️  Error syncing contacts: {e}", flush=True)
+                    print(f"   This may prevent decryption of incoming messages", flush=True)
             else:
                 print("   ⚠️  sync_contacts() not available", flush=True)
+                print("   Decryption of incoming messages may fail", flush=True)
             print(flush=True)
             
             # Start auto message fetching
             print("🚀 Starting auto message fetching...", flush=True)
             if hasattr(self.meshcore, 'start_auto_message_fetching'):
-                await self.meshcore.start_auto_message_fetching()
-                print("✅ Auto message fetching started", flush=True)
+                try:
+                    await self.meshcore.start_auto_message_fetching()
+                    print("✅ Auto message fetching started", flush=True)
+                except Exception as e:
+                    print(f"   ⚠️  Error starting auto message fetching: {e}", flush=True)
+                    print(f"   Messages may not be received automatically", flush=True)
             else:
                 print("   ⚠️  start_auto_message_fetching() not available", flush=True)
                 print("   Messages may not be received automatically", flush=True)
@@ -194,8 +314,14 @@ class MeshCoreMonitor:
             
             print("="*60, flush=True)
             print("✅ Monitor ready! Waiting for messages...", flush=True)
-            print("   Send a message to this device to test", flush=True)
+            print("   Send a DM to this device to test", flush=True)
             print("   Press Ctrl+C to exit", flush=True)
+            if not config_ok:
+                print("\n   ⚠️  Configuration issues detected (see above)", flush=True)
+                print("   If messages are not received/decrypted, check:", flush=True)
+                print("   • Private key is configured on the device", flush=True)
+                print("   • Contacts are properly synced", flush=True)
+                print("   • Auto message fetching is running", flush=True)
             print("="*60, flush=True)
             print(flush=True)
             

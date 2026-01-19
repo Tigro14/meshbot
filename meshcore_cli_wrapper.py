@@ -106,6 +106,105 @@ class MeshCoreCLIWrapper:
         self.message_callback = callback
         info_print("✅ [MESHCORE-CLI] Callback message défini")
     
+    async def _check_configuration(self):
+        """Check MeshCore configuration and report potential issues"""
+        info_print("\n" + "="*60)
+        info_print("🔍 [MESHCORE-CLI] Diagnostic de configuration")
+        info_print("="*60)
+        
+        issues_found = []
+        
+        # Check 1: Private key access
+        debug_print("\n1️⃣  Vérification clé privée...")
+        try:
+            key_attrs = ['private_key', 'key', 'node_key', 'device_key', 'crypto']
+            found_key_attrs = [attr for attr in key_attrs if hasattr(self.meshcore, attr)]
+            
+            if found_key_attrs:
+                info_print(f"   ✅ Attributs clé trouvés: {', '.join(found_key_attrs)}")
+                
+                for attr in found_key_attrs:
+                    try:
+                        value = getattr(self.meshcore, attr)
+                        if value is None:
+                            error_print(f"   ⚠️  {attr} est None")
+                            issues_found.append(f"{attr} est None - le déchiffrement peut échouer")
+                        else:
+                            debug_print(f"   ✅ {attr} est défini")
+                    except Exception as e:
+                        error_print(f"   ⚠️  Impossible d'accéder à {attr}: {e}")
+            else:
+                error_print("   ⚠️  Aucun attribut de clé privée trouvé")
+                issues_found.append("Aucune clé privée trouvée - les messages chiffrés ne peuvent pas être déchiffrés")
+        except Exception as e:
+            error_print(f"   ⚠️  Erreur vérification clé privée: {e}")
+            issues_found.append(f"Erreur vérification clé privée: {e}")
+        
+        # Check 2: Contact sync capability
+        debug_print("\n2️⃣  Vérification capacité sync contacts...")
+        if hasattr(self.meshcore, 'sync_contacts'):
+            info_print("   ✅ Méthode sync_contacts() disponible")
+        else:
+            error_print("   ❌ Méthode sync_contacts() NON disponible")
+            issues_found.append("sync_contacts() non disponible - la synchronisation des contacts ne peut pas être effectuée")
+        
+        # Check 3: Auto message fetching
+        debug_print("\n3️⃣  Vérification auto message fetching...")
+        if hasattr(self.meshcore, 'start_auto_message_fetching'):
+            info_print("   ✅ start_auto_message_fetching() disponible")
+        else:
+            error_print("   ❌ start_auto_message_fetching() NON disponible")
+            issues_found.append("start_auto_message_fetching() non disponible - les messages doivent être récupérés manuellement")
+        
+        # Check 4: Event dispatcher
+        debug_print("\n4️⃣  Vérification event dispatcher...")
+        if hasattr(self.meshcore, 'events'):
+            info_print("   ✅ Event dispatcher (events) disponible")
+        elif hasattr(self.meshcore, 'dispatcher'):
+            info_print("   ✅ Event dispatcher (dispatcher) disponible")
+        else:
+            error_print("   ❌ Aucun event dispatcher trouvé")
+            issues_found.append("Aucun event dispatcher - les événements ne peuvent pas être reçus")
+        
+        # Summary
+        info_print("\n" + "="*60)
+        if issues_found:
+            error_print("⚠️  Problèmes de configuration détectés:")
+            for i, issue in enumerate(issues_found, 1):
+                error_print(f"   {i}. {issue}")
+            error_print("\n💡 Conseils de dépannage:")
+            error_print("   • Assurez-vous que le device MeshCore a une clé privée configurée")
+            error_print("   • Vérifiez que les contacts sont correctement synchronisés")
+            error_print("   • Assurez-vous que auto message fetching est démarré")
+            error_print("   • Activez le mode debug pour des logs plus détaillés")
+        else:
+            info_print("✅ Aucun problème de configuration détecté")
+        info_print("="*60 + "\n")
+        
+        return len(issues_found) == 0
+    
+    async def _verify_contacts(self):
+        """Verify that contacts were actually synced"""
+        try:
+            if hasattr(self.meshcore, 'contacts'):
+                contacts = self.meshcore.contacts
+                if contacts:
+                    info_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
+                else:
+                    error_print("   ⚠️  Liste de contacts vide")
+                    error_print("      Le déchiffrement des DM peut échouer")
+            elif hasattr(self.meshcore, 'get_contacts'):
+                contacts = await self.meshcore.get_contacts()
+                if contacts:
+                    info_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
+                else:
+                    error_print("   ⚠️  Liste de contacts vide")
+                    error_print("      Le déchiffrement des DM peut échouer")
+            else:
+                debug_print("   ℹ️  Impossible de vérifier la liste des contacts")
+        except Exception as e:
+            error_print(f"   ⚠️  Erreur vérification contacts: {e}")
+    
     def start_reading(self):
         """Démarre la lecture des messages en arrière-plan"""
         if not self.meshcore:
@@ -155,17 +254,25 @@ class MeshCoreCLIWrapper:
             
             # Créer une coroutine qui tourne tant que running est True
             async def event_loop_task():
+                # Run configuration diagnostics
+                await self._check_configuration()
+                
                 # CRITICAL: Sync contacts first to enable CONTACT_MSG_RECV events
                 try:
                     if hasattr(self.meshcore, 'sync_contacts'):
                         info_print("🔄 [MESHCORE-CLI] Synchronisation des contacts...")
                         await self.meshcore.sync_contacts()
                         info_print("✅ [MESHCORE-CLI] Contacts synchronisés")
+                        
+                        # Check if contacts were actually synced
+                        await self._verify_contacts()
                     else:
                         info_print("⚠️ [MESHCORE-CLI] sync_contacts() non disponible")
+                        error_print("   ⚠️ Sans sync_contacts(), le déchiffrement des DM peut échouer")
                 except Exception as e:
                     error_print(f"❌ [MESHCORE-CLI] Erreur sync_contacts: {e}")
                     error_print(traceback.format_exc())
+                    error_print("   ⚠️ Le déchiffrement des messages entrants peut échouer")
                 
                 # CRITICAL: Start auto message fetching to receive events
                 try:
@@ -174,9 +281,11 @@ class MeshCoreCLIWrapper:
                         info_print("✅ [MESHCORE-CLI] Auto message fetching démarré")
                     else:
                         info_print("⚠️ [MESHCORE-CLI] start_auto_message_fetching() non disponible")
+                        error_print("   ⚠️ Sans auto message fetching, les messages ne seront pas reçus automatiquement")
                 except Exception as e:
                     error_print(f"❌ [MESHCORE-CLI] Erreur start_auto_message_fetching: {e}")
                     error_print(traceback.format_exc())
+                    error_print("   ⚠️ Les messages peuvent ne pas être reçus automatiquement")
                 
                 # Boucle pour maintenir l'event loop actif
                 while self.running:
