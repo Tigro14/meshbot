@@ -35,6 +35,7 @@ class MeshCoreMonitor:
         self.meshcore = None
         self.running = True
         self.message_count = 0
+        self.rx_log_count = 0  # Track RX_LOG_DATA events separately
         self.last_heartbeat = None
         # Store module references (will be set by main())
         self.MeshCore = meshcore_module
@@ -123,6 +124,30 @@ class MeshCoreMonitor:
             print(f"  Text: <not found>")
         
         print(f"{'='*60}\n")
+    
+    async def on_rx_log_data(self, event):
+        """Callback for RX_LOG_DATA events (raw RF data)"""
+        self.rx_log_count += 1
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Only show summary unless in debug mode
+        if not self.debug:
+            # Just count, don't spam output
+            return
+        
+        print(f"\n[{timestamp}] 📡 RX_LOG_DATA #{self.rx_log_count}")
+        print(f"  Event: {type(event).__name__}")
+        
+        # Try to extract useful info
+        if hasattr(event, 'data'):
+            data = event.data
+            if isinstance(data, dict):
+                print(f"  SNR: {data.get('snr', 'N/A')}")
+                print(f"  RSSI: {data.get('rssi', 'N/A')}")
+                payload_len = data.get('payload_length', 0)
+                print(f"  Payload length: {payload_len}")
+        
+        print()
         
     async def start(self):
         """Start monitoring"""
@@ -165,18 +190,40 @@ class MeshCoreMonitor:
             print("📡 Setting up event subscription...", flush=True)
             
             # Try different subscription methods
+            subscription_ok = False
             if hasattr(self.meshcore, 'events'):
                 print("   Using: meshcore.events.subscribe()", flush=True)
+                # Subscribe to CONTACT_MSG_RECV for actual DM messages
                 self.meshcore.events.subscribe(self.EventType.CONTACT_MSG_RECV, self.on_message)
+                print("   ✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+                
+                # Also subscribe to RX_LOG_DATA to track raw RF activity
+                if hasattr(self.EventType, 'RX_LOG_DATA'):
+                    self.meshcore.events.subscribe(self.EventType.RX_LOG_DATA, self.on_rx_log_data)
+                    print("   ✅ Subscribed to RX_LOG_DATA events (RF activity)", flush=True)
+                
+                subscription_ok = True
             elif hasattr(self.meshcore, 'dispatcher'):
                 print("   Using: meshcore.dispatcher.subscribe()", flush=True)
+                # Subscribe to CONTACT_MSG_RECV for actual DM messages
                 self.meshcore.dispatcher.subscribe(self.EventType.CONTACT_MSG_RECV, self.on_message)
+                print("   ✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+                
+                # Also subscribe to RX_LOG_DATA to track raw RF activity
+                if hasattr(self.EventType, 'RX_LOG_DATA'):
+                    self.meshcore.dispatcher.subscribe(self.EventType.RX_LOG_DATA, self.on_rx_log_data)
+                    print("   ✅ Subscribed to RX_LOG_DATA events (RF activity)", flush=True)
+                
+                subscription_ok = True
             else:
                 print("   ❌ No known subscription method found!", flush=True)
                 print(f"   Available attributes: {dir(self.meshcore)}", flush=True)
                 return
             
-            print("✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+            if not subscription_ok:
+                print("   ❌ Event subscription failed!", flush=True)
+                return
+            
             print(flush=True)
             
             # Sync contacts first
@@ -207,6 +254,10 @@ class MeshCoreMonitor:
             print("   Press Ctrl+C to exit", flush=True)
             if not self.debug:
                 print("   (Use --debug flag for verbose meshcore library output)", flush=True)
+            print("", flush=True)
+            print("   📊 Event counters:", flush=True)
+            print("      - CONTACT_MSG_RECV: DM messages (shown in detail)", flush=True)
+            print("      - RX_LOG_DATA: Raw RF packets (counted, shown in debug mode)", flush=True)
             print("="*60, flush=True)
             print(flush=True)
             
@@ -238,7 +289,7 @@ class MeshCoreMonitor:
             await asyncio.sleep(30)  # Heartbeat every 30 seconds
             if self.running:
                 timestamp = datetime.now().strftime("%H:%M:%S")
-                print(f"[{timestamp}] 💓 Monitor active | Messages received: {self.message_count}", flush=True)
+                print(f"[{timestamp}] 💓 Monitor active | DM messages: {self.message_count} | RF packets: {self.rx_log_count}", flush=True)
     
     async def cleanup(self):
         """Cleanup resources"""
@@ -253,7 +304,8 @@ class MeshCoreMonitor:
                 print(f"⚠️  Disconnect error: {e}")
         
         print(f"\n📊 Statistics:")
-        print(f"   Messages received: {self.message_count}")
+        print(f"   DM messages received: {self.message_count}")
+        print(f"   RF packets received: {self.rx_log_count}")
         print("\n✅ Monitor stopped")
     
     def stop(self):
