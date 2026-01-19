@@ -170,6 +170,18 @@ class MeshCoreMonitor:
             print("✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
             print(flush=True)
             
+            # Sync contacts first
+            print("🔄 Syncing contacts...", flush=True)
+            if hasattr(self.meshcore, 'sync_contacts'):
+                try:
+                    await self.meshcore.sync_contacts()
+                    print("✅ Contacts synced successfully", flush=True)
+                except Exception as e:
+                    print(f"   ⚠️  Error syncing contacts: {e}", flush=True)
+            else:
+                print("   ⚠️  sync_contacts() not available", flush=True)
+            print(flush=True)
+            
             # Start auto message fetching
             print("🚀 Starting auto message fetching...", flush=True)
             if hasattr(self.meshcore, 'start_auto_message_fetching'):

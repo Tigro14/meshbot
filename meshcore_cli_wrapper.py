@@ -155,6 +155,18 @@ class MeshCoreCLIWrapper:
             
             # Créer une coroutine qui tourne tant que running est True
             async def event_loop_task():
+                # CRITICAL: Sync contacts first to enable CONTACT_MSG_RECV events
+                try:
+                    if hasattr(self.meshcore, 'sync_contacts'):
+                        info_print("🔄 [MESHCORE-CLI] Synchronisation des contacts...")
+                        await self.meshcore.sync_contacts()
+                        info_print("✅ [MESHCORE-CLI] Contacts synchronisés")
+                    else:
+                        info_print("⚠️ [MESHCORE-CLI] sync_contacts() non disponible")
+                except Exception as e:
+                    error_print(f"❌ [MESHCORE-CLI] Erreur sync_contacts: {e}")
+                    error_print(traceback.format_exc())
+                
                 # CRITICAL: Start auto message fetching to receive events
                 try:
                     if hasattr(self.meshcore, 'start_auto_message_fetching'):
