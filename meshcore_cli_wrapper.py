@@ -360,14 +360,42 @@ class MeshCoreCLIWrapper:
             
             debug_print(f"📦 [MESHCORE-CLI] Payload: {payload}")
             
-            sender_id = payload.get('contact_id') or payload.get('sender_id')
-            text = payload.get('text', '')
+            # Essayer plusieurs sources pour le sender_id
+            sender_id = None
             
-            info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+            # Méthode 1: Chercher dans payload (dict)
+            if isinstance(payload, dict):
+                sender_id = payload.get('contact_id') or payload.get('sender_id')
+            
+            # Méthode 2: Chercher dans les attributs de l'event
+            if sender_id is None and hasattr(event, 'attributes'):
+                attributes = event.attributes
+                if isinstance(attributes, dict):
+                    sender_id = attributes.get('contact_id') or attributes.get('sender_id')
+            
+            # Méthode 3: Chercher directement sur l'event
+            if sender_id is None and hasattr(event, 'contact_id'):
+                sender_id = event.contact_id
+            
+            text = payload.get('text', '') if isinstance(payload, dict) else ''
+            
+            # Log avec gestion de None pour sender_id
+            if sender_id is not None:
+                info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+            else:
+                # Fallback: afficher pubkey_prefix si disponible
+                pubkey_prefix = None
+                if isinstance(payload, dict):
+                    pubkey_prefix = payload.get('pubkey_prefix')
+                if pubkey_prefix:
+                    info_print(f"📬 [MESHCORE-DM] De: {pubkey_prefix} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+                else:
+                    info_print(f"📬 [MESHCORE-DM] De: <inconnu> | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
             
             # Créer un pseudo-packet compatible avec le code existant
+            # Utiliser 0xFFFFFFFF si sender_id est None (broadcast/unknown)
             packet = {
-                'from': sender_id,
+                'from': sender_id if sender_id is not None else 0xFFFFFFFF,
                 'to': self.localNode.nodeNum,
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
