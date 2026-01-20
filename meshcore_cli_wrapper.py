@@ -31,13 +31,14 @@ class MeshCoreCLIWrapper:
     sinon fallback vers implémentation basique
     """
     
-    def __init__(self, port, baudrate=115200):
+    def __init__(self, port, baudrate=115200, debug=None):
         """
         Initialise l'interface MeshCore via meshcore-cli
         
         Args:
             port: Port série (ex: /dev/ttyUSB0)
             baudrate: Vitesse de communication (défaut: 115200)
+            debug: Enable debug mode (default: None, uses DEBUG_MODE from config if available)
         """
         self.port = port
         self.baudrate = baudrate
@@ -45,6 +46,16 @@ class MeshCoreCLIWrapper:
         self.running = False
         self.message_callback = None
         self.message_thread = None
+        
+        # Determine debug mode: explicit parameter > config > False
+        if debug is None:
+            try:
+                import config
+                self.debug = getattr(config, 'DEBUG_MODE', False)
+            except ImportError:
+                self.debug = False
+        else:
+            self.debug = debug
         
         # Simulation d'un localNode pour compatibilité
         self.localNode = type('obj', (object,), {
@@ -56,7 +67,7 @@ class MeshCoreCLIWrapper:
             error_print("   Installation: pip install meshcore")
             raise ImportError("meshcore-cli library required")
         
-        info_print(f"🔧 [MESHCORE-CLI] Initialisation: {port}")
+        info_print(f"🔧 [MESHCORE-CLI] Initialisation: {port} (debug={self.debug})")
     
     def connect(self):
         """Établit la connexion avec MeshCore via meshcore-cli"""
@@ -70,7 +81,7 @@ class MeshCoreCLIWrapper:
             
             # Créer la connexion série avec la factory method
             self.meshcore = loop.run_until_complete(
-                MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=False)
+                MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=self.debug)
             )
             
             # Sauvegarder l'event loop pour les opérations futures

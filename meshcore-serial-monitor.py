@@ -2,35 +2,44 @@
 """
 MeshCore Serial Monitor - Standalone diagnostic tool
 Tests meshcore-cli library API and displays received messages
+
+Usage:
+    python meshcore-serial-monitor.py [port] [--debug]
+    
+Arguments:
+    port       Serial port (default: /dev/ttyACM0)
+    --debug    Enable debug mode for verbose meshcore library output
+    
+Example:
+    python meshcore-serial-monitor.py /dev/ttyACM0 --debug
 """
 
 import asyncio
 import sys
 import signal
+import argparse
 from datetime import datetime
 
 # Force unbuffered output for real-time logging
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-try:
-    from meshcore import MeshCore, EventType
-    MESHCORE_AVAILABLE = True
-except ImportError:
-    print("❌ meshcore-cli library not installed")
-    print("   Install with: pip install meshcore")
-    sys.exit(1)
-
 
 class MeshCoreMonitor:
     """Simple monitor for MeshCore messages"""
     
-    def __init__(self, port="/dev/ttyACM0", baudrate=115200):
+    def __init__(self, port="/dev/ttyACM0", baudrate=115200, debug=False, meshcore_module=None, event_type=None):
         self.port = port
         self.baudrate = baudrate
+        self.debug = debug
         self.meshcore = None
         self.running = True
         self.message_count = 0
+        self.rx_log_count = 0  # Track RX_LOG_DATA events separately
+        self.last_heartbeat = None
+        # Store module references (will be set by main())
+        self.MeshCore = meshcore_module
+        self.EventType = event_type
         
     async def on_message(self, event):
         """Callback when message received"""
@@ -115,6 +124,30 @@ class MeshCoreMonitor:
             print(f"  Text: <not found>")
         
         print(f"{'='*60}\n")
+    
+    async def on_rx_log_data(self, event):
+        """Callback for RX_LOG_DATA events (raw RF data)"""
+        self.rx_log_count += 1
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Only show summary unless in debug mode
+        if not self.debug:
+            # Just count, don't spam output
+            return
+        
+        print(f"\n[{timestamp}] 📡 RX_LOG_DATA #{self.rx_log_count}")
+        print(f"  Event: {type(event).__name__}")
+        
+        # Try to extract useful info
+        if hasattr(event, 'data'):
+            data = event.data
+            if isinstance(data, dict):
+                print(f"  SNR: {data.get('snr', 'N/A')}")
+                print(f"  RSSI: {data.get('rssi', 'N/A')}")
+                payload_len = data.get('payload_length', 0)
+                print(f"  Payload length: {payload_len}")
+        
+        print()
         
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
@@ -262,15 +295,16 @@ class MeshCoreMonitor:
         print("🔧 MeshCore Serial Monitor - Diagnostic Tool", flush=True)
         print(f"   Port: {self.port}", flush=True)
         print(f"   Baudrate: {self.baudrate}", flush=True)
+        print(f"   Debug mode: {'ENABLED' if self.debug else 'DISABLED'}", flush=True)
         print(flush=True)
         
         try:
             # Connect to device
             print("🔌 Connecting to MeshCore device...", flush=True)
-            self.meshcore = await MeshCore.create_serial(
+            self.meshcore = await self.MeshCore.create_serial(
                 self.port,
                 baudrate=self.baudrate,
-                debug=False
+                debug=self.debug  # Pass debug flag to meshcore library
             )
             print("✅ Connected successfully!", flush=True)
             print(flush=True)
@@ -300,18 +334,40 @@ class MeshCoreMonitor:
             print("📡 Setting up event subscription...", flush=True)
             
             # Try different subscription methods
+            subscription_ok = False
             if hasattr(self.meshcore, 'events'):
                 print("   Using: meshcore.events.subscribe()", flush=True)
-                self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self.on_message)
+                # Subscribe to CONTACT_MSG_RECV for actual DM messages
+                self.meshcore.events.subscribe(self.EventType.CONTACT_MSG_RECV, self.on_message)
+                print("   ✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+                
+                # Also subscribe to RX_LOG_DATA to track raw RF activity
+                if hasattr(self.EventType, 'RX_LOG_DATA'):
+                    self.meshcore.events.subscribe(self.EventType.RX_LOG_DATA, self.on_rx_log_data)
+                    print("   ✅ Subscribed to RX_LOG_DATA events (RF activity)", flush=True)
+                
+                subscription_ok = True
             elif hasattr(self.meshcore, 'dispatcher'):
                 print("   Using: meshcore.dispatcher.subscribe()", flush=True)
-                self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self.on_message)
+                # Subscribe to CONTACT_MSG_RECV for actual DM messages
+                self.meshcore.dispatcher.subscribe(self.EventType.CONTACT_MSG_RECV, self.on_message)
+                print("   ✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+                
+                # Also subscribe to RX_LOG_DATA to track raw RF activity
+                if hasattr(self.EventType, 'RX_LOG_DATA'):
+                    self.meshcore.dispatcher.subscribe(self.EventType.RX_LOG_DATA, self.on_rx_log_data)
+                    print("   ✅ Subscribed to RX_LOG_DATA events (RF activity)", flush=True)
+                
+                subscription_ok = True
             else:
                 print("   ❌ No known subscription method found!", flush=True)
                 print(f"   Available attributes: {dir(self.meshcore)}", flush=True)
                 return
             
-            print("✅ Subscribed to CONTACT_MSG_RECV events", flush=True)
+            if not subscription_ok:
+                print("   ❌ Event subscription failed!", flush=True)
+                return
+            
             print(flush=True)
             
             # Sync contacts first
@@ -355,9 +411,19 @@ class MeshCoreMonitor:
             print("="*60, flush=True)
             print(flush=True)
             
+            # Start heartbeat task to show monitor is alive
+            heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            
             # Keep running
-            while self.running:
-                await asyncio.sleep(0.1)
+            try:
+                while self.running:
+                    await asyncio.sleep(0.1)
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
                 
         except Exception as e:
             print(f"\n❌ Error: {e}")
@@ -366,6 +432,14 @@ class MeshCoreMonitor:
             
         finally:
             await self.cleanup()
+    
+    async def _heartbeat_loop(self):
+        """Periodic heartbeat to show monitor is still active"""
+        while self.running:
+            await asyncio.sleep(30)  # Heartbeat every 30 seconds
+            if self.running:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                print(f"[{timestamp}] 💓 Monitor active | DM messages: {self.message_count} | RF packets: {self.rx_log_count}", flush=True)
     
     async def cleanup(self):
         """Cleanup resources"""
@@ -380,7 +454,8 @@ class MeshCoreMonitor:
                 print(f"⚠️  Disconnect error: {e}")
         
         print(f"\n📊 Statistics:")
-        print(f"   Messages received: {self.message_count}")
+        print(f"   DM messages received: {self.message_count}")
+        print(f"   RF packets received: {self.rx_log_count}")
         print("\n✅ Monitor stopped")
     
     def stop(self):
@@ -390,11 +465,47 @@ class MeshCoreMonitor:
 
 async def main():
     """Main entry point"""
-    # Get port from command line or use default
-    port = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyACM0"
+    # Parse command line arguments first (before importing meshcore)
+    parser = argparse.ArgumentParser(
+        description='MeshCore Serial Monitor - Diagnostic tool for meshcore-cli',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                          # Use default port /dev/ttyACM0, no debug
+  %(prog)s /dev/ttyUSB0             # Use custom port, no debug
+  %(prog)s --debug                  # Default port with debug enabled
+  %(prog)s /dev/ttyUSB0 --debug     # Custom port with debug enabled
+        """
+    )
+    parser.add_argument(
+        'port',
+        nargs='?',
+        default='/dev/ttyACM0',
+        help='Serial port (default: /dev/ttyACM0)'
+    )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug mode for verbose meshcore library output'
+    )
     
-    # Create monitor
-    monitor = MeshCoreMonitor(port=port)
+    args = parser.parse_args()
+    
+    # Now try to import meshcore (after parsing args so --help works)
+    try:
+        from meshcore import MeshCore, EventType
+    except ImportError:
+        print("❌ meshcore-cli library not installed")
+        print("   Install with: pip install meshcore")
+        sys.exit(1)
+    
+    # Create monitor with debug flag
+    monitor = MeshCoreMonitor(
+        port=args.port, 
+        debug=args.debug,
+        meshcore_module=MeshCore,
+        event_type=EventType
+    )
     
     # Handle Ctrl+C
     def signal_handler(sig, frame):
