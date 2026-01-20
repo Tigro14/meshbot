@@ -150,33 +150,17 @@ class MeshCoreCLIWrapper:
             pubkey_prefix = str(pubkey_prefix).lower().strip()
             
             # Try to access the contacts database
+            # Only use synchronous access - don't block event loop with async calls
             contacts = None
             if hasattr(self.meshcore, 'contacts'):
                 contacts = self.meshcore.contacts
-                debug_print(f"🔍 [MESHCORE-CLI] Recherche dans {len(contacts)} contact(s)")
-            elif hasattr(self.meshcore, 'get_contacts'):
-                # Async method - need to run in event loop
-                try:
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Create a task and wait for it
-                        future = asyncio.ensure_future(self.meshcore.get_contacts())
-                        # Wait a bit for it to complete
-                        import time
-                        timeout = 2  # 2 seconds max
-                        start = time.time()
-                        while not future.done() and (time.time() - start) < timeout:
-                            time.sleep(0.1)
-                        if future.done():
-                            contacts = future.result()
-                    else:
-                        contacts = loop.run_until_complete(self.meshcore.get_contacts())
-                except Exception as e:
-                    debug_print(f"⚠️ [MESHCORE-CLI] Erreur get_contacts(): {e}")
+                if contacts:
+                    debug_print(f"🔍 [MESHCORE-CLI] Recherche dans {len(contacts)} contact(s)")
             
             if not contacts:
-                debug_print("⚠️ [MESHCORE-CLI] Aucun contact disponible")
+                # No contacts available via synchronous access - skip this optimization
+                # This is not an error - the main pubkey resolution still works
+                debug_print("⚠️ [MESHCORE-CLI] Contacts non disponibles (sync only)")
                 return None
             
             # Search for matching contact by pubkey prefix
