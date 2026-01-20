@@ -420,6 +420,11 @@ class MeshCoreCLIWrapper:
                 sender_id = 0xFFFFFFFF
                 # Marquer comme DM en utilisant to=localNode (pas broadcast)
                 to_id = self.localNode.nodeNum
+                
+                # AVERTISSEMENT: Le bot ne pourra pas répondre sans ID de contact valide
+                error_print(f"⚠️ [MESHCORE-DM] Expéditeur inconnu (pubkey {pubkey_prefix} non trouvé)")
+                error_print(f"   → Le message sera traité mais le bot ne pourra pas répondre")
+                error_print(f"   → Pour résoudre: Ajouter le contact dans la base de données")
             else:
                 to_id = self.localNode.nodeNum
             
