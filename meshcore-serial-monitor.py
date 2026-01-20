@@ -59,6 +59,10 @@ class MeshCoreMonitor:
         """
         Parse private key from string (base64 or hex format)
         
+        Supports:
+        - 32 bytes (private key only)
+        - 64 bytes (private key + public key concatenated, MeshCore format)
+        
         Args:
             key_string: Private key as base64 or hex string
             
@@ -74,6 +78,9 @@ class MeshCoreMonitor:
                 key_bytes = base64.b64decode(key_string)
                 if len(key_bytes) == 32:  # Curve25519 private key is 32 bytes
                     return nacl.public.PrivateKey(key_bytes)
+                elif len(key_bytes) == 64:  # MeshCore format: private key (32) + public key (32)
+                    print(f"ℹ️  Detected 64-byte key (private+public), using first 32 bytes", file=sys.stderr)
+                    return nacl.public.PrivateKey(key_bytes[:32])
             except Exception:
                 pass
             
@@ -82,14 +89,21 @@ class MeshCoreMonitor:
                 key_bytes = bytes.fromhex(key_string.replace(':', '').replace(' ', ''))
                 if len(key_bytes) == 32:
                     return nacl.public.PrivateKey(key_bytes)
+                elif len(key_bytes) == 64:  # MeshCore format: private key (32) + public key (32)
+                    print(f"ℹ️  Detected 64-byte key (private+public), using first 32 bytes", file=sys.stderr)
+                    return nacl.public.PrivateKey(key_bytes[:32])
             except Exception:
                 pass
             
-            # Try raw bytes if exactly 32 bytes
-            if isinstance(key_string, bytes) and len(key_string) == 32:
-                return nacl.public.PrivateKey(key_string)
+            # Try raw bytes if exactly 32 or 64 bytes
+            if isinstance(key_string, bytes):
+                if len(key_string) == 32:
+                    return nacl.public.PrivateKey(key_string)
+                elif len(key_string) == 64:
+                    print(f"ℹ️  Detected 64-byte key (private+public), using first 32 bytes", file=sys.stderr)
+                    return nacl.public.PrivateKey(key_string[:32])
             
-            print(f"⚠️  Failed to parse private key (expected 32 bytes, got {len(key_string)} chars)", file=sys.stderr)
+            print(f"⚠️  Failed to parse private key (expected 32 or 64 bytes, got {len(key_string)} chars)", file=sys.stderr)
             return None
             
         except Exception as e:
@@ -349,6 +363,22 @@ class MeshCoreMonitor:
                 print(f"  RSSI: {data.get('rssi', 'N/A')}")
                 payload_len = data.get('payload_length', 0)
                 print(f"  Payload length: {payload_len}")
+                
+                # Show payload hex if available (for debugging encrypted DMs)
+                payload = data.get('payload', '')
+                if payload:
+                    # Truncate long payloads
+                    payload_hex = payload if isinstance(payload, str) else payload.hex()
+                    if len(payload_hex) > 60:
+                        print(f"  Payload: {payload_hex[:60]}...")
+                    else:
+                        print(f"  Payload: {payload_hex}")
+                    
+                    # Note about encrypted DMs
+                    if self.private_key:
+                        print(f"  ℹ️  RF packet received but not decoded as DM by MeshCore library")
+                        print(f"     This may be an encrypted DM that needs manual decryption")
+                        print(f"     Waiting for CONTACT_MSG_RECV event...")
         
         print()
         
@@ -649,7 +679,13 @@ class MeshCoreMonitor:
             await asyncio.sleep(30)  # Heartbeat every 30 seconds
             if self.running:
                 timestamp = datetime.now().strftime("%H:%M:%S")
-                print(f"[{timestamp}] 💓 Monitor active | DM messages: {self.message_count} | RF packets: {self.rx_log_count}", flush=True)
+                heartbeat_msg = f"[{timestamp}] 💓 Monitor active | DM messages: {self.message_count} | RF packets: {self.rx_log_count}"
+                
+                # Add warning if RF packets received but no DMs
+                if self.rx_log_count > 0 and self.message_count == 0:
+                    heartbeat_msg += " ⚠️  (RF received but no DM decoded)"
+                
+                print(heartbeat_msg, flush=True)
     
     async def cleanup(self):
         """Cleanup resources"""

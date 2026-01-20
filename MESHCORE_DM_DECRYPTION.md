@@ -86,14 +86,22 @@ python3 meshcore-serial-monitor.py /dev/ttyACM0
 #### Option 1: Private Key as Argument
 
 ```bash
-# Base64 format (32 bytes)
+# Base64 format (32 bytes - private key only)
 python3 meshcore-serial-monitor.py /dev/ttyACM0 \
   --private-key "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU="
 
-# Hex format (64 characters)
+# Hex format (64 hex characters = 32 bytes)
 python3 meshcore-serial-monitor.py /dev/ttyACM0 \
   --private-key "6162636465666768696a6b6c6d6e6f707172737475767778797a30313233343"
+
+# MeshCore format (128 hex characters = 64 bytes: private key + public key)
+python3 meshcore-serial-monitor.py /dev/ttyACM0 \
+  --private-key "B8F7F7105F8929A641F6E6A75DE6E6ACDCC06A9A4661E3FDF0B3F9C402CC9043C6B9EF0F804E2FC854CC21EEFBBA6FCCA33D63C207CB3A6E928426E0AEC5F652"
 ```
+
+**Note**: The tool automatically detects and handles both formats:
+- **32 bytes**: Private key only
+- **64 bytes**: Private key (first 32 bytes) + public key (last 32 bytes) - MeshCore format
 
 #### Option 2: Private Key from File
 
@@ -201,25 +209,30 @@ pip install PyNaCl --break-system-packages
 
 **Symptoms**:
 ```
-⚠️  Failed to parse private key (expected 32 bytes, got X chars)
+⚠️  Failed to parse private key (expected 32 or 64 bytes, got X chars)
 ```
 
 **Solution**:
-- Verify key is exactly 32 bytes
+- Verify key is 32 bytes (private key only) or 64 bytes (private + public key)
 - Check format (base64 or hex)
 - Remove any whitespace/newlines
 
 **Valid formats**:
 ```bash
-# Base64 (44 characters with padding)
+# Base64 - 32 bytes (44 characters with padding)
 YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU=
 
-# Hex (64 characters)
+# Hex - 32 bytes (64 hex characters)
 6162636465666768696a6b6c6d6e6f707172737475767778797a30313233343
 
-# Hex with colons (95 characters)
+# MeshCore format - 64 bytes (128 hex characters: private key + public key)
+B8F7F7105F8929A641F6E6A75DE6E6ACDCC06A9A4661E3FDF0B3F9C402CC9043C6B9EF0F804E2FC854CC21EEFBBA6FCCA33D63C207CB3A6E928426E0AEC5F652
+
+# Hex with colons - 32 bytes (95 characters)
 61:62:63:64:65:66:67:68:69:6a:6b:6c:6d:6e:6f:70:71:72:73:74:75:76:77:78:79:7a:30:31:32:33:34
 ```
+
+**Note**: The MeshCore format concatenates the private key (first 32 bytes) and public key (last 32 bytes). The tool automatically uses only the first 32 bytes as the private key.
 
 ### Issue 3: "Sender's public key not found in contacts"
 
@@ -262,7 +275,58 @@ YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU=
 - Re-sync contacts
 - Ask sender to send message again
 
-### Issue 5: Not detecting encrypted messages
+### Issue 5: RF packets received but no DMs decoded
+
+**Symptoms**:
+```
+[07:40:48] 📡 RX_LOG_DATA #1
+  SNR: 11.75
+  RSSI: -11
+  Payload length: 39
+  ℹ️  RF packet received but not decoded as DM by MeshCore library
+
+[07:41:18] 💓 Monitor active | DM messages: 0 | RF packets: 47 ⚠️  (RF received but no DM decoded)
+```
+
+**Root Cause**: The MeshCore library is receiving RF packets but not successfully decoding them into CONTACT_MSG_RECV events. This typically means:
+1. The MeshCore device doesn't have the private key configured properly
+2. Contacts are not synced (missing sender's public key)
+3. The encryption keys in the MeshCore device don't match the provided key file
+
+**Solution**:
+
+1. **Verify the private key matches your device**:
+   - The key file should contain YOUR device's private key
+   - Check if the key was exported from the correct device
+   - MeshCore format: 64 bytes (private key + public key concatenated)
+
+2. **Check MeshCore device configuration**:
+   ```bash
+   # Connect to device console and verify keys are loaded
+   # The device must have the private key configured internally
+   ```
+
+3. **Ensure contacts are synced**:
+   - Look for "✅ Contacts synced successfully" in startup logs
+   - If contacts sync fails, the library can't decrypt DMs
+
+4. **Verify auto message fetching is running**:
+   - Look for "✅ Auto message fetching started" in startup logs
+   - Without this, CONTACT_MSG_RECV events won't be dispatched
+
+5. **Check MeshCore library version**:
+   ```bash
+   pip show meshcore
+   ```
+   - Ensure you're using a compatible version that supports PKI encryption
+
+**Important Note**: The monitor's DM decryption feature only works when the MeshCore library successfully dispatches CONTACT_MSG_RECV events. If the library itself can't decrypt (due to missing keys in the device), the monitor won't receive the event to decrypt manually.
+
+**Workaround**: If MeshCore library consistently fails to decode DMs, you may need to:
+- Reconfigure the MeshCore device with proper keys
+- Or use a different decryption approach that works directly with raw RF payloads (not currently implemented)
+
+### Issue 6: Not detecting encrypted messages
 
 **Symptoms**:
 - Messages appear garbled but decryption not attempted
