@@ -40,6 +40,9 @@ pygeohash>=3.2.0
 # AES encryption for decrypting Meshtastic packets
 cryptography>=41.0.0
 
+# NaCl/libsodium for MeshCore DM decryption (Curve25519 + XSalsa20-Poly1305)
+PyNaCl>=1.5.0
+
 # === MeshCore Support (Optional) ===
 # Official MeshCore Python library for MeshCore companion mode
 # Install only if using MeshCore companion mode (MESHCORE_ENABLED=True)
