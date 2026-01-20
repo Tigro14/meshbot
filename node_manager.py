@@ -236,34 +236,18 @@ class NodeManager:
             if 'publicKey' in node_data:
                 public_key = node_data['publicKey']
                 
-                # Convert public_key to hex for comparison
-                public_key_hex = None
-                
+                # Handle both string and bytes formats
                 if isinstance(public_key, str):
-                    # String format could be:
-                    # 1. Hex string (already in hex format)
-                    # 2. Base64-encoded string (needs decoding)
-                    try:
-                        # First, try to treat it as hex
-                        if all(c in '0123456789abcdefABCDEF' for c in public_key.replace(' ', '')):
-                            public_key_hex = public_key.lower().replace(' ', '')
-                        else:
-                            # Assume it's base64, decode to bytes then convert to hex
-                            import base64
-                            decoded_bytes = base64.b64decode(public_key)
-                            public_key_hex = decoded_bytes.hex().lower()
-                    except Exception as e:
-                        debug_print(f"⚠️ Failed to decode publicKey for node 0x{node_id:08x}: {e}")
-                        continue
-                        
+                    # String format: check if it starts with the prefix
+                    if public_key.lower().startswith(pubkey_prefix):
+                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id
                 elif isinstance(public_key, bytes):
-                    # Bytes format: convert to hex
+                    # Bytes format: convert to hex and check prefix
                     public_key_hex = public_key.hex().lower()
-                
-                # Check if the hex version starts with the prefix
-                if public_key_hex and public_key_hex.startswith(pubkey_prefix):
-                    debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
-                    return node_id
+                    if public_key_hex.startswith(pubkey_prefix):
+                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id
         
         debug_print(f"⚠️ No node found with pubkey prefix {pubkey_prefix}")
         return None
