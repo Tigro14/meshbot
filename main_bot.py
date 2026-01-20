@@ -542,8 +542,13 @@ class MeshBot:
 
             is_for_me = (to_id == my_id) if my_id else False
             is_from_me = (from_id == my_id) if my_id else False
+            
+            # Check if this is a MeshCore DM (marked by wrapper)
+            is_meshcore_dm = packet.get('_meshcore_dm', False)
+            
             # Broadcast can be to 0xFFFFFFFF or to 0 (both are broadcast addresses)
-            is_broadcast = (to_id in [0xFFFFFFFF, 0])
+            # BUT: MeshCore DMs are NOT broadcasts even if to_id looks like broadcast
+            is_broadcast = (to_id in [0xFFFFFFFF, 0]) and not is_meshcore_dm
 
             # Filtrer les messages auto-générés
             if is_from_me:
@@ -1650,6 +1655,10 @@ class MeshBot:
                 if not self.interface.connect():
                     error_print("❌ Échec connexion série MeshCore")
                     return False
+                
+                # Configure node_manager for pubkey lookups
+                if hasattr(self.interface, 'set_node_manager'):
+                    self.interface.set_node_manager(self.node_manager)
                 
                 # Démarrer la lecture des messages
                 if not self.interface.start_reading():

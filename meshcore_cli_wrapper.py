@@ -46,6 +46,7 @@ class MeshCoreCLIWrapper:
         self.running = False
         self.message_callback = None
         self.message_thread = None
+        self.node_manager = None  # Will be set via set_node_manager()
         
         # Determine debug mode: explicit parameter > config > False
         if debug is None:
@@ -116,6 +117,16 @@ class MeshCoreCLIWrapper:
         """
         self.message_callback = callback
         info_print("✅ [MESHCORE-CLI] Callback message défini")
+    
+    def set_node_manager(self, node_manager):
+        """
+        Set the node manager for pubkey lookups
+        
+        Args:
+            node_manager: NodeManager instance
+        """
+        self.node_manager = node_manager
+        debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
@@ -362,20 +373,31 @@ class MeshCoreCLIWrapper:
             
             # Essayer plusieurs sources pour le sender_id
             sender_id = None
+            pubkey_prefix = None
             
             # Méthode 1: Chercher dans payload (dict)
             if isinstance(payload, dict):
                 sender_id = payload.get('contact_id') or payload.get('sender_id')
+                pubkey_prefix = payload.get('pubkey_prefix')
             
             # Méthode 2: Chercher dans les attributs de l'event
             if sender_id is None and hasattr(event, 'attributes'):
                 attributes = event.attributes
                 if isinstance(attributes, dict):
                     sender_id = attributes.get('contact_id') or attributes.get('sender_id')
+                    if pubkey_prefix is None:
+                        pubkey_prefix = attributes.get('pubkey_prefix')
             
             # Méthode 3: Chercher directement sur l'event
             if sender_id is None and hasattr(event, 'contact_id'):
                 sender_id = event.contact_id
+            
+            # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
+            if sender_id is None and pubkey_prefix and self.node_manager:
+                debug_print(f"🔍 [MESHCORE-DM] Tentative résolution pubkey_prefix: {pubkey_prefix}")
+                sender_id = self.node_manager.find_node_by_pubkey_prefix(pubkey_prefix)
+                if sender_id:
+                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x}")
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             
@@ -384,23 +406,29 @@ class MeshCoreCLIWrapper:
                 info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
             else:
                 # Fallback: afficher pubkey_prefix si disponible
-                pubkey_prefix = None
-                if isinstance(payload, dict):
-                    pubkey_prefix = payload.get('pubkey_prefix')
                 if pubkey_prefix:
-                    info_print(f"📬 [MESHCORE-DM] De: {pubkey_prefix} | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+                    info_print(f"📬 [MESHCORE-DM] De: {pubkey_prefix} (non résolu) | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
                 else:
                     info_print(f"📬 [MESHCORE-DM] De: <inconnu> | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
             
             # Créer un pseudo-packet compatible avec le code existant
-            # Utiliser 0xFFFFFFFF si sender_id est None (broadcast/unknown)
+            # Si sender_id est toujours None après tous les essais, utiliser 0xFFFFFFFF
+            # MAIS marquer le paquet comme DM (pas broadcast) via le champ 'to'
+            if sender_id is None:
+                sender_id = 0xFFFFFFFF
+                # Marquer comme DM en utilisant to=localNode (pas broadcast)
+                to_id = self.localNode.nodeNum
+            else:
+                to_id = self.localNode.nodeNum
+            
             packet = {
-                'from': sender_id if sender_id is not None else 0xFFFFFFFF,
-                'to': self.localNode.nodeNum,
+                'from': sender_id,
+                'to': to_id,  # DM: to our node, not broadcast
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
-                }
+                },
+                '_meshcore_dm': True  # Marquer comme DM MeshCore pour traitement spécial
             }
             
             # Appeler le callback

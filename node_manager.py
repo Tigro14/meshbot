@@ -215,6 +215,43 @@ class NodeManager:
             'last_update': node_data.get('last_update')
         }
     
+    def find_node_by_pubkey_prefix(self, pubkey_prefix):
+        """
+        Find a node ID by matching the public key prefix
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key (e.g., '143bcd7f1b1f')
+            
+        Returns:
+            int: node_id if found, None otherwise
+        """
+        if not pubkey_prefix:
+            return None
+        
+        # Normalize the prefix (lowercase, no spaces)
+        pubkey_prefix = str(pubkey_prefix).lower().strip()
+        
+        # Search through all nodes
+        for node_id, node_data in self.node_names.items():
+            if 'publicKey' in node_data:
+                public_key = node_data['publicKey']
+                
+                # Handle both string and bytes formats
+                if isinstance(public_key, str):
+                    # String format: check if it starts with the prefix
+                    if public_key.lower().startswith(pubkey_prefix):
+                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id
+                elif isinstance(public_key, bytes):
+                    # Bytes format: convert to hex and check prefix
+                    public_key_hex = public_key.hex().lower()
+                    if public_key_hex.startswith(pubkey_prefix):
+                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id
+        
+        debug_print(f"⚠️ No node found with pubkey prefix {pubkey_prefix}")
+        return None
+    
     def get_reference_position(self):
         """
         Obtenir la position de référence (position du bot)
