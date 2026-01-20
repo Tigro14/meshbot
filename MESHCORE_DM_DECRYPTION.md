@@ -306,9 +306,23 @@ B8F7F7105F8929A641F6E6A75DE6E6ACDCC06A9A4661E3FDF0B3F9C402CC9043C6B9EF0F804E2FC8
    # The device must have the private key configured internally
    ```
 
-3. **Ensure contacts are synced**:
+3. **Verify contacts are synced**:
    - Look for "✅ Contacts synced successfully" in startup logs
+   - Check the contact count: "ℹ️  X contacts available"
+   - If 0 contacts, ensure other nodes have broadcasted their NODEINFO
+   - In the Configuration Diagnostics section, verify:
+     - Contact list shows the sender's node ID
+     - Contact has "✅ Has pubkey" status
    - If contacts sync fails, the library can't decrypt DMs
+
+4. **Check contact list details**:
+   The monitor shows contact details during startup diagnostics:
+   ```
+   📋 Contact List:
+      1. ID: 0x12345678 (SenderNode) - ✅ Has pubkey
+      2. ID: 0x87654321 (OtherNode) - ⚠️  No pubkey
+   ```
+   Verify that the sender of the DM appears in this list with "✅ Has pubkey"
 
 4. **Verify auto message fetching is running**:
    - Look for "✅ Auto message fetching started" in startup logs

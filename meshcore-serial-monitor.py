@@ -466,6 +466,36 @@ class MeshCoreMonitor:
                     
                     if contacts:
                         print(f"   ✅ Found {len(contacts)} contacts", flush=True)
+                        
+                        # Display contact details to help diagnose issues
+                        print(f"\n   📋 Contact List:", flush=True)
+                        for i, contact in enumerate(contacts[:10], 1):  # Show first 10
+                            try:
+                                # Try different ways to extract contact info
+                                contact_id = None
+                                contact_name = None
+                                has_pubkey = False
+                                
+                                if isinstance(contact, dict):
+                                    contact_id = contact.get('id') or contact.get('contact_id') or contact.get('node_id')
+                                    contact_name = contact.get('name') or contact.get('longName')
+                                    has_pubkey = bool(contact.get('public_key') or contact.get('publicKey'))
+                                elif hasattr(contact, 'id'):
+                                    contact_id = contact.id
+                                    contact_name = getattr(contact, 'name', None) or getattr(contact, 'longName', None)
+                                    has_pubkey = bool(getattr(contact, 'public_key', None) or getattr(contact, 'publicKey', None))
+                                
+                                if contact_id:
+                                    pubkey_status = "✅ Has pubkey" if has_pubkey else "⚠️  No pubkey"
+                                    name_display = f" ({contact_name})" if contact_name else ""
+                                    print(f"      {i}. ID: 0x{contact_id:08x}{name_display} - {pubkey_status}", flush=True)
+                                else:
+                                    print(f"      {i}. <unknown format>", flush=True)
+                            except Exception as e:
+                                print(f"      {i}. <error: {e}>", flush=True)
+                        
+                        if len(contacts) > 10:
+                            print(f"      ... and {len(contacts) - 10} more", flush=True)
                     else:
                         print("   ⚠️  Contact list is empty", flush=True)
                         issues_found.append("No contacts found - DM decryption may fail")
@@ -616,6 +646,13 @@ class MeshCoreMonitor:
                 try:
                     await self.meshcore.sync_contacts()
                     print("✅ Contacts synced successfully", flush=True)
+                    
+                    # Show contact count if available
+                    if hasattr(self.meshcore, 'contacts'):
+                        contact_count = len(self.meshcore.contacts) if self.meshcore.contacts else 0
+                        print(f"   ℹ️  {contact_count} contacts available", flush=True)
+                        if contact_count == 0:
+                            print(f"   ⚠️  No contacts synced - ensure other nodes have broadcasted their info", flush=True)
                 except Exception as e:
                     print(f"   ⚠️  Error syncing contacts: {e}", flush=True)
                     print(f"   This may prevent decryption of incoming messages", flush=True)
