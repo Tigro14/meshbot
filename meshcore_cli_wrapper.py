@@ -166,15 +166,53 @@ class MeshCoreCLIWrapper:
             
             # Ensure contacts are loaded
             if hasattr(self.meshcore, 'ensure_contacts'):
+                debug_print(f"🔄 [MESHCORE-QUERY] Chargement des contacts...")
                 self._loop.run_until_complete(self.meshcore.ensure_contacts())
+                debug_print(f"✅ [MESHCORE-QUERY] Contacts chargés")
+            else:
+                debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
+            
+            # Debug: check if meshcore has contacts attribute
+            if hasattr(self.meshcore, 'contacts'):
+                try:
+                    contacts_count = len(self.meshcore.contacts) if self.meshcore.contacts else 0
+                    debug_print(f"📊 [MESHCORE-QUERY] Nombre de contacts disponibles: {contacts_count}")
+                except Exception as ce:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de compter les contacts: {ce}")
             
             # Query meshcore for contact by pubkey prefix
             contact = None
             if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                debug_print(f"🔍 [MESHCORE-QUERY] Appel get_contact_by_key_prefix('{pubkey_prefix}')...")
                 contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
+                debug_print(f"📋 [MESHCORE-QUERY] Résultat: {type(contact).__name__} = {contact}")
+            else:
+                error_print(f"❌ [MESHCORE-QUERY] meshcore.get_contact_by_key_prefix() non disponible")
+                error_print(f"   → Vérifier version meshcore-cli (besoin >= 2.2.5)")
+                return None
             
             if not contact:
                 debug_print(f"⚠️ [MESHCORE-QUERY] Aucun contact trouvé pour pubkey_prefix: {pubkey_prefix}")
+                # Debug: list available pubkey prefixes
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    try:
+                        debug_print(f"🔑 [MESHCORE-QUERY] Préfixes de clés disponibles:")
+                        contact_list = list(self.meshcore.contacts)[:5] if hasattr(self.meshcore.contacts, '__iter__') else []
+                        for i, c in enumerate(contact_list):  # Show first 5
+                            cpk = c.get('public_key', '') or c.get('publicKey', '')
+                            if cpk:
+                                if isinstance(cpk, bytes):
+                                    prefix = cpk.hex()[:12]
+                                elif isinstance(cpk, str):
+                                    import base64
+                                    try:
+                                        decoded = base64.b64decode(cpk)
+                                        prefix = decoded.hex()[:12]
+                                    except:
+                                        prefix = cpk[:12]
+                                debug_print(f"   {i+1}. {prefix}... (nom: {c.get('name', 'unknown')})")
+                    except Exception as debug_err:
+                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur debug contacts: {debug_err}")
                 return None
             
             # Extract contact information
@@ -530,6 +568,8 @@ class MeshCoreCLIWrapper:
             payload = event.payload if hasattr(event, 'payload') else event
             
             debug_print(f"📦 [MESHCORE-CLI] Payload: {payload}")
+            debug_print(f"📦 [MESHCORE-CLI] Payload type: {type(payload).__name__}")
+            debug_print(f"📦 [MESHCORE-CLI] Payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'N/A'}")
             
             # Essayer plusieurs sources pour le sender_id
             sender_id = None
@@ -539,10 +579,12 @@ class MeshCoreCLIWrapper:
             if isinstance(payload, dict):
                 sender_id = payload.get('contact_id') or payload.get('sender_id')
                 pubkey_prefix = payload.get('pubkey_prefix')
+                debug_print(f"📋 [MESHCORE-DM] Payload dict - contact_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 2: Chercher dans les attributs de l'event
             if sender_id is None and hasattr(event, 'attributes'):
                 attributes = event.attributes
+                debug_print(f"📋 [MESHCORE-DM] Event attributes: {attributes}")
                 if isinstance(attributes, dict):
                     sender_id = attributes.get('contact_id') or attributes.get('sender_id')
                     if pubkey_prefix is None:
@@ -551,6 +593,9 @@ class MeshCoreCLIWrapper:
             # Méthode 3: Chercher directement sur l'event
             if sender_id is None and hasattr(event, 'contact_id'):
                 sender_id = event.contact_id
+                debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
+            
+            debug_print(f"🔍 [MESHCORE-DM] Après extraction - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
             if sender_id is None and pubkey_prefix and self.node_manager:
