@@ -3,6 +3,8 @@ __pycache__/
 *.db
 map/*.json
 config.py
+xiao.priv
+monitor.log
 test_thread_names.py
 
 # Map system generated files and logs

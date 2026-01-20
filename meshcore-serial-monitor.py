@@ -270,7 +270,7 @@ class MeshCoreMonitor:
             self.meshcore = await MeshCore.create_serial(
                 self.port,
                 baudrate=self.baudrate,
-                debug=False
+                debug=True
             )
             print("✅ Connected successfully!", flush=True)
             print(flush=True)
