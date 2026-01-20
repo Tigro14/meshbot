@@ -137,6 +137,97 @@ class MeshCoreCLIWrapper:
         self.node_manager = node_manager
         debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
+    def query_contact_by_pubkey_prefix(self, pubkey_prefix):
+        """
+        Query meshcore-cli for a contact by public key prefix
+        
+        This method:
+        1. Queries meshcore's internal contact database
+        2. Extracts contact information (node_id, name, publicKey)
+        3. Adds the contact to node_manager for future lookups
+        4. Returns the node_id
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key
+            
+        Returns:
+            int: node_id if found and added, None otherwise
+        """
+        if not self.meshcore:
+            debug_print("⚠️ [MESHCORE-QUERY] No meshcore connection available")
+            return None
+        
+        if not self.node_manager:
+            debug_print("⚠️ [MESHCORE-QUERY] No node_manager configured")
+            return None
+        
+        try:
+            debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+            
+            # Ensure contacts are loaded
+            if hasattr(self.meshcore, 'ensure_contacts'):
+                self._loop.run_until_complete(self.meshcore.ensure_contacts())
+            
+            # Query meshcore for contact by pubkey prefix
+            contact = None
+            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
+            
+            if not contact:
+                debug_print(f"⚠️ [MESHCORE-QUERY] Aucun contact trouvé pour pubkey_prefix: {pubkey_prefix}")
+                return None
+            
+            # Extract contact information
+            contact_id = contact.get('contact_id') or contact.get('node_id')
+            name = contact.get('name') or contact.get('long_name')
+            public_key = contact.get('public_key') or contact.get('publicKey')
+            
+            if not contact_id:
+                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id")
+                return None
+            
+            # Convert contact_id to int if it's a string
+            if isinstance(contact_id, str):
+                if contact_id.startswith('!'):
+                    contact_id = int(contact_id[1:], 16)
+                else:
+                    try:
+                        contact_id = int(contact_id, 16)
+                    except ValueError:
+                        contact_id = int(contact_id)
+            
+            info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
+            
+            # Add to node_manager for future lookups
+            if contact_id not in self.node_manager.node_names:
+                self.node_manager.node_names[contact_id] = {
+                    'name': name or f"Node-{contact_id:08x}",
+                    'shortName': contact.get('short_name', ''),
+                    'hwModel': contact.get('hw_model', None),
+                    'lat': None,
+                    'lon': None,
+                    'alt': None,
+                    'last_update': None,
+                    'publicKey': public_key  # Store public key for future lookups
+                }
+                
+                # Save to disk
+                self.node_manager.save_node_names()
+                info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base de données: {name}")
+            else:
+                # Update publicKey if not present
+                if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
+                    self.node_manager.node_names[contact_id]['publicKey'] = public_key
+                    self.node_manager.save_node_names()
+                    info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
+            
+            return contact_id
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-QUERY] Erreur recherche contact: {e}")
+            error_print(traceback.format_exc())
+            return None
+    
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
         info_print("\n" + "="*60)
@@ -464,9 +555,17 @@ class MeshCoreCLIWrapper:
             # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
             if sender_id is None and pubkey_prefix and self.node_manager:
                 debug_print(f"🔍 [MESHCORE-DM] Tentative résolution pubkey_prefix: {pubkey_prefix}")
+                
+                # First try: lookup in existing node_manager database
                 sender_id = self.node_manager.find_node_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
-                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x}")
+                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (cache local)")
+                else:
+                    # Second try: query meshcore-cli for contact
+                    debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache, interrogation meshcore-cli...")
+                    sender_id = self.query_contact_by_pubkey_prefix(pubkey_prefix)
+                    if sender_id:
+                        info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli)")
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             

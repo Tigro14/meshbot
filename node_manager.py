@@ -219,6 +219,11 @@ class NodeManager:
         """
         Find a node ID by matching the public key prefix
         
+        This method handles multiple publicKey formats:
+        - Hex string (e.g., '143bcd7f1b1f...')
+        - Base64-encoded string (e.g., 'FDvNfxsfAAA...')
+        - Bytes
+        
         Args:
             pubkey_prefix: Hex string prefix of the public key (e.g., '143bcd7f1b1f')
             
@@ -235,19 +240,32 @@ class NodeManager:
         for node_id, node_data in self.node_names.items():
             if 'publicKey' in node_data:
                 public_key = node_data['publicKey']
+                public_key_hex = None
                 
-                # Handle both string and bytes formats
+                # Handle different formats
                 if isinstance(public_key, str):
-                    # String format: check if it starts with the prefix
-                    if public_key.lower().startswith(pubkey_prefix):
-                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
-                        return node_id
+                    # Check if it's already hex (all chars are hex digits)
+                    if all(c in '0123456789abcdefABCDEF' for c in public_key.replace(' ', '')):
+                        # Already hex format
+                        public_key_hex = public_key.lower().replace(' ', '')
+                    else:
+                        # Assume base64, try to decode
+                        try:
+                            import base64
+                            decoded_bytes = base64.b64decode(public_key)
+                            public_key_hex = decoded_bytes.hex().lower()
+                        except Exception as e:
+                            debug_print(f"⚠️ Failed to decode base64 publicKey for node 0x{node_id:08x}: {e}")
+                            continue
+                            
                 elif isinstance(public_key, bytes):
-                    # Bytes format: convert to hex and check prefix
+                    # Bytes format: convert to hex
                     public_key_hex = public_key.hex().lower()
-                    if public_key_hex.startswith(pubkey_prefix):
-                        debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
-                        return node_id
+                
+                # Check if prefix matches
+                if public_key_hex and public_key_hex.startswith(pubkey_prefix):
+                    debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                    return node_id
         
         debug_print(f"⚠️ No node found with pubkey prefix {pubkey_prefix}")
         return None
