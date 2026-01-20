@@ -130,6 +130,146 @@ class MeshCoreCLIWrapper:
         self.node_manager = node_manager
         debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
+    def lookup_contact_by_pubkey_prefix(self, pubkey_prefix):
+        """
+        Lookup a contact in meshcore-cli's contact database by pubkey prefix
+        and add it to node_manager for future lookups.
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key (e.g., '143bcd7f1b1f')
+            
+        Returns:
+            int: node_id if found and added, None otherwise
+        """
+        if not self.meshcore or not self.node_manager:
+            debug_print("⚠️ [MESHCORE-CLI] MeshCore ou NodeManager non disponible")
+            return None
+        
+        try:
+            # Normalize the prefix
+            pubkey_prefix = str(pubkey_prefix).lower().strip()
+            
+            # Try to access the contacts database
+            contacts = None
+            if hasattr(self.meshcore, 'contacts'):
+                contacts = self.meshcore.contacts
+                debug_print(f"🔍 [MESHCORE-CLI] Recherche dans {len(contacts)} contact(s)")
+            elif hasattr(self.meshcore, 'get_contacts'):
+                # Async method - need to run in event loop
+                try:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Create a task and wait for it
+                        future = asyncio.ensure_future(self.meshcore.get_contacts())
+                        # Wait a bit for it to complete
+                        import time
+                        timeout = 2  # 2 seconds max
+                        start = time.time()
+                        while not future.done() and (time.time() - start) < timeout:
+                            time.sleep(0.1)
+                        if future.done():
+                            contacts = future.result()
+                    else:
+                        contacts = loop.run_until_complete(self.meshcore.get_contacts())
+                except Exception as e:
+                    debug_print(f"⚠️ [MESHCORE-CLI] Erreur get_contacts(): {e}")
+            
+            if not contacts:
+                debug_print("⚠️ [MESHCORE-CLI] Aucun contact disponible")
+                return None
+            
+            # Search for matching contact by pubkey prefix
+            import base64
+            for contact in contacts:
+                try:
+                    # Extract contact information
+                    contact_id = None
+                    public_key = None
+                    
+                    # Try different field names
+                    if isinstance(contact, dict):
+                        contact_id = contact.get('contact_id') or contact.get('node_id') or contact.get('id')
+                        public_key = contact.get('public_key') or contact.get('publicKey')
+                    elif hasattr(contact, 'contact_id'):
+                        contact_id = contact.contact_id
+                    elif hasattr(contact, 'node_id'):
+                        contact_id = contact.node_id
+                    
+                    if hasattr(contact, 'public_key'):
+                        public_key = contact.public_key
+                    elif hasattr(contact, 'publicKey'):
+                        public_key = contact.publicKey
+                    
+                    if not public_key or not contact_id:
+                        continue
+                    
+                    # Convert public_key to hex for comparison
+                    public_key_hex = None
+                    if isinstance(public_key, str):
+                        try:
+                            # Try as base64 first
+                            decoded = base64.b64decode(public_key)
+                            public_key_hex = decoded.hex().lower()
+                        except:
+                            # Try as hex
+                            public_key_hex = public_key.lower().replace(' ', '')
+                    elif isinstance(public_key, bytes):
+                        public_key_hex = public_key.hex().lower()
+                    
+                    # Check if this contact matches the pubkey_prefix
+                    if public_key_hex and public_key_hex.startswith(pubkey_prefix):
+                        # Found the contact! Add it to node_manager
+                        info_print(f"✅ [MESHCORE-CLI] Contact trouvé: 0x{contact_id:08x} avec pubkey {pubkey_prefix}")
+                        
+                        # Extract additional info if available
+                        name = None
+                        if isinstance(contact, dict):
+                            name = contact.get('name') or contact.get('long_name') or f"Node-{contact_id:08x}"
+                        elif hasattr(contact, 'name'):
+                            name = contact.name
+                        elif hasattr(contact, 'long_name'):
+                            name = contact.long_name
+                        else:
+                            name = f"Node-{contact_id:08x}"
+                        
+                        # Add to node_manager
+                        if contact_id not in self.node_manager.node_names:
+                            self.node_manager.node_names[contact_id] = {
+                                'name': name,
+                                'shortName': None,
+                                'hwModel': None,
+                                'lat': None,
+                                'lon': None,
+                                'alt': None,
+                                'last_update': None,
+                                'publicKey': public_key  # Store original format
+                            }
+                            info_print(f"🔑 [MESHCORE-CLI] Contact ajouté: {name} (0x{contact_id:08x})")
+                        else:
+                            # Update public key if needed
+                            if not self.node_manager.node_names[contact_id].get('publicKey'):
+                                self.node_manager.node_names[contact_id]['publicKey'] = public_key
+                                info_print(f"🔑 [MESHCORE-CLI] Clé publique ajoutée pour {name}")
+                        
+                        # Save to disk
+                        self.node_manager.save_node_names()
+                        
+                        return contact_id
+                        
+                except Exception as e:
+                    debug_print(f"⚠️ [MESHCORE-CLI] Erreur traitement contact: {e}")
+                    continue
+            
+            debug_print(f"⚠️ [MESHCORE-CLI] Aucun contact trouvé avec pubkey_prefix {pubkey_prefix}")
+            return None
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-CLI] Erreur lookup_contact_by_pubkey_prefix: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return None
+    
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
         info_print("\n" + "="*60)
@@ -400,6 +540,12 @@ class MeshCoreCLIWrapper:
                 sender_id = self.node_manager.find_node_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
                     info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x}")
+                else:
+                    # Méthode 5: Lookup dans la base de contacts meshcore-cli
+                    debug_print(f"🔍 [MESHCORE-DM] Recherche dans la base de contacts meshcore-cli...")
+                    sender_id = self.lookup_contact_by_pubkey_prefix(pubkey_prefix)
+                    if sender_id:
+                        info_print(f"✅ [MESHCORE-DM] Contact extrait et ajouté: 0x{sender_id:08x}")
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             
