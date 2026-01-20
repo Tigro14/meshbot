@@ -59,8 +59,10 @@ class MeshCoreCLIWrapper:
             self.debug = debug
         
         # Simulation d'un localNode pour compatibilité
+        # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
+        # This ensures DMs are not treated as broadcasts when real node ID unavailable
         self.localNode = type('obj', (object,), {
-            'nodeNum': 0xFFFFFFFF,  # ID fictif pour mode companion
+            'nodeNum': 0xFFFFFFFE,  # Non-broadcast ID for companion mode
         })()
         
         if not MESHCORE_CLI_AVAILABLE:
@@ -418,6 +420,11 @@ class MeshCoreCLIWrapper:
                 sender_id = 0xFFFFFFFF
                 # Marquer comme DM en utilisant to=localNode (pas broadcast)
                 to_id = self.localNode.nodeNum
+                
+                # AVERTISSEMENT: Le bot ne pourra pas répondre sans ID de contact valide
+                error_print(f"⚠️ [MESHCORE-DM] Expéditeur inconnu (pubkey {pubkey_prefix} non trouvé)")
+                error_print(f"   → Le message sera traité mais le bot ne pourra pas répondre")
+                error_print(f"   → Pour résoudre: Ajouter le contact dans la base de données")
             else:
                 to_id = self.localNode.nodeNum
             

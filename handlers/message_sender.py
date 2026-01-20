@@ -91,6 +91,14 @@ class MessageSender:
         """Envoyer un message simple"""
         debug_print(f"[SEND_SINGLE] Tentative envoi vers {sender_info} (ID: {sender_id})")
         
+        # Vérifier que le destinataire n'est pas l'adresse broadcast
+        # Cela peut arriver si un DM est reçu d'un expéditeur inconnu (pubkey non résolu)
+        if sender_id == 0xFFFFFFFF:
+            error_print(f"❌ Impossible d'envoyer à l'adresse broadcast 0xFFFFFFFF")
+            error_print(f"   → Expéditeur inconnu (pubkey non résolu dans la base de données)")
+            error_print(f"   → Le message ne peut pas être envoyé sans ID de contact valide")
+            return
+        
         try:
             # Récupérer l'interface active
             # Si c'est un serial_manager, get_interface() retourne l'interface connectée

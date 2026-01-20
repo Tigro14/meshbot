@@ -80,8 +80,10 @@ class MeshCoreSerialInterface:
         self.contacts = {}
         
         # Simulation d'un localNode pour compatibilité avec le code existant
+        # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
+        # This ensures DMs are not treated as broadcasts when real node ID unavailable
         self.localNode = type('obj', (object,), {
-            'nodeNum': 0xFFFFFFFF,  # ID fictif pour mode companion
+            'nodeNum': 0xFFFFFFFE,  # Non-broadcast ID for companion mode
         })()
         
         info_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
@@ -290,8 +292,9 @@ class MeshCoreStandaloneInterface:
     
     def __init__(self):
         info_print("⚠️ Mode standalone: aucune connexion radio active")
+        # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
         self.localNode = type('obj', (object,), {
-            'nodeNum': 0xFFFFFFFF,
+            'nodeNum': 0xFFFFFFFE,
         })()
     
     def sendText(self, message, destinationId=None):
