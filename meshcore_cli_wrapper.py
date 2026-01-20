@@ -165,10 +165,16 @@ class MeshCoreCLIWrapper:
             debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
             
             # Ensure contacts are loaded
+            # Note: We can't use run_until_complete here as we're already in an event loop
+            # Check if contacts are already available
             if hasattr(self.meshcore, 'ensure_contacts'):
-                debug_print(f"🔄 [MESHCORE-QUERY] Chargement des contacts...")
-                self._loop.run_until_complete(self.meshcore.ensure_contacts())
-                debug_print(f"✅ [MESHCORE-QUERY] Contacts chargés")
+                debug_print(f"🔄 [MESHCORE-QUERY] Vérification des contacts...")
+                # Try to access contacts directly without async call
+                # If contacts aren't loaded yet, they should be loaded by the auto_message_fetching
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts non chargés (peut nécessiter plus de temps)")
+                else:
+                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles")
             else:
                 debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
             
