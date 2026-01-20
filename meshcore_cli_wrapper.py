@@ -561,15 +561,34 @@ class MeshCoreCLIWrapper:
             self.last_message_time = time.time()
             self.connection_healthy = True
             
-            debug_print(f"🔔 [MESHCORE-CLI] Event reçu: {event}")
+            # Safely log event - don't convert to string as it may contain problematic characters
+            try:
+                debug_print(f"🔔 [MESHCORE-CLI] Event reçu - type: {type(event).__name__}")
+                if hasattr(event, 'type'):
+                    debug_print(f"   Event.type: {event.type}")
+            except Exception as log_err:
+                debug_print(f"🔔 [MESHCORE-CLI] Event reçu (erreur log: {log_err})")
             
             # Extraire les informations de l'événement
             # L'API meshcore fournit un objet event avec payload
             payload = event.payload if hasattr(event, 'payload') else event
             
-            debug_print(f"📦 [MESHCORE-CLI] Payload: {payload}")
-            debug_print(f"📦 [MESHCORE-CLI] Payload type: {type(payload).__name__}")
-            debug_print(f"📦 [MESHCORE-CLI] Payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'N/A'}")
+            # Safely log payload
+            try:
+                debug_print(f"📦 [MESHCORE-CLI] Payload type: {type(payload).__name__}")
+                if isinstance(payload, dict):
+                    debug_print(f"📦 [MESHCORE-CLI] Payload keys: {list(payload.keys())}")
+                    # Log important fields individually
+                    for key in ['type', 'pubkey_prefix', 'contact_id', 'sender_id', 'text']:
+                        if key in payload:
+                            value = payload[key]
+                            if key == 'text':
+                                value = value[:50] + '...' if len(str(value)) > 50 else value
+                            debug_print(f"   {key}: {value}")
+                else:
+                    debug_print(f"📦 [MESHCORE-CLI] Payload: {str(payload)[:200]}")
+            except Exception as log_err:
+                debug_print(f"📦 [MESHCORE-CLI] Payload (erreur log: {log_err})")
             
             # Essayer plusieurs sources pour le sender_id
             sender_id = None
