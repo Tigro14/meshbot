@@ -48,6 +48,13 @@ class MeshCoreCLIWrapper:
         self.message_thread = None
         self.node_manager = None  # Will be set via set_node_manager()
         
+        # Healthcheck tracking
+        self.last_message_time = None
+        self.connection_healthy = False
+        self.healthcheck_interval = 60  # Check every 60 seconds
+        self.message_timeout = 300  # Alert if no messages for 5 minutes
+        self.healthcheck_thread = None
+        
         # Determine debug mode: explicit parameter > config > False
         if debug is None:
             try:
@@ -297,7 +304,63 @@ class MeshCoreCLIWrapper:
         )
         self.message_thread.start()
         info_print("✅ [MESHCORE-CLI] Thread événements démarré")
+        
+        # Start healthcheck monitoring
+        self.healthcheck_thread = threading.Thread(
+            target=self._healthcheck_monitor,
+            name="MeshCore-Healthcheck",
+            daemon=True
+        )
+        self.healthcheck_thread.start()
+        info_print("✅ [MESHCORE-CLI] Healthcheck monitoring démarré")
+        
+        # Initialize last message time
+        self.last_message_time = time.time()
+        
         return True
+    
+    def _healthcheck_monitor(self):
+        """Monitor meshcore connection health and alert on failures"""
+        info_print("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
+        
+        # Wait for initial connection to stabilize
+        time.sleep(30)
+        
+        while self.running:
+            try:
+                current_time = time.time()
+                
+                # Check if we've received any messages recently
+                if self.last_message_time is not None:
+                    time_since_last_message = current_time - self.last_message_time
+                    
+                    if time_since_last_message > self.message_timeout:
+                        if self.connection_healthy:
+                            # First time detecting the issue
+                            error_print(f"⚠️ [MESHCORE-HEALTHCHECK] ALERTE: Aucun message reçu depuis {int(time_since_last_message)}s")
+                            error_print(f"   → La connexion au nœud semble perdue")
+                            error_print(f"   → Vérifiez: 1) Le nœud est allumé")
+                            error_print(f"   →          2) Le câble série est connecté ({self.port})")
+                            error_print(f"   →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
+                            self.connection_healthy = False
+                    else:
+                        # Connection is healthy
+                        if not self.connection_healthy:
+                            info_print(f"✅ [MESHCORE-HEALTHCHECK] Connexion rétablie (message reçu il y a {int(time_since_last_message)}s)")
+                            self.connection_healthy = True
+                        
+                        if self.debug:
+                            debug_print(f"🏥 [MESHCORE-HEALTHCHECK] OK - dernier message: {int(time_since_last_message)}s")
+                
+                # Sleep until next check
+                time.sleep(self.healthcheck_interval)
+                
+            except Exception as e:
+                error_print(f"❌ [MESHCORE-HEALTHCHECK] Erreur: {e}")
+                error_print(traceback.format_exc())
+                time.sleep(self.healthcheck_interval)
+        
+        info_print("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring stopped")
     
     def _async_event_loop(self):
         """Boucle asyncio pour gérer les événements MeshCore"""
@@ -365,6 +428,10 @@ class MeshCoreCLIWrapper:
             event: Event object from meshcore dispatcher
         """
         try:
+            # Update last message time for healthcheck
+            self.last_message_time = time.time()
+            self.connection_healthy = True
+            
             debug_print(f"🔔 [MESHCORE-CLI] Event reçu: {event}")
             
             # Extraire les informations de l'événement
@@ -497,6 +564,9 @@ class MeshCoreCLIWrapper:
         
         if self.message_thread:
             self.message_thread.join(timeout=2)
+        
+        if self.healthcheck_thread:
+            self.healthcheck_thread.join(timeout=2)
         
         if self.meshcore:
             try:
