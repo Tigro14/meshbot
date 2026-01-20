@@ -59,8 +59,10 @@ class MeshCoreCLIWrapper:
             self.debug = debug
         
         # Simulation d'un localNode pour compatibilité
+        # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
+        # This ensures DMs are not treated as broadcasts when real node ID unavailable
         self.localNode = type('obj', (object,), {
-            'nodeNum': 0xFFFFFFFF,  # ID fictif pour mode companion
+            'nodeNum': 0xFFFFFFFE,  # Non-broadcast ID for companion mode
         })()
         
         if not MESHCORE_CLI_AVAILABLE:
