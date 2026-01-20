@@ -1322,6 +1322,12 @@ class MeshBot:
         Returns:
             bool: True si envoyé avec succès, False sinon
         """
+        # Check if interface supports sendData() (MeshCoreCLIWrapper doesn't have this method)
+        if not hasattr(self.interface, 'sendData'):
+            debug_print(f"⚠️ Interface type {type(self.interface).__name__} ne supporte pas sendData()")
+            debug_print("   Télémétrie broadcast désactivée pour ce type d'interface")
+            return False
+        
         try:
             info_print(f"📡 Envoi télémétrie ESPHome ({packet_type})...")
             self.interface.sendData(
