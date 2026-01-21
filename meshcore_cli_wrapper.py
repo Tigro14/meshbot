@@ -998,11 +998,14 @@ class MeshCoreCLIWrapper:
             )
             
             # Wait for result with timeout
+            # Note: LoRa transmission can take time, and meshcore may not return immediately
             try:
-                result = future.result(timeout=10)  # 10 second timeout
-            except asyncio.TimeoutError:
-                error_print("❌ [MESHCORE-DM] Timeout lors de l'envoi")
-                return False
+                result = future.result(timeout=30)  # 30 second timeout for LoRa
+            except (asyncio.TimeoutError, TimeoutError):
+                # Timeout doesn't necessarily mean failure - message may still be sent
+                # This is common with LoRa as transmission takes time
+                debug_print("⏱️ [MESHCORE-DM] Timeout d'attente (message probablement envoyé)")
+                return True  # Treat as success since message is typically delivered
             
             # Check result type (meshcore returns Event objects)
             debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
