@@ -884,7 +884,7 @@ class TrafficMonitor:
 
     def _log_packet_debug(self, packet_type, sender_name, from_id, hops_taken, snr, packet):
         """
-        Log debug unifié pour tous les types de paquets
+        Log debug unifié pour tous les types de paquets avec affichage complet
         """
         try:
             # Formater l'ID en hex court (5 derniers caractères)
@@ -927,6 +927,9 @@ class TrafficMonitor:
                     debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
                 debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            
+            # === AFFICHAGE COMPLET MESHCORE (comprehensive debug) ===
+            self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken)
 
         except Exception as e:
             import traceback
@@ -959,6 +962,198 @@ class TrafficMonitor:
             return ' | '.join(info_parts) if info_parts else None
         except Exception:
             return None
+
+    def _log_comprehensive_packet_debug(self, packet, packet_type, sender_name, from_id, snr, hops_taken):
+        """
+        Affichage complet et détaillé du paquet Meshcore pour debug approfondi
+        """
+        try:
+            # === SECTION 1: IDENTITÉ DU PAQUET ===
+            packet_id = packet.get('id', 'N/A')
+            rx_time = packet.get('rxTime', 0)
+            rx_time_str = datetime.fromtimestamp(rx_time).strftime('%H:%M:%S') if rx_time else 'N/A'
+            
+            debug_print(f"╔═══════════════════════════════════════════════════════════════")
+            debug_print(f"║ 📦 MESHCORE PACKET DEBUG - {packet_type}")
+            debug_print(f"╠═══════════════════════════════════════════════════════════════")
+            debug_print(f"║ Packet ID: {packet_id}")
+            debug_print(f"║ RX Time:   {rx_time_str} ({rx_time})")
+            
+            # === SECTION 2: ROUTAGE ===
+            to_id = packet.get('to', 0)
+            to_id_hex = f"0x{to_id:08x}"
+            from_id_hex = f"0x{from_id:08x}"
+            is_broadcast = to_id in [0xFFFFFFFF, 0]
+            
+            debug_print(f"╟───────────────────────────────────────────────────────────────")
+            debug_print(f"║ 🔀 ROUTING")
+            debug_print(f"║   From:      {sender_name} ({from_id_hex})")
+            debug_print(f"║   To:        {'BROADCAST' if is_broadcast else to_id_hex}")
+            
+            # Hop information
+            hop_limit = packet.get('hopLimit', 0)
+            hop_start = packet.get('hopStart', 0)
+            hops_taken_calc = hop_start - hop_limit if hop_start > 0 else 0
+            
+            debug_print(f"║   Hops:      {hops_taken_calc}/{hop_start} (limit: {hop_limit})")
+            
+            if hops_taken_calc > 0:
+                suspected_relay = self._guess_relay_node(snr, from_id)
+                if suspected_relay:
+                    debug_print(f"║   Via:       {suspected_relay} (suspected)")
+            
+            # === SECTION 3: RADIO METRICS ===
+            rssi = packet.get('rssi', packet.get('rxRssi', 0))
+            snr_value = packet.get('snr', packet.get('rxSnr', 0.0))
+            
+            # Visual indicators for signal quality
+            if snr_value >= 10:
+                snr_indicator = "🟢 Excellent"
+            elif snr_value >= 5:
+                snr_indicator = "🟡 Good"
+            elif snr_value >= 0:
+                snr_indicator = "🟠 Fair"
+            else:
+                snr_indicator = "🔴 Poor"
+            
+            debug_print(f"╟───────────────────────────────────────────────────────────────")
+            debug_print(f"║ 📡 RADIO METRICS")
+            debug_print(f"║   RSSI:      {rssi} dBm")
+            debug_print(f"║   SNR:       {snr_value:.1f} dB ({snr_indicator})")
+            
+            # === SECTION 4: CONTENU DÉCODÉ ===
+            debug_print(f"╟───────────────────────────────────────────────────────────────")
+            debug_print(f"║ 📄 DECODED CONTENT")
+            
+            if 'decoded' in packet:
+                decoded = packet['decoded']
+                
+                # TEXT_MESSAGE_APP
+                if packet_type == 'TEXT_MESSAGE_APP':
+                    text = decoded.get('text', '')
+                    if not text:
+                        try:
+                            payload = decoded.get('payload', b'')
+                            text = payload.decode('utf-8') if payload else ''
+                        except:
+                            text = '<decode error>'
+                    debug_print(f"║   Message:   \"{text}\"")
+                
+                # POSITION_APP
+                elif packet_type == 'POSITION_APP':
+                    if 'position' in decoded:
+                        pos = decoded['position']
+                        lat = pos.get('latitude', 0) / 1e7 if 'latitude' in pos else pos.get('latitudeI', 0) / 1e7
+                        lon = pos.get('longitude', 0) / 1e7 if 'longitude' in pos else pos.get('longitudeI', 0) / 1e7
+                        alt = pos.get('altitude', 'N/A')
+                        debug_print(f"║   Latitude:  {lat:.6f}°")
+                        debug_print(f"║   Longitude: {lon:.6f}°")
+                        if alt != 'N/A':
+                            debug_print(f"║   Altitude:  {alt} m")
+                
+                # TELEMETRY_APP
+                elif packet_type == 'TELEMETRY_APP':
+                    if 'telemetry' in decoded:
+                        telem = decoded['telemetry']
+                        
+                        # Device Metrics
+                        if 'deviceMetrics' in telem:
+                            metrics = telem['deviceMetrics']
+                            debug_print(f"║   Device Metrics:")
+                            if 'batteryLevel' in metrics:
+                                debug_print(f"║     Battery:      {metrics['batteryLevel']}%")
+                            if 'voltage' in metrics:
+                                debug_print(f"║     Voltage:      {metrics['voltage']:.2f}V")
+                            if 'channelUtilization' in metrics:
+                                debug_print(f"║     Channel Util: {metrics['channelUtilization']}%")
+                            if 'airUtilTx' in metrics:
+                                debug_print(f"║     Air Util TX:  {metrics['airUtilTx']}%")
+                            if 'uptimeSeconds' in metrics:
+                                uptime = metrics['uptimeSeconds']
+                                hours = uptime // 3600
+                                minutes = (uptime % 3600) // 60
+                                debug_print(f"║     Uptime:       {hours}h {minutes}m")
+                        
+                        # Environment Metrics
+                        if 'environmentMetrics' in telem:
+                            env = telem['environmentMetrics']
+                            debug_print(f"║   Environment Metrics:")
+                            if 'temperature' in env:
+                                debug_print(f"║     Temperature:  {env['temperature']:.1f}°C")
+                            if 'relativeHumidity' in env:
+                                debug_print(f"║     Humidity:     {env['relativeHumidity']:.1f}%")
+                            if 'barometricPressure' in env:
+                                debug_print(f"║     Pressure:     {env['barometricPressure']:.1f} hPa")
+                
+                # NODEINFO_APP
+                elif packet_type == 'NODEINFO_APP':
+                    if 'user' in decoded:
+                        user = decoded['user']
+                        debug_print(f"║   Long Name:  {user.get('longName', 'N/A')}")
+                        debug_print(f"║   Short Name: {user.get('shortName', 'N/A')}")
+                        debug_print(f"║   Hardware:   {user.get('hwModel', 'N/A')}")
+                
+                # NEIGHBORINFO_APP
+                elif packet_type == 'NEIGHBORINFO_APP':
+                    if 'neighborinfo' in decoded:
+                        neighbors = decoded['neighborinfo'].get('neighbors', [])
+                        debug_print(f"║   Neighbors:  {len(neighbors)} node(s)")
+                        for i, neighbor in enumerate(neighbors[:5]):  # Limit to first 5
+                            neighbor_id = neighbor.get('nodeId', 0)
+                            neighbor_snr = neighbor.get('snr', 0)
+                            debug_print(f"║     [{i+1}] 0x{neighbor_id:08x} SNR:{neighbor_snr:.1f}dB")
+                        if len(neighbors) > 5:
+                            debug_print(f"║     ... and {len(neighbors)-5} more")
+                
+                # TRACEROUTE_APP
+                elif packet_type == 'TRACEROUTE_APP':
+                    if 'route' in decoded:
+                        route = decoded['route']
+                        route_list = route.get('route', [])
+                        debug_print(f"║   Route:      {' -> '.join([f'0x{node:08x}' for node in route_list])}")
+                
+                # Generic portnum display
+                portnum = decoded.get('portnum', 'UNKNOWN')
+                if portnum not in ['TEXT_MESSAGE_APP', 'POSITION_APP', 'TELEMETRY_APP', 
+                                   'NODEINFO_APP', 'NEIGHBORINFO_APP', 'TRACEROUTE_APP']:
+                    debug_print(f"║   Portnum:    {portnum}")
+            
+            # === SECTION 5: ENCRYPTION STATUS ===
+            if 'encrypted' in packet or packet_type in ['ENCRYPTED', 'PKI_ENCRYPTED']:
+                debug_print(f"╟───────────────────────────────────────────────────────────────")
+                debug_print(f"║ 🔐 ENCRYPTION")
+                if packet_type == 'PKI_ENCRYPTED':
+                    debug_print(f"║   Type:       PKI (Public Key)")
+                else:
+                    debug_print(f"║   Type:       Channel PSK")
+                
+                encrypted_size = len(packet.get('encrypted', b''))
+                if encrypted_size > 0:
+                    debug_print(f"║   Size:       {encrypted_size} bytes")
+            
+            # === SECTION 6: PACKET SIZE ===
+            # Calculate approximate packet size
+            packet_size = 0
+            if 'decoded' in packet:
+                decoded = packet['decoded']
+                if 'payload' in decoded:
+                    packet_size = len(decoded['payload'])
+                elif 'text' in decoded:
+                    packet_size = len(decoded['text'].encode('utf-8'))
+            elif 'encrypted' in packet:
+                packet_size = len(packet['encrypted'])
+            
+            if packet_size > 0:
+                debug_print(f"╟───────────────────────────────────────────────────────────────")
+                debug_print(f"║ 📊 PACKET SIZE")
+                debug_print(f"║   Payload:    {packet_size} bytes")
+            
+            debug_print(f"╚═══════════════════════════════════════════════════════════════")
+            
+        except Exception as e:
+            import traceback
+            debug_print(f"❌ Error in comprehensive packet debug: {e}")
+            debug_print(traceback.format_exc())
 
     def _guess_relay_node(self, snr, emitter_id):
         """
