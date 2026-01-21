@@ -90,14 +90,8 @@ class MeshCoreCLIWrapper:
             asyncio.set_event_loop(loop)
             
             # Créer la connexion série avec la factory method
-            # CRITICAL FIX: Enable auto_update_contacts to automatically keep contacts updated
             self.meshcore = loop.run_until_complete(
-                MeshCore.create_serial(
-                    self.port, 
-                    baudrate=self.baudrate, 
-                    debug=self.debug,
-                    auto_update_contacts=True  # Enable automatic contact updates
-                )
+                MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=self.debug)
             )
             
             # Sauvegarder l'event loop pour les opérations futures

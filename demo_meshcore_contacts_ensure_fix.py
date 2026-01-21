@@ -9,8 +9,7 @@ PROBLEM:
 
 SOLUTION:
 1. Explicitly call ensure_contacts() in query_contact_by_pubkey_prefix()
-2. Enable auto_update_contacts=True in MeshCore.create_serial()
-3. Handle both async and sync ensure_contacts() implementations
+2. Handle both async and sync ensure_contacts() implementations
 
 This demo shows the before/after behavior.
 """
@@ -91,22 +90,6 @@ print("           # Handle sync version")
 print("           self.meshcore.ensure_contacts()")
 print()
 
-print("2. ✅ meshcore_cli_wrapper.py::connect()")
-print("   ")
-print("   BEFORE:")
-print("   -------")
-print("   self.meshcore = await MeshCore.create_serial(")
-print("       port, baudrate, debug")
-print("   )")
-print()
-print("   AFTER:")
-print("   ------")
-print("   self.meshcore = await MeshCore.create_serial(")
-print("       port, baudrate, debug,")
-print("       auto_update_contacts=True  # FIX: Enable auto-update")
-print("   )")
-print()
-
 print("=" * 70)
 print("WHY THIS FIX WORKS")
 print("=" * 70)
@@ -116,12 +99,7 @@ print("   - In meshcore-cli interactive: called during startup")
 print("   - In bot (before): was never called, so contacts stayed empty")
 print("   - In bot (after): called before each query, ensures fresh data")
 print()
-print("2. ⚡ auto_update_contacts=True keeps contacts synchronized")
-print("   - meshcore library periodically refreshes contact list")
-print("   - Ensures bot sees new contacts as they're added")
-print("   - Matches behavior of meshcore-cli interactive mode")
-print()
-print("3. 🔀 Proper async/sync handling")
+print("2. 🔀 Proper async/sync handling")
 print("   - Detects if ensure_contacts() is async or sync")
 print("   - Uses run_coroutine_threadsafe() for async in existing loop")
 print("   - Creates temporary loop if needed")

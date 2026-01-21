@@ -80,31 +80,10 @@ if hasattr(self.meshcore, 'ensure_contacts'):
 5. Has 10-second timeout to prevent hanging
 6. Comprehensive error handling
 
-### Fix #2: Enable auto_update_contacts
-
-Modified `connect()` to pass `auto_update_contacts=True` to `MeshCore.create_serial()`:
-
-```python
-self.meshcore = loop.run_until_complete(
-    MeshCore.create_serial(
-        self.port, 
-        baudrate=self.baudrate, 
-        debug=self.debug,
-        auto_update_contacts=True  # Enable automatic contact updates
-    )
-)
-```
-
-**Benefits**:
-- meshcore library periodically refreshes contact list in background
-- Ensures bot sees new contacts as they're added to the network
-- Matches behavior of meshcore-cli interactive mode
-
 ## Files Modified
 
 1. **meshcore_cli_wrapper.py**
    - `query_contact_by_pubkey_prefix()` - Added explicit `ensure_contacts()` call (lines 164-203)
-   - `connect()` - Added `auto_update_contacts=True` parameter (line 98)
 
 ## Testing
 
@@ -164,7 +143,6 @@ To verify the fix works:
 
 - **Line 581**: `sync_contacts()` called in `_async_event_loop()`
 - **Line 164-203**: `query_contact_by_pubkey_prefix()` with ensure_contacts() fix
-- **Line 92-99**: `connect()` with auto_update_contacts enabled
 - **Line 438-458**: `_verify_contacts()` diagnostic method
 - **Line 329-436**: `_check_configuration()` diagnostic method
 
@@ -180,26 +158,12 @@ To verify the fix works:
 
 **Effect**: Populates `meshcore.contacts` list with device contacts
 
-### auto_update_contacts Parameter
-
-**Purpose**: Enable automatic background contact synchronization
-
-**Type**: `bool`
-
-**Default**: `False` (disabled)
-
-**When enabled**:
-- meshcore library periodically checks for contact updates
-- New contacts are automatically added to `meshcore.contacts`
-- Matches behavior of meshcore-cli interactive mode
-
 ## Best Practices
 
 1. **Always call `ensure_contacts()`** before querying contacts
-2. **Enable `auto_update_contacts`** for long-running processes
-3. **Handle both async and sync** implementations for compatibility
-4. **Use timeouts** to prevent hanging on network issues
-5. **Log diagnostics** to help troubleshoot contact issues
+2. **Handle both async and sync** implementations for compatibility
+3. **Use timeouts** to prevent hanging on network issues
+4. **Log diagnostics** to help troubleshoot contact issues
 
 ## Backward Compatibility
 
@@ -218,7 +182,6 @@ This fix is **fully backward compatible**:
 - `ensure_contacts()` is called **only when needed** (during queries)
 - First call loads contacts, subsequent calls are fast (cached)
 - Timeout prevents indefinite waiting
-- `auto_update_contacts` runs in background, no blocking
 
 **Trade-off**: Small delay on first query vs always having empty contacts
 

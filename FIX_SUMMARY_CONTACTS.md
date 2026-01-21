@@ -79,27 +79,6 @@ if hasattr(self.meshcore, 'ensure_contacts'):
         error_print(f"Erreur ensure_contacts(): {e}")
 ```
 
-### 2. Enable auto_update_contacts
-
-**File**: `meshcore_cli_wrapper.py`
-
-**Before** (line 94):
-```python
-self.meshcore = await MeshCore.create_serial(
-    self.port, baudrate=self.baudrate, debug=self.debug
-)
-```
-
-**After** (lines 92-99):
-```python
-self.meshcore = await MeshCore.create_serial(
-    self.port, 
-    baudrate=self.baudrate, 
-    debug=self.debug,
-    auto_update_contacts=True  # ✅ Enable auto-update
-)
-```
-
 ## Expected Log Output
 
 ### Before Fix ❌
