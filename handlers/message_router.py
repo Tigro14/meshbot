@@ -40,7 +40,8 @@ class MessageRouter:
             '/sys',      # Système (CPU, RAM, uptime)
             '/help',     # Aide
             '/blitz',    # Lightning (si activé)
-            '/vigilance' # Vigilance météo (si activé)
+            '/vigilance',# Vigilance météo (si activé)
+            '/rebootpi'  # Redémarrage Pi (authentifié)
         ]
 
         # Message sender (gère envoi et throttling)

@@ -90,6 +90,7 @@ class TestMeshCoreCompanionMode(unittest.TestCase):
         self.assertIn('/power', router.companion_commands)
         self.assertIn('/sys', router.companion_commands)
         self.assertIn('/help', router.companion_commands)
+        self.assertIn('/rebootpi', router.companion_commands)
         
     @patch('config.MESHTASTIC_ENABLED', False)
     @patch('config.MESHCORE_ENABLED', True)

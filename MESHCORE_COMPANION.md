@@ -295,6 +295,7 @@ python3 test_meshcore_companion.py
 | Commande | Description | Dépendances |
 |----------|-------------|-------------|
 | `/bot <question>` | Chat avec IA | Llama.cpp |
+| `/ia <question>` | Alias français de /bot | Llama.cpp |
 | `/weather [ville]` | Prévisions météo | wttr.in API |
 | `/rain [ville] [jours]` | Graphiques pluie | wttr.in API |
 | `/power` | Télémétrie ESPHome | ESPHome (optionnel) |
@@ -302,6 +303,7 @@ python3 test_meshcore_companion.py
 | `/help` | Aide | Aucune |
 | `/blitz` | Éclairs détectés | BlitzMonitor (optionnel) |
 | `/vigilance` | Vigilance météo | VigilanceMonitor (optionnel) |
+| `/rebootpi <password>` | Redémarrage Pi5 | RebootSemaphore |
 
 ### ❌ Commandes désactivées (Meshtastic requis)
 
@@ -315,6 +317,7 @@ python3 test_meshcore_companion.py
 | `/stats`, `/top`, `/histo` | Nécessite traffic monitor Meshtastic |
 | `/keys`, `/propag`, `/hop` | Fonctionnalités réseau Meshtastic |
 | `/db` | Base de données trafic Meshtastic |
+| `/rebootnode` | Nécessite interface Meshtastic pour commander nœud cible |
 
 ## Dépannage
 
