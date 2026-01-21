@@ -90,8 +90,14 @@ class MeshCoreCLIWrapper:
             asyncio.set_event_loop(loop)
             
             # Créer la connexion série avec la factory method
+            # CRITICAL FIX: Enable auto_update_contacts to automatically keep contacts updated
             self.meshcore = loop.run_until_complete(
-                MeshCore.create_serial(self.port, baudrate=self.baudrate, debug=self.debug)
+                MeshCore.create_serial(
+                    self.port, 
+                    baudrate=self.baudrate, 
+                    debug=self.debug,
+                    auto_update_contacts=True  # Enable automatic contact updates
+                )
             )
             
             # Sauvegarder l'event loop pour les opérations futures
@@ -165,16 +171,42 @@ class MeshCoreCLIWrapper:
             debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
             
             # Ensure contacts are loaded
-            # Note: We can't use run_until_complete here as we're already in an event loop
-            # Check if contacts are already available
+            # CRITICAL FIX: Actually call ensure_contacts() to load contacts from device
             if hasattr(self.meshcore, 'ensure_contacts'):
-                debug_print(f"🔄 [MESHCORE-QUERY] Vérification des contacts...")
-                # Try to access contacts directly without async call
-                # If contacts aren't loaded yet, they should be loaded by the auto_message_fetching
+                debug_print(f"🔄 [MESHCORE-QUERY] Appel ensure_contacts() pour charger les contacts...")
+                try:
+                    # Call ensure_contacts() - it will load contacts if not already loaded
+                    # This is a synchronous method that internally handles async operations
+                    if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
+                        # It's async - we need to run it in the event loop
+                        if self._loop and self._loop.is_running():
+                            # Schedule in existing loop
+                            future = asyncio.run_coroutine_threadsafe(
+                                self.meshcore.ensure_contacts(), 
+                                self._loop
+                            )
+                            # Wait for completion with timeout
+                            future.result(timeout=10)  # 10 second timeout
+                        else:
+                            # No running loop - create temporary one
+                            temp_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(temp_loop)
+                            temp_loop.run_until_complete(self.meshcore.ensure_contacts())
+                            temp_loop.close()
+                    else:
+                        # It's synchronous - just call it
+                        self.meshcore.ensure_contacts()
+                    
+                    debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                except Exception as ensure_err:
+                    error_print(f"⚠️ [MESHCORE-QUERY] Erreur ensure_contacts(): {ensure_err}")
+                    error_print(traceback.format_exc())
+                
+                # Now check if contacts are available
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts non chargés (peut nécessiter plus de temps)")
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts toujours non chargés après ensure_contacts()")
                 else:
-                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles")
+                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles après ensure_contacts()")
             else:
                 debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
             
