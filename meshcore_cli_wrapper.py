@@ -587,6 +587,44 @@ class MeshCoreCLIWrapper:
                             post_count = len(post_contacts) if post_contacts else 0
                             debug_print(f"📊 [MESHCORE-SYNC] Contacts APRÈS sync: {post_count}")
                             
+                            # SAVE CONTACTS TO DATABASE (like NODEINFO for Meshtastic)
+                            if post_count > 0 and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                                debug_print(f"💾 [MESHCORE-SYNC] Sauvegarde {post_count} contacts dans SQLite...")
+                                saved_count = 0
+                                for contact in post_contacts:
+                                    try:
+                                        contact_id = contact.get('contact_id') or contact.get('node_id')
+                                        name = contact.get('name') or contact.get('long_name')
+                                        public_key = contact.get('public_key') or contact.get('publicKey')
+                                        
+                                        # Convert contact_id to int if string
+                                        if isinstance(contact_id, str):
+                                            if contact_id.startswith('!'):
+                                                contact_id = int(contact_id[1:], 16)
+                                            else:
+                                                try:
+                                                    contact_id = int(contact_id, 16)
+                                                except ValueError:
+                                                    contact_id = int(contact_id)
+                                        
+                                        contact_data = {
+                                            'node_id': contact_id,
+                                            'name': name or f"Node-{contact_id:08x}",
+                                            'shortName': contact.get('short_name', ''),
+                                            'hwModel': contact.get('hw_model', None),
+                                            'publicKey': public_key,
+                                            'lat': contact.get('latitude', None),
+                                            'lon': contact.get('longitude', None),
+                                            'alt': contact.get('altitude', None),
+                                            'source': 'meshcore'
+                                        }
+                                        self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                        saved_count += 1
+                                    except Exception as save_err:
+                                        error_print(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
+                                
+                                info_print(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés dans meshcore_contacts")
+                            
                             if post_count == 0:
                                 error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
                                 error_print("   → Raisons possibles:")

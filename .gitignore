@@ -4,6 +4,8 @@ __pycache__/
 map/*.json
 config.py
 test_thread_names.py
+monitor.log
+xiao.priv
 
 # Map system generated files and logs
 map/info.json

@@ -580,6 +580,8 @@ class UtilityCommands:
             "/sys",
             "/echo",
             "/nodes",
+            "/nodesmc",
+            "/nodemt",
             "/neighbors",
             "/propag",
             "/info",
@@ -627,7 +629,9 @@ class UtilityCommands:
           CPU, RAM, load average, uptime
 
         📡 RÉSEAU MESHTASTIC
-        • /nodes - Liste nœuds directs de votre node
+        • /nodes - Liste nœuds (auto-détection mode)
+        • /nodesmc - Liste contacts MeshCore
+        • /nodemt - Liste nœuds directs Meshtastic
         • /neighbors [node] - Voisins mesh (topology réseau)
           /neighbors → Tous les voisins (format compact)
           /neighbors tigro → Voisins d'un nœud spécifique

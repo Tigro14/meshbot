@@ -33,9 +33,11 @@ if 'REMOTE_NODE_HOST' not in globals():
     REMOTE_NODE_HOST = None
 if 'REMOTE_NODE_NAME' not in globals():
     REMOTE_NODE_NAME = "RemoteNode"
+if 'COLLECT_SIGNAL_METRICS' not in globals():
+    COLLECT_SIGNAL_METRICS = True  # Default: collect signal metrics
 
 class RemoteNodesClient:
-    def __init__(self, interface=None, connection_mode=None, tcp_host=None):
+    def __init__(self, interface=None, connection_mode=None, tcp_host=None, persistence=None):
         """
         Initialize the RemoteNodesClient
         
@@ -43,9 +45,11 @@ class RemoteNodesClient:
             interface: Shared Meshtastic interface to reuse
             connection_mode: 'serial' or 'tcp' (from config if None)
             tcp_host: TCP host IP (from config if None)
+            persistence: TrafficPersistence instance for database access
         """
         self.node_manager = None
         self.interface = interface  # Interface principale à réutiliser (single-node mode)
+        self.persistence = persistence  # Database access for MeshCore contacts
         
         # Config values - prefer passed values, fall back to globals
         self._connection_mode = connection_mode
@@ -703,17 +707,17 @@ class RemoteNodesClient:
 
             # Format ultra-compact pour mesh avec distance
             if COLLECT_SIGNAL_METRICS:
-                rssi = node.get('rssi', 0)
-                snr = node.get('snr', 0.0)
+                rssi = node.get('rssi')
+                snr = node.get('snr')
 
-                if rssi != 0 or snr != 0:
-                    # Icône basée sur SNR ou RSSI
-                    if snr != 0:
-                        icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
-                        return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
-                    elif rssi != 0:
-                        icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
-                        return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
+                if snr is not None and snr != 0:
+                    # Icône basée sur SNR
+                    icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
+                    return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
+                elif rssi is not None and rssi != 0:
+                    # Icône basée sur RSSI
+                    icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
+                    return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
 
             # Format sans métriques - encore plus compact
             return f"• {name} {elapsed_str}{distance_str}"
@@ -721,3 +725,112 @@ class RemoteNodesClient:
         except Exception as e:
             error_print(f"Erreur _format_node_line: {e}")
             return "• Err"
+    
+    def get_meshcore_contacts_from_db(self, days_filter=30):
+        """
+        Récupérer les contacts MeshCore depuis la base de données SQLite
+        
+        Args:
+            days_filter: Nombre de jours pour le filtre temporel (défaut: 30)
+            
+        Returns:
+            list: Liste de contacts formatés comme des nodes, ou [] si erreur/vide
+        """
+        if not self.persistence:
+            debug_print("⚠️ Pas de persistence configurée pour récupérer les contacts MeshCore")
+            return []
+        
+        try:
+            import sqlite3
+            from datetime import datetime, timedelta
+            
+            cursor = self.persistence.conn.cursor()
+            cutoff = (datetime.now() - timedelta(days=days_filter)).timestamp()
+            
+            # Récupérer les contacts MeshCore récents
+            cursor.execute('''
+                SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
+                FROM meshcore_contacts
+                WHERE last_updated > ?
+                ORDER BY last_updated DESC
+            ''', (cutoff,))
+            
+            contacts = []
+            for row in cursor.fetchall():
+                try:
+                    contact_dict = {
+                        'id': int(row['node_id']),
+                        'name': row['name'] or f"Node-{int(row['node_id']):08x}",
+                        'shortName': row['shortName'] or '',
+                        'hwModel': row['hwModel'] or '',
+                        'last_heard': row['last_updated'],
+                        'hops_away': 0,  # MeshCore contacts are considered "direct"
+                        'snr': None,  # No signal metrics for MeshCore
+                        'rssi': None,
+                        'latitude': row['lat'],
+                        'longitude': row['lon'],
+                        'altitude': row['alt']
+                    }
+                    contacts.append(contact_dict)
+                except Exception as parse_err:
+                    error_print(f"⚠️ Erreur parse contact MeshCore: {parse_err}")
+            
+            debug_print(f"📊 [MESHCORE-DB] {len(contacts)} contacts récupérés (<{days_filter}j)")
+            return contacts
+            
+        except Exception as e:
+            error_print(f"❌ Erreur récupération contacts MeshCore: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return []
+    
+    def get_meshcore_paginated(self, page=1, days_filter=30):
+        """
+        Récupérer et formater les contacts MeshCore avec pagination
+        
+        Args:
+            page: Numéro de page (défaut: 1)
+            days_filter: Filtre temporel en jours (défaut: 30)
+            
+        Returns:
+            str: Liste formatée des contacts avec pagination
+        """
+        try:
+            contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter)
+            
+            if not contacts:
+                return f"📡 Aucun contact MeshCore trouvé (<{days_filter}j)"
+            
+            # Tri par date (plus récent en premier)
+            contacts.sort(key=lambda x: x['last_heard'], reverse=True)
+            
+            # Pagination
+            nodes_per_page = 7
+            total_contacts = len(contacts)
+            total_pages = (total_contacts + nodes_per_page - 1) // nodes_per_page
+            
+            page = validate_page_number(page, total_pages)
+            
+            start_idx = (page - 1) * nodes_per_page
+            end_idx = min(start_idx + nodes_per_page, total_contacts)
+            page_contacts = contacts[start_idx:end_idx]
+            
+            lines = []
+            
+            if page == 1:
+                lines.append(f"📡 Contacts MeshCore (<{days_filter}j) ({total_contacts}):")
+            
+            for contact in page_contacts:
+                line = self._format_node_line(contact)
+                lines.append(line)
+            
+            if total_pages > 1:
+                lines.append(f"{page}/{total_pages}")
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            error_print(f"Erreur get_meshcore_paginated: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return f"Erreur MeshCore: {str(e)[:30]}"
