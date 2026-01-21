@@ -962,53 +962,58 @@ class MeshCoreCLIWrapper:
         try:
             debug_print(f"📤 [MESHCORE-DM] Envoi à 0x{destinationId:08x}: {text[:50]}{'...' if len(text) > 50 else ''}")
             
-            # Envoyer via meshcore-cli avec l'API async
-            # Try different method names as the API may vary between versions
-            send_method = None
+            # Envoyer via meshcore-cli avec l'API commands.send_msg()
+            # The correct API is: meshcore.commands.send_msg(contact, text)
+            # where contact is a dict or ID
             
-            # Try common method names in order of likelihood
-            for method_name in ['send_text', 'send_message', 'send_text_message', 'send']:
-                if hasattr(self.meshcore, method_name):
-                    send_method = getattr(self.meshcore, method_name)
-                    debug_print(f"🔍 [MESHCORE-DM] Utilisation de la méthode: {method_name}")
-                    break
-            
-            if not send_method:
-                error_print(f"❌ [MESHCORE-DM] Aucune méthode d'envoi trouvée dans MeshCore")
-                error_print(f"   → Méthodes disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
+            if not hasattr(self.meshcore, 'commands'):
+                error_print(f"❌ [MESHCORE-DM] MeshCore n'a pas d'attribut 'commands'")
+                error_print(f"   → Attributs disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
                 return False
             
-            # Call the send method with appropriate parameters
-            # Try different parameter combinations as API may vary
-            try:
-                # Try with contact_id parameter first
-                result = self._loop.run_until_complete(
-                    send_method(text=text, contact_id=destinationId)
-                )
-            except TypeError:
-                try:
-                    # Try with dest or destination parameter
-                    result = self._loop.run_until_complete(
-                        send_method(text=text, dest=destinationId)
-                    )
-                except TypeError:
-                    try:
-                        # Try with destination parameter
-                        result = self._loop.run_until_complete(
-                            send_method(text=text, destination=destinationId)
-                        )
-                    except TypeError:
-                        # Try positional arguments
-                        result = self._loop.run_until_complete(
-                            send_method(text, destinationId)
-                        )
+            # Get the contact by ID (hex node ID)
+            contact = None
+            hex_id = f"{destinationId:08x}"
+            debug_print(f"🔍 [MESHCORE-DM] Recherche du contact avec ID hex: {hex_id}")
             
-            if result:
-                debug_print("✅ [MESHCORE-DM] Message envoyé")
-                return True
+            # Try to get contact by key prefix (public key prefix)
+            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                contact = self.meshcore.get_contact_by_key_prefix(hex_id)
+                if contact:
+                    debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+            
+            # If not found, just use the destinationId directly
+            # The send_msg API should accept either contact dict or ID
+            if not contact:
+                debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
+                contact = destinationId
+            
+            # Send via commands.send_msg
+            debug_print(f"🔍 [MESHCORE-DM] Appel de commands.send_msg(contact={type(contact).__name__}, text=...)")
+            result = self._loop.run_until_complete(
+                self.meshcore.commands.send_msg(contact, text)
+            )
+            
+            # Check result type (meshcore returns Event objects)
+            debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
+            
+            # Result is an Event object, check if it's not an error
+            if hasattr(result, 'type'):
+                from meshcore import EventType
+                if result.type == EventType.ERROR:
+                    error_print(f"❌ [MESHCORE-DM] Erreur d'envoi: {result.payload}")
+                    return False
+                else:
+                    debug_print("✅ [MESHCORE-DM] Message envoyé avec succès")
+                    return True
             else:
-                error_print("❌ [MESHCORE-DM] Échec envoi")
-                return False
+                # If no type attribute, assume success if not None/False
+                if result:
+                    debug_print("✅ [MESHCORE-DM] Message envoyé")
+                    return True
+                else:
+                    error_print("❌ [MESHCORE-DM] Échec envoi")
+                    return False
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-DM] Erreur envoi: {e}")
