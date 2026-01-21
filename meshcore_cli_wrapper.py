@@ -179,19 +179,28 @@ class MeshCoreCLIWrapper:
                                 self.meshcore.ensure_contacts(), 
                                 self._loop
                             )
-                            # Wait for completion with timeout
-                            future.result(timeout=10)  # 10 second timeout
+                            # Wait for completion with timeout (30 seconds for slow devices)
+                            try:
+                                future.result(timeout=30)
+                                debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                            except TimeoutError:
+                                # Timeout but contacts may still be loading in background
+                                # Continue anyway as contacts might be available
+                                debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() timeout après 30s (continue quand même)")
                         else:
                             # No running loop - create temporary one
                             temp_loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(temp_loop)
                             temp_loop.run_until_complete(self.meshcore.ensure_contacts())
                             temp_loop.close()
+                            debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
                     else:
                         # It's synchronous - just call it
                         self.meshcore.ensure_contacts()
-                    
-                    debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                        debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                except TimeoutError:
+                    # Timeout is handled above for async case
+                    debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() timeout (continue quand même)")
                 except Exception as ensure_err:
                     error_print(f"⚠️ [MESHCORE-QUERY] Erreur ensure_contacts(): {ensure_err}")
                     error_print(traceback.format_exc())
@@ -286,12 +295,37 @@ class MeshCoreCLIWrapper:
                 return None
             
             # Extract contact information
+            # MeshCore contact dict structure (from meshcore-cli):
+            # - public_key: full hex string (64 chars = 32 bytes)
+            # - adv_name: advertised name
+            # - adv_lat, adv_lon: GPS coordinates
+            # - type, flags, out_path_len, out_path, last_advert, lastmod
+            #
+            # The contact_id/node_id is NOT provided directly, we need to derive it
+            # from the public_key prefix (first 4 bytes = first 8 hex chars)
+            
             contact_id = contact.get('contact_id') or contact.get('node_id')
-            name = contact.get('name') or contact.get('long_name')
+            name = contact.get('name') or contact.get('long_name') or contact.get('adv_name')
             public_key = contact.get('public_key') or contact.get('publicKey')
             
+            # If contact_id not provided, derive it from public_key prefix
+            if not contact_id and public_key:
+                # public_key is a hex string, first 4 bytes (8 hex chars) = node_id
+                # Example: '143bcd7f1b1f...' -> node_id = 0x143bcd7f
+                try:
+                    if isinstance(public_key, str) and len(public_key) >= 8:
+                        # Extract first 4 bytes (8 hex chars) as node_id
+                        contact_id = int(public_key[:8], 16)
+                        debug_print(f"🔑 [MESHCORE-QUERY] Node ID dérivé du public_key: 0x{contact_id:08x}")
+                    elif isinstance(public_key, bytes) and len(public_key) >= 4:
+                        # If public_key is bytes, extract first 4 bytes
+                        contact_id = int.from_bytes(public_key[:4], 'big')
+                        debug_print(f"🔑 [MESHCORE-QUERY] Node ID dérivé du public_key: 0x{contact_id:08x}")
+                except Exception as pk_err:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur extraction node_id depuis public_key: {pk_err}")
+            
             if not contact_id:
-                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id")
+                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id et impossible de dériver du public_key")
                 return None
             
             # Convert contact_id to int if it's a string
@@ -306,6 +340,11 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
             
+            # Extract GPS coordinates from meshcore contact (uses adv_lat/adv_lon fields)
+            lat = contact.get('lat') or contact.get('latitude') or contact.get('adv_lat')
+            lon = contact.get('lon') or contact.get('longitude') or contact.get('adv_lon')
+            alt = contact.get('alt') or contact.get('altitude')
+            
             # Save to SQLite meshcore_contacts table (separate from Meshtastic nodes)
             if hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
                 contact_data = {
@@ -314,9 +353,9 @@ class MeshCoreCLIWrapper:
                     'shortName': contact.get('short_name', ''),
                     'hwModel': contact.get('hw_model', None),
                     'publicKey': public_key,
-                    'lat': None,
-                    'lon': None,
-                    'alt': None,
+                    'lat': lat,
+                    'lon': lon,
+                    'alt': alt,
                     'source': 'meshcore'
                 }
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
