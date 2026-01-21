@@ -33,6 +33,8 @@ if 'REMOTE_NODE_HOST' not in globals():
     REMOTE_NODE_HOST = None
 if 'REMOTE_NODE_NAME' not in globals():
     REMOTE_NODE_NAME = "RemoteNode"
+if 'COLLECT_SIGNAL_METRICS' not in globals():
+    COLLECT_SIGNAL_METRICS = True  # Default: collect signal metrics
 
 class RemoteNodesClient:
     def __init__(self, interface=None, connection_mode=None, tcp_host=None, persistence=None):
@@ -705,17 +707,17 @@ class RemoteNodesClient:
 
             # Format ultra-compact pour mesh avec distance
             if COLLECT_SIGNAL_METRICS:
-                rssi = node.get('rssi', 0)
-                snr = node.get('snr', 0.0)
+                rssi = node.get('rssi')
+                snr = node.get('snr')
 
-                if rssi != 0 or snr != 0:
-                    # Icône basée sur SNR ou RSSI
-                    if snr != 0:
-                        icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
-                        return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
-                    elif rssi != 0:
-                        icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
-                        return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
+                if snr is not None and snr != 0:
+                    # Icône basée sur SNR
+                    icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
+                    return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
+                elif rssi is not None and rssi != 0:
+                    # Icône basée sur RSSI
+                    icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
+                    return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
 
             # Format sans métriques - encore plus compact
             return f"• {name} {elapsed_str}{distance_str}"
