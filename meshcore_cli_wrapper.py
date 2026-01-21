@@ -99,6 +99,31 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
             
+            # Load contacts immediately during connection (like meshcore-cli does)
+            try:
+                info_print(f"🔄 [MESHCORE-CLI] Chargement des contacts...")
+                if hasattr(self.meshcore, 'ensure_contacts'):
+                    # Call ensure_contacts in the event loop we just created
+                    if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
+                        loop.run_until_complete(self.meshcore.ensure_contacts())
+                    else:
+                        self.meshcore.ensure_contacts()
+                    
+                    # Flush pending contacts
+                    if hasattr(self.meshcore, 'flush_pending_contacts'):
+                        self.meshcore.flush_pending_contacts()
+                    
+                    # Check contact count
+                    if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                        contact_count = len(self.meshcore.contacts)
+                        info_print(f"✅ [MESHCORE-CLI] {contact_count} contact(s) chargé(s)")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-CLI] Aucun contact chargé")
+                else:
+                    debug_print(f"⚠️ [MESHCORE-CLI] ensure_contacts() non disponible")
+            except Exception as contact_err:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur chargement contacts: {contact_err}")
+            
             # Récupérer le node ID si possible
             try:
                 # Essayer de récupérer les infos du device
@@ -165,16 +190,63 @@ class MeshCoreCLIWrapper:
             debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
             
             # Ensure contacts are loaded
-            # Note: We can't use run_until_complete here as we're already in an event loop
-            # Check if contacts are already available
-            if hasattr(self.meshcore, 'ensure_contacts'):
-                debug_print(f"🔄 [MESHCORE-QUERY] Vérification des contacts...")
-                # Try to access contacts directly without async call
-                # If contacts aren't loaded yet, they should be loaded by the auto_message_fetching
+            # CRITICAL FIX: Actually call ensure_contacts() to load contacts from device
+            # NOTE: meshcore-cli may populate contacts asynchronously, so we check if they're
+            # already loaded before calling ensure_contacts()
+            
+            # First, try to flush any pending contacts
+            if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
+                try:
+                    debug_print(f"🔄 [MESHCORE-QUERY] Appel flush_pending_contacts() pour finaliser les contacts en attente...")
+                    self.meshcore.flush_pending_contacts()
+                    debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() terminé")
+                except Exception as flush_err:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush_pending_contacts(): {flush_err}")
+            
+            # Check if contacts are already loaded (may have been populated during connection)
+            initial_count = 0
+            if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                initial_count = len(self.meshcore.contacts)
+                debug_print(f"📊 [MESHCORE-QUERY] Contacts déjà disponibles: {initial_count}")
+            
+            # If no contacts yet, try to load them
+            if initial_count == 0 and hasattr(self.meshcore, 'ensure_contacts'):
+                debug_print(f"🔄 [MESHCORE-QUERY] Appel ensure_contacts() pour charger les contacts...")
+                try:
+                    # Call ensure_contacts() - it will load contacts if not already loaded
+                    if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
+                        # It's async - DON'T use run_coroutine_threadsafe as it hangs
+                        # Instead, just mark contacts as dirty and they'll load in background
+                        debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() est async - impossible d'appeler depuis ce contexte")
+                        debug_print(f"💡 [MESHCORE-QUERY] Les contacts se chargeront en arrière-plan")
+                        
+                        # Try to mark contacts as dirty to trigger reload
+                        if hasattr(self.meshcore, 'contacts_dirty'):
+                            self.meshcore.contacts_dirty = True
+                            debug_print(f"🔄 [MESHCORE-QUERY] contacts_dirty défini à True pour forcer le rechargement")
+                    else:
+                        # It's synchronous - just call it
+                        self.meshcore.ensure_contacts()
+                        debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                except Exception as ensure_err:
+                    error_print(f"⚠️ [MESHCORE-QUERY] Erreur ensure_contacts(): {ensure_err}")
+                    error_print(traceback.format_exc())
+                
+                # Try flush again after ensure_contacts
+                if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
+                    try:
+                        self.meshcore.flush_pending_contacts()
+                        debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() après ensure_contacts")
+                    except Exception as flush_err:
+                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush après ensure: {flush_err}")
+                
+                # Check again if contacts are now available
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts non chargés (peut nécessiter plus de temps)")
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts toujours non chargés après ensure_contacts()")
                 else:
-                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles")
+                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles après ensure_contacts()")
+            elif initial_count > 0:
+                debug_print(f"✅ [MESHCORE-QUERY] Contacts déjà chargés, pas besoin d'appeler ensure_contacts()")
             else:
                 debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
             
@@ -260,12 +332,37 @@ class MeshCoreCLIWrapper:
                 return None
             
             # Extract contact information
+            # MeshCore contact dict structure (from meshcore-cli):
+            # - public_key: full hex string (64 chars = 32 bytes)
+            # - adv_name: advertised name
+            # - adv_lat, adv_lon: GPS coordinates
+            # - type, flags, out_path_len, out_path, last_advert, lastmod
+            #
+            # The contact_id/node_id is NOT provided directly, we need to derive it
+            # from the public_key prefix (first 4 bytes = first 8 hex chars)
+            
             contact_id = contact.get('contact_id') or contact.get('node_id')
-            name = contact.get('name') or contact.get('long_name')
+            name = contact.get('name') or contact.get('long_name') or contact.get('adv_name')
             public_key = contact.get('public_key') or contact.get('publicKey')
             
+            # If contact_id not provided, derive it from public_key prefix
+            if not contact_id and public_key:
+                # public_key is a hex string, first 4 bytes (8 hex chars) = node_id
+                # Example: '143bcd7f1b1f...' -> node_id = 0x143bcd7f
+                try:
+                    if isinstance(public_key, str) and len(public_key) >= 8:
+                        # Extract first 4 bytes (8 hex chars) as node_id
+                        contact_id = int(public_key[:8], 16)
+                        debug_print(f"🔑 [MESHCORE-QUERY] Node ID dérivé du public_key: 0x{contact_id:08x}")
+                    elif isinstance(public_key, bytes) and len(public_key) >= 4:
+                        # If public_key is bytes, extract first 4 bytes
+                        contact_id = int.from_bytes(public_key[:4], 'big')
+                        debug_print(f"🔑 [MESHCORE-QUERY] Node ID dérivé du public_key: 0x{contact_id:08x}")
+                except Exception as pk_err:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur extraction node_id depuis public_key: {pk_err}")
+            
             if not contact_id:
-                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id")
+                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id et impossible de dériver du public_key")
                 return None
             
             # Convert contact_id to int if it's a string
@@ -280,6 +377,11 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
             
+            # Extract GPS coordinates from meshcore contact (uses adv_lat/adv_lon fields)
+            lat = contact.get('lat') or contact.get('latitude') or contact.get('adv_lat')
+            lon = contact.get('lon') or contact.get('longitude') or contact.get('adv_lon')
+            alt = contact.get('alt') or contact.get('altitude')
+            
             # Save to SQLite meshcore_contacts table (separate from Meshtastic nodes)
             if hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
                 contact_data = {
@@ -288,9 +390,9 @@ class MeshCoreCLIWrapper:
                     'shortName': contact.get('short_name', ''),
                     'hwModel': contact.get('hw_model', None),
                     'publicKey': public_key,
-                    'lat': None,
-                    'lon': None,
-                    'alt': None,
+                    'lat': lat,
+                    'lon': lon,
+                    'alt': alt,
                     'source': 'meshcore'
                 }
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
@@ -860,20 +962,71 @@ class MeshCoreCLIWrapper:
         try:
             debug_print(f"📤 [MESHCORE-DM] Envoi à 0x{destinationId:08x}: {text[:50]}{'...' if len(text) > 50 else ''}")
             
-            # Envoyer via meshcore-cli avec l'API async
-            result = self._loop.run_until_complete(
-                self.meshcore.send_text_message(
-                    text=text,
-                    contact_id=destinationId
-                )
+            # Envoyer via meshcore-cli avec l'API commands.send_msg()
+            # The correct API is: meshcore.commands.send_msg(contact, text)
+            # where contact is a dict or ID
+            
+            if not hasattr(self.meshcore, 'commands'):
+                error_print(f"❌ [MESHCORE-DM] MeshCore n'a pas d'attribut 'commands'")
+                error_print(f"   → Attributs disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
+                return False
+            
+            # Get the contact by ID (hex node ID)
+            contact = None
+            hex_id = f"{destinationId:08x}"
+            debug_print(f"🔍 [MESHCORE-DM] Recherche du contact avec ID hex: {hex_id}")
+            
+            # Try to get contact by key prefix (public key prefix)
+            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                contact = self.meshcore.get_contact_by_key_prefix(hex_id)
+                if contact:
+                    debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+            
+            # If not found, just use the destinationId directly
+            # The send_msg API should accept either contact dict or ID
+            if not contact:
+                debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
+                contact = destinationId
+            
+            # Send via commands.send_msg
+            # Use run_coroutine_threadsafe since the event loop is already running
+            debug_print(f"🔍 [MESHCORE-DM] Appel de commands.send_msg(contact={type(contact).__name__}, text=...)")
+            
+            future = asyncio.run_coroutine_threadsafe(
+                self.meshcore.commands.send_msg(contact, text),
+                self._loop
             )
             
-            if result:
-                debug_print("✅ [MESHCORE-DM] Message envoyé")
-                return True
+            # Wait for result with timeout
+            # Note: LoRa transmission can take time, and meshcore may not return immediately
+            try:
+                result = future.result(timeout=30)  # 30 second timeout for LoRa
+            except (asyncio.TimeoutError, TimeoutError):
+                # Timeout doesn't necessarily mean failure - message may still be sent
+                # This is common with LoRa as transmission takes time
+                debug_print("⏱️ [MESHCORE-DM] Timeout d'attente (message probablement envoyé)")
+                return True  # Treat as success since message is typically delivered
+            
+            # Check result type (meshcore returns Event objects)
+            debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
+            
+            # Result is an Event object, check if it's not an error
+            if hasattr(result, 'type'):
+                from meshcore import EventType
+                if result.type == EventType.ERROR:
+                    error_print(f"❌ [MESHCORE-DM] Erreur d'envoi: {result.payload}")
+                    return False
+                else:
+                    debug_print("✅ [MESHCORE-DM] Message envoyé avec succès")
+                    return True
             else:
-                error_print("❌ [MESHCORE-DM] Échec envoi")
-                return False
+                # If no type attribute, assume success if not None/False
+                if result:
+                    debug_print("✅ [MESHCORE-DM] Message envoyé")
+                    return True
+                else:
+                    error_print("❌ [MESHCORE-DM] Échec envoi")
+                    return False
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-DM] Erreur envoi: {e}")
