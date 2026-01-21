@@ -85,6 +85,7 @@ class TestMeshCoreCompanionMode(unittest.TestCase):
         
         # Vérifier les commandes supportées
         self.assertIn('/bot', router.companion_commands)
+        self.assertIn('/ia', router.companion_commands)
         self.assertIn('/weather', router.companion_commands)
         self.assertIn('/power', router.companion_commands)
         self.assertIn('/sys', router.companion_commands)

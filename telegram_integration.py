@@ -275,6 +275,7 @@ class TelegramIntegration:
 
         # Commandes IA
         self.application.add_handler(CommandHandler("bot", self.ai_commands.bot_command))
+        self.application.add_handler(CommandHandler("ia", self.ai_commands.ia_command))
         self.application.add_handler(CommandHandler("clearcontext", self.ai_commands.clearcontext_command))
 
         # Commandes traceroute

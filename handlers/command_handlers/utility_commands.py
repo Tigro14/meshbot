@@ -576,6 +576,7 @@ class UtilityCommands:
         """Formater l'aide des commandes"""
         help_lines = [
             "/bot IA",
+            "/ia IA",
             "/power",
             "/sys",
             "/echo",
@@ -607,6 +608,7 @@ class UtilityCommands:
 
         🤖 CHAT IA
         • /bot <question> → Conversation avec l'IA
+        • /ia <question> → Alias français de /bot
         • Contexte conversationnel maintenu 30min
         • Réponses plus détaillées possibles sur Telegram vs mesh
 

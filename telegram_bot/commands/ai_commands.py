@@ -50,6 +50,44 @@ class AICommands(TelegramCommandBase):
             error_print(f"Erreur /bot: {e}")
             await update.effective_message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
 
+    async def ia_command(self, update: Update,
+                         context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /ia <question> - Alias français de /bot
+        """
+        user = update.effective_user
+        # Vérifier qu'il y a bien une question
+        if not context.args or len(context.args) == 0:
+            await update.effective_message.reply_text(
+                "Usage: /ia <question>\n"
+                "Exemple: /ia Quelle est la météo ?\n"
+                "(/ia est un alias français de /bot)"
+            )
+            return
+
+        # Reconstruire la question complète
+        question = ' '.join(context.args)
+
+        info_print(f"📱 Telegram /ia: {user.username} -> '{question[:50]}'")
+
+        sender_id = user.id & 0xFFFFFFFF
+
+        # Message d'attente pour les longues questions
+        if len(question) > 100:
+            await update.effective_message.reply_text("🤔 Réflexion en cours...")
+
+        def query_ai():
+            return self.message_handler.llama_client.query_llama_telegram(
+                question, sender_id)
+
+        try:
+            response = await asyncio.to_thread(query_ai)
+            await update.effective_message.reply_text(response)
+        except Exception as e:
+            error_print(f"Erreur /ia: {e}")
+            await update.effective_message.reply_text(f"❌ Erreur lors du traitement: {str(e)[:100]}")
+
+
     async def clearcontext_command(
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Commande /clearcontext - Nettoyer le contexte"""
