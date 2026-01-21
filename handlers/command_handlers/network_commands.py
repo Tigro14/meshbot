@@ -23,7 +23,10 @@ class NetworkCommands:
         self.broadcast_tracker = broadcast_tracker  # Callback pour tracker broadcasts
     
     def handle_nodes(self, message, sender_id, sender_info):  
-        """Gérer la commande /nodes - Liste des nœuds directs avec pagination"""
+        """Gérer la commande /nodes - Liste des nœuds directs avec pagination
+        
+        Note: Pour des commandes spécifiques, utiliser /nodesmc ou /nodemt
+        """
         
         # Extraire le numéro de page si fourni
         page = 1
@@ -60,6 +63,70 @@ class NetworkCommands:
         except Exception as e:
             error_msg = f"Erreur nodes: {str(e)[:50]}"
             error_print(f"Erreur handle_nodes: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            self.sender.send_single(error_msg, sender_id, sender_info)
+    
+    def handle_nodesmc(self, message, sender_id, sender_info):
+        """Gérer la commande /nodesmc - Liste des contacts MeshCore avec pagination"""
+        
+        # Extraire le numéro de page si fourni
+        page = 1
+        parts = message.split()
+        
+        if len(parts) > 1:
+            try:
+                page = int(parts[1])
+                page = max(1, page)  # Minimum page 1
+            except ValueError:
+                page = 1
+        
+        info_print(f"MeshCore nodes page {page}: {sender_info}")
+        
+        try:
+            # Récupérer les contacts MeshCore depuis la DB
+            report = self.remote_nodes_client.get_meshcore_paginated(page)
+            
+            # Log avec ou sans page
+            command_log = f"/nodesmc {page}" if page > 1 else "/nodesmc"
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
+            self.sender.send_single(report, sender_id, sender_info)
+            
+        except Exception as e:
+            error_msg = f"Erreur nodesmc: {str(e)[:50]}"
+            error_print(f"Erreur handle_nodesmc: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            self.sender.send_single(error_msg, sender_id, sender_info)
+    
+    def handle_nodemt(self, message, sender_id, sender_info):
+        """Gérer la commande /nodemt - Liste des nœuds Meshtastic avec pagination"""
+        
+        # Extraire le numéro de page si fourni
+        page = 1
+        parts = message.split()
+        
+        if len(parts) > 1:
+            try:
+                page = int(parts[1])
+                page = max(1, page)  # Minimum page 1
+            except ValueError:
+                page = 1
+        
+        info_print(f"Meshtastic nodes page {page}: {sender_info}")
+        
+        try:
+            # Récupérer les nœuds Meshtastic (via tigrog2 ou interface TCP)
+            report = self.remote_nodes_client.get_tigrog2_paginated(page)
+            
+            # Log avec ou sans page
+            command_log = f"/nodemt {page}" if page > 1 else "/nodemt"
+            self.sender.log_conversation(sender_id, sender_info, command_log, report)
+            self.sender.send_single(report, sender_id, sender_info)
+            
+        except Exception as e:
+            error_msg = f"Erreur nodemt: {str(e)[:50]}"
+            error_print(f"Erreur handle_nodemt: {e}")
             import traceback
             error_print(traceback.format_exc())
             self.sender.send_single(error_msg, sender_id, sender_info)

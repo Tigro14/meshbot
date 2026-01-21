@@ -148,6 +148,10 @@ class MessageRouter:
         # Commandes réseau
         elif message.startswith('/my'):
             self.network_handler.handle_my(sender_id, sender_info, is_broadcast=False)
+        elif message.startswith('/nodesmc'):
+            self.network_handler.handle_nodesmc(message, sender_id, sender_info)
+        elif message.startswith('/nodemt'):
+            self.network_handler.handle_nodemt(message, sender_id, sender_info)
         elif message.startswith('/nodes'):  
             self.network_handler.handle_nodes(message, sender_id, sender_info)
         elif message.startswith('/neighbors'):
