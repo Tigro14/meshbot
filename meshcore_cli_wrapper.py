@@ -183,6 +183,44 @@ class MeshCoreCLIWrapper:
                 try:
                     contacts_count = len(self.meshcore.contacts) if self.meshcore.contacts else 0
                     debug_print(f"📊 [MESHCORE-QUERY] Nombre de contacts disponibles: {contacts_count}")
+                    
+                    # Enhanced debug: show why contacts might be empty
+                    if contacts_count == 0:
+                        debug_print("⚠️ [MESHCORE-QUERY] Base de contacts VIDE - diagnostic:")
+                        
+                        # Check if sync_contacts was called
+                        if hasattr(self.meshcore, 'contacts_synced'):
+                            debug_print(f"   contacts_synced flag: {self.meshcore.contacts_synced}")
+                        
+                        # Check for alternative contact access methods
+                        alt_methods = ['get_contacts', 'list_contacts', 'contacts_list', 'contact_list']
+                        found_methods = [m for m in alt_methods if hasattr(self.meshcore, m)]
+                        if found_methods:
+                            debug_print(f"   Méthodes alternatives disponibles: {', '.join(found_methods)}")
+                            
+                            # Try alternative methods to get contacts
+                            for method_name in found_methods:
+                                try:
+                                    method = getattr(self.meshcore, method_name)
+                                    if callable(method):
+                                        debug_print(f"   Tentative {method_name}()...")
+                                        # Don't call async methods here
+                                        if not asyncio.iscoroutinefunction(method):
+                                            result = method()
+                                            debug_print(f"   → {method_name}() retourne: {type(result).__name__} (len={len(result) if result else 0})")
+                                except Exception as alt_err:
+                                    debug_print(f"   → Erreur {method_name}(): {alt_err}")
+                        
+                        # Check meshcore object attributes
+                        debug_print("   Attributs meshcore disponibles:")
+                        relevant_attrs = [attr for attr in dir(self.meshcore) if 'contact' in attr.lower() or 'key' in attr.lower()]
+                        for attr in relevant_attrs[:10]:  # Show first 10
+                            try:
+                                value = getattr(self.meshcore, attr)
+                                debug_print(f"      • {attr}: {type(value).__name__}")
+                            except:
+                                pass
+                    
                 except Exception as ce:
                     debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de compter les contacts: {ce}")
             
@@ -531,8 +569,69 @@ class MeshCoreCLIWrapper:
                 try:
                     if hasattr(self.meshcore, 'sync_contacts'):
                         info_print("🔄 [MESHCORE-CLI] Synchronisation des contacts...")
+                        
+                        # Debug: Check initial state
+                        if hasattr(self.meshcore, 'contacts'):
+                            initial_contacts = self.meshcore.contacts
+                            initial_count = len(initial_contacts) if initial_contacts else 0
+                            debug_print(f"📊 [MESHCORE-SYNC] Contacts AVANT sync: {initial_count}")
+                        else:
+                            debug_print("⚠️ [MESHCORE-SYNC] meshcore.contacts n'existe pas encore")
+                        
                         await self.meshcore.sync_contacts()
                         info_print("✅ [MESHCORE-CLI] Contacts synchronisés")
+                        
+                        # Debug: Check post-sync state
+                        if hasattr(self.meshcore, 'contacts'):
+                            post_contacts = self.meshcore.contacts
+                            post_count = len(post_contacts) if post_contacts else 0
+                            debug_print(f"📊 [MESHCORE-SYNC] Contacts APRÈS sync: {post_count}")
+                            
+                            if post_count == 0:
+                                error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
+                                error_print("   → Raisons possibles:")
+                                error_print("   1. Mode companion: nécessite appairage avec app mobile")
+                                error_print("   2. Base de contacts vide dans meshcore-cli")
+                                error_print("   3. Problème de clé privée pour déchiffrement")
+                                
+                                # Check if this is companion mode
+                                if hasattr(self.meshcore, 'mode'):
+                                    debug_print(f"   Mode MeshCore: {self.meshcore.mode}")
+                                
+                                # Check private key status
+                                has_key = False
+                                for key_attr in ['private_key', 'key', 'node_key', 'device_key']:
+                                    if hasattr(self.meshcore, key_attr):
+                                        key_value = getattr(self.meshcore, key_attr, None)
+                                        if key_value is not None:
+                                            has_key = True
+                                            debug_print(f"   ✅ {key_attr} est défini")
+                                        else:
+                                            debug_print(f"   ⚠️ {key_attr} est None")
+                                
+                                if not has_key:
+                                    error_print("   ❌ Aucune clé privée trouvée!")
+                                    error_print("      → DMs chiffrés ne peuvent PAS être déchiffrés")
+                                    error_print("      → Contacts ne peuvent PAS être synchronisés")
+                            else:
+                                # Success: show contact details
+                                debug_print(f"✅ [MESHCORE-SYNC] {post_count} contact(s) disponibles:")
+                                for i, contact in enumerate(list(post_contacts)[:5]):  # Show first 5
+                                    c_name = contact.get('name', 'Unknown')
+                                    c_id = contact.get('contact_id') or contact.get('node_id', 'N/A')
+                                    c_pk = contact.get('public_key') or contact.get('publicKey', '')
+                                    pk_prefix = ''
+                                    if c_pk:
+                                        if isinstance(c_pk, bytes):
+                                            pk_prefix = c_pk.hex()[:12]
+                                        elif isinstance(c_pk, str):
+                                            try:
+                                                import base64
+                                                pk_bytes = base64.b64decode(c_pk)
+                                                pk_prefix = pk_bytes.hex()[:12]
+                                            except:
+                                                pk_prefix = c_pk[:12]
+                                    debug_print(f"   {i+1}. {c_name} (ID: {c_id}, PK: {pk_prefix}...)")
                         
                         # Check if contacts were actually synced
                         await self._verify_contacts()
