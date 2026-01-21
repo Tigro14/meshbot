@@ -1438,6 +1438,47 @@ class TrafficPersistence:
             import traceback
             logger.error(traceback.format_exc())
             return None, None
+    
+    def find_meshcore_contact_by_pubkey_prefix(self, pubkey_prefix: str):
+        """
+        Recherche un contact MeshCore UNIQUEMENT par préfixe de clé publique
+        
+        Cette méthode recherche SEULEMENT dans meshcore_contacts, pas dans meshtastic_nodes.
+        Utilisée pour la résolution DM via meshcore-cli où on veut séparer les deux sources.
+        
+        Args:
+            pubkey_prefix: Préfixe de la clé publique en hexadécimal (ex: '143bcd7f1b1f')
+            
+        Returns:
+            int: node_id si trouvé, None sinon
+        """
+        if not pubkey_prefix:
+            return None
+        
+        # Normalize the prefix (lowercase, no spaces)
+        pubkey_prefix = str(pubkey_prefix).lower().strip()
+        
+        try:
+            cursor = self.conn.cursor()
+            
+            # Rechercher SEULEMENT dans meshcore_contacts
+            cursor.execute("SELECT node_id, publicKey FROM meshcore_contacts WHERE publicKey IS NOT NULL")
+            for row in cursor.fetchall():
+                if row['publicKey']:
+                    public_key_hex = row['publicKey'].hex().lower()
+                    if public_key_hex.startswith(pubkey_prefix):
+                        node_id = int(row['node_id'])
+                        debug_print(f"🔍 [MESHCORE-ONLY] Found contact 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id
+            
+            debug_print(f"⚠️ [MESHCORE-ONLY] No MeshCore contact found with pubkey prefix {pubkey_prefix}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche MeshCore par pubkey prefix : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
 
     def close(self):
         """Ferme la connexion à la base de données."""

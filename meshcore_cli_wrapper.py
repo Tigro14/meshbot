@@ -639,19 +639,21 @@ class MeshCoreCLIWrapper:
             debug_print(f"🔍 [MESHCORE-DM] Après extraction - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
+            # IMPORTANT: Pour les DMs via meshcore-cli, on recherche SEULEMENT dans meshcore_contacts
+            # (pas dans meshtastic_nodes) pour éviter de mélanger les deux sources
             if sender_id is None and pubkey_prefix and self.node_manager:
                 debug_print(f"🔍 [MESHCORE-DM] Tentative résolution pubkey_prefix: {pubkey_prefix}")
                 
-                # First try: lookup in existing node_manager database
-                sender_id = self.node_manager.find_node_by_pubkey_prefix(pubkey_prefix)
+                # First try: lookup in meshcore_contacts ONLY (not meshtastic_nodes)
+                sender_id = self.node_manager.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
-                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (cache local)")
+                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore cache)")
                 else:
-                    # Second try: query meshcore-cli for contact
-                    debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache, interrogation meshcore-cli...")
+                    # Second try: query meshcore-cli API directly
+                    debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
                     sender_id = self.query_contact_by_pubkey_prefix(pubkey_prefix)
                     if sender_id:
-                        info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli)")
+                        info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli API)")
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             

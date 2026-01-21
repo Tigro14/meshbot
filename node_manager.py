@@ -298,6 +298,39 @@ class NodeManager:
             return self.persistence.find_node_by_pubkey_prefix(pubkey_prefix)
         return None, None
     
+    def find_meshcore_contact_by_pubkey_prefix(self, pubkey_prefix):
+        """
+        Find a MeshCore contact ONLY by public key prefix
+        
+        This method searches ONLY in meshcore_contacts table, not meshtastic_nodes.
+        Used for DM resolution via meshcore-cli where we want to keep sources separate.
+        
+        Search order:
+        1. In-memory node_names (but only for nodes from meshcore source)
+        2. SQLite meshcore_contacts table ONLY
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key (e.g., '143bcd7f1b1f')
+            
+        Returns:
+            int: node_id if found, None otherwise
+        """
+        if not pubkey_prefix:
+            return None
+        
+        # Normalize the prefix (lowercase, no spaces)
+        pubkey_prefix = str(pubkey_prefix).lower().strip()
+        
+        # Search in SQLite meshcore_contacts table ONLY
+        if hasattr(self, 'persistence') and self.persistence:
+            node_id = self.persistence.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
+            if node_id:
+                debug_print(f"🔍 [MESHCORE-ONLY] Found contact 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                return node_id
+        
+        debug_print(f"⚠️ [MESHCORE-ONLY] No MeshCore contact found with pubkey prefix {pubkey_prefix}")
+        return None
+    
     def get_reference_position(self):
         """
         Obtenir la position de référence (position du bot)
