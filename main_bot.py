@@ -100,7 +100,7 @@ class MeshBot:
         self.llama_client = LlamaClient(self.context_manager)
         self.esphome_client = ESPHomeClient()
         self.traffic_monitor = TrafficMonitor(self.node_manager)
-        self.remote_nodes_client = RemoteNodesClient()
+        self.remote_nodes_client = RemoteNodesClient(persistence=self.traffic_monitor.persistence)
         self.remote_nodes_client.set_node_manager(self.node_manager)
         
         # Configurer le callback d'erreur DB dans traffic_monitor.persistence

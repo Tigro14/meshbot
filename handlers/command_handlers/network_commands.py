@@ -39,8 +39,18 @@ class NetworkCommands:
         info_print(f"Nodes page {page}: {sender_info}")
         
         try:
-            # Utiliser la pagination
-            report = self.remote_nodes_client.get_tigrog2_paginated(page)
+            # Check connection mode from config
+            import config
+            connection_mode = getattr(config, 'CONNECTION_MODE', 'serial').lower()
+            meshcore_enabled = getattr(config, 'MESHCORE_ENABLED', False)
+            
+            # Si en mode MeshCore, utiliser les contacts MeshCore depuis la DB
+            if connection_mode == 'meshcore' or meshcore_enabled:
+                debug_print(f"📡 Mode MeshCore détecté - récupération contacts depuis SQLite")
+                report = self.remote_nodes_client.get_meshcore_paginated(page)
+            else:
+                # Mode Meshtastic standard - utiliser tigrog2
+                report = self.remote_nodes_client.get_tigrog2_paginated(page)
             
             # Log avec ou sans page
             command_log = f"/nodes {page}" if page > 1 else "/nodes"
@@ -49,6 +59,9 @@ class NetworkCommands:
             
         except Exception as e:
             error_msg = f"Erreur nodes: {str(e)[:50]}"
+            error_print(f"Erreur handle_nodes: {e}")
+            import traceback
+            error_print(traceback.format_exc())
             self.sender.send_single(error_msg, sender_id, sender_info)
 
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
