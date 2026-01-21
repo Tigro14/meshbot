@@ -989,10 +989,20 @@ class MeshCoreCLIWrapper:
                 contact = destinationId
             
             # Send via commands.send_msg
+            # Use run_coroutine_threadsafe since the event loop is already running
             debug_print(f"🔍 [MESHCORE-DM] Appel de commands.send_msg(contact={type(contact).__name__}, text=...)")
-            result = self._loop.run_until_complete(
-                self.meshcore.commands.send_msg(contact, text)
+            
+            future = asyncio.run_coroutine_threadsafe(
+                self.meshcore.commands.send_msg(contact, text),
+                self._loop
             )
+            
+            # Wait for result with timeout
+            try:
+                result = future.result(timeout=10)  # 10 second timeout
+            except asyncio.TimeoutError:
+                error_print("❌ [MESHCORE-DM] Timeout lors de l'envoi")
+                return False
             
             # Check result type (meshcore returns Event objects)
             debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
