@@ -963,12 +963,45 @@ class MeshCoreCLIWrapper:
             debug_print(f"📤 [MESHCORE-DM] Envoi à 0x{destinationId:08x}: {text[:50]}{'...' if len(text) > 50 else ''}")
             
             # Envoyer via meshcore-cli avec l'API async
-            result = self._loop.run_until_complete(
-                self.meshcore.send_text_message(
-                    text=text,
-                    contact_id=destinationId
+            # Try different method names as the API may vary between versions
+            send_method = None
+            
+            # Try common method names in order of likelihood
+            for method_name in ['send_text', 'send_message', 'send_text_message', 'send']:
+                if hasattr(self.meshcore, method_name):
+                    send_method = getattr(self.meshcore, method_name)
+                    debug_print(f"🔍 [MESHCORE-DM] Utilisation de la méthode: {method_name}")
+                    break
+            
+            if not send_method:
+                error_print(f"❌ [MESHCORE-DM] Aucune méthode d'envoi trouvée dans MeshCore")
+                error_print(f"   → Méthodes disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
+                return False
+            
+            # Call the send method with appropriate parameters
+            # Try different parameter combinations as API may vary
+            try:
+                # Try with contact_id parameter first
+                result = self._loop.run_until_complete(
+                    send_method(text=text, contact_id=destinationId)
                 )
-            )
+            except TypeError:
+                try:
+                    # Try with dest or destination parameter
+                    result = self._loop.run_until_complete(
+                        send_method(text=text, dest=destinationId)
+                    )
+                except TypeError:
+                    try:
+                        # Try with destination parameter
+                        result = self._loop.run_until_complete(
+                            send_method(text=text, destination=destinationId)
+                        )
+                    except TypeError:
+                        # Try positional arguments
+                        result = self._loop.run_until_complete(
+                            send_method(text, destinationId)
+                        )
             
             if result:
                 debug_print("✅ [MESHCORE-DM] Message envoyé")
