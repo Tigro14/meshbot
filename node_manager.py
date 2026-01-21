@@ -224,6 +224,10 @@ class NodeManager:
         - Base64-encoded string (e.g., 'FDvNfxsfAAA...')
         - Bytes
         
+        Search order:
+        1. In-memory node_names (JSON cache)
+        2. SQLite database (meshtastic_nodes and meshcore_contacts tables)
+        
         Args:
             pubkey_prefix: Hex string prefix of the public key (e.g., '143bcd7f1b1f')
             
@@ -236,7 +240,7 @@ class NodeManager:
         # Normalize the prefix (lowercase, no spaces)
         pubkey_prefix = str(pubkey_prefix).lower().strip()
         
-        # Search through all nodes
+        # Search through in-memory nodes first (JSON cache)
         for node_id, node_data in self.node_names.items():
             if 'publicKey' in node_data:
                 public_key = node_data['publicKey']
@@ -264,11 +268,35 @@ class NodeManager:
                 
                 # Check if prefix matches
                 if public_key_hex and public_key_hex.startswith(pubkey_prefix):
-                    debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                    debug_print(f"🔍 Found node 0x{node_id:08x} with pubkey prefix {pubkey_prefix} (in-memory)")
                     return node_id
+        
+        # Not found in memory, search in SQLite database
+        if hasattr(self, 'persistence') and self.persistence:
+            found_id, source = self.persistence.find_node_by_pubkey_prefix(pubkey_prefix)
+            if found_id:
+                debug_print(f"🔍 Found node 0x{found_id:08x} with pubkey prefix {pubkey_prefix} (SQLite/{source})")
+                return found_id
         
         debug_print(f"⚠️ No node found with pubkey prefix {pubkey_prefix}")
         return None
+    
+    def find_node_by_pubkey_prefix_in_db(self, pubkey_prefix):
+        """
+        Find a node by pubkey prefix in SQLite database only
+        
+        This is a helper method for the test suite that directly accesses
+        the SQLite tables without going through the in-memory cache.
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key
+            
+        Returns:
+            tuple: (node_id, source) where source is 'meshtastic' or 'meshcore'
+        """
+        if hasattr(self, 'persistence') and self.persistence:
+            return self.persistence.find_node_by_pubkey_prefix(pubkey_prefix)
+        return None, None
     
     def get_reference_position(self):
         """
@@ -597,6 +625,21 @@ class NodeManager:
                             
                             # New node - schedule DB save
                             threading.Timer(10.0, lambda: self.save_node_names()).start()
+                            
+                            # Also save to SQLite meshtastic_nodes table
+                            if hasattr(self, 'persistence') and self.persistence:
+                                node_data = {
+                                    'node_id': node_id,
+                                    'name': name,
+                                    'shortName': short_name,
+                                    'hwModel': hw_model if hw_model else None,
+                                    'publicKey': public_key,
+                                    'lat': None,
+                                    'lon': None,
+                                    'alt': None,
+                                    'source': 'radio'
+                                }
+                                self.persistence.save_meshtastic_node(node_data)
                         else:
                             # Track whether any data actually changed
                             data_changed = False
@@ -653,6 +696,21 @@ class NodeManager:
                             # Only schedule DB save if data actually changed
                             if data_changed:
                                 threading.Timer(10.0, lambda: self.save_node_names()).start()
+                                
+                                # Also save to SQLite meshtastic_nodes table
+                                if hasattr(self, 'persistence') and self.persistence:
+                                    node_data = {
+                                        'node_id': node_id,
+                                        'name': name,
+                                        'shortName': short_name,
+                                        'hwModel': hw_model or None,
+                                        'publicKey': public_key,
+                                        'lat': self.node_names[node_id].get('lat'),
+                                        'lon': self.node_names[node_id].get('lon'),
+                                        'alt': self.node_names[node_id].get('alt'),
+                                        'source': 'radio'
+                                    }
+                                    self.persistence.save_meshtastic_node(node_data)
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
 

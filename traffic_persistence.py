@@ -272,6 +272,50 @@ class TrafficPersistence:
                 cursor.execute("ALTER TABLE node_stats ADD COLUMN last_pressure REAL")
                 cursor.execute("ALTER TABLE node_stats ADD COLUMN last_air_quality REAL")
 
+            # Table pour les nœuds Meshtastic (appris via NODEINFO_APP packets radio)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS meshtastic_nodes (
+                    node_id TEXT PRIMARY KEY,
+                    name TEXT,
+                    shortName TEXT,
+                    hwModel TEXT,
+                    publicKey BLOB,
+                    lat REAL,
+                    lon REAL,
+                    alt INTEGER,
+                    last_updated REAL,
+                    source TEXT DEFAULT 'radio'
+                )
+            ''')
+
+            # Index pour optimiser la recherche par publicKey
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meshtastic_nodes_last_updated
+                ON meshtastic_nodes(last_updated)
+            ''')
+
+            # Table pour les contacts MeshCore (appris via meshcore-cli companion)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS meshcore_contacts (
+                    node_id TEXT PRIMARY KEY,
+                    name TEXT,
+                    shortName TEXT,
+                    hwModel TEXT,
+                    publicKey BLOB,
+                    lat REAL,
+                    lon REAL,
+                    alt INTEGER,
+                    last_updated REAL,
+                    source TEXT DEFAULT 'meshcore'
+                )
+            ''')
+
+            # Index pour optimiser la recherche par publicKey
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meshcore_contacts_last_updated
+                ON meshcore_contacts(last_updated)
+            ''')
+
             self.conn.commit()
             logger.info(f"✅ Base de données initialisée : {self.db_path}")
 
@@ -1224,6 +1268,176 @@ class TrafficPersistence:
             import traceback
             logger.error(traceback.format_exc())
             return []
+
+    def save_meshtastic_node(self, node_data: Dict[str, Any]):
+        """
+        Sauvegarde ou met à jour un nœud Meshtastic (appris via radio)
+        
+        Args:
+            node_data: Dictionnaire contenant les informations du nœud
+                {
+                    'node_id': int,
+                    'name': str,
+                    'shortName': str (optionnel),
+                    'hwModel': str (optionnel),
+                    'publicKey': bytes/str (optionnel),
+                    'lat': float (optionnel),
+                    'lon': float (optionnel),
+                    'alt': int (optionnel)
+                }
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Convert node_id to string
+            node_id_str = str(node_data['node_id'])
+            
+            # Convert publicKey to bytes if needed
+            public_key = node_data.get('publicKey')
+            if isinstance(public_key, str):
+                import base64
+                try:
+                    public_key = base64.b64decode(public_key)
+                except:
+                    # If not base64, treat as hex
+                    public_key = bytes.fromhex(public_key.replace(' ', ''))
+            
+            # Insert or replace
+            cursor.execute('''
+                INSERT OR REPLACE INTO meshtastic_nodes
+                (node_id, name, shortName, hwModel, publicKey, lat, lon, alt, last_updated, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                node_id_str,
+                node_data.get('name'),
+                node_data.get('shortName'),
+                node_data.get('hwModel'),
+                public_key,
+                node_data.get('lat'),
+                node_data.get('lon'),
+                node_data.get('alt'),
+                time.time(),
+                'radio'
+            ))
+            
+            self.conn.commit()
+            debug_print(f"✅ Nœud Meshtastic sauvegardé: {node_data.get('name')} (0x{node_data['node_id']:08x})")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde du nœud Meshtastic : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            if self.error_callback:
+                self.error_callback(e, "save_meshtastic_node")
+    
+    def save_meshcore_contact(self, contact_data: Dict[str, Any]):
+        """
+        Sauvegarde ou met à jour un contact MeshCore (appris via meshcore-cli)
+        
+        Args:
+            contact_data: Dictionnaire contenant les informations du contact
+                {
+                    'node_id': int,
+                    'name': str,
+                    'shortName': str (optionnel),
+                    'hwModel': str (optionnel),
+                    'publicKey': bytes/str (optionnel),
+                    'lat': float (optionnel),
+                    'lon': float (optionnel),
+                    'alt': int (optionnel)
+                }
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Convert node_id to string
+            node_id_str = str(contact_data['node_id'])
+            
+            # Convert publicKey to bytes if needed
+            public_key = contact_data.get('publicKey')
+            if isinstance(public_key, str):
+                import base64
+                try:
+                    public_key = base64.b64decode(public_key)
+                except:
+                    # If not base64, treat as hex
+                    public_key = bytes.fromhex(public_key.replace(' ', ''))
+            
+            # Insert or replace
+            cursor.execute('''
+                INSERT OR REPLACE INTO meshcore_contacts
+                (node_id, name, shortName, hwModel, publicKey, lat, lon, alt, last_updated, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                node_id_str,
+                contact_data.get('name'),
+                contact_data.get('shortName'),
+                contact_data.get('hwModel'),
+                public_key,
+                contact_data.get('lat'),
+                contact_data.get('lon'),
+                contact_data.get('alt'),
+                time.time(),
+                'meshcore'
+            ))
+            
+            self.conn.commit()
+            debug_print(f"✅ Contact MeshCore sauvegardé: {contact_data.get('name')} (0x{contact_data['node_id']:08x})")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde du contact MeshCore : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            if self.error_callback:
+                self.error_callback(e, "save_meshcore_contact")
+    
+    def find_node_by_pubkey_prefix(self, pubkey_prefix: str):
+        """
+        Recherche un nœud par préfixe de clé publique dans les deux tables
+        
+        Args:
+            pubkey_prefix: Préfixe de la clé publique en hexadécimal (ex: '143bcd7f1b1f')
+            
+        Returns:
+            tuple: (node_id, source) où source est 'meshtastic' ou 'meshcore', ou (None, None) si non trouvé
+        """
+        if not pubkey_prefix:
+            return None, None
+        
+        # Normalize the prefix (lowercase, no spaces)
+        pubkey_prefix = str(pubkey_prefix).lower().strip()
+        
+        try:
+            cursor = self.conn.cursor()
+            
+            # Rechercher dans meshtastic_nodes
+            cursor.execute("SELECT node_id, publicKey FROM meshtastic_nodes WHERE publicKey IS NOT NULL")
+            for row in cursor.fetchall():
+                if row['publicKey']:
+                    public_key_hex = row['publicKey'].hex().lower()
+                    if public_key_hex.startswith(pubkey_prefix):
+                        node_id = int(row['node_id'])
+                        debug_print(f"🔍 Found Meshtastic node 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id, 'meshtastic'
+            
+            # Rechercher dans meshcore_contacts
+            cursor.execute("SELECT node_id, publicKey FROM meshcore_contacts WHERE publicKey IS NOT NULL")
+            for row in cursor.fetchall():
+                if row['publicKey']:
+                    public_key_hex = row['publicKey'].hex().lower()
+                    if public_key_hex.startswith(pubkey_prefix):
+                        node_id = int(row['node_id'])
+                        debug_print(f"🔍 Found MeshCore contact 0x{node_id:08x} with pubkey prefix {pubkey_prefix}")
+                        return node_id, 'meshcore'
+            
+            debug_print(f"⚠️ No node found with pubkey prefix {pubkey_prefix} in either table")
+            return None, None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche par pubkey prefix : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None, None
 
     def close(self):
         """Ferme la connexion à la base de données."""

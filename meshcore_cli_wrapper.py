@@ -242,28 +242,44 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
             
-            # Add to node_manager for future lookups
-            if contact_id not in self.node_manager.node_names:
-                self.node_manager.node_names[contact_id] = {
+            # Save to SQLite meshcore_contacts table (separate from Meshtastic nodes)
+            if hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                contact_data = {
+                    'node_id': contact_id,
                     'name': name or f"Node-{contact_id:08x}",
                     'shortName': contact.get('short_name', ''),
                     'hwModel': contact.get('hw_model', None),
+                    'publicKey': public_key,
                     'lat': None,
                     'lon': None,
                     'alt': None,
-                    'last_update': None,
-                    'publicKey': public_key  # Store public key for future lookups
+                    'source': 'meshcore'
                 }
-                
-                # Save to disk
-                self.node_manager.save_node_names()
-                info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base de données: {name}")
+                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                info_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé dans meshcore_contacts: {name}")
             else:
-                # Update publicKey if not present
-                if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
-                    self.node_manager.node_names[contact_id]['publicKey'] = public_key
+                # Fallback to in-memory storage if SQLite not available
+                if contact_id not in self.node_manager.node_names:
+                    self.node_manager.node_names[contact_id] = {
+                        'name': name or f"Node-{contact_id:08x}",
+                        'shortName': contact.get('short_name', ''),
+                        'hwModel': contact.get('hw_model', None),
+                        'lat': None,
+                        'lon': None,
+                        'alt': None,
+                        'last_update': None,
+                        'publicKey': public_key  # Store public key for future lookups
+                    }
+                    
+                    # Save to disk
                     self.node_manager.save_node_names()
-                    info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
+                    info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base de données JSON: {name}")
+                else:
+                    # Update publicKey if not present
+                    if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
+                        self.node_manager.node_names[contact_id]['publicKey'] = public_key
+                        self.node_manager.save_node_names()
+                        info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
             
             return contact_id
             
