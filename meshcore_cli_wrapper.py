@@ -137,6 +137,195 @@ class MeshCoreCLIWrapper:
         self.node_manager = node_manager
         debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
+    def query_contact_by_pubkey_prefix(self, pubkey_prefix):
+        """
+        Query meshcore-cli for a contact by public key prefix
+        
+        This method:
+        1. Queries meshcore's internal contact database
+        2. Extracts contact information (node_id, name, publicKey)
+        3. Adds the contact to node_manager for future lookups
+        4. Returns the node_id
+        
+        Args:
+            pubkey_prefix: Hex string prefix of the public key
+            
+        Returns:
+            int: node_id if found and added, None otherwise
+        """
+        if not self.meshcore:
+            debug_print("⚠️ [MESHCORE-QUERY] No meshcore connection available")
+            return None
+        
+        if not self.node_manager:
+            debug_print("⚠️ [MESHCORE-QUERY] No node_manager configured")
+            return None
+        
+        try:
+            debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+            
+            # Ensure contacts are loaded
+            # Note: We can't use run_until_complete here as we're already in an event loop
+            # Check if contacts are already available
+            if hasattr(self.meshcore, 'ensure_contacts'):
+                debug_print(f"🔄 [MESHCORE-QUERY] Vérification des contacts...")
+                # Try to access contacts directly without async call
+                # If contacts aren't loaded yet, they should be loaded by the auto_message_fetching
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts non chargés (peut nécessiter plus de temps)")
+                else:
+                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles")
+            else:
+                debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
+            
+            # Debug: check if meshcore has contacts attribute
+            if hasattr(self.meshcore, 'contacts'):
+                try:
+                    contacts_count = len(self.meshcore.contacts) if self.meshcore.contacts else 0
+                    debug_print(f"📊 [MESHCORE-QUERY] Nombre de contacts disponibles: {contacts_count}")
+                    
+                    # Enhanced debug: show why contacts might be empty
+                    if contacts_count == 0:
+                        debug_print("⚠️ [MESHCORE-QUERY] Base de contacts VIDE - diagnostic:")
+                        
+                        # Check if sync_contacts was called
+                        if hasattr(self.meshcore, 'contacts_synced'):
+                            debug_print(f"   contacts_synced flag: {self.meshcore.contacts_synced}")
+                        
+                        # Check for alternative contact access methods
+                        alt_methods = ['get_contacts', 'list_contacts', 'contacts_list', 'contact_list']
+                        found_methods = [m for m in alt_methods if hasattr(self.meshcore, m)]
+                        if found_methods:
+                            debug_print(f"   Méthodes alternatives disponibles: {', '.join(found_methods)}")
+                            
+                            # Try alternative methods to get contacts
+                            for method_name in found_methods:
+                                try:
+                                    method = getattr(self.meshcore, method_name)
+                                    if callable(method):
+                                        debug_print(f"   Tentative {method_name}()...")
+                                        # Don't call async methods here
+                                        if not asyncio.iscoroutinefunction(method):
+                                            result = method()
+                                            debug_print(f"   → {method_name}() retourne: {type(result).__name__} (len={len(result) if result else 0})")
+                                except Exception as alt_err:
+                                    debug_print(f"   → Erreur {method_name}(): {alt_err}")
+                        
+                        # Check meshcore object attributes
+                        debug_print("   Attributs meshcore disponibles:")
+                        relevant_attrs = [attr for attr in dir(self.meshcore) if 'contact' in attr.lower() or 'key' in attr.lower()]
+                        for attr in relevant_attrs[:10]:  # Show first 10
+                            try:
+                                value = getattr(self.meshcore, attr)
+                                debug_print(f"      • {attr}: {type(value).__name__}")
+                            except:
+                                pass
+                    
+                except Exception as ce:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de compter les contacts: {ce}")
+            
+            # Query meshcore for contact by pubkey prefix
+            contact = None
+            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                debug_print(f"🔍 [MESHCORE-QUERY] Appel get_contact_by_key_prefix('{pubkey_prefix}')...")
+                contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
+                debug_print(f"📋 [MESHCORE-QUERY] Résultat: {type(contact).__name__} = {contact}")
+            else:
+                error_print(f"❌ [MESHCORE-QUERY] meshcore.get_contact_by_key_prefix() non disponible")
+                error_print(f"   → Vérifier version meshcore-cli (besoin >= 2.2.5)")
+                return None
+            
+            if not contact:
+                debug_print(f"⚠️ [MESHCORE-QUERY] Aucun contact trouvé pour pubkey_prefix: {pubkey_prefix}")
+                # Debug: list available pubkey prefixes
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    try:
+                        debug_print(f"🔑 [MESHCORE-QUERY] Préfixes de clés disponibles:")
+                        contact_list = list(self.meshcore.contacts)[:5] if hasattr(self.meshcore.contacts, '__iter__') else []
+                        for i, c in enumerate(contact_list):  # Show first 5
+                            cpk = c.get('public_key', '') or c.get('publicKey', '')
+                            if cpk:
+                                if isinstance(cpk, bytes):
+                                    prefix = cpk.hex()[:12]
+                                elif isinstance(cpk, str):
+                                    import base64
+                                    try:
+                                        decoded = base64.b64decode(cpk)
+                                        prefix = decoded.hex()[:12]
+                                    except:
+                                        prefix = cpk[:12]
+                                debug_print(f"   {i+1}. {prefix}... (nom: {c.get('name', 'unknown')})")
+                    except Exception as debug_err:
+                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur debug contacts: {debug_err}")
+                return None
+            
+            # Extract contact information
+            contact_id = contact.get('contact_id') or contact.get('node_id')
+            name = contact.get('name') or contact.get('long_name')
+            public_key = contact.get('public_key') or contact.get('publicKey')
+            
+            if not contact_id:
+                debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id")
+                return None
+            
+            # Convert contact_id to int if it's a string
+            if isinstance(contact_id, str):
+                if contact_id.startswith('!'):
+                    contact_id = int(contact_id[1:], 16)
+                else:
+                    try:
+                        contact_id = int(contact_id, 16)
+                    except ValueError:
+                        contact_id = int(contact_id)
+            
+            info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
+            
+            # Save to SQLite meshcore_contacts table (separate from Meshtastic nodes)
+            if hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                contact_data = {
+                    'node_id': contact_id,
+                    'name': name or f"Node-{contact_id:08x}",
+                    'shortName': contact.get('short_name', ''),
+                    'hwModel': contact.get('hw_model', None),
+                    'publicKey': public_key,
+                    'lat': None,
+                    'lon': None,
+                    'alt': None,
+                    'source': 'meshcore'
+                }
+                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                info_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé dans meshcore_contacts: {name}")
+            else:
+                # Fallback to in-memory storage if SQLite not available
+                if contact_id not in self.node_manager.node_names:
+                    self.node_manager.node_names[contact_id] = {
+                        'name': name or f"Node-{contact_id:08x}",
+                        'shortName': contact.get('short_name', ''),
+                        'hwModel': contact.get('hw_model', None),
+                        'lat': None,
+                        'lon': None,
+                        'alt': None,
+                        'last_update': None,
+                        'publicKey': public_key  # Store public key for future lookups
+                    }
+                    
+                    # Save to disk
+                    self.node_manager.save_node_names()
+                    info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base de données JSON: {name}")
+                else:
+                    # Update publicKey if not present
+                    if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
+                        self.node_manager.node_names[contact_id]['publicKey'] = public_key
+                        self.node_manager.save_node_names()
+                        info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
+            
+            return contact_id
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-QUERY] Erreur recherche contact: {e}")
+            error_print(traceback.format_exc())
+            return None
+    
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
         info_print("\n" + "="*60)
@@ -380,8 +569,69 @@ class MeshCoreCLIWrapper:
                 try:
                     if hasattr(self.meshcore, 'sync_contacts'):
                         info_print("🔄 [MESHCORE-CLI] Synchronisation des contacts...")
+                        
+                        # Debug: Check initial state
+                        if hasattr(self.meshcore, 'contacts'):
+                            initial_contacts = self.meshcore.contacts
+                            initial_count = len(initial_contacts) if initial_contacts else 0
+                            debug_print(f"📊 [MESHCORE-SYNC] Contacts AVANT sync: {initial_count}")
+                        else:
+                            debug_print("⚠️ [MESHCORE-SYNC] meshcore.contacts n'existe pas encore")
+                        
                         await self.meshcore.sync_contacts()
                         info_print("✅ [MESHCORE-CLI] Contacts synchronisés")
+                        
+                        # Debug: Check post-sync state
+                        if hasattr(self.meshcore, 'contacts'):
+                            post_contacts = self.meshcore.contacts
+                            post_count = len(post_contacts) if post_contacts else 0
+                            debug_print(f"📊 [MESHCORE-SYNC] Contacts APRÈS sync: {post_count}")
+                            
+                            if post_count == 0:
+                                error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
+                                error_print("   → Raisons possibles:")
+                                error_print("   1. Mode companion: nécessite appairage avec app mobile")
+                                error_print("   2. Base de contacts vide dans meshcore-cli")
+                                error_print("   3. Problème de clé privée pour déchiffrement")
+                                
+                                # Check if this is companion mode
+                                if hasattr(self.meshcore, 'mode'):
+                                    debug_print(f"   Mode MeshCore: {self.meshcore.mode}")
+                                
+                                # Check private key status
+                                has_key = False
+                                for key_attr in ['private_key', 'key', 'node_key', 'device_key']:
+                                    if hasattr(self.meshcore, key_attr):
+                                        key_value = getattr(self.meshcore, key_attr, None)
+                                        if key_value is not None:
+                                            has_key = True
+                                            debug_print(f"   ✅ {key_attr} est défini")
+                                        else:
+                                            debug_print(f"   ⚠️ {key_attr} est None")
+                                
+                                if not has_key:
+                                    error_print("   ❌ Aucune clé privée trouvée!")
+                                    error_print("      → DMs chiffrés ne peuvent PAS être déchiffrés")
+                                    error_print("      → Contacts ne peuvent PAS être synchronisés")
+                            else:
+                                # Success: show contact details
+                                debug_print(f"✅ [MESHCORE-SYNC] {post_count} contact(s) disponibles:")
+                                for i, contact in enumerate(list(post_contacts)[:5]):  # Show first 5
+                                    c_name = contact.get('name', 'Unknown')
+                                    c_id = contact.get('contact_id') or contact.get('node_id', 'N/A')
+                                    c_pk = contact.get('public_key') or contact.get('publicKey', '')
+                                    pk_prefix = ''
+                                    if c_pk:
+                                        if isinstance(c_pk, bytes):
+                                            pk_prefix = c_pk.hex()[:12]
+                                        elif isinstance(c_pk, str):
+                                            try:
+                                                import base64
+                                                pk_bytes = base64.b64decode(c_pk)
+                                                pk_prefix = pk_bytes.hex()[:12]
+                                            except:
+                                                pk_prefix = c_pk[:12]
+                                    debug_print(f"   {i+1}. {c_name} (ID: {c_id}, PK: {pk_prefix}...)")
                         
                         # Check if contacts were actually synced
                         await self._verify_contacts()
@@ -432,13 +682,34 @@ class MeshCoreCLIWrapper:
             self.last_message_time = time.time()
             self.connection_healthy = True
             
-            debug_print(f"🔔 [MESHCORE-CLI] Event reçu: {event}")
+            # Safely log event - don't convert to string as it may contain problematic characters
+            try:
+                debug_print(f"🔔 [MESHCORE-CLI] Event reçu - type: {type(event).__name__}")
+                if hasattr(event, 'type'):
+                    debug_print(f"   Event.type: {event.type}")
+            except Exception as log_err:
+                debug_print(f"🔔 [MESHCORE-CLI] Event reçu (erreur log: {log_err})")
             
             # Extraire les informations de l'événement
             # L'API meshcore fournit un objet event avec payload
             payload = event.payload if hasattr(event, 'payload') else event
             
-            debug_print(f"📦 [MESHCORE-CLI] Payload: {payload}")
+            # Safely log payload
+            try:
+                debug_print(f"📦 [MESHCORE-CLI] Payload type: {type(payload).__name__}")
+                if isinstance(payload, dict):
+                    debug_print(f"📦 [MESHCORE-CLI] Payload keys: {list(payload.keys())}")
+                    # Log important fields individually
+                    for key in ['type', 'pubkey_prefix', 'contact_id', 'sender_id', 'text']:
+                        if key in payload:
+                            value = payload[key]
+                            if key == 'text':
+                                value = value[:50] + '...' if len(str(value)) > 50 else value
+                            debug_print(f"   {key}: {value}")
+                else:
+                    debug_print(f"📦 [MESHCORE-CLI] Payload: {str(payload)[:200]}")
+            except Exception as log_err:
+                debug_print(f"📦 [MESHCORE-CLI] Payload (erreur log: {log_err})")
             
             # Essayer plusieurs sources pour le sender_id
             sender_id = None
@@ -448,10 +719,12 @@ class MeshCoreCLIWrapper:
             if isinstance(payload, dict):
                 sender_id = payload.get('contact_id') or payload.get('sender_id')
                 pubkey_prefix = payload.get('pubkey_prefix')
+                debug_print(f"📋 [MESHCORE-DM] Payload dict - contact_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 2: Chercher dans les attributs de l'event
             if sender_id is None and hasattr(event, 'attributes'):
                 attributes = event.attributes
+                debug_print(f"📋 [MESHCORE-DM] Event attributes: {attributes}")
                 if isinstance(attributes, dict):
                     sender_id = attributes.get('contact_id') or attributes.get('sender_id')
                     if pubkey_prefix is None:
@@ -460,13 +733,26 @@ class MeshCoreCLIWrapper:
             # Méthode 3: Chercher directement sur l'event
             if sender_id is None and hasattr(event, 'contact_id'):
                 sender_id = event.contact_id
+                debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
+            
+            debug_print(f"🔍 [MESHCORE-DM] Après extraction - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
+            # IMPORTANT: Pour les DMs via meshcore-cli, on recherche SEULEMENT dans meshcore_contacts
+            # (pas dans meshtastic_nodes) pour éviter de mélanger les deux sources
             if sender_id is None and pubkey_prefix and self.node_manager:
                 debug_print(f"🔍 [MESHCORE-DM] Tentative résolution pubkey_prefix: {pubkey_prefix}")
-                sender_id = self.node_manager.find_node_by_pubkey_prefix(pubkey_prefix)
+                
+                # First try: lookup in meshcore_contacts ONLY (not meshtastic_nodes)
+                sender_id = self.node_manager.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
-                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x}")
+                    info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore cache)")
+                else:
+                    # Second try: query meshcore-cli API directly
+                    debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
+                    sender_id = self.query_contact_by_pubkey_prefix(pubkey_prefix)
+                    if sender_id:
+                        info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli API)")
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             
