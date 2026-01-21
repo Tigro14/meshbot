@@ -99,6 +99,31 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
             
+            # Load contacts immediately during connection (like meshcore-cli does)
+            try:
+                info_print(f"🔄 [MESHCORE-CLI] Chargement des contacts...")
+                if hasattr(self.meshcore, 'ensure_contacts'):
+                    # Call ensure_contacts in the event loop we just created
+                    if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
+                        loop.run_until_complete(self.meshcore.ensure_contacts())
+                    else:
+                        self.meshcore.ensure_contacts()
+                    
+                    # Flush pending contacts
+                    if hasattr(self.meshcore, 'flush_pending_contacts'):
+                        self.meshcore.flush_pending_contacts()
+                    
+                    # Check contact count
+                    if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                        contact_count = len(self.meshcore.contacts)
+                        info_print(f"✅ [MESHCORE-CLI] {contact_count} contact(s) chargé(s)")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-CLI] Aucun contact chargé")
+                else:
+                    debug_print(f"⚠️ [MESHCORE-CLI] ensure_contacts() non disponible")
+            except Exception as contact_err:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur chargement contacts: {contact_err}")
+            
             # Récupérer le node ID si possible
             try:
                 # Essayer de récupérer les infos du device
@@ -166,50 +191,62 @@ class MeshCoreCLIWrapper:
             
             # Ensure contacts are loaded
             # CRITICAL FIX: Actually call ensure_contacts() to load contacts from device
-            if hasattr(self.meshcore, 'ensure_contacts'):
+            # NOTE: meshcore-cli may populate contacts asynchronously, so we check if they're
+            # already loaded before calling ensure_contacts()
+            
+            # First, try to flush any pending contacts
+            if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
+                try:
+                    debug_print(f"🔄 [MESHCORE-QUERY] Appel flush_pending_contacts() pour finaliser les contacts en attente...")
+                    self.meshcore.flush_pending_contacts()
+                    debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() terminé")
+                except Exception as flush_err:
+                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush_pending_contacts(): {flush_err}")
+            
+            # Check if contacts are already loaded (may have been populated during connection)
+            initial_count = 0
+            if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                initial_count = len(self.meshcore.contacts)
+                debug_print(f"📊 [MESHCORE-QUERY] Contacts déjà disponibles: {initial_count}")
+            
+            # If no contacts yet, try to load them
+            if initial_count == 0 and hasattr(self.meshcore, 'ensure_contacts'):
                 debug_print(f"🔄 [MESHCORE-QUERY] Appel ensure_contacts() pour charger les contacts...")
                 try:
                     # Call ensure_contacts() - it will load contacts if not already loaded
-                    # This is a synchronous method that internally handles async operations
                     if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
-                        # It's async - we need to run it in the event loop
-                        if self._loop and self._loop.is_running():
-                            # Schedule in existing loop
-                            future = asyncio.run_coroutine_threadsafe(
-                                self.meshcore.ensure_contacts(), 
-                                self._loop
-                            )
-                            # Wait for completion with timeout (30 seconds for slow devices)
-                            try:
-                                future.result(timeout=30)
-                                debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
-                            except TimeoutError:
-                                # Timeout but contacts may still be loading in background
-                                # Continue anyway as contacts might be available
-                                debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() timeout après 30s (continue quand même)")
-                        else:
-                            # No running loop - create temporary one
-                            temp_loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(temp_loop)
-                            temp_loop.run_until_complete(self.meshcore.ensure_contacts())
-                            temp_loop.close()
-                            debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                        # It's async - DON'T use run_coroutine_threadsafe as it hangs
+                        # Instead, just mark contacts as dirty and they'll load in background
+                        debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() est async - impossible d'appeler depuis ce contexte")
+                        debug_print(f"💡 [MESHCORE-QUERY] Les contacts se chargeront en arrière-plan")
+                        
+                        # Try to mark contacts as dirty to trigger reload
+                        if hasattr(self.meshcore, 'contacts_dirty'):
+                            self.meshcore.contacts_dirty = True
+                            debug_print(f"🔄 [MESHCORE-QUERY] contacts_dirty défini à True pour forcer le rechargement")
                     else:
                         # It's synchronous - just call it
                         self.meshcore.ensure_contacts()
                         debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
-                except TimeoutError:
-                    # Timeout is handled above for async case
-                    debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() timeout (continue quand même)")
                 except Exception as ensure_err:
                     error_print(f"⚠️ [MESHCORE-QUERY] Erreur ensure_contacts(): {ensure_err}")
                     error_print(traceback.format_exc())
                 
-                # Now check if contacts are available
+                # Try flush again after ensure_contacts
+                if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
+                    try:
+                        self.meshcore.flush_pending_contacts()
+                        debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() après ensure_contacts")
+                    except Exception as flush_err:
+                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush après ensure: {flush_err}")
+                
+                # Check again if contacts are now available
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
                     debug_print(f"⚠️ [MESHCORE-QUERY] Contacts toujours non chargés après ensure_contacts()")
                 else:
                     debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles après ensure_contacts()")
+            elif initial_count > 0:
+                debug_print(f"✅ [MESHCORE-QUERY] Contacts déjà chargés, pas besoin d'appeler ensure_contacts()")
             else:
                 debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
             
