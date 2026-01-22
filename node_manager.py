@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
 Gestionnaire des nœuds avec positions GPS et calcul de distances
-VERSION AMÉLIORÉE avec stockage des coordonnées
+VERSION AMÉLIORÉE avec stockage SQLite
 """
 
-import json
-import os
 import time
 import threading
 import gc
@@ -16,9 +14,9 @@ from math import radians, cos, sin, asin, sqrt
 class NodeManager:
     def __init__(self, interface=None):
         self.node_names = {}
-        self._last_node_save = 0
         self.rx_history = {}
         self.interface = interface
+        self.persistence = None  # Will be set by main_bot after initialization
         from collections import deque
         self.packet_type_counts = {
             'POSITION_APP': deque(maxlen=24),
@@ -40,6 +38,7 @@ class NodeManager:
         except ImportError:
             self.bot_position = None
             debug_print("⚠️ BOT_POSITION non défini dans config.py")
+
     
     def set_interface(self, interface):
         """Définir l'interface Meshtastic"""
@@ -75,68 +74,23 @@ class NodeManager:
         else:
             return f"{int(distance_km)}km"
     
-    def load_node_names(self):
-        """Charger la base de noms et positions depuis le fichier"""
-        try:
-            if os.path.exists(NODE_NAMES_FILE):
-                with open(NODE_NAMES_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                    # Nouvelle structure: {node_id: {name, lat, lon, alt, last_update}}
-                    # Compatibilité avec l'ancienne structure: {node_id: name}
-                    self.node_names = {}
-                    for k, v in data.items():
-                        if not k.isdigit():
-                            continue
-                        node_id = int(k)
-                        
-                        if isinstance(v, str):
-                            # Ancien format: juste le nom
-                            self.node_names[node_id] = {
-                                'name': v,
-                                'shortName': None,
-                                'hwModel': None,
-                                'lat': None,
-                                'lon': None,
-                                'alt': None,
-                                'last_update': None
-                            }
-                        elif isinstance(v, dict):
-                            # Nouveau format: dict avec toutes les infos
-                            self.node_names[node_id] = {
-                                'name': v.get('name', f"Node-{node_id:08x}"),
-                                'shortName': v.get('shortName'),
-                                'hwModel': v.get('hwModel'),
-                                'lat': v.get('lat'),
-                                'lon': v.get('lon'),
-                                'alt': v.get('alt'),
-                                'last_update': v.get('last_update')
-                            }
-                        
-                debug_print(f"📚 {len(self.node_names)} noms de nœuds chargés")
-            else:
-                debug_print("📂 Nouvelle base de noms créée")
-                self.node_names = {}
-        except Exception as e:
-            error_print(f"Erreur chargement noms: {e}")
-            self.node_names = {}
     
-    def save_node_names(self, force=False):
-        """Sauvegarder la base de noms et positions (avec throttling)"""
+    def load_nodes_from_sqlite(self):
+        """Charger les nœuds depuis la base SQLite"""
         try:
-            current_time = time.time()
-            # Sauvegarder seulement toutes les 60s sauf si forcé
-            if not force and (current_time - self._last_node_save) < 60:
+            if not hasattr(self, 'persistence') or not self.persistence:
+                debug_print("⚠️ Persistence non disponible, nodes cache vide")
+                self.node_names = {}
                 return
             
-            # Convertir les clés int en string pour JSON
-            data = {str(k): v for k, v in self.node_names.items()}
-            with open(NODE_NAMES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            self._last_node_save = current_time
-            debug_print(f"💾 Base sauvegardée ({len(self.node_names)} nœuds)")
+            # Charger tous les nœuds depuis SQLite
+            self.node_names = self.persistence.get_all_meshtastic_nodes()
+            debug_print(f"📚 {len(self.node_names)} nœuds chargés depuis SQLite")
+            
         except Exception as e:
-            error_print(f"Erreur sauvegarde noms: {e}")
+            error_print(f"Erreur chargement nœuds depuis SQLite: {e}")
+            self.node_names = {}
+    
     
     def get_node_name(self, node_id, interface=None):
         """Récupérer le nom d'un nœud par son ID"""
@@ -146,6 +100,13 @@ class NodeManager:
         
         if node_id in self.node_names:
             return self.node_names[node_id]['name']
+        
+        # If not in cache, try to load from SQLite
+        if hasattr(self, 'persistence') and self.persistence:
+            node_data = self.persistence.get_node_by_id(node_id)
+            if node_data:
+                self.node_names[node_id] = node_data
+                return node_data['name']
         
         # Tenter de récupérer depuis l'interface en temps réel
         try:
@@ -172,8 +133,7 @@ class NodeManager:
                                     }
                                 else:
                                     self.node_names[node_id]['name'] = name
-                                # Sauvegarde différée pour nouveaux nœuds
-                                threading.Timer(5.0, lambda: self.save_node_names()).start()
+                                # Node will be saved to SQLite when update_node_from_packet is called
                                 return name
         except Exception as e:
             debug_print(f"Erreur récupération nom {node_id}: {e}")
@@ -509,7 +469,7 @@ class NodeManager:
                     continue
             
             if updated_count > 0:
-                self.save_node_names()
+                # Nodes are already saved to SQLite via save_meshtastic_node()
                 debug_print(f"✅ {updated_count} nœuds mis à jour")
             else:
                 debug_print(f"ℹ️ Base à jour ({len(self.node_names)} nœuds)")
@@ -656,10 +616,7 @@ class NodeManager:
                             else:
                                 info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
                             
-                            # New node - schedule DB save
-                            threading.Timer(10.0, lambda: self.save_node_names()).start()
-                            
-                            # Also save to SQLite meshtastic_nodes table
+                            # Save to SQLite meshtastic_nodes table
                             if hasattr(self, 'persistence') and self.persistence:
                                 node_data = {
                                     'node_id': node_id,
@@ -708,7 +665,7 @@ class NodeManager:
                                 debug_print(f"ℹ️ Public key already stored for {name} (unchanged)")
                                 
                                 # CRITICAL: Still sync to interface.nodes even if unchanged
-                                # After bot restart, interface.nodes is empty but node_names.json has keys
+                                # After bot restart, interface.nodes is empty but SQLite DB has keys
                                 # Without this sync, /keys will report nodes as "without keys"
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
                             elif not public_key and not old_key:
@@ -726,11 +683,8 @@ class NodeManager:
                             else:
                                 info_print(f"✗ Node {name} still MISSING publicKey in DB")
                             
-                            # Only schedule DB save if data actually changed
+                            # Save to SQLite meshtastic_nodes table if data changed
                             if data_changed:
-                                threading.Timer(10.0, lambda: self.save_node_names()).start()
-                                
-                                # Also save to SQLite meshtastic_nodes table
                                 if hasattr(self, 'persistence') and self.persistence:
                                     node_data = {
                                         'node_id': node_id,
@@ -800,7 +754,7 @@ class NodeManager:
     
     def sync_pubkeys_to_interface(self, interface, force=False):
         """
-        Synchronize public keys from node_names.json to interface.nodes
+        Synchronize public keys from SQLite DB to interface.nodes
         
         This is critical for DM decryption in TCP mode where interface.nodes
         starts empty. We inject public keys from our persistent database

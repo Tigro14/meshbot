@@ -286,9 +286,7 @@ class MQTTNeighborCollector:
                         self.node_manager.node_names[from_id]['name'] = name
                         debug_print(f"👥 [MQTT] Nœud renommé: {old_name} → {name} (!{from_id:08x})")
                 
-                # Sauvegarder les noms de nœuds (différé pour éviter trop d'écritures)
-                import threading
-                threading.Timer(10.0, lambda: self.node_manager.save_node_names()).start()
+                # Node data automatically saved to SQLite via persistence
                 
         except Exception as e:
             debug_print(f"👥 Erreur traitement NODEINFO: {e}")

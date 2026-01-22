@@ -103,6 +103,13 @@ class MeshBot:
         self.remote_nodes_client = RemoteNodesClient(persistence=self.traffic_monitor.persistence)
         self.remote_nodes_client.set_node_manager(self.node_manager)
         
+        # Connect node_manager to persistence for SQLite storage
+        self.node_manager.persistence = self.traffic_monitor.persistence
+        debug_print("✅ NodeManager connected to SQLite persistence")
+        
+        # Load nodes from SQLite database
+        self.node_manager.load_nodes_from_sqlite()
+        
         # Configurer le callback d'erreur DB dans traffic_monitor.persistence
         if self.db_error_monitor and self.traffic_monitor.persistence:
             self.traffic_monitor.persistence.error_callback = self.db_error_monitor.record_error
@@ -1009,7 +1016,7 @@ class MeshBot:
                                     if injected > 0:
                                         info_print(f"✅ {injected} clés publiques re-synchronisées")
                                     else:
-                                        info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans node_names.json)")
+                                        info_print("ℹ️ Aucune clé à re-synchroniser (aucune clé dans SQLite DB)")
                                 except Exception as sync_error:
                                     error_print(f"⚠️ Erreur re-sync clés après reconnexion: {sync_error}")
                                     error_print(traceback.format_exc())
@@ -1616,8 +1623,8 @@ class MeshBot:
         signal.signal(signal.SIGINT, self._signal_handler)   # Ctrl+C
         info_print("✅ Gestionnaires de signaux installés (SIGTERM, SIGINT)")
         
-        # Charger la base de nœuds
-        self.node_manager.load_node_names()
+        # Load nodes from SQLite database (already done in __init__)
+        # self.node_manager.load_nodes_from_sqlite() - already called in __init__
         
         # Nettoyage initial
         gc.collect()
@@ -2158,9 +2165,10 @@ class MeshBot:
             # 1. Sauvegarder avant fermeture (critique, mais rapide)
             try:
                 if self.node_manager:
-                    self.node_manager.save_node_names(force=True)
+                    # Nodes are automatically saved to SQLite via persistence
+                    debug_print("ℹ️ Nodes persisted to SQLite")
             except Exception as e:
-                error_print(f"⚠️ Erreur sauvegarde node_manager: {e}")
+                error_print(f"⚠️ Erreur node_manager cleanup: {e}")
 
             # 2. Arrêter le monitoring système (peut prendre jusqu'à 3s)
             try:

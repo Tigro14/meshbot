@@ -1480,6 +1480,114 @@ class TrafficPersistence:
             logger.error(traceback.format_exc())
             return None
 
+    def get_all_meshtastic_nodes(self) -> Dict[int, Dict[str, Any]]:
+        """
+        Récupère tous les nœuds Meshtastic depuis la base de données
+        
+        Returns:
+            Dict[int, Dict]: Dictionnaire des nœuds indexé par node_id (int)
+                {
+                    node_id: {
+                        'name': str,
+                        'shortName': str,
+                        'hwModel': str,
+                        'publicKey': bytes,
+                        'lat': float,
+                        'lon': float,
+                        'alt': int,
+                        'last_update': float
+                    }
+                }
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, last_updated
+                FROM meshtastic_nodes
+            """)
+            
+            nodes = {}
+            for row in cursor.fetchall():
+                node_id = int(row['node_id'])
+                nodes[node_id] = {
+                    'name': row['name'],
+                    'shortName': row['shortName'],
+                    'hwModel': row['hwModel'],
+                    'publicKey': row['publicKey'],
+                    'lat': row['lat'],
+                    'lon': row['lon'],
+                    'alt': row['alt'],
+                    'last_update': row['last_updated']
+                }
+            
+            debug_print(f"📚 Loaded {len(nodes)} Meshtastic nodes from SQLite")
+            return nodes
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement des nœuds Meshtastic : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
+    
+    def get_node_by_id(self, node_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Récupère un nœud spécifique par son ID
+        
+        Args:
+            node_id: ID du nœud à récupérer
+            
+        Returns:
+            Dict ou None: Données du nœud ou None si non trouvé
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Rechercher d'abord dans meshtastic_nodes
+            cursor.execute("""
+                SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, last_updated
+                FROM meshtastic_nodes
+                WHERE node_id = ?
+            """, (str(node_id),))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'name': row['name'],
+                    'shortName': row['shortName'],
+                    'hwModel': row['hwModel'],
+                    'publicKey': row['publicKey'],
+                    'lat': row['lat'],
+                    'lon': row['lon'],
+                    'alt': row['alt'],
+                    'last_update': row['last_updated']
+                }
+            
+            # Si pas trouvé dans meshtastic_nodes, chercher dans meshcore_contacts
+            cursor.execute("""
+                SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, last_updated
+                FROM meshcore_contacts
+                WHERE node_id = ?
+            """, (str(node_id),))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'name': row['name'],
+                    'shortName': row['shortName'],
+                    'hwModel': row['hwModel'],
+                    'publicKey': row['publicKey'],
+                    'lat': row['lat'],
+                    'lon': row['lon'],
+                    'alt': row['alt'],
+                    'last_update': row['last_updated']
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du nœud {node_id} : {e}")
+            return None
+
     def close(self):
         """Ferme la connexion à la base de données."""
         if self.conn:

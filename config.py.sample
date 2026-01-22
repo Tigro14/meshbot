@@ -116,8 +116,8 @@ ESPHOME_TELEMETRY_INTERVAL = 3600  # Intervalle en secondes (3600s = 1h)
 # plus tard, vous pouvez réactiver la télémétrie embarquée avec:
 #   meshtastic --set telemetry.device_update_interval 900
 
-# Configuration base de données des nœuds
-NODE_NAMES_FILE = "node_names.json"
+# Configuration base de données des nœuds (SQLite)
+# Node data is now stored in traffic_history.db (meshtastic_nodes table)
 NODE_UPDATE_INTERVAL = 300  # 5 minutes
 
 # Configuration synchronisation clés publiques périodique
