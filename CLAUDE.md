@@ -2226,7 +2226,7 @@ python info_json_clean.py
 ### Map Data Sources
 
 Maps are generated from:
-- **Node database** (`node_names.json`): Node names, GPS, last seen
+- **Node database** (SQLite `meshtastic_nodes` table): Node names, GPS, last seen
 - **Traffic database** (`traffic_history.db`): Packet history, signal metrics
 - **Neighbor data**: Direct node connections from NEIGHBOR_INFO packets
 
