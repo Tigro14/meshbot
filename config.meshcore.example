@@ -101,7 +101,7 @@ DEBUG_MODE = False
 # ========================================
 # CONFIGURATION BASE DE DONNÉES
 # ========================================
-NODE_NAMES_FILE = "node_names.json"
+# Node data is now stored in SQLite (traffic_history.db)
 
 # ========================================
 # FONCTIONNALITÉS DÉSACTIVÉES EN MODE COMPANION

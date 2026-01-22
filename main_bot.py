@@ -103,6 +103,13 @@ class MeshBot:
         self.remote_nodes_client = RemoteNodesClient(persistence=self.traffic_monitor.persistence)
         self.remote_nodes_client.set_node_manager(self.node_manager)
         
+        # Connect node_manager to persistence for SQLite storage
+        self.node_manager.persistence = self.traffic_monitor.persistence
+        debug_print("✅ NodeManager connected to SQLite persistence")
+        
+        # Load nodes from SQLite database
+        self.node_manager.load_nodes_from_sqlite()
+        
         # Configurer le callback d'erreur DB dans traffic_monitor.persistence
         if self.db_error_monitor and self.traffic_monitor.persistence:
             self.traffic_monitor.persistence.error_callback = self.db_error_monitor.record_error
