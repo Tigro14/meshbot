@@ -16,16 +16,23 @@ class AICommands:
     
     def handle_bot(self, message, sender_id, sender_info, is_broadcast=False):
         """
-        Gérer la commande /bot
+        Gérer la commande /bot ou /ia (alias français)
         
         Args:
-            message: Message complet (ex: "/bot quelle heure est-il?")
+            message: Message complet (ex: "/bot quelle heure est-il?" ou "/ia quelle heure est-il?")
             sender_id: ID de l'expéditeur
             sender_info: Infos sur l'expéditeur
             is_broadcast: Si True, répondre en broadcast public
         """
-        prompt = message[5:].strip()
-        info_print(f"Bot: {sender_info}: '{prompt}' (broadcast={is_broadcast})")
+        # Détecter la commande utilisée (/bot ou /ia) et extraire le prompt
+        if message.startswith('/ia'):
+            prompt = message[3:].strip()  # Longueur de "/ia"
+            command_name = "/ia"
+        else:  # /bot
+            prompt = message[4:].strip()  # Longueur de "/bot"
+            command_name = "/bot"
+        
+        info_print(f"Bot: {sender_info}: '{prompt}' (broadcast={is_broadcast}, command={command_name})")
         
         if prompt:
             start_time = time.time()
@@ -38,16 +45,16 @@ class AICommands:
             
             # Envoyer selon le mode (broadcast ou direct)
             if is_broadcast:
-                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, "/bot")
+                self._send_broadcast_via_tigrog2(response, sender_id, sender_info, command_name)
             else:
                 self.sender.send_chunks(response, sender_id, sender_info)
             
             # Nettoyage après traitement
             self.llama_client.cleanup_cache()
         else:
-            usage_msg = "Usage: /bot <question>"
+            usage_msg = f"Usage: {command_name} <question>"
             if is_broadcast:
-                self._send_broadcast_via_tigrog2(usage_msg, sender_id, sender_info, "/bot")
+                self._send_broadcast_via_tigrog2(usage_msg, sender_id, sender_info, command_name)
             else:
                 self.sender.send_single(usage_msg, sender_id, sender_info)
     

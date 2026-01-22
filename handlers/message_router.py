@@ -33,13 +33,15 @@ class MessageRouter:
         # Commandes supportées en mode companion (non-Meshtastic)
         self.companion_commands = [
             '/bot',      # AI
+            '/ia',       # AI (alias français)
             '/weather',  # Météo
             '/rain',     # Graphiques pluie
             '/power',    # ESPHome telemetry
             '/sys',      # Système (CPU, RAM, uptime)
             '/help',     # Aide
             '/blitz',    # Lightning (si activé)
-            '/vigilance' # Vigilance météo (si activé)
+            '/vigilance',# Vigilance météo (si activé)
+            '/rebootpi'  # Redémarrage Pi (authentifié)
         ]
 
         # Message sender (gère envoi et throttling)
@@ -79,8 +81,8 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
 
-        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, info, propag, hop)
-        broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/info', '/propag', '/hop']
+        # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, ia, info, propag, hop)
+        broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/ia', '/info', '/propag', '/hop']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
@@ -98,6 +100,9 @@ class MessageRouter:
                 self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
             elif message.startswith('/bot'):
                 info_print(f"BOT PUBLIC de {sender_info}: '{message}'")
+                self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
+            elif message.startswith('/ia'):
+                info_print(f"IA PUBLIC de {sender_info}: '{message}'")
                 self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
             elif message.startswith('/info'):
                 info_print(f"INFO PUBLIC de {sender_info}: '{message}'")
@@ -143,6 +148,8 @@ class MessageRouter:
         
         # Commandes IA
         if message.startswith('/bot'):
+            self.ai_handler.handle_bot(message, sender_id, sender_info)
+        elif message.startswith('/ia'):
             self.ai_handler.handle_bot(message, sender_id, sender_info)
         
         # Commandes réseau
