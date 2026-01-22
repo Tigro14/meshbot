@@ -123,7 +123,7 @@ if nodes_without_keys:
     print("  → They are in traffic (sent packets)")
     print("  → But NOT in interface.nodes")
     print("  → Could be:")
-    print("     - Never sent NODEINFO (so not in node_names.json)")
+    print("     - Never sent NODEINFO (so not in SQLite DB)")
     print("     - NODEINFO not processed yet")
     print("     - Node ID format mismatch")
 

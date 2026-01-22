@@ -411,14 +411,13 @@ class MeshCoreCLIWrapper:
                         'publicKey': public_key  # Store public key for future lookups
                     }
                     
-                    # Save to disk
-                    self.node_manager.save_node_names()
-                    info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base de données JSON: {name}")
+                    # Data is automatically saved to SQLite via persistence
+                    info_print(f"💾 [MESHCORE-QUERY] Contact ajouté à la base SQLite: {name}")
                 else:
                     # Update publicKey if not present
                     if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
                         self.node_manager.node_names[contact_id]['publicKey'] = public_key
-                        self.node_manager.save_node_names()
+                        # Data is automatically saved to SQLite via persistence
                         info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
             
             return contact_id

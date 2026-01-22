@@ -8,18 +8,28 @@ Usage:
 """
 
 import sqlite3
-import json
 import sys
 import argparse
 from datetime import datetime, timedelta
 
-def load_node_names(node_names_file='node_names.json'):
-    """Load node names from JSON file."""
+def load_node_names_from_db(db_path='traffic_history.db'):
+    """Load node names from SQLite database."""
     try:
-        with open(node_names_file, 'r') as f:
-            return json.load(f)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Load from meshtastic_nodes table
+        cursor.execute("SELECT node_id, name FROM meshtastic_nodes")
+        node_names = {}
+        for row in cursor.fetchall():
+            node_id = int(row['node_id'])
+            node_names[str(node_id)] = {'longName': row['name']}
+        
+        conn.close()
+        return node_names
     except Exception as e:
-        print(f"Warning: Could not load {node_names_file}: {e}")
+        print(f"Warning: Could not load nodes from database: {e}")
         return {}
 
 def get_node_name(node_id, node_names):
@@ -54,8 +64,8 @@ def get_node_name(node_id, node_names):
 def view_positions(db_path='traffic_history.db', hours=24, with_rssi=False):
     """View node positions from database with optional RSSI filtering."""
     
-    # Load node names
-    node_names = load_node_names()
+    # Load node names from SQLite
+    node_names = load_node_names_from_db(db_path)
     
     # Check if database exists
     import os
