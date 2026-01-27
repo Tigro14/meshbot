@@ -71,8 +71,8 @@ class NetworkCommands:
         """Gérer la commande /nodesmc - Liste des contacts MeshCore avec pagination
         
         Usage:
-            /nodesmc [page]  -> Liste paginée (7 contacts par page)
-            /nodesmc full    -> Tous les contacts (non paginé)
+            /nodesmc [page]  -> Liste paginée (7 contacts par page, 30 derniers jours)
+            /nodesmc full    -> Tous les contacts (non paginé, 72 dernières heures)
         """
         
         # Extraire le numéro de page ou le mode "full"
@@ -96,24 +96,26 @@ class NetworkCommands:
         info_print(f"MeshCore nodes {'FULL' if full_mode else f'page {page}'}: {sender_info}")
         
         try:
-            debug_print(f"[NODESMC] Récupération contacts depuis SQLite (days_filter=30)")
+            # Mode FULL utilise 72h (3 jours), mode paginé utilise 30 jours
+            days_filter = 3 if full_mode else 30
+            debug_print(f"[NODESMC] Récupération contacts depuis SQLite (days_filter={days_filter})")
             
             # Récupérer les contacts MeshCore depuis la DB avec splitting pour MeshCore
             # Limite de 160 caractères (opérationnelle pour MeshCore)
             if full_mode:
-                # Mode full: pas de pagination
+                # Mode full: pas de pagination, 72h de données
                 messages = self.remote_nodes_client.get_meshcore_paginated_split(
                     page=1, 
-                    days_filter=30, 
+                    days_filter=days_filter, 
                     max_length=160,
                     full_mode=True
                 )
-                debug_print(f"[NODESMC] Mode FULL: {len(messages)} messages générés")
+                debug_print(f"[NODESMC] Mode FULL (72h): {len(messages)} messages générés")
             else:
-                # Mode paginé normal
+                # Mode paginé normal, 30 jours de données
                 messages = self.remote_nodes_client.get_meshcore_paginated_split(
                     page=page, 
-                    days_filter=30, 
+                    days_filter=days_filter, 
                     max_length=160
                 )
                 debug_print(f"[NODESMC] Mode paginé: {len(messages)} messages pour page {page}")
