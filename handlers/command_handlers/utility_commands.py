@@ -632,7 +632,10 @@ class UtilityCommands:
 
         📡 RÉSEAU MESHTASTIC
         • /nodes - Liste nœuds (auto-détection mode)
-        • /nodesmc - Liste contacts MeshCore
+        • /nodesmc [page|full] - Liste contacts MeshCore
+          /nodesmc → Page 1 (7 contacts, 30j)
+          /nodesmc 2 → Page 2
+          /nodesmc full → Tous les contacts (tous)
         • /nodemt - Liste nœuds directs Meshtastic
         • /neighbors [node] - Voisins mesh (topology réseau)
           /neighbors → Tous les voisins (format compact)

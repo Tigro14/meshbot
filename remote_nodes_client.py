@@ -679,24 +679,24 @@ class RemoteNodesClient:
             return f"Erreur: {str(e)[:100]}"
 
     def _format_node_line(self, node):
-        """Formater une ligne de nœud pour l'affichage - FORMAT ULTRA-COMPACT pour mesh"""
+        """Formater une ligne de nœud pour l'affichage - avec nom complet et 4 premiers hex chars ID"""
         try:
             name = node.get('name', 'Unknown')
-
-            # Extraire seulement le shortName (partie avant l'espace)
-            if ' ' in name:
-                name = name.split(' ', 1)[0]  # Prendre uniquement le shortName
-
-            # Tronquer à 14 caractères max
-            name = truncate_text(name, 14, suffix="")
-
+            node_id = node.get('id', 0)
+            
+            # Obtenir les 4 premiers caractères hex de l'ID
+            hex_id = f"{node_id:08x}"[-4:].upper()  # 4 derniers chars en majuscules
+            
+            # Ne pas tronquer le nom, le garder complet
+            # Mais limiter à une longueur raisonnable pour éviter les messages trop longs
+            name = truncate_text(name, 20, suffix="")  # Max 20 chars pour le nom
+            
             last_heard = node.get('last_heard', 0)
             elapsed_str = format_elapsed_time(last_heard) if last_heard > 0 else "?"
 
             # ✅ CALCUL DE DISTANCE GPS
             distance_str = ""
             if self.node_manager:
-                node_id = node.get('id')
                 if node_id:
                     try:
                         distance = self.node_manager.get_node_distance(node_id)
@@ -705,7 +705,7 @@ class RemoteNodesClient:
                     except Exception as e:
                         debug_print(f"Erreur distance nœud {node_id:08x}: {e}")
 
-            # Format ultra-compact pour mesh avec distance
+            # Format avec nom complet + hex ID (ex: "NodeName F547 5m")
             if COLLECT_SIGNAL_METRICS:
                 rssi = node.get('rssi')
                 snr = node.get('snr')
@@ -713,25 +713,26 @@ class RemoteNodesClient:
                 if snr is not None and snr != 0:
                     # Icône basée sur SNR
                     icon = "🟢" if snr >= 10 else "🟡" if snr >= 5 else "🟠" if snr >= 0 else "🔴"
-                    return f"{icon}{name} {snr:.0f}dB {elapsed_str}{distance_str}"
+                    return f"{icon}{name} {hex_id} {snr:.0f}dB {elapsed_str}{distance_str}"
                 elif rssi is not None and rssi != 0:
                     # Icône basée sur RSSI
                     icon = "🟢" if rssi >= -80 else "🟡" if rssi >= -100 else "🟠" if rssi >= -110 else "🔴"
-                    return f"{icon}{name} {rssi}dBm {elapsed_str}{distance_str}"
+                    return f"{icon}{name} {hex_id} {rssi}dBm {elapsed_str}{distance_str}"
 
-            # Format sans métriques - encore plus compact
-            return f"• {name} {elapsed_str}{distance_str}"
+            # Format sans métriques avec nom complet + hex ID
+            return f"• {name} {hex_id} {elapsed_str}{distance_str}"
 
         except Exception as e:
             error_print(f"Erreur _format_node_line: {e}")
             return "• Err"
     
-    def get_meshcore_contacts_from_db(self, days_filter=30):
+    def get_meshcore_contacts_from_db(self, days_filter=30, no_time_filter=False):
         """
         Récupérer les contacts MeshCore depuis la base de données SQLite
         
         Args:
             days_filter: Nombre de jours pour le filtre temporel (défaut: 30)
+            no_time_filter: Si True, récupère TOUS les contacts sans filtre temporel (défaut: False)
             
         Returns:
             list: Liste de contacts formatés comme des nodes, ou [] si erreur/vide
@@ -744,23 +745,43 @@ class RemoteNodesClient:
             import sqlite3
             from datetime import datetime, timedelta
             
-            cursor = self.persistence.conn.cursor()
-            cutoff = (datetime.now() - timedelta(days=days_filter)).timestamp()
+            if no_time_filter:
+                debug_print(f"[MESHCORE-DB] Interrogation SQLite pour TOUS les contacts (sans filtre temporel)")
+            else:
+                debug_print(f"[MESHCORE-DB] Interrogation SQLite pour contacts (<{days_filter}j)")
             
-            # Récupérer les contacts MeshCore récents
-            cursor.execute('''
-                SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
-                FROM meshcore_contacts
-                WHERE last_updated > ?
-                ORDER BY last_updated DESC
-            ''', (cutoff,))
+            cursor = self.persistence.conn.cursor()
+            
+            # Récupérer les contacts MeshCore
+            if no_time_filter:
+                # TOUS les contacts sans filtre temporel
+                cursor.execute('''
+                    SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
+                    FROM meshcore_contacts
+                    ORDER BY last_updated DESC
+                ''')
+            else:
+                # Contacts récents avec filtre temporel
+                cutoff = (datetime.now() - timedelta(days=days_filter)).timestamp()
+                debug_print(f"[MESHCORE-DB] Cutoff timestamp: {cutoff} ({datetime.fromtimestamp(cutoff).isoformat()})")
+                
+                cursor.execute('''
+                    SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
+                    FROM meshcore_contacts
+                    WHERE last_updated > ?
+                    ORDER BY last_updated DESC
+                ''', (cutoff,))
+            
+            rows = cursor.fetchall()
+            debug_print(f"[MESHCORE-DB] {len(rows)} lignes récupérées de la base")
             
             contacts = []
-            for row in cursor.fetchall():
+            for idx, row in enumerate(rows):
                 try:
+                    node_id = int(row['node_id'])
                     contact_dict = {
-                        'id': int(row['node_id']),
-                        'name': row['name'] or f"Node-{int(row['node_id']):08x}",
+                        'id': node_id,
+                        'name': row['name'] or f"Node-{node_id:08x}",
                         'shortName': row['shortName'] or '',
                         'hwModel': row['hwModel'] or '',
                         'last_heard': row['last_updated'],
@@ -772,10 +793,15 @@ class RemoteNodesClient:
                         'altitude': row['alt']
                     }
                     contacts.append(contact_dict)
+                    if idx < 3:  # Log first 3 for debugging
+                        debug_print(f"[MESHCORE-DB] Contact {idx+1}: {contact_dict['name']} (ID: {node_id:08x})")
                 except Exception as parse_err:
                     error_print(f"⚠️ Erreur parse contact MeshCore: {parse_err}")
             
-            debug_print(f"📊 [MESHCORE-DB] {len(contacts)} contacts récupérés (<{days_filter}j)")
+            if no_time_filter:
+                debug_print(f"📊 [MESHCORE-DB] ✅ {len(contacts)} contacts valides récupérés (TOUS)")
+            else:
+                debug_print(f"📊 [MESHCORE-DB] ✅ {len(contacts)} contacts valides récupérés (<{days_filter}j)")
             return contacts
             
         except Exception as e:
@@ -784,53 +810,151 @@ class RemoteNodesClient:
             error_print(traceback.format_exc())
             return []
     
-    def get_meshcore_paginated(self, page=1, days_filter=30):
+    def get_meshcore_paginated(self, page=1, days_filter=30, full_mode=False):
         """
         Récupérer et formater les contacts MeshCore avec pagination
         
         Args:
             page: Numéro de page (défaut: 1)
-            days_filter: Filtre temporel en jours (défaut: 30)
+            days_filter: Filtre temporel en jours (défaut: 30, ignoré si full_mode=True)
+            full_mode: Si True, retourne tous les contacts sans pagination ni filtre temporel (défaut: False)
             
         Returns:
             str: Liste formatée des contacts avec pagination
         """
         try:
-            contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter)
+            # En mode FULL, récupérer TOUS les contacts sans filtre temporel
+            if full_mode:
+                contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter, no_time_filter=True)
+            else:
+                contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter)
             
             if not contacts:
-                return f"📡 Aucun contact MeshCore trouvé (<{days_filter}j)"
+                if full_mode:
+                    return f"📡 Aucun contact MeshCore trouvé"
+                else:
+                    return f"📡 Aucun contact MeshCore trouvé (<{days_filter}j)"
             
             # Tri par date (plus récent en premier)
             contacts.sort(key=lambda x: x['last_heard'], reverse=True)
             
-            # Pagination
-            nodes_per_page = 7
-            total_contacts = len(contacts)
-            total_pages = (total_contacts + nodes_per_page - 1) // nodes_per_page
+            debug_print(f"[MESHCORE] Total contacts: {len(contacts)}, full_mode={full_mode}")
             
-            page = validate_page_number(page, total_pages)
-            
-            start_idx = (page - 1) * nodes_per_page
-            end_idx = min(start_idx + nodes_per_page, total_contacts)
-            page_contacts = contacts[start_idx:end_idx]
-            
-            lines = []
-            
-            if page == 1:
-                lines.append(f"📡 Contacts MeshCore (<{days_filter}j) ({total_contacts}):")
-            
-            for contact in page_contacts:
-                line = self._format_node_line(contact)
-                lines.append(line)
-            
-            if total_pages > 1:
-                lines.append(f"{page}/{total_pages}")
-            
-            return "\n".join(lines)
+            if full_mode:
+                # Mode FULL: tous les contacts sans pagination
+                lines = []
+                lines.append(f"📡 Contacts MeshCore ({len(contacts)}) [FULL]:")
+                
+                for contact in contacts:
+                    line = self._format_node_line(contact)
+                    lines.append(line)
+                
+                debug_print(f"[MESHCORE] Mode FULL: {len(contacts)} contacts formatés")
+                return "\n".join(lines)
+            else:
+                # Mode paginé normal
+                nodes_per_page = 7
+                total_contacts = len(contacts)
+                total_pages = (total_contacts + nodes_per_page - 1) // nodes_per_page
+                
+                page = validate_page_number(page, total_pages)
+                
+                start_idx = (page - 1) * nodes_per_page
+                end_idx = min(start_idx + nodes_per_page, total_contacts)
+                page_contacts = contacts[start_idx:end_idx]
+                
+                lines = []
+                
+                if page == 1:
+                    lines.append(f"📡 Contacts MeshCore (<{days_filter}j) ({total_contacts}):")
+                
+                for contact in page_contacts:
+                    line = self._format_node_line(contact)
+                    lines.append(line)
+                
+                if total_pages > 1:
+                    lines.append(f"{page}/{total_pages}")
+                
+                debug_print(f"[MESHCORE] Mode paginé: page {page}/{total_pages}, {len(page_contacts)} contacts")
+                return "\n".join(lines)
             
         except Exception as e:
             error_print(f"Erreur get_meshcore_paginated: {e}")
             import traceback
             error_print(traceback.format_exc())
             return f"Erreur MeshCore: {str(e)[:30]}"
+    
+    def get_meshcore_paginated_split(self, page=1, days_filter=30, max_length=160, full_mode=False):
+        """
+        Récupérer et formater les contacts MeshCore avec pagination et splitting pour MeshCore
+        
+        Args:
+            page: Numéro de page (défaut: 1)
+            days_filter: Filtre temporel en jours (défaut: 30)
+            max_length: Longueur maximale par message (défaut: 160 pour MeshCore)
+            full_mode: Si True, retourne tous les contacts sans pagination (défaut: False)
+            
+        Returns:
+            list: Liste de messages formatés, chacun <= max_length caractères
+        """
+        try:
+            debug_print(f"[MESHCORE-SPLIT] page={page}, days_filter={days_filter}, max_length={max_length}, full_mode={full_mode}")
+            
+            # Récupérer la version complète non-splittée
+            full_report = self.get_meshcore_paginated(page, days_filter, full_mode=full_mode)
+            
+            debug_print(f"[MESHCORE-SPLIT] Rapport complet: {len(full_report)} caractères")
+            
+            # Si le message tient dans la limite, retourner tel quel
+            if len(full_report) <= max_length:
+                debug_print(f"[MESHCORE-SPLIT] Message tient en 1 seul message")
+                return [full_report]
+            
+            # Sinon, découper intelligemment par ligne
+            messages = []
+            lines = full_report.split('\n')
+            current_msg = []
+            current_length = 0
+            
+            debug_print(f"[MESHCORE-SPLIT] Découpage en lignes: {len(lines)} lignes")
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 pour le \n
+                
+                # Si ajouter cette ligne dépasse la limite
+                if current_length + line_length > max_length and current_msg:
+                    # Sauvegarder le message actuel
+                    msg = '\n'.join(current_msg)
+                    messages.append(msg)
+                    debug_print(f"[MESHCORE-SPLIT] Message {len(messages)}: {len(msg)} chars")
+                    current_msg = [line]
+                    current_length = line_length
+                else:
+                    # Ajouter la ligne au message actuel
+                    current_msg.append(line)
+                    current_length += line_length
+            
+            # Ajouter le dernier message
+            if current_msg:
+                msg = '\n'.join(current_msg)
+                messages.append(msg)
+                debug_print(f"[MESHCORE-SPLIT] Message {len(messages)}: {len(msg)} chars")
+            
+            # Ajouter les numéros de message si plusieurs messages (1/3, 2/3, 3/3)
+            if len(messages) > 1:
+                numbered_messages = []
+                for i, msg in enumerate(messages, 1):
+                    numbered = f"({i}/{len(messages)}) {msg}"
+                    numbered_messages.append(numbered)
+                    debug_print(f"[MESHCORE-SPLIT] Message numéroté {i}/{len(messages)}: {len(numbered)} chars")
+                return numbered_messages
+            
+            debug_print(f"[MESHCORE-SPLIT] Total: {len(messages)} message(s)")
+            return messages
+            
+        except Exception as e:
+            error_print(f"Erreur get_meshcore_paginated_split: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return [f"Erreur: {str(e)[:50]}"]
+

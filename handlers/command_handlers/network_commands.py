@@ -68,36 +68,83 @@ class NetworkCommands:
             self.sender.send_single(error_msg, sender_id, sender_info)
     
     def handle_nodesmc(self, message, sender_id, sender_info):
-        """Gérer la commande /nodesmc - Liste des contacts MeshCore avec pagination"""
+        """Gérer la commande /nodesmc - Liste des contacts MeshCore avec pagination
         
-        # Extraire le numéro de page si fourni
+        Usage:
+            /nodesmc [page]  -> Liste paginée (7 contacts par page, 30 derniers jours)
+            /nodesmc full    -> Tous les contacts (non paginé, sans filtre temporel)
+        """
+        
+        # Extraire le numéro de page ou le mode "full"
         page = 1
+        full_mode = False
         parts = message.split()
         
         if len(parts) > 1:
-            try:
-                page = int(parts[1])
-                page = max(1, page)  # Minimum page 1
-            except ValueError:
-                page = 1
+            if parts[1].lower() == 'full':
+                full_mode = True
+                debug_print(f"[NODESMC] Mode FULL activé - tous les contacts")
+            else:
+                try:
+                    page = int(parts[1])
+                    page = max(1, page)  # Minimum page 1
+                    debug_print(f"[NODESMC] Mode paginé - page {page}")
+                except ValueError:
+                    page = 1
+                    debug_print(f"[NODESMC] Argument invalide, utilisation page 1")
         
-        info_print(f"MeshCore nodes page {page}: {sender_info}")
+        info_print(f"MeshCore nodes {'FULL' if full_mode else f'page {page}'}: {sender_info}")
         
         try:
-            # Récupérer les contacts MeshCore depuis la DB
-            report = self.remote_nodes_client.get_meshcore_paginated(page)
+            # Mode FULL récupère TOUS les contacts sans filtre temporel
+            # Mode paginé utilise 30 jours
+            days_filter = 30  # Utilisé seulement en mode paginé
+            debug_print(f"[NODESMC] Mode: {'FULL (sans filtre temporel)' if full_mode else f'paginé (days_filter={days_filter})'}")
             
-            # Log avec ou sans page
-            command_log = f"/nodesmc {page}" if page > 1 else "/nodesmc"
-            self.sender.log_conversation(sender_id, sender_info, command_log, report)
-            self.sender.send_single(report, sender_id, sender_info)
+            # Récupérer les contacts MeshCore depuis la DB avec splitting pour MeshCore
+            # Limite de 160 caractères (opérationnelle pour MeshCore)
+            if full_mode:
+                # Mode full: pas de pagination, tous les contacts sans filtre temporel
+                messages = self.remote_nodes_client.get_meshcore_paginated_split(
+                    page=1, 
+                    days_filter=days_filter,  # Ignoré car full_mode=True
+                    max_length=160,
+                    full_mode=True
+                )
+                debug_print(f"[NODESMC] Mode FULL (tous les contacts): {len(messages)} messages générés")
+            else:
+                # Mode paginé normal, 30 jours de données
+                messages = self.remote_nodes_client.get_meshcore_paginated_split(
+                    page=page, 
+                    days_filter=days_filter, 
+                    max_length=160
+                )
+                debug_print(f"[NODESMC] Mode paginé: {len(messages)} messages pour page {page}")
+            
+            # Log la commande
+            command_log = f"/nodesmc full" if full_mode else (f"/nodesmc {page}" if page > 1 else "/nodesmc")
+            full_report = "\n".join(messages)
+            self.sender.log_conversation(sender_id, sender_info, command_log, full_report)
+            
+            # Envoyer chaque message séparément
+            debug_print(f"[NODESMC] Envoi de {len(messages)} message(s) à {sender_info}")
+            for i, msg in enumerate(messages):
+                debug_print(f"[NODESMC] Envoi message {i+1}/{len(messages)} ({len(msg)} chars)")
+                self.sender.send_single(msg, sender_id, sender_info)
+                # Petite pause entre les messages pour éviter la congestion
+                if i < len(messages) - 1:
+                    import time
+                    time.sleep(1)
+            
+            debug_print(f"[NODESMC] ✅ Tous les messages envoyés avec succès")
             
         except Exception as e:
             error_msg = f"Erreur nodesmc: {str(e)[:50]}"
-            error_print(f"Erreur handle_nodesmc: {e}")
+            error_print(f"❌ Erreur handle_nodesmc: {e}")
             import traceback
             error_print(traceback.format_exc())
             self.sender.send_single(error_msg, sender_id, sender_info)
+
     
     def handle_nodemt(self, message, sender_id, sender_info):
         """Gérer la commande /nodemt - Liste des nœuds Meshtastic avec pagination"""
