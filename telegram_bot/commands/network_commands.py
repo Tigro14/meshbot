@@ -145,11 +145,12 @@ class NetworkCommands(TelegramCommandBase):
 
     async def nodesmc_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Commande /nodesmc [page] - Liste des contacts MeshCore avec pagination
+        Commande /nodesmc [page|full] - Liste des contacts MeshCore avec pagination
         
         Usage:
             /nodesmc           -> Page 1 des contacts MeshCore
             /nodesmc 2         -> Page 2 des contacts MeshCore
+            /nodesmc full      -> Tous les contacts (non paginé)
         """
         user = update.effective_user
         
@@ -158,23 +159,30 @@ class NetworkCommands(TelegramCommandBase):
             await update.effective_message.reply_text("❌ Non autorisé")
             return
         
-        # Extraire le numéro de page depuis context.args
+        # Extraire le numéro de page ou le mode "full" depuis context.args
         page = 1
+        full_mode = False
         if context.args and len(context.args) > 0:
-            try:
-                page = int(context.args[0])
-                page = max(1, page)  # Minimum page 1
-            except ValueError:
-                page = 1
-        
-        info_print(f"📱 Telegram /nodesmc (page {page}): {user.username}")
+            if context.args[0].lower() == 'full':
+                full_mode = True
+                info_print(f"📱 Telegram /nodesmc FULL: {user.username}")
+            else:
+                try:
+                    page = int(context.args[0])
+                    page = max(1, page)  # Minimum page 1
+                except ValueError:
+                    page = 1
+                info_print(f"📱 Telegram /nodesmc (page {page}): {user.username}")
+        else:
+            info_print(f"📱 Telegram /nodesmc (page {page}): {user.username}")
         
         def get_meshcore_contacts():
             try:
                 # Utiliser la méthode existante qui récupère depuis la base de données
                 return self.message_handler.remote_nodes_client.get_meshcore_paginated(
                     page=page, 
-                    days_filter=30
+                    days_filter=30,
+                    full_mode=full_mode
                 )
             except Exception as e:
                 error_print(f"Erreur get_meshcore_contacts: {e}")
