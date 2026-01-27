@@ -46,6 +46,8 @@ class BasicCommands(TelegramCommandBase):
             f"• /sys\n"
             f"• /echo <msg>\n"
             f"• /nodes\n"
+            f"• /nodesmc [page] - Contacts MeshCore\n"
+            f"• /nodemt [page] - Nœuds Meshtastic\n"
             f"• /health\n"
             f"• /nodeinfo\n"
             f"• /fullnodes [jours] [recherche]\n"
