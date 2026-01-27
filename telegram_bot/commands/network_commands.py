@@ -143,6 +143,47 @@ class NetworkCommands(TelegramCommandBase):
         response = await asyncio.to_thread(get_nodes_list)
         await update.effective_message.reply_text(response)
 
+    async def nodesmc_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Commande /nodesmc [page] - Liste des contacts MeshCore avec pagination
+        
+        Usage:
+            /nodesmc           -> Page 1 des contacts MeshCore
+            /nodesmc 2         -> Page 2 des contacts MeshCore
+        """
+        user = update.effective_user
+        
+        # Vérifier l'autorisation
+        if not self.check_authorization(user.id):
+            await update.effective_message.reply_text("❌ Non autorisé")
+            return
+        
+        # Extraire le numéro de page depuis context.args
+        page = 1
+        if context.args and len(context.args) > 0:
+            try:
+                page = int(context.args[0])
+                page = max(1, page)  # Minimum page 1
+            except ValueError:
+                page = 1
+        
+        info_print(f"📱 Telegram /nodesmc (page {page}): {user.username}")
+        
+        def get_meshcore_contacts():
+            try:
+                # Utiliser la méthode existante qui récupère depuis la base de données
+                return self.message_handler.remote_nodes_client.get_meshcore_paginated(
+                    page=page, 
+                    days_filter=30
+                )
+            except Exception as e:
+                error_print(f"Erreur get_meshcore_contacts: {e}")
+                error_print(traceback.format_exc())
+                return f"❌ Erreur: {str(e)[:100]}"
+        
+        response = await asyncio.to_thread(get_meshcore_contacts)
+        await update.effective_message.reply_text(response)
+
     async def fullnodes_command(
             self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """

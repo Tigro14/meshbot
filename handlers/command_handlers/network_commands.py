@@ -84,13 +84,26 @@ class NetworkCommands:
         info_print(f"MeshCore nodes page {page}: {sender_info}")
         
         try:
-            # Récupérer les contacts MeshCore depuis la DB
-            report = self.remote_nodes_client.get_meshcore_paginated(page)
+            # Récupérer les contacts MeshCore depuis la DB avec splitting pour MeshCore
+            # Limite de 160 caractères (opérationnelle pour MeshCore)
+            messages = self.remote_nodes_client.get_meshcore_paginated_split(
+                page=page, 
+                days_filter=30, 
+                max_length=160
+            )
             
-            # Log avec ou sans page
+            # Log la commande
             command_log = f"/nodesmc {page}" if page > 1 else "/nodesmc"
-            self.sender.log_conversation(sender_id, sender_info, command_log, report)
-            self.sender.send_single(report, sender_id, sender_info)
+            full_report = "\n".join(messages)
+            self.sender.log_conversation(sender_id, sender_info, command_log, full_report)
+            
+            # Envoyer chaque message séparément
+            for i, msg in enumerate(messages):
+                self.sender.send_single(msg, sender_id, sender_info)
+                # Petite pause entre les messages pour éviter la congestion
+                if i < len(messages) - 1:
+                    import time
+                    time.sleep(1)
             
         except Exception as e:
             error_msg = f"Erreur nodesmc: {str(e)[:50]}"
@@ -98,6 +111,7 @@ class NetworkCommands:
             import traceback
             error_print(traceback.format_exc())
             self.sender.send_single(error_msg, sender_id, sender_info)
+
     
     def handle_nodemt(self, message, sender_id, sender_info):
         """Gérer la commande /nodemt - Liste des nœuds Meshtastic avec pagination"""

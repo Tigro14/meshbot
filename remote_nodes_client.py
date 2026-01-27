@@ -834,3 +834,63 @@ class RemoteNodesClient:
             import traceback
             error_print(traceback.format_exc())
             return f"Erreur MeshCore: {str(e)[:30]}"
+    
+    def get_meshcore_paginated_split(self, page=1, days_filter=30, max_length=160):
+        """
+        Récupérer et formater les contacts MeshCore avec pagination et splitting pour MeshCore
+        
+        Args:
+            page: Numéro de page (défaut: 1)
+            days_filter: Filtre temporel en jours (défaut: 30)
+            max_length: Longueur maximale par message (défaut: 160 pour MeshCore)
+            
+        Returns:
+            list: Liste de messages formatés, chacun <= max_length caractères
+        """
+        try:
+            # Récupérer la version complète non-splittée
+            full_report = self.get_meshcore_paginated(page, days_filter)
+            
+            # Si le message tient dans la limite, retourner tel quel
+            if len(full_report) <= max_length:
+                return [full_report]
+            
+            # Sinon, découper intelligemment par ligne
+            messages = []
+            lines = full_report.split('\n')
+            current_msg = []
+            current_length = 0
+            
+            for line in lines:
+                line_length = len(line) + 1  # +1 pour le \n
+                
+                # Si ajouter cette ligne dépasse la limite
+                if current_length + line_length > max_length and current_msg:
+                    # Sauvegarder le message actuel
+                    messages.append('\n'.join(current_msg))
+                    current_msg = [line]
+                    current_length = line_length
+                else:
+                    # Ajouter la ligne au message actuel
+                    current_msg.append(line)
+                    current_length += line_length
+            
+            # Ajouter le dernier message
+            if current_msg:
+                messages.append('\n'.join(current_msg))
+            
+            # Ajouter les numéros de message si plusieurs messages (1/3, 2/3, 3/3)
+            if len(messages) > 1:
+                numbered_messages = []
+                for i, msg in enumerate(messages, 1):
+                    numbered_messages.append(f"({i}/{len(messages)}) {msg}")
+                return numbered_messages
+            
+            return messages
+            
+        except Exception as e:
+            error_print(f"Erreur get_meshcore_paginated_split: {e}")
+            import traceback
+            error_print(traceback.format_exc())
+            return [f"Erreur: {str(e)[:50]}"]
+

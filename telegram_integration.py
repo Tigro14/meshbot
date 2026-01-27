@@ -243,6 +243,7 @@ class TelegramIntegration:
 
         # Commandes réseau
         self.application.add_handler(CommandHandler("nodes", self.network_commands.nodes_command))
+        self.application.add_handler(CommandHandler("nodesmc", self.network_commands.nodesmc_command))
         self.application.add_handler(CommandHandler("fullnodes", self.network_commands.fullnodes_command))
         self.application.add_handler(CommandHandler("nodeinfo", self.network_commands.nodeinfo_command))
         self.application.add_handler(CommandHandler("rx", self.network_commands.rx_command))
