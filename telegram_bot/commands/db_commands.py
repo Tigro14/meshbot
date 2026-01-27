@@ -76,6 +76,10 @@ class DBCommandsTelegram(TelegramCommandBase):
                     info_print("👥 Appel _get_neighbors_stats...")
                     result = db_handler._get_neighbors_stats('telegram')
                     info_print(f"✅ _get_neighbors_stats retourné: {len(result) if result else 0} chars")
+                elif subcommand in ['mc', 'meshcore']:
+                    info_print("📡 Appel _get_meshcore_table...")
+                    result = db_handler._get_meshcore_table('telegram')
+                    info_print(f"✅ _get_meshcore_table retourné: {len(result) if result else 0} chars")
                 else:
                     result = db_handler._get_help('telegram')
 
