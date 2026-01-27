@@ -41,7 +41,8 @@ class MessageRouter:
             '/help',     # Aide
             '/blitz',    # Lightning (si activé)
             '/vigilance',# Vigilance météo (si activé)
-            '/rebootpi'  # Redémarrage Pi (authentifié)
+            '/rebootpi', # Redémarrage Pi (authentifié)
+            '/nodesmc'   # Contacts MeshCore (base SQLite, pas Meshtastic)
         ]
 
         # Message sender (gère envoi et throttling)
