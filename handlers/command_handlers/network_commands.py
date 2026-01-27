@@ -72,7 +72,7 @@ class NetworkCommands:
         
         Usage:
             /nodesmc [page]  -> Liste paginée (7 contacts par page, 30 derniers jours)
-            /nodesmc full    -> Tous les contacts (non paginé, 72 dernières heures)
+            /nodesmc full    -> Tous les contacts (non paginé, sans filtre temporel)
         """
         
         # Extraire le numéro de page ou le mode "full"
@@ -96,21 +96,22 @@ class NetworkCommands:
         info_print(f"MeshCore nodes {'FULL' if full_mode else f'page {page}'}: {sender_info}")
         
         try:
-            # Mode FULL utilise 72h (3 jours), mode paginé utilise 30 jours
-            days_filter = 3 if full_mode else 30
-            debug_print(f"[NODESMC] Récupération contacts depuis SQLite (days_filter={days_filter})")
+            # Mode FULL récupère TOUS les contacts sans filtre temporel
+            # Mode paginé utilise 30 jours
+            days_filter = 30  # Utilisé seulement en mode paginé
+            debug_print(f"[NODESMC] Mode: {'FULL (sans filtre temporel)' if full_mode else f'paginé (days_filter={days_filter})'}")
             
             # Récupérer les contacts MeshCore depuis la DB avec splitting pour MeshCore
             # Limite de 160 caractères (opérationnelle pour MeshCore)
             if full_mode:
-                # Mode full: pas de pagination, 72h de données
+                # Mode full: pas de pagination, tous les contacts sans filtre temporel
                 messages = self.remote_nodes_client.get_meshcore_paginated_split(
                     page=1, 
-                    days_filter=days_filter, 
+                    days_filter=days_filter,  # Ignoré car full_mode=True
                     max_length=160,
                     full_mode=True
                 )
-                debug_print(f"[NODESMC] Mode FULL (72h): {len(messages)} messages générés")
+                debug_print(f"[NODESMC] Mode FULL (tous les contacts): {len(messages)} messages générés")
             else:
                 # Mode paginé normal, 30 jours de données
                 messages = self.remote_nodes_client.get_meshcore_paginated_split(

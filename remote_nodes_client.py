@@ -726,12 +726,13 @@ class RemoteNodesClient:
             error_print(f"Erreur _format_node_line: {e}")
             return "• Err"
     
-    def get_meshcore_contacts_from_db(self, days_filter=30):
+    def get_meshcore_contacts_from_db(self, days_filter=30, no_time_filter=False):
         """
         Récupérer les contacts MeshCore depuis la base de données SQLite
         
         Args:
             days_filter: Nombre de jours pour le filtre temporel (défaut: 30)
+            no_time_filter: Si True, récupère TOUS les contacts sans filtre temporel (défaut: False)
             
         Returns:
             list: Liste de contacts formatés comme des nodes, ou [] si erreur/vide
@@ -744,20 +745,32 @@ class RemoteNodesClient:
             import sqlite3
             from datetime import datetime, timedelta
             
-            debug_print(f"[MESHCORE-DB] Interrogation SQLite pour contacts (<{days_filter}j)")
+            if no_time_filter:
+                debug_print(f"[MESHCORE-DB] Interrogation SQLite pour TOUS les contacts (sans filtre temporel)")
+            else:
+                debug_print(f"[MESHCORE-DB] Interrogation SQLite pour contacts (<{days_filter}j)")
             
             cursor = self.persistence.conn.cursor()
-            cutoff = (datetime.now() - timedelta(days=days_filter)).timestamp()
             
-            debug_print(f"[MESHCORE-DB] Cutoff timestamp: {cutoff} ({datetime.fromtimestamp(cutoff).isoformat()})")
-            
-            # Récupérer les contacts MeshCore récents
-            cursor.execute('''
-                SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
-                FROM meshcore_contacts
-                WHERE last_updated > ?
-                ORDER BY last_updated DESC
-            ''', (cutoff,))
+            # Récupérer les contacts MeshCore
+            if no_time_filter:
+                # TOUS les contacts sans filtre temporel
+                cursor.execute('''
+                    SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
+                    FROM meshcore_contacts
+                    ORDER BY last_updated DESC
+                ''')
+            else:
+                # Contacts récents avec filtre temporel
+                cutoff = (datetime.now() - timedelta(days=days_filter)).timestamp()
+                debug_print(f"[MESHCORE-DB] Cutoff timestamp: {cutoff} ({datetime.fromtimestamp(cutoff).isoformat()})")
+                
+                cursor.execute('''
+                    SELECT node_id, name, shortName, hwModel, lat, lon, alt, last_updated
+                    FROM meshcore_contacts
+                    WHERE last_updated > ?
+                    ORDER BY last_updated DESC
+                ''', (cutoff,))
             
             rows = cursor.fetchall()
             debug_print(f"[MESHCORE-DB] {len(rows)} lignes récupérées de la base")
@@ -785,7 +798,10 @@ class RemoteNodesClient:
                 except Exception as parse_err:
                     error_print(f"⚠️ Erreur parse contact MeshCore: {parse_err}")
             
-            debug_print(f"📊 [MESHCORE-DB] ✅ {len(contacts)} contacts valides récupérés (<{days_filter}j)")
+            if no_time_filter:
+                debug_print(f"📊 [MESHCORE-DB] ✅ {len(contacts)} contacts valides récupérés (TOUS)")
+            else:
+                debug_print(f"📊 [MESHCORE-DB] ✅ {len(contacts)} contacts valides récupérés (<{days_filter}j)")
             return contacts
             
         except Exception as e:
@@ -800,17 +816,24 @@ class RemoteNodesClient:
         
         Args:
             page: Numéro de page (défaut: 1)
-            days_filter: Filtre temporel en jours (défaut: 30)
-            full_mode: Si True, retourne tous les contacts sans pagination (défaut: False)
+            days_filter: Filtre temporel en jours (défaut: 30, ignoré si full_mode=True)
+            full_mode: Si True, retourne tous les contacts sans pagination ni filtre temporel (défaut: False)
             
         Returns:
             str: Liste formatée des contacts avec pagination
         """
         try:
-            contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter)
+            # En mode FULL, récupérer TOUS les contacts sans filtre temporel
+            if full_mode:
+                contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter, no_time_filter=True)
+            else:
+                contacts = self.get_meshcore_contacts_from_db(days_filter=days_filter)
             
             if not contacts:
-                return f"📡 Aucun contact MeshCore trouvé (<{days_filter}j)"
+                if full_mode:
+                    return f"📡 Aucun contact MeshCore trouvé"
+                else:
+                    return f"📡 Aucun contact MeshCore trouvé (<{days_filter}j)"
             
             # Tri par date (plus récent en premier)
             contacts.sort(key=lambda x: x['last_heard'], reverse=True)
@@ -820,7 +843,7 @@ class RemoteNodesClient:
             if full_mode:
                 # Mode FULL: tous les contacts sans pagination
                 lines = []
-                lines.append(f"📡 Contacts MeshCore (<{days_filter}j) ({len(contacts)}) [FULL]:")
+                lines.append(f"📡 Contacts MeshCore ({len(contacts)}) [FULL]:")
                 
                 for contact in contacts:
                     line = self._format_node_line(contact)

@@ -150,7 +150,7 @@ class NetworkCommands(TelegramCommandBase):
         Usage:
             /nodesmc           -> Page 1 des contacts MeshCore (30 derniers jours)
             /nodesmc 2         -> Page 2 des contacts MeshCore (30 derniers jours)
-            /nodesmc full      -> Tous les contacts (72 dernières heures)
+            /nodesmc full      -> Tous les contacts (sans filtre temporel)
         """
         user = update.effective_user
         
@@ -178,12 +178,13 @@ class NetworkCommands(TelegramCommandBase):
         
         def get_meshcore_contacts():
             try:
-                # Mode FULL utilise 72h (3 jours), mode paginé utilise 30 jours
-                days_filter = 3 if full_mode else 30
+                # Mode FULL récupère TOUS les contacts sans filtre temporel
+                # Mode paginé utilise 30 jours
+                days_filter = 30  # Utilisé seulement en mode paginé
                 # Utiliser la méthode existante qui récupère depuis la base de données
                 return self.message_handler.remote_nodes_client.get_meshcore_paginated(
                     page=page, 
-                    days_filter=days_filter,
+                    days_filter=days_filter,  # Ignoré si full_mode=True
                     full_mode=full_mode
                 )
             except Exception as e:
