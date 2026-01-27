@@ -614,7 +614,7 @@ class MeshCoreCLIWrapper:
         info_print("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
         
         # Wait for initial connection to stabilize
-        time.sleep(30)
+        time.sleep(300)
         
         while self.running:
             try:
