@@ -62,6 +62,8 @@ class DBCommands:
                 response = self._get_neighbors_stats(channel)
             elif subcommand in ['mc', 'meshcore']:
                 response = self._get_meshcore_table(channel)
+            elif subcommand in ['mt', 'meshtastic']:
+                response = self._get_meshtastic_table(channel)
             else:
                 response = self._get_help(channel)
 
@@ -82,7 +84,7 @@ class DBCommands:
             return (
                 "🗄️ /db [cmd]\n"
                 "s=stats i=info\n"
-                "nb=neighbors mc=meshcore\n"
+                "nb=neighbors mt=meshtastic mc=meshcore\n"
                 "clean <pwd>=nettoyage\n"
                 "v <pwd>=vacuum pw=weather"
             )
@@ -90,24 +92,26 @@ class DBCommands:
             return """🗄️ BASE DE DONNÉES - OPTIONS
 
 Sous-commandes:
-• stats - Statistiques DB
+• stats - Statistiques DB (avec distinction Meshtastic/MeshCore)
 • info - Informations détaillées
 • nb - Stats voisinage (neighbors)
-• mc - Table MeshCore contacts
+• mt - Table Meshtastic nodes (radio)
+• mc - Table MeshCore contacts (cli)
 • clean <password> [hours] - Nettoyer données anciennes
 • vacuum <password> - Optimiser DB (VACUUM)
 • purgeweather - Purger cache météo
 
 Exemples:
-• /db stats - Stats DB
+• /db stats - Stats DB avec sources
 • /db nb - Stats voisinage
-• /db mc - Table MeshCore
+• /db mt - Nœuds Meshtastic (radio)
+• /db mc - Contacts MeshCore (cli)
 • /db clean mypass 72 - Nettoyer > 72h
 • /db vacuum mypass - Optimiser
 
 ⚠️ Note: clean et vacuum nécessitent un mot de passe
 
-Raccourcis: s, i, v, nb, mc, pw
+Raccourcis: s, i, v, nb, mt, mc, pw
 """
 
     def _get_db_stats(self, channel='mesh'):
@@ -144,6 +148,20 @@ Raccourcis: s, i, v, nb, mc, pw
             except:
                 node_stats_count = 0
 
+            # Meshtastic nodes
+            try:
+                cursor.execute("SELECT COUNT(*) FROM meshtastic_nodes")
+                meshtastic_nodes_count = cursor.fetchone()[0]
+            except:
+                meshtastic_nodes_count = 0
+
+            # MeshCore contacts
+            try:
+                cursor.execute("SELECT COUNT(*) FROM meshcore_contacts")
+                meshcore_contacts_count = cursor.fetchone()[0]
+            except:
+                meshcore_contacts_count = 0
+
             # Plage temporelle
             cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM packets")
             result = cursor.fetchone()
@@ -162,6 +180,7 @@ Raccourcis: s, i, v, nb, mc, pw
                 lines = [
                     f"🗄️ DB: {db_size_mb:.1f}MB",
                     f"{packets_count}pkt {messages_count}msg",
+                    f"📡MT:{meshtastic_nodes_count} 🔧MC:{meshcore_contacts_count}",
                     f"{oldest}-{newest}",
                     f"({span_hours:.0f}h)"
                 ]
@@ -176,7 +195,11 @@ Raccourcis: s, i, v, nb, mc, pw
                     "📦 Entrées:",
                     f"• Paquets: {packets_count:,}",
                     f"• Messages publics: {messages_count:,}",
-                    f"• Stats nœuds: {node_stats_count:,}",
+                    f"• Stats nœuds (agrégé): {node_stats_count:,}",
+                    "",
+                    "📡 Nœuds (par source):",
+                    f"• Meshtastic (radio): {meshtastic_nodes_count:,}",
+                    f"• MeshCore (cli): {meshcore_contacts_count:,}",
                     "",
                     "⏰ Plage temporelle:",
                     f"• Plus ancien: {oldest}",
@@ -705,6 +728,152 @@ Vérifiez que:
         except Exception as e:
             error_print(f"Erreur meshcore table: {e}")
             error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
+    def _get_meshtastic_table(self, channel='mesh'):
+        """Afficher la table complète meshtastic_nodes avec tous les attributs"""
+        if not self.persistence:
+            return "❌ DB non disponible"
+
+        try:
+            cursor = self.persistence.conn.cursor()
+
+            # Vérifier si la table existe
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='meshtastic_nodes'
+            """)
+            if not cursor.fetchone():
+                if channel == 'mesh':
+                    return "❌ Table meshtastic_nodes inexistante"
+                else:
+                    return "❌ **Table meshtastic_nodes inexistante**\n\nLa table Meshtastic n'est pas disponible dans cette base de données."
+
+            # Récupérer tous les nœuds
+            cursor.execute("""
+                SELECT node_id, name, shortName, hwModel, publicKey, 
+                       lat, lon, alt, last_updated
+                FROM meshtastic_nodes
+                ORDER BY last_updated DESC
+            """)
+            nodes = cursor.fetchall()
+
+            if not nodes:
+                if channel == 'mesh':
+                    return "📡 Aucun nœud Meshtastic"
+                else:
+                    return """📡 **AUCUN NŒUD MESHTASTIC**
+
+La table meshtastic_nodes est vide. Les nœuds Meshtastic sont collectés:
+• Depuis les paquets NODEINFO reçus via radio
+• Automatiquement par le bot
+
+Vérifiez que:
+• Le bot reçoit bien les paquets NODEINFO
+• Les nœuds mesh envoient leurs informations
+• La connexion radio est active
+"""
+
+            # Calculer des stats
+            total_nodes = len(nodes)
+            nodes_with_gps = sum(1 for n in nodes if n[5] is not None and n[6] is not None)
+            nodes_with_pubkey = sum(1 for n in nodes if n[4] is not None)
+
+            # Plage temporelle
+            timestamps = [n[8] for n in nodes if n[8]]
+            if timestamps:
+                min_ts = min(timestamps)
+                max_ts = max(timestamps)
+                from datetime import datetime
+                oldest = datetime.fromtimestamp(min_ts).strftime('%d/%m %H:%M')
+                newest = datetime.fromtimestamp(max_ts).strftime('%d/%m %H:%M')
+                span_hours = (max_ts - min_ts) / 3600
+            else:
+                oldest = newest = "N/A"
+                span_hours = 0
+
+            # Format selon canal
+            if channel == 'mesh':
+                lines = [
+                    f"📡 Meshtastic: {total_nodes}",
+                    f"GPS:{nodes_with_gps} Keys:{nodes_with_pubkey}",
+                    f"{oldest}-{newest}",
+                    "Use Telegram for full details"
+                ]
+            else:  # telegram
+                lines = [
+                    "📡 **TABLE MESHTASTIC NODES**",
+                    "=" * 50,
+                    "",
+                    f"**Statistiques globales:**",
+                    f"• Total nœuds: {total_nodes}",
+                    f"• Avec GPS: {nodes_with_gps}",
+                    f"• Avec clé publique: {nodes_with_pubkey}",
+                    "",
+                    f"**Plage temporelle:**",
+                    f"• Plus ancien: {oldest}",
+                    f"• Plus récent: {newest}",
+                    f"• Durée: {span_hours:.1f} heures",
+                    "",
+                    "**Nœuds (détails complets):**",
+                    "=" * 50,
+                ]
+
+                # Afficher chaque nœud avec tous ses attributs
+                for node in nodes:
+                    node_id, name, short_name, hw_model, pub_key, lat, lon, alt, last_upd = node
+
+                    # Temps écoulé depuis la dernière mise à jour
+                    if last_upd:
+                        elapsed = time.time() - last_upd
+                        if elapsed < 3600:  # < 1h
+                            elapsed_str = f"{int(elapsed / 60)}m"
+                        elif elapsed < 86400:  # < 1j
+                            elapsed_str = f"{int(elapsed / 3600)}h"
+                        else:  # >= 1j
+                            elapsed_str = f"{int(elapsed / 86400)}j"
+                    else:
+                        elapsed_str = "N/A"
+
+                    lines.append("")
+                    lines.append(f"**{name or 'Unknown'}** ({elapsed_str})")
+                    lines.append(f"├─ Node ID: `{node_id}`")
+                    lines.append(f"├─ Short: {short_name or 'N/A'}")
+                    lines.append(f"├─ Model: {hw_model or 'N/A'}")
+                    
+                    # GPS
+                    if lat is not None and lon is not None:
+                        lines.append(f"├─ GPS: {lat:.6f}, {lon:.6f}")
+                        if alt is not None:
+                            lines.append(f"│  └─ Alt: {alt}m")
+                    else:
+                        lines.append(f"├─ GPS: Non disponible")
+                    
+                    # Clé publique (afficher seulement les premiers/derniers octets)
+                    if pub_key:
+                        pubkey_hex = pub_key.hex() if isinstance(pub_key, bytes) else str(pub_key)
+                        if len(pubkey_hex) > 16:
+                            pubkey_display = f"{pubkey_hex[:8]}...{pubkey_hex[-8:]}"
+                        else:
+                            pubkey_display = pubkey_hex
+                        lines.append(f"├─ PubKey: `{pubkey_display}` ({len(pubkey_hex)//2} bytes)")
+                    else:
+                        lines.append(f"├─ PubKey: Non disponible")
+                    
+                    # Source et timestamp
+                    lines.append(f"├─ Source: radio (NODEINFO_APP)")
+                    if last_upd:
+                        upd_dt = datetime.fromtimestamp(last_upd).strftime('%Y-%m-%d %H:%M:%S')
+                        lines.append(f"└─ Mise à jour: {upd_dt}")
+                    else:
+                        lines.append(f"└─ Mise à jour: N/A")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            error_print(f"Erreur meshtastic table: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
             return f"❌ Erreur: {str(e)[:100]}"
 
 
