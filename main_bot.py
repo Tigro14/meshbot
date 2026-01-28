@@ -483,7 +483,12 @@ class MeshBot:
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            if self._is_tcp_mode():
+            # IMPORTANT: Vérifier MeshCore en PREMIER car il peut utiliser CONNECTION_MODE='serial'
+            if globals().get('MESHCORE_ENABLED', False):
+                # Mode MeshCore companion - tous les paquets viennent de MeshCore
+                source = 'meshcore'
+                debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)")
+            elif self._is_tcp_mode():
                 source = 'tcp'
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
