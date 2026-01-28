@@ -178,6 +178,102 @@ class TrafficPersistence:
                 ON packets(packet_type)
             ''')
 
+            # ========================================
+            # Table pour les paquets MeshCore UNIQUEMENT
+            # Séparée de la table packets (Meshtastic) pour éviter la confusion
+            # ========================================
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS meshcore_packets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    from_id TEXT NOT NULL,
+                    to_id TEXT,
+                    source TEXT DEFAULT 'meshcore',
+                    sender_name TEXT,
+                    packet_type TEXT NOT NULL,
+                    message TEXT,
+                    rssi INTEGER,
+                    snr REAL,
+                    hops INTEGER,
+                    size INTEGER,
+                    is_broadcast INTEGER,
+                    is_encrypted INTEGER DEFAULT 0,
+                    telemetry TEXT,
+                    position TEXT,
+                    hop_limit INTEGER,
+                    hop_start INTEGER,
+                    channel INTEGER DEFAULT 0,
+                    via_mqtt INTEGER DEFAULT 0,
+                    want_ack INTEGER DEFAULT 0,
+                    want_response INTEGER DEFAULT 0,
+                    priority INTEGER DEFAULT 0,
+                    family TEXT,
+                    public_key TEXT
+                )
+            ''')
+
+            # Index pour optimiser les requêtes sur les paquets MeshCore
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meshcore_packets_timestamp
+                ON meshcore_packets(timestamp)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meshcore_packets_from_id
+                ON meshcore_packets(from_id)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meshcore_packets_type
+                ON meshcore_packets(packet_type)
+            ''')
+
+            # ========================================
+            # MIGRATION: Déplacer les paquets MeshCore existants vers la nouvelle table
+            # ========================================
+            try:
+                # Vérifier s'il y a des paquets meshcore dans la table packets
+                cursor.execute("SELECT COUNT(*) FROM packets WHERE source = 'meshcore'")
+                meshcore_count = cursor.fetchone()[0]
+                
+                if meshcore_count > 0:
+                    logger.info(f"🔄 Migration: {meshcore_count} paquets MeshCore trouvés dans 'packets'")
+                    
+                    # Copier les paquets meshcore vers meshcore_packets
+                    cursor.execute('''
+                        INSERT INTO meshcore_packets (
+                            timestamp, from_id, to_id, source, sender_name, packet_type,
+                            message, rssi, snr, hops, size, is_broadcast, is_encrypted,
+                            telemetry, position, hop_limit, hop_start, channel, via_mqtt,
+                            want_ack, want_response, priority, family, public_key
+                        )
+                        SELECT 
+                            timestamp, from_id, to_id, 'meshcore', sender_name, packet_type,
+                            message, rssi, snr, hops, size, is_broadcast, is_encrypted,
+                            telemetry, position, hop_limit, hop_start,
+                            COALESCE(channel, 0), COALESCE(via_mqtt, 0),
+                            COALESCE(want_ack, 0), COALESCE(want_response, 0),
+                            COALESCE(priority, 0), family, public_key
+                        FROM packets
+                        WHERE source = 'meshcore'
+                    ''')
+                    
+                    migrated = cursor.rowcount
+                    logger.info(f"✅ Migration: {migrated} paquets MeshCore copiés vers 'meshcore_packets'")
+                    
+                    # Supprimer les paquets meshcore de la table packets
+                    cursor.execute("DELETE FROM packets WHERE source = 'meshcore'")
+                    deleted = cursor.rowcount
+                    logger.info(f"🗑️  Migration: {deleted} paquets MeshCore supprimés de 'packets'")
+                    
+                    self.conn.commit()
+                    logger.info("✅ Migration terminée: tables Meshtastic et MeshCore maintenant séparées")
+                else:
+                    logger.debug("Migration: Aucun paquet MeshCore à migrer")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Migration MeshCore échouée (peut être déjà faite): {e}")
+                # Ne pas bloquer le démarrage si la migration échoue
+                pass
+
             # Table pour les messages publics
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS public_messages (
@@ -452,6 +548,86 @@ class TrafficPersistence:
             if self.error_callback:
                 try:
                     self.error_callback(e, 'save_packet')
+                except Exception as cb_error:
+                    logger.error(f"Erreur dans error_callback: {cb_error}")
+
+    def save_meshcore_packet(self, packet: Dict[str, Any]):
+        """
+        Sauvegarde un paquet MeshCore dans la table meshcore_packets (séparée de Meshtastic).
+        
+        Cette méthode est utilisée exclusivement pour les paquets provenant de MeshCore,
+        c'est-à-dire ceux avec source='meshcore'. Les paquets Meshtastic (source='local', 
+        'tcp', 'tigrog2') sont sauvegardés via save_packet().
+
+        Args:
+            packet: Dictionnaire contenant les informations du paquet MeshCore
+        """
+        try:
+            # Vérifier que la connexion est active
+            if self.conn is None:
+                logger.error("Connexion SQLite non initialisée, tentative de reconnexion")
+                self._init_database()
+                if self.conn is None:
+                    logger.error("Impossible d'initialiser la connexion SQLite")
+                    return
+
+            cursor = self.conn.cursor()
+
+            # Convertir les structures complexes en JSON
+            telemetry = json.dumps(packet.get('telemetry')) if packet.get('telemetry') else None
+            position = json.dumps(packet.get('position')) if packet.get('position') else None
+
+            cursor.execute('''
+                INSERT INTO meshcore_packets (
+                    timestamp, from_id, to_id, source, sender_name, packet_type,
+                    message, rssi, snr, hops, size, is_broadcast, is_encrypted, telemetry, position,
+                    hop_limit, hop_start, channel, via_mqtt, want_ack, want_response, priority, family, public_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                packet.get('timestamp'),
+                packet.get('from_id'),
+                packet.get('to_id'),
+                'meshcore',  # Force source to 'meshcore'
+                packet.get('sender_name'),
+                packet.get('packet_type'),
+                packet.get('message'),
+                packet.get('rssi'),
+                packet.get('snr'),
+                packet.get('hops'),
+                packet.get('size'),
+                1 if packet.get('is_broadcast') else 0,
+                1 if packet.get('is_encrypted') else 0,
+                telemetry,
+                position,
+                packet.get('hop_limit'),
+                packet.get('hop_start'),
+                packet.get('channel', 0),
+                1 if packet.get('via_mqtt') else 0,
+                1 if packet.get('want_ack') else 0,
+                1 if packet.get('want_response') else 0,
+                packet.get('priority', 0),
+                packet.get('family'),
+                packet.get('public_key')
+            ))
+
+            self.conn.commit()
+
+            # Log périodique pour suivre l'activité (tous les 50 paquets)
+            if not hasattr(self, '_meshcore_packet_count'):
+                self._meshcore_packet_count = 0
+            self._meshcore_packet_count += 1
+            if self._meshcore_packet_count % 50 == 0:
+                logger.info(f"📦 {self._meshcore_packet_count} paquets MeshCore sauvegardés dans SQLite")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la sauvegarde du paquet MeshCore : {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Notifier le callback d'erreur si configuré
+            if self.error_callback:
+                try:
+                    self.error_callback(e, 'save_meshcore_packet')
                 except Exception as cb_error:
                     logger.error(f"Erreur dans error_callback: {cb_error}")
 

@@ -880,8 +880,19 @@ class TrafficMonitor:
                 logger.info(f"💾 {self._packet_saved_count} paquets enregistrés dans all_packets (size: {len(self.all_packets)})")
 
             # Sauvegarder le paquet dans SQLite
+            # IMPORTANT: Séparer les paquets MeshCore des paquets Meshtastic
             try:
-                self.persistence.save_packet(packet_entry)
+                packet_source = packet_entry.get('source', 'unknown')
+                
+                if packet_source == 'meshcore':
+                    # Paquet MeshCore → table meshcore_packets
+                    self.persistence.save_meshcore_packet(packet_entry)
+                    logger.debug(f"📦 Paquet MeshCore sauvegardé: {packet_type} de {sender_name}")
+                else:
+                    # Paquet Meshtastic (local, tcp, tigrog2) → table packets
+                    self.persistence.save_packet(packet_entry)
+                    logger.debug(f"📡 Paquet Meshtastic sauvegardé: {packet_type} de {sender_name}")
+                    
             except Exception as e:
                 logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
 
