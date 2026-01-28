@@ -920,9 +920,18 @@ class MeshCoreCLIWrapper:
             else:
                 to_id = self.localNode.nodeNum
             
+            # Créer un packet avec TOUS les champs nécessaires pour le logging
+            import random
             packet = {
                 'from': sender_id,
                 'to': to_id,  # DM: to our node, not broadcast
+                'id': random.randint(100000, 999999),  # ID unique pour déduplication
+                'rxTime': int(time.time()),  # Timestamp de réception
+                'rssi': 0,  # Pas de métrique radio pour MeshCore
+                'snr': 0.0,  # Pas de métrique radio pour MeshCore
+                'hopLimit': 0,  # Message direct (pas de relay)
+                'hopStart': 0,  # Message direct
+                'channel': 0,  # Canal par défaut
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
