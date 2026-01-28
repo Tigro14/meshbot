@@ -114,6 +114,55 @@ class TrafficPersistence:
                 # La colonne n'existe pas, l'ajouter
                 logger.info("Migration DB : ajout de la colonne hop_start")
                 cursor.execute("ALTER TABLE packets ADD COLUMN hop_start INTEGER")
+            
+            # Migration : ajouter channel si elle n'existe pas
+            try:
+                cursor.execute("SELECT channel FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne channel")
+                cursor.execute("ALTER TABLE packets ADD COLUMN channel INTEGER DEFAULT 0")
+            
+            # Migration : ajouter via_mqtt si elle n'existe pas
+            try:
+                cursor.execute("SELECT via_mqtt FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne via_mqtt")
+                cursor.execute("ALTER TABLE packets ADD COLUMN via_mqtt INTEGER DEFAULT 0")
+            
+            # Migration : ajouter want_ack si elle n'existe pas
+            try:
+                cursor.execute("SELECT want_ack FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne want_ack")
+                cursor.execute("ALTER TABLE packets ADD COLUMN want_ack INTEGER DEFAULT 0")
+            
+            # Migration : ajouter want_response si elle n'existe pas
+            try:
+                cursor.execute("SELECT want_response FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne want_response")
+                cursor.execute("ALTER TABLE packets ADD COLUMN want_response INTEGER DEFAULT 0")
+            
+            # Migration : ajouter priority si elle n'existe pas
+            try:
+                cursor.execute("SELECT priority FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne priority")
+                cursor.execute("ALTER TABLE packets ADD COLUMN priority INTEGER DEFAULT 0")
+            
+            # Migration : ajouter family si elle n'existe pas
+            try:
+                cursor.execute("SELECT family FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne family")
+                cursor.execute("ALTER TABLE packets ADD COLUMN family TEXT")
+            
+            # Migration : ajouter public_key si elle n'existe pas
+            try:
+                cursor.execute("SELECT public_key FROM packets LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Migration DB : ajout de la colonne public_key")
+                cursor.execute("ALTER TABLE packets ADD COLUMN public_key TEXT")
 
             # Index pour optimiser les requêtes sur les paquets
             cursor.execute('''
@@ -356,8 +405,8 @@ class TrafficPersistence:
                 INSERT INTO packets (
                     timestamp, from_id, to_id, source, sender_name, packet_type,
                     message, rssi, snr, hops, size, is_broadcast, is_encrypted, telemetry, position,
-                    hop_limit, hop_start
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    hop_limit, hop_start, channel, via_mqtt, want_ack, want_response, priority, family, public_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 packet.get('timestamp'),
                 packet.get('from_id'),
@@ -375,7 +424,14 @@ class TrafficPersistence:
                 telemetry,
                 position,
                 packet.get('hop_limit'),
-                packet.get('hop_start')
+                packet.get('hop_start'),
+                packet.get('channel', 0),
+                1 if packet.get('via_mqtt') else 0,
+                1 if packet.get('want_ack') else 0,
+                1 if packet.get('want_response') else 0,
+                packet.get('priority', 0),
+                packet.get('family'),
+                packet.get('public_key')
             ))
 
             self.conn.commit()
