@@ -434,6 +434,13 @@ class MeshBot:
             packet: Packet Meshtastic reçu
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
         """
+        # === DIAGNOSTIC: Log EVERY call to on_message ===
+        try:
+            from_id = packet.get('from', 0) if packet else None
+            info_print(f"🔔 on_message CALLED | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+        except:
+            info_print(f"🔔 on_message CALLED | packet={packet is not None} | interface={interface is not None}")
+        
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
         # Even if we ignore the packet for processing, we need to record that we received it
@@ -483,7 +490,12 @@ class MeshBot:
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            if self._is_tcp_mode():
+            # IMPORTANT: Vérifier MeshCore en PREMIER car il peut utiliser CONNECTION_MODE='serial'
+            if globals().get('MESHCORE_ENABLED', False):
+                # Mode MeshCore companion - tous les paquets viennent de MeshCore
+                source = 'meshcore'
+                debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)")
+            elif self._is_tcp_mode():
                 source = 'tcp'
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
@@ -1674,6 +1686,9 @@ class MeshBot:
                 
                 # Configurer le callback pour les messages reçus
                 self.interface.set_message_callback(self.on_message)
+                info_print(f"✅ Callback MeshCore configuré: {self.on_message}")
+                info_print(f"   Interface type: {type(self.interface).__name__}")
+                info_print(f"   Callback set to: on_message method")
                 info_print("✅ Connexion MeshCore établie")
                 
             elif meshtastic_enabled and connection_mode == 'tcp':

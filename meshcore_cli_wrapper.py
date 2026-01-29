@@ -149,8 +149,9 @@ class MeshCoreCLIWrapper:
         Args:
             callback: Fonction à appeler lors de la réception d'un message
         """
+        info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
         self.message_callback = callback
-        info_print("✅ [MESHCORE-CLI] Callback message défini")
+        info_print(f"✅ [MESHCORE-CLI] message_callback set successfully")
     
     def set_node_manager(self, node_manager):
         """
@@ -816,6 +817,7 @@ class MeshCoreCLIWrapper:
         Args:
             event: Event object from meshcore dispatcher
         """
+        info_print("🔔🔔🔔 [MESHCORE-CLI] _on_contact_message CALLED! Event received!")
         try:
             # Update last message time for healthcheck
             self.last_message_time = time.time()
@@ -920,9 +922,18 @@ class MeshCoreCLIWrapper:
             else:
                 to_id = self.localNode.nodeNum
             
+            # Créer un packet avec TOUS les champs nécessaires pour le logging
+            import random
             packet = {
                 'from': sender_id,
                 'to': to_id,  # DM: to our node, not broadcast
+                'id': random.randint(100000, 999999),  # ID unique pour déduplication
+                'rxTime': int(time.time()),  # Timestamp de réception
+                'rssi': 0,  # Pas de métrique radio pour MeshCore
+                'snr': 0.0,  # Pas de métrique radio pour MeshCore
+                'hopLimit': 0,  # Message direct (pas de relay)
+                'hopStart': 0,  # Message direct
+                'channel': 0,  # Canal par défaut
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
@@ -932,9 +943,11 @@ class MeshCoreCLIWrapper:
             
             # Appeler le callback
             if self.message_callback:
+                info_print(f"📞 [MESHCORE-CLI] Calling message_callback for message from 0x{sender_id:08x}")
                 self.message_callback(packet, None)
+                info_print(f"✅ [MESHCORE-CLI] Callback completed successfully")
             else:
-                debug_print("⚠️ [MESHCORE-CLI] Pas de callback défini")
+                error_print(f"⚠️ [MESHCORE-CLI] No message_callback set!")
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")

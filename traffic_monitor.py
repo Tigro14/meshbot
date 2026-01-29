@@ -626,6 +626,11 @@ class TrafficMonitor:
             my_node_id: ID du nœud local (pour filtrer auto-génération)
             interface: Interface Meshtastic (for accessing PSK configuration)
         """
+        # === DIAGNOSTIC ENTRY POINT ===
+        # Log every packet entry with source to trace MeshCore packets
+        from_id = packet.get('from', 0)
+        info_print(f"🔵 add_packet ENTRY | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
+        
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
             self._packet_add_count = 0
@@ -782,6 +787,21 @@ class TrafficMonitor:
             hop_start = packet.get('hopStart', 5)
             hops_taken = hop_start - hop_limit
             
+            # === EXTRACTION MÉTADONNÉES SUPPLÉMENTAIRES ===
+            # Extract additional routing metadata for DEBUG mode and SQLite
+            channel = packet.get('channel', 0)  # Channel index (0-7)
+            via_mqtt = packet.get('viaMqtt', False)  # Whether via MQTT gateway
+            want_ack = packet.get('wantAck', False)  # Sender wants acknowledgment
+            want_response = packet.get('wantResponse', False)  # Sender expects response
+            priority = packet.get('priority', 0)  # Priority level (0=default, 32=ACK_REQ, 64=RELIABLE, 100=CRITICAL)
+            
+            # Determine packet family (FLOOD = broadcast, DIRECT = unicast)
+            is_broadcast = to_id in [0xFFFFFFFF, 0]
+            family = 'FLOOD' if is_broadcast else 'DIRECT'
+            
+            # Extract public key from sender's node info (if available from NODEINFO_APP)
+            public_key = self._get_sender_public_key(from_id, interface)
+            
             # Enregistrer le paquet complet
             packet_entry = {
                 'timestamp': timestamp,
@@ -797,8 +817,16 @@ class TrafficMonitor:
                 'hop_limit': hop_limit,
                 'hop_start': hop_start,
                 'size': packet_size,
-                'is_broadcast': to_id in [0xFFFFFFFF, 0],
-                'is_encrypted': is_encrypted
+                'is_broadcast': is_broadcast,
+                'is_encrypted': is_encrypted,
+                # NEW: Additional routing metadata
+                'channel': channel,
+                'via_mqtt': via_mqtt,
+                'want_ack': want_ack,
+                'want_response': want_response,
+                'priority': priority,
+                'family': family,
+                'public_key': public_key
             }
 
             # Extraire les données de télémétrie pour channel_stats
@@ -857,8 +885,19 @@ class TrafficMonitor:
                 logger.info(f"💾 {self._packet_saved_count} paquets enregistrés dans all_packets (size: {len(self.all_packets)})")
 
             # Sauvegarder le paquet dans SQLite
+            # IMPORTANT: Séparer les paquets MeshCore des paquets Meshtastic
             try:
-                self.persistence.save_packet(packet_entry)
+                packet_source = packet_entry.get('source', 'unknown')
+                
+                if packet_source == 'meshcore':
+                    # Paquet MeshCore → table meshcore_packets
+                    self.persistence.save_meshcore_packet(packet_entry)
+                    logger.debug(f"📦 Paquet MeshCore sauvegardé: {packet_type} de {sender_name}")
+                else:
+                    # Paquet Meshtastic (local, tcp, tigrog2) → table packets
+                    self.persistence.save_packet(packet_entry)
+                    logger.debug(f"📡 Paquet Meshtastic sauvegardé: {packet_type} de {sender_name}")
+                    
             except Exception as e:
                 logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
 
@@ -870,11 +909,13 @@ class TrafficMonitor:
             self._update_global_packet_statistics(packet_entry)
             self._update_network_statistics(packet_entry)
             
-            # === DEBUG LOG UNIFIÉ POUR TOUS LES PAQUETS ===
+            # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
             source_tag = f"[{packet_entry.get('source', '?')}]"
             debug_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            
+            # Detailed debug logging (requires DEBUG_MODE)
             self._log_packet_debug(
-                packet_type, sender_name, from_id, hops_taken, snr, packet)
+                packet_type, source, sender_name, from_id, hops_taken, snr, packet)
             
         except Exception as e:
             import traceback
@@ -882,7 +923,7 @@ class TrafficMonitor:
             debug_print(traceback.format_exc())
 
 
-    def _log_packet_debug(self, packet_type, sender_name, from_id, hops_taken, snr, packet):
+    def _log_packet_debug(self, packet_type, source, sender_name, from_id, hops_taken, snr, packet):
         """
         Log debug unifié pour tous les types de paquets avec affichage complet
         """
@@ -907,6 +948,9 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
+            debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+
+            # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
             if packet_type == 'TELEMETRY_APP':
                 telemetry_info = self._extract_telemetry_info(packet)
@@ -927,6 +971,9 @@ class TrafficMonitor:
                     debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
                 debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            
+            # === DIAGNOSTIC: About to call comprehensive debug ===
+            info_print(f"🔍 About to call _log_comprehensive_packet_debug for source={source} type={packet_type}")
             
             # === AFFICHAGE COMPLET MESHCORE (comprehensive debug) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken)
@@ -967,6 +1014,9 @@ class TrafficMonitor:
         """
         Affichage complet et détaillé du paquet Meshcore pour debug approfondi
         """
+        # === DIAGNOSTIC ENTRY ===
+        info_print(f"🔷 _log_comprehensive_packet_debug CALLED | type={packet_type} | from=0x{from_id:08x}")
+        
         try:
             # === SECTION 1: IDENTITÉ DU PAQUET ===
             packet_id = packet.get('id', 'N/A')
@@ -1001,6 +1051,48 @@ class TrafficMonitor:
                 suspected_relay = self._guess_relay_node(snr, from_id)
                 if suspected_relay:
                     debug_print(f"║   Via:       {suspected_relay} (suspected)")
+            
+            # === NEW SECTION: PACKET METADATA (Family, Channel, Flags, Priority, PublicKey) ===
+            debug_print(f"╟───────────────────────────────────────────────────────────────")
+            debug_print(f"║ 📋 PACKET METADATA")
+            
+            # Family (FLOOD/DIRECT)
+            family = 'FLOOD' if is_broadcast else 'DIRECT'
+            family_desc = 'broadcast' if is_broadcast else 'unicast'
+            debug_print(f"║   Family:    {family} ({family_desc})")
+            
+            # Channel
+            channel = packet.get('channel', 0)
+            channel_name = "Primary" if channel == 0 else f"Ch{channel}"
+            debug_print(f"║   Channel:   {channel} ({channel_name})")
+            
+            # Priority
+            priority = packet.get('priority', 0)
+            priority_map = {
+                100: 'CRITICAL',
+                64: 'RELIABLE', 
+                32: 'ACK_REQ',
+                0: 'DEFAULT'
+            }
+            priority_name = priority_map.get(priority, f'CUSTOM({priority})')
+            debug_print(f"║   Priority:  {priority_name} ({priority})")
+            
+            # Flags
+            via_mqtt = packet.get('viaMqtt', False)
+            want_ack = packet.get('wantAck', False)
+            want_response = packet.get('wantResponse', False)
+            debug_print(f"║   Via MQTT:  {'Yes' if via_mqtt else 'No'}")
+            debug_print(f"║   Want ACK:  {'Yes' if want_ack else 'No'}")
+            debug_print(f"║   Want Resp: {'Yes' if want_response else 'No'}")
+            
+            # Public Key (from sender's NODEINFO)
+            public_key = self._get_sender_public_key(from_id, getattr(self, 'node_manager', None) and getattr(self.node_manager, 'interface', None))
+            if public_key:
+                key_preview = public_key[:16] if len(public_key) > 16 else public_key
+                key_length = len(public_key) if isinstance(public_key, str) else 0
+                debug_print(f"║   PublicKey: {key_preview}... ({key_length} chars)")
+            else:
+                debug_print(f"║   PublicKey: Not available")
             
             # === SECTION 3: RADIO METRICS ===
             rssi = packet.get('rssi', packet.get('rxRssi', 0))
@@ -1185,6 +1277,47 @@ class TrafficMonitor:
             
             return best_match
         except Exception as e:
+            return None
+
+    def _get_sender_public_key(self, from_id, interface):
+        """
+        Get the sender's public key from node info (if available from previous NODEINFO_APP)
+        
+        Args:
+            from_id: Sender node ID
+            interface: Meshtastic interface
+            
+        Returns:
+            str or None: Public key in base64 format, or None if not available
+        """
+        try:
+            if not interface or not hasattr(interface, 'nodes'):
+                return None
+            
+            # Use helper method to find node with multiple key formats
+            node_info, matched_key_format = self._find_node_in_interface(from_id, interface)
+            
+            if not node_info or not isinstance(node_info, dict):
+                return None
+            
+            user_info = node_info.get('user', {})
+            if not isinstance(user_info, dict):
+                return None
+            
+            # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
+            public_key = user_info.get('public_key') or user_info.get('publicKey')
+            
+            # Return base64 string if available
+            if public_key:
+                if isinstance(public_key, bytes):
+                    import base64
+                    return base64.b64encode(public_key).decode('ascii')
+                elif isinstance(public_key, str):
+                    return public_key
+            
+            return None
+        except Exception as e:
+            logger.debug(f"Error getting public key for node {from_id:08x}: {e}")
             return None
 
     def _extract_message_text(self, decoded):
