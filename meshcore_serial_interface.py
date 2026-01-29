@@ -166,6 +166,7 @@ class MeshCoreSerialInterface:
         Args:
             line: Ligne reçue du serial MeshCore
         """
+        info_print(f"🔍 [MESHCORE-SERIAL] _process_meshcore_line CALLED with: {line[:80]}")
         try:
             # Parser le message (format simple pour l'instant)
             if line.startswith("DM:"):
@@ -177,9 +178,18 @@ class MeshCoreSerialInterface:
                     info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {message[:50]}{'...' if len(message) > 50 else ''}")
                     
                     # Créer un pseudo-packet compatible avec le code existant
+                    # IMPORTANT: Ajouter TOUS les champs nécessaires pour le logging
+                    import random
                     packet = {
                         'from': sender_id,
                         'to': self.localNode.nodeNum,
+                        'id': random.randint(100000, 999999),  # ID unique pour déduplication
+                        'rxTime': int(time.time()),  # Timestamp de réception
+                        'rssi': 0,  # Pas de métrique radio pour MeshCore
+                        'snr': 0.0,  # Pas de métrique radio pour MeshCore
+                        'hopLimit': 0,  # Message direct (pas de relay)
+                        'hopStart': 0,  # Message direct
+                        'channel': 0,  # Canal par défaut
                         'decoded': {
                             'portnum': 'TEXT_MESSAGE_APP',
                             'payload': message.encode('utf-8')
@@ -188,7 +198,11 @@ class MeshCoreSerialInterface:
                     
                     # Appeler le callback si défini
                     if self.message_callback:
+                        info_print(f"📞 [MESHCORE-TEXT] Calling message_callback for message from 0x{sender_id:08x}")
                         self.message_callback(packet, None)
+                        info_print(f"✅ [MESHCORE-TEXT] Callback completed successfully")
+                    else:
+                        error_print(f"⚠️ [MESHCORE-TEXT] No message_callback set!")
             else:
                 debug_print(f"⚠️ [MESHCORE] Ligne non reconnue: {line[:80]}")
         
@@ -258,7 +272,9 @@ class MeshCoreSerialInterface:
     
     def set_message_callback(self, callback):
         """Définit le callback pour les messages reçus"""
+        info_print(f"📝 [MESHCORE-SERIAL] Setting message_callback to {callback}")
         self.message_callback = callback
+        info_print(f"✅ [MESHCORE-SERIAL] message_callback set successfully")
         debug_print("✅ [MESHCORE] Callback message configuré")
     
     def close(self):

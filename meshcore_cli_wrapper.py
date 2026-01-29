@@ -149,8 +149,9 @@ class MeshCoreCLIWrapper:
         Args:
             callback: Fonction à appeler lors de la réception d'un message
         """
+        info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
         self.message_callback = callback
-        info_print("✅ [MESHCORE-CLI] Callback message défini")
+        info_print(f"✅ [MESHCORE-CLI] message_callback set successfully")
     
     def set_node_manager(self, node_manager):
         """
@@ -570,9 +571,44 @@ class MeshCoreCLIWrapper:
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (events.subscribe)")
+                
+                # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
+                # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
+                rx_log_enabled = False
+                try:
+                    import config
+                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
+                except ImportError:
+                    rx_log_enabled = True  # Default to enabled
+                
+                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                    self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
+                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh (broadcasts, télémétrie, etc.)")
+                elif not rx_log_enabled:
+                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
+                    info_print("   → Le bot ne verra que les DM, pas les broadcasts")
+                elif not hasattr(EventType, 'RX_LOG_DATA'):
+                    debug_print("⚠️ [MESHCORE-CLI] EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
+                
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (dispatcher.subscribe)")
+                
+                # Also subscribe to RX_LOG_DATA
+                rx_log_enabled = False
+                try:
+                    import config
+                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
+                except ImportError:
+                    rx_log_enabled = True
+                
+                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                    self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
+                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh")
+                elif not rx_log_enabled:
+                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -816,6 +852,7 @@ class MeshCoreCLIWrapper:
         Args:
             event: Event object from meshcore dispatcher
         """
+        info_print("🔔🔔🔔 [MESHCORE-CLI] _on_contact_message CALLED! Event received!")
         try:
             # Update last message time for healthcheck
             self.last_message_time = time.time()
@@ -920,9 +957,18 @@ class MeshCoreCLIWrapper:
             else:
                 to_id = self.localNode.nodeNum
             
+            # Créer un packet avec TOUS les champs nécessaires pour le logging
+            import random
             packet = {
                 'from': sender_id,
                 'to': to_id,  # DM: to our node, not broadcast
+                'id': random.randint(100000, 999999),  # ID unique pour déduplication
+                'rxTime': int(time.time()),  # Timestamp de réception
+                'rssi': 0,  # Pas de métrique radio pour MeshCore
+                'snr': 0.0,  # Pas de métrique radio pour MeshCore
+                'hopLimit': 0,  # Message direct (pas de relay)
+                'hopStart': 0,  # Message direct
+                'channel': 0,  # Canal par défaut
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
@@ -932,14 +978,71 @@ class MeshCoreCLIWrapper:
             
             # Appeler le callback
             if self.message_callback:
+                info_print(f"📞 [MESHCORE-CLI] Calling message_callback for message from 0x{sender_id:08x}")
                 self.message_callback(packet, None)
+                info_print(f"✅ [MESHCORE-CLI] Callback completed successfully")
             else:
-                debug_print("⚠️ [MESHCORE-CLI] Pas de callback défini")
+                error_print(f"⚠️ [MESHCORE-CLI] No message_callback set!")
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")
             error_print(traceback.format_exc())
     
+    def _on_rx_log_data(self, event):
+        """
+        Callback pour les événements RX_LOG_DATA (données RF brutes)
+        Permet de voir TOUS les paquets mesh (broadcasts, télémétrie, etc.)
+        
+        Args:
+            event: Event object from meshcore dispatcher
+        """
+        try:
+            # Update last message time for healthcheck (any RF activity is good)
+            self.last_message_time = time.time()
+            self.connection_healthy = True
+            
+            # Extract RF packet data
+            payload = event.payload if hasattr(event, 'payload') else event
+            
+            if not isinstance(payload, dict):
+                debug_print(f"⚠️ [RX_LOG] Payload non-dict: {type(payload).__name__}")
+                return
+            
+            # Extract packet metadata
+            snr = payload.get('snr', 0.0)
+            rssi = payload.get('rssi', 0)
+            raw_hex = payload.get('raw_hex', '')
+            
+            # Log RF activity (only in debug mode to avoid spam)
+            debug_print(f"📡 [RX_LOG] Paquet RF reçu - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:20]}...")
+            
+            # ⚠️ IMPORTANT: RX_LOG_DATA provides raw hex data WITHOUT protocol parsing
+            # The meshcore-cli library gives us raw RF packets but does NOT decode them
+            # To fully parse these packets, we would need:
+            #   1. MeshCore protocol specification (packet header format)
+            #   2. Packet type definitions (TEXT_MESSAGE, TELEMETRY, etc.)
+            #   3. Field extraction logic (from_id, to_id, payload decoding)
+            #
+            # Current capabilities:
+            #   ✅ RF activity monitoring (know when packets are received)
+            #   ✅ Signal quality metrics (SNR, RSSI)
+            #   ✅ Raw hex data (for manual analysis)
+            #   ❌ Automatic packet parsing (from/to/type/payload)
+            #
+            # For decoded messages, use CONTACT_MSG_RECV events (DMs only)
+            # For full mesh visibility, RX_LOG_DATA is useful but limited
+            
+            # For now, we only log the RF activity without creating packet entries
+            # This avoids filling the database with unparseable data
+            debug_print(f"📊 [RX_LOG] RF activity monitoring only (full parsing requires protocol spec)")
+            
+            # Skip packet creation until we have protocol parsing
+            return
+            
+        except Exception as e:
+            debug_print(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
+            if self.debug:
+                error_print(traceback.format_exc())
 
     def sendText(self, text, destinationId, wantAck=False, channelIndex=0):
         """
