@@ -563,12 +563,18 @@ class TrafficPersistence:
             packet: Dictionnaire contenant les informations du paquet MeshCore
         """
         try:
+            # DIAGNOSTIC: Log every save attempt
+            from_id = packet.get('from_id', 0)
+            packet_type = packet.get('packet_type', 'UNKNOWN')
+            sender_name = packet.get('sender_name', 'Unknown')
+            info_print(f"💾 [SAVE-MESHCORE] Tentative sauvegarde: {packet_type} de {sender_name} (0x{from_id:08x})")
+            
             # Vérifier que la connexion est active
             if self.conn is None:
-                logger.error("Connexion SQLite non initialisée, tentative de reconnexion")
+                error_print("❌ [SAVE-MESHCORE] Connexion SQLite non initialisée, tentative de reconnexion")
                 self._init_database()
                 if self.conn is None:
-                    logger.error("Impossible d'initialiser la connexion SQLite")
+                    error_print("❌ [SAVE-MESHCORE] Impossible d'initialiser la connexion SQLite")
                     return
 
             cursor = self.conn.cursor()
@@ -611,18 +617,21 @@ class TrafficPersistence:
             ))
 
             self.conn.commit()
+            
+            # DIAGNOSTIC: Log successful save
+            info_print(f"✅ [SAVE-MESHCORE] Paquet sauvegardé avec succès dans meshcore_packets")
 
-            # Log périodique pour suivre l'activité (tous les 50 paquets)
+            # Log périodique pour suivre l'activité (tous les 10 paquets pour debug)
             if not hasattr(self, '_meshcore_packet_count'):
                 self._meshcore_packet_count = 0
             self._meshcore_packet_count += 1
-            if self._meshcore_packet_count % 50 == 0:
-                logger.info(f"📦 {self._meshcore_packet_count} paquets MeshCore sauvegardés dans SQLite")
+            if self._meshcore_packet_count % 10 == 0:
+                info_print(f"📦 [SAVE-MESHCORE] Total: {self._meshcore_packet_count} paquets MeshCore sauvegardés dans SQLite")
 
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la sauvegarde du paquet MeshCore : {e}")
+            error_print(f"❌ [SAVE-MESHCORE] Erreur lors de la sauvegarde du paquet MeshCore : {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            error_print(traceback.format_exc())
             
             # Notifier le callback d'erreur si configuré
             if self.error_callback:

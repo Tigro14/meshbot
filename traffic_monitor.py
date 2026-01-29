@@ -889,6 +889,8 @@ class TrafficMonitor:
             try:
                 packet_source = packet_entry.get('source', 'unknown')
                 
+                info_print(f"💿 [ROUTE-SAVE] Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
+                
                 if packet_source == 'meshcore':
                     # Paquet MeshCore → table meshcore_packets
                     self.persistence.save_meshcore_packet(packet_entry)
@@ -899,7 +901,9 @@ class TrafficMonitor:
                     logger.debug(f"📡 Paquet Meshtastic sauvegardé: {packet_type} de {sender_name}")
                     
             except Exception as e:
-                logger.error(f"Erreur lors de la sauvegarde du paquet : {e}")
+                error_print(f"❌ [ROUTE-SAVE] Erreur lors de la sauvegarde du paquet : {e}")
+                import traceback
+                error_print(traceback.format_exc())
 
             # NOTE: Les messages publics sont maintenant gérés par add_public_message()
             # appelé depuis main_bot.py pour éviter les doublons
