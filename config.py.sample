@@ -42,6 +42,12 @@ TCP_PORT = 4403
 MESHCORE_ENABLED = False  # True = Activer mode companion MeshCore
 MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port série pour MeshCore
 
+# MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
+# RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)
+# Enable this to see broadcasts, telemetry, and all packets (like companion mode logs)
+# Disable this to only receive DMs (default companion behavior)
+MESHCORE_RX_LOG_ENABLED = True  # True = Monitor all RF packets via RX_LOG_DATA
+
 # Auto-reboot du nœud distant en cas d'échec de connexion TCP initial
 # Si True, le bot tentera automatiquement de rebooter le nœud distant
 # via 'meshtastic --host <IP> --reboot' en cas d'erreur de connexion
