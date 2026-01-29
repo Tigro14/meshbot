@@ -904,9 +904,12 @@ class TrafficMonitor:
             self._update_global_packet_statistics(packet_entry)
             self._update_network_statistics(packet_entry)
             
-            # === DEBUG LOG UNIFIÉ POUR TOUS LES PAQUETS ===
+            # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
+            # CRITICAL: Use info_print for primary log so it's ALWAYS visible (not just in DEBUG_MODE)
             source_tag = f"[{packet_entry.get('source', '?')}]"
-            debug_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            info_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            
+            # Detailed debug logging (requires DEBUG_MODE)
             self._log_packet_debug(
                 packet_type, sender_name, from_id, hops_taken, snr, packet)
             
@@ -941,6 +944,11 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
+            # === SUMMARY LOG (info_print - ALWAYS visible) ===
+            # Quick summary before detailed debug
+            info_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+
+            # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
             if packet_type == 'TELEMETRY_APP':
                 telemetry_info = self._extract_telemetry_info(packet)

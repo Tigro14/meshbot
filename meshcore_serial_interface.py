@@ -138,11 +138,13 @@ class MeshCoreSerialInterface:
                         # Tenter de décoder comme texte UTF-8
                         line = raw_data.decode('utf-8', errors='strict').strip()
                         if line:
-                            debug_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
+                            # CRITICAL: Use info_print so messages are ALWAYS visible (not just DEBUG_MODE)
+                            info_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
                             self._process_meshcore_line(line)
                     except UnicodeDecodeError:
                         # Données binaires (protocole binaire MeshCore natif)
-                        debug_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protocole binaire MeshCore)")
+                        # CRITICAL: Use info_print so messages are ALWAYS visible
+                        info_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protocole binaire MeshCore)")
                         self._process_meshcore_binary(raw_data)
                 
                 time.sleep(0.1)  # Éviter de saturer le CPU
