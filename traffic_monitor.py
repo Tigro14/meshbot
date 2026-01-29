@@ -626,6 +626,11 @@ class TrafficMonitor:
             my_node_id: ID du nœud local (pour filtrer auto-génération)
             interface: Interface Meshtastic (for accessing PSK configuration)
         """
+        # === DIAGNOSTIC ENTRY POINT ===
+        # Log every packet entry with source to trace MeshCore packets
+        from_id = packet.get('from', 0)
+        info_print(f"🔵 add_packet ENTRY | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
+        
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
             self._packet_add_count = 0
@@ -905,9 +910,8 @@ class TrafficMonitor:
             self._update_network_statistics(packet_entry)
             
             # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
-            # CRITICAL: Use info_print for primary log so it's ALWAYS visible (not just in DEBUG_MODE)
             source_tag = f"[{packet_entry.get('source', '?')}]"
-            info_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            debug_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
             
             # Detailed debug logging (requires DEBUG_MODE)
             self._log_packet_debug(
@@ -944,9 +948,7 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
-            # === SUMMARY LOG (info_print - ALWAYS visible) ===
-            # Quick summary before detailed debug
-            info_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
 
             # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
@@ -969,6 +971,9 @@ class TrafficMonitor:
                     debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
                 debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            
+            # === DIAGNOSTIC: About to call comprehensive debug ===
+            info_print(f"🔍 About to call _log_comprehensive_packet_debug for source={packet_entry.get('source')} type={packet_type}")
             
             # === AFFICHAGE COMPLET MESHCORE (comprehensive debug) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken)
@@ -1009,6 +1014,9 @@ class TrafficMonitor:
         """
         Affichage complet et détaillé du paquet Meshcore pour debug approfondi
         """
+        # === DIAGNOSTIC ENTRY ===
+        info_print(f"🔷 _log_comprehensive_packet_debug CALLED | type={packet_type} | from=0x{from_id:08x}")
+        
         try:
             # === SECTION 1: IDENTITÉ DU PAQUET ===
             packet_id = packet.get('id', 'N/A')
