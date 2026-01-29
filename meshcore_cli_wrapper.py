@@ -1016,40 +1016,28 @@ class MeshCoreCLIWrapper:
             # Log RF activity (only in debug mode to avoid spam)
             debug_print(f"📡 [RX_LOG] Paquet RF reçu - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:20]}...")
             
-            # Parse the raw packet to extract useful info
-            # RX_LOG_DATA provides raw hex data that we need to parse
-            # Format depends on MeshCore protocol (may need documentation)
+            # ⚠️ IMPORTANT: RX_LOG_DATA provides raw hex data WITHOUT protocol parsing
+            # The meshcore-cli library gives us raw RF packets but does NOT decode them
+            # To fully parse these packets, we would need:
+            #   1. MeshCore protocol specification (packet header format)
+            #   2. Packet type definitions (TEXT_MESSAGE, TELEMETRY, etc.)
+            #   3. Field extraction logic (from_id, to_id, payload decoding)
+            #
+            # Current capabilities:
+            #   ✅ RF activity monitoring (know when packets are received)
+            #   ✅ Signal quality metrics (SNR, RSSI)
+            #   ✅ Raw hex data (for manual analysis)
+            #   ❌ Automatic packet parsing (from/to/type/payload)
+            #
+            # For decoded messages, use CONTACT_MSG_RECV events (DMs only)
+            # For full mesh visibility, RX_LOG_DATA is useful but limited
             
-            # For now, we'll create a minimal packet entry to count RF activity
-            # TODO: Full packet parsing once protocol is documented
+            # For now, we only log the RF activity without creating packet entries
+            # This avoids filling the database with unparseable data
+            debug_print(f"📊 [RX_LOG] RF activity monitoring only (full parsing requires protocol spec)")
             
-            # Try to extract sender/receiver from raw hex if possible
-            # MeshCore packets typically have a header with from/to IDs
-            # This is a simplified version - full implementation needs protocol spec
-            
-            import random
-            packet = {
-                'from': 0,  # Unknown sender (would need protocol parsing)
-                'to': 0xFFFFFFFF,  # Broadcast (default assumption)
-                'id': random.randint(100000, 999999),
-                'rxTime': int(time.time()),
-                'rssi': rssi,
-                'snr': snr,
-                'hopLimit': 0,
-                'hopStart': 0,
-                'channel': 0,
-                'decoded': {
-                    'portnum': 'UNKNOWN_APP',  # Would need parsing
-                    'payload': b''  # Raw data not available in text form
-                },
-                '_meshcore_rx_log': True  # Mark as RX_LOG packet
-            }
-            
-            # NOTE: For now, we DON'T call message_callback for RX_LOG packets
-            # because we don't have full packet parsing yet
-            # Once we can parse from/to/type from raw_hex, we can enable this
-            
-            debug_print(f"📊 [RX_LOG] Paquet RF traité (parsing complet nécessite spécification protocole)")
+            # Skip packet creation until we have protocol parsing
+            return
             
         except Exception as e:
             debug_print(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
