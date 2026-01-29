@@ -915,7 +915,7 @@ class TrafficMonitor:
             
             # Detailed debug logging (requires DEBUG_MODE)
             self._log_packet_debug(
-                packet_type, sender_name, from_id, hops_taken, snr, packet)
+                packet_type, source, sender_name, from_id, hops_taken, snr, packet)
             
         except Exception as e:
             import traceback
@@ -923,7 +923,7 @@ class TrafficMonitor:
             debug_print(traceback.format_exc())
 
 
-    def _log_packet_debug(self, packet_type, sender_name, from_id, hops_taken, snr, packet):
+    def _log_packet_debug(self, packet_type, source, sender_name, from_id, hops_taken, snr, packet):
         """
         Log debug unifié pour tous les types de paquets avec affichage complet
         """
@@ -973,7 +973,7 @@ class TrafficMonitor:
                 debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
             
             # === DIAGNOSTIC: About to call comprehensive debug ===
-            info_print(f"🔍 About to call _log_comprehensive_packet_debug for source={packet_entry.get('source')} type={packet_type}")
+            info_print(f"🔍 About to call _log_comprehensive_packet_debug for source={source} type={packet_type}")
             
             # === AFFICHAGE COMPLET MESHCORE (comprehensive debug) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken)
