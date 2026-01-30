@@ -22,6 +22,19 @@ except ImportError:
     MeshCore = None
     EventType = None
 
+# Try to import meshcore-decoder for packet parsing
+try:
+    from meshcoredecoder import MeshCoreDecoder
+    from meshcoredecoder.utils.enum_names import get_route_type_name, get_payload_type_name
+    MESHCORE_DECODER_AVAILABLE = True
+    info_print("✅ [MESHCORE] Library meshcore-decoder disponible (packet decoding)")
+except ImportError:
+    MESHCORE_DECODER_AVAILABLE = False
+    info_print("⚠️ [MESHCORE] Library meshcore-decoder non disponible (pip install meshcoredecoder)")
+    MeshCoreDecoder = None
+    get_route_type_name = None
+    get_payload_type_name = None
+
 
 class MeshCoreCLIWrapper:
     """
@@ -993,6 +1006,9 @@ class MeshCoreCLIWrapper:
         Callback pour les événements RX_LOG_DATA (données RF brutes)
         Permet de voir TOUS les paquets mesh (broadcasts, télémétrie, etc.)
         
+        Utilise meshcore-decoder pour décoder les paquets et afficher
+        le type, la famille et d'autres informations utiles pour le debug.
+        
         Args:
             event: Event object from meshcore dispatcher
         """
@@ -1013,31 +1029,92 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
-            # Log RF activity (only in debug mode to avoid spam)
+            # Log RF activity with basic info
             debug_print(f"📡 [RX_LOG] Paquet RF reçu - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:20]}...")
             
-            # ⚠️ IMPORTANT: RX_LOG_DATA provides raw hex data WITHOUT protocol parsing
-            # The meshcore-cli library gives us raw RF packets but does NOT decode them
-            # To fully parse these packets, we would need:
-            #   1. MeshCore protocol specification (packet header format)
-            #   2. Packet type definitions (TEXT_MESSAGE, TELEMETRY, etc.)
-            #   3. Field extraction logic (from_id, to_id, payload decoding)
-            #
-            # Current capabilities:
-            #   ✅ RF activity monitoring (know when packets are received)
-            #   ✅ Signal quality metrics (SNR, RSSI)
-            #   ✅ Raw hex data (for manual analysis)
-            #   ❌ Automatic packet parsing (from/to/type/payload)
-            #
-            # For decoded messages, use CONTACT_MSG_RECV events (DMs only)
-            # For full mesh visibility, RX_LOG_DATA is useful but limited
-            
-            # For now, we only log the RF activity without creating packet entries
-            # This avoids filling the database with unparseable data
-            debug_print(f"📊 [RX_LOG] RF activity monitoring only (full parsing requires protocol spec)")
-            
-            # Skip packet creation until we have protocol parsing
-            return
+            # Try to decode packet if meshcore-decoder is available
+            if MESHCORE_DECODER_AVAILABLE and raw_hex:
+                try:
+                    # Decode the packet using meshcore-decoder
+                    packet = MeshCoreDecoder.decode(raw_hex)
+                    
+                    # Get human-readable names for route and payload types
+                    route_name = get_route_type_name(packet.route_type)
+                    payload_name = get_payload_type_name(packet.payload_type)
+                    
+                    # Check for unknown payload type errors
+                    unknown_type_error = None
+                    if packet.errors:
+                        for error in packet.errors:
+                            if "is not a valid PayloadType" in error:
+                                # Extract the numeric type ID from error message
+                                import re
+                                match = re.search(r'(\d+) is not a valid PayloadType', error)
+                                if match:
+                                    unknown_type_error = match.group(1)
+                                break
+                    
+                    # Build detailed info string
+                    info_parts = []
+                    
+                    # Show unknown types with their numeric ID
+                    if unknown_type_error:
+                        info_parts.append(f"Type: Unknown({unknown_type_error})")
+                    else:
+                        info_parts.append(f"Type: {payload_name}")
+                    
+                    info_parts.append(f"Route: {route_name}")
+                    
+                    # Add message hash if available
+                    if packet.message_hash:
+                        info_parts.append(f"Hash: {packet.message_hash[:8]}")
+                    
+                    # Add path info if available
+                    if packet.path_length > 0:
+                        info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Check if packet is valid (only flag as invalid for non-unknown-type errors)
+                    if unknown_type_error:
+                        # Unknown types are common and not really "invalid"
+                        validity = "ℹ️"  # Info icon instead of warning
+                    else:
+                        validity = "✅" if packet.is_valid else "⚠️"
+                    info_parts.append(f"Status: {validity}")
+                    
+                    # Log decoded packet information
+                    debug_print(f"📦 [RX_LOG] {' | '.join(info_parts)}")
+                    
+                    # Log non-unknown-type errors only
+                    if packet.errors:
+                        other_errors = [e for e in packet.errors if "is not a valid PayloadType" not in e]
+                        for error in other_errors[:3]:  # Show first 3 non-type errors
+                            debug_print(f"   ⚠️ {error}")
+                    
+                    # If payload is decoded, show a preview
+                    if packet.payload and isinstance(packet.payload, dict):
+                        decoded_payload = packet.payload.get('decoded')
+                        if decoded_payload:
+                            # Show payload type-specific info
+                            if hasattr(decoded_payload, 'text'):
+                                # TextMessage
+                                text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
+                                debug_print(f"📝 [RX_LOG] Message: \"{text_preview}\"")
+                            elif hasattr(decoded_payload, 'app_data'):
+                                # Advert with app_data
+                                app_data = decoded_payload.app_data
+                                if isinstance(app_data, dict):
+                                    name = app_data.get('name', 'Unknown')
+                                    debug_print(f"📢 [RX_LOG] Advert from: {name}")
+                    
+                except Exception as decode_error:
+                    # Decoder failed, but that's OK - packet might be malformed or incomplete
+                    debug_print(f"📊 [RX_LOG] Décodage non disponible: {str(decode_error)[:60]}")
+            else:
+                # Decoder not available, show basic info
+                if not MESHCORE_DECODER_AVAILABLE:
+                    debug_print(f"📊 [RX_LOG] RF monitoring only (meshcore-decoder not installed)")
+                else:
+                    debug_print(f"📊 [RX_LOG] RF monitoring only (no hex data)")
             
         except Exception as e:
             debug_print(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
