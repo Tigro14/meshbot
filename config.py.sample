@@ -408,6 +408,27 @@ BLITZ_WINDOW_MINUTES = 15  # Fenêtre temporelle pour comptage éclairs (15min)
 # Utilise le serveur MQTT public: blitzortung.ha.sed.pl:1883
 # Dépendances: pip install paho-mqtt pygeohash
 
+# ========================================
+# CONFIGURATION ALERTES MESH (DM)
+# ========================================
+
+# Alertes Mesh - Envoyer des alertes critiques via DM Meshtastic
+# Les alertes incluent: vigilance météo (Orange/Rouge) et éclairs (au-delà d'un seuil)
+MESH_ALERTS_ENABLED = True  # Activer/désactiver les alertes Mesh
+
+# Nœuds abonnés aux alertes (recevront des DM en cas d'alerte critique)
+# Format: Liste d'IDs de nœuds (int ou hex) - Ex: [0x16fad3dc, 305419896, 0x12345678]
+# Laisser vide [] pour désactiver les alertes Mesh
+MESH_ALERT_SUBSCRIBED_NODES = []  # Ajouter les IDs des nœuds à alerter
+
+# Seuil d'éclairs pour déclencher une alerte Mesh
+# Alerte envoyée si nombre d'éclairs détectés >= seuil dans la fenêtre de temps
+BLITZ_MESH_ALERT_THRESHOLD = 5  # Nombre minimum d'éclairs pour alerter (défaut: 5)
+
+# Throttling des alertes Mesh - Éviter le spam
+# Temps minimum entre deux alertes du même type vers le même nœud
+MESH_ALERT_THROTTLE_SECONDS = 1800  # 30 minutes entre deux alertes identiques (1800 secondes)
+
 # Configuration collecte voisins via MQTT Meshtastic
 MQTT_NEIGHBOR_ENABLED = True  # Activer/désactiver la collecte de voisins via MQTT
 MQTT_NEIGHBOR_SERVER = "serveurperso.com"  # Serveur MQTT Meshtastic

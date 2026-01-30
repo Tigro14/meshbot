@@ -29,7 +29,8 @@ class VigilanceMonitor:
     """
 
     def __init__(self, departement: str, check_interval: int = 28800,
-                 alert_throttle: int = 3600, alert_levels: list = None):
+                 alert_throttle: int = 3600, alert_levels: list = None,
+                 mesh_alert_manager=None):
         """
         Initialiser le moniteur de vigilance
 
@@ -38,11 +39,13 @@ class VigilanceMonitor:
             check_interval: Intervalle de vérification en secondes (défaut: 8h)
             alert_throttle: Durée minimum entre 2 alertes (défaut: 1h)
             alert_levels: Niveaux de vigilance pour alerter (défaut: ['Orange', 'Rouge'])
+            mesh_alert_manager: Gestionnaire d'alertes Mesh (optionnel)
         """
         self.departement = departement
         self.check_interval = check_interval
         self.alert_throttle = alert_throttle
         self.alert_levels = alert_levels or ['Orange', 'Rouge']
+        self.mesh_alert_manager = mesh_alert_manager
 
         # État interne
         self.last_check_time = 0
@@ -53,6 +56,8 @@ class VigilanceMonitor:
         info_print(f"🌦️ Vigilance monitor initialisé pour département {departement}")
         info_print(f"   Check interval: {check_interval}s, Alert throttle: {alert_throttle}s")
         info_print(f"   Alert levels: {', '.join(self.alert_levels)}")
+        if mesh_alert_manager and mesh_alert_manager.subscribed_nodes:
+            info_print(f"   Alertes Mesh: Activées ({len(mesh_alert_manager.subscribed_nodes)} nœuds)")
 
     def _log_final_error(self, error_type: str, error_msg: str, max_retries: int):
         """
@@ -279,6 +284,32 @@ class VigilanceMonitor:
         """Enregistrer qu'une alerte a été envoyée"""
         self.last_alert_time = time.time()
         info_print(f"📢 Alerte vigilance envoyée pour département {self.departement}")
+
+    def send_mesh_alert(self, vigilance_info: Dict[str, Any]) -> int:
+        """
+        Envoyer une alerte Mesh aux nœuds abonnés
+        
+        Args:
+            vigilance_info: Informations de vigilance depuis check_vigilance()
+        
+        Returns:
+            int: Nombre de nœuds ayant reçu l'alerte
+        """
+        if not self.mesh_alert_manager:
+            debug_print("🌦️ Pas de gestionnaire d'alertes Mesh configuré")
+            return 0
+        
+        # Générer le message compact pour LoRa
+        message = self.format_alert_message(vigilance_info, compact=True)
+        
+        # Envoyer via le gestionnaire d'alertes Mesh
+        sent_count = self.mesh_alert_manager.send_alert(
+            alert_type='vigilance',
+            message=message,
+            force=False  # Respecter le throttling
+        )
+        
+        return sent_count
 
     def get_status(self) -> str:
         """
