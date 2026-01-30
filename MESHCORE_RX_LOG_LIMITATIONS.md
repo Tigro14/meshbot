@@ -1,5 +1,23 @@
 # MeshCore RX_LOG_DATA Limitations and Protocol Parsing
 
+## ⚠️ UPDATE (2026-01-30): LIMITATIONS RESOLVED ⚠️
+
+**The packet parsing limitation described below has been resolved!**
+
+We now integrate `meshcore-decoder-py` library which provides full packet decoding:
+- ✅ Packet type identification (TextMessage, Ack, Advert, etc.)
+- ✅ Route type detection (Flood, Direct, etc.)
+- ✅ Message content preview
+- ✅ Validity checking and error reporting
+
+**See:** `MESHCORE_DECODER_INTEGRATION.md` for complete documentation.
+
+---
+
+## Historical Context (Pre-2026-01-30)
+
+This document describes the **original limitation** that existed before meshcore-decoder integration.
+
 ## Current Status
 
 RX_LOG_DATA monitoring is **working** but **limited** due to lack of MeshCore protocol specification.
