@@ -1042,9 +1042,27 @@ class MeshCoreCLIWrapper:
                     route_name = get_route_type_name(packet.route_type)
                     payload_name = get_payload_type_name(packet.payload_type)
                     
+                    # Check for unknown payload type errors
+                    unknown_type_error = None
+                    if packet.errors:
+                        for error in packet.errors:
+                            if "is not a valid PayloadType" in error:
+                                # Extract the numeric type ID from error message
+                                import re
+                                match = re.search(r'(\d+) is not a valid PayloadType', error)
+                                if match:
+                                    unknown_type_error = match.group(1)
+                                break
+                    
                     # Build detailed info string
                     info_parts = []
-                    info_parts.append(f"Type: {payload_name}")
+                    
+                    # Show unknown types with their numeric ID
+                    if unknown_type_error:
+                        info_parts.append(f"Type: Unknown({unknown_type_error})")
+                    else:
+                        info_parts.append(f"Type: {payload_name}")
+                    
                     info_parts.append(f"Route: {route_name}")
                     
                     # Add message hash if available
@@ -1055,16 +1073,21 @@ class MeshCoreCLIWrapper:
                     if packet.path_length > 0:
                         info_parts.append(f"Hops: {packet.path_length}")
                     
-                    # Check if packet is valid
-                    validity = "✅" if packet.is_valid else "⚠️"
-                    info_parts.append(f"Valid: {validity}")
+                    # Check if packet is valid (only flag as invalid for non-unknown-type errors)
+                    if unknown_type_error:
+                        # Unknown types are common and not really "invalid"
+                        validity = "ℹ️"  # Info icon instead of warning
+                    else:
+                        validity = "✅" if packet.is_valid else "⚠️"
+                    info_parts.append(f"Status: {validity}")
                     
                     # Log decoded packet information
                     debug_print(f"📦 [RX_LOG] {' | '.join(info_parts)}")
                     
-                    # If packet has errors, log them
+                    # Log non-unknown-type errors only
                     if packet.errors:
-                        for error in packet.errors[:3]:  # Show first 3 errors
+                        other_errors = [e for e in packet.errors if "is not a valid PayloadType" not in e]
+                        for error in other_errors[:3]:  # Show first 3 non-type errors
                             debug_print(f"   ⚠️ {error}")
                     
                     # If payload is decoded, show a preview
