@@ -738,8 +738,17 @@ class MeshCoreCLIWrapper:
                             debug_print(f"📊 [MESHCORE-SYNC] Contacts APRÈS sync: {post_count}")
                             
                             # SAVE CONTACTS TO DATABASE (like NODEINFO for Meshtastic)
+                            # DEBUG: Log all conditions to diagnose save failures
+                            debug_print(f"🔍 [MESHCORE-SYNC] Check save conditions:")
+                            debug_print(f"   post_count > 0: {post_count > 0} (count={post_count})")
+                            debug_print(f"   self.node_manager exists: {self.node_manager is not None}")
+                            if self.node_manager:
+                                debug_print(f"   has persistence attr: {hasattr(self.node_manager, 'persistence')}")
+                                if hasattr(self.node_manager, 'persistence'):
+                                    debug_print(f"   persistence is not None: {self.node_manager.persistence is not None}")
+                            
                             if post_count > 0 and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
-                                debug_print(f"💾 [MESHCORE-SYNC] Sauvegarde {post_count} contacts dans SQLite...")
+                                info_print(f"💾 [MESHCORE-SYNC] Sauvegarde {post_count} contacts dans SQLite...")
                                 saved_count = 0
                                 for contact in post_contacts:
                                     try:
@@ -774,6 +783,18 @@ class MeshCoreCLIWrapper:
                                         error_print(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
                                 
                                 info_print(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés dans meshcore_contacts")
+                            elif post_count > 0:
+                                # Contacts were synced but save conditions failed
+                                error_print(f"❌ [MESHCORE-SYNC] {post_count} contacts synchronisés mais NON SAUVEGARDÉS!")
+                                error_print("   → Causes possibles:")
+                                if not self.node_manager:
+                                    error_print("      ❌ node_manager n'est pas configuré (None)")
+                                    error_print("         Solution: Appeler interface.set_node_manager(node_manager) AVANT start_reading()")
+                                elif not hasattr(self.node_manager, 'persistence'):
+                                    error_print("      ❌ node_manager n'a pas d'attribut 'persistence'")
+                                elif not self.node_manager.persistence:
+                                    error_print("      ❌ node_manager.persistence est None")
+                                    error_print("         Solution: Initialiser TrafficPersistence et l'assigner à node_manager.persistence")
                             
                             if post_count == 0:
                                 error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
