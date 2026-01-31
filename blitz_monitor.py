@@ -42,7 +42,8 @@ class BlitzMonitor:
 
     def __init__(self, lat: float = None, lon: float = None, radius_km: int = 50,
                  check_interval: int = 900, window_minutes: int = 15,
-                 interface = None):
+                 interface = None, mesh_alert_manager=None, 
+                 mesh_alert_threshold: int = 5):
         """
         Initialiser le moniteur d'éclairs
 
@@ -53,6 +54,8 @@ class BlitzMonitor:
             check_interval: Intervalle entre vérifications en secondes (défaut: 15min)
             window_minutes: Fenêtre temporelle pour historique (défaut: 15min)
             interface: Interface Meshtastic pour récupérer position auto (optionnel)
+            mesh_alert_manager: Gestionnaire d'alertes Mesh (optionnel)
+            mesh_alert_threshold: Seuil d'éclairs pour alerte Mesh (défaut: 5)
         """
         if not MQTT_AVAILABLE:
             error_print("⚡ Blitz monitor: paho-mqtt ou pygeohash non disponible")
@@ -76,6 +79,8 @@ class BlitzMonitor:
         self.check_interval = check_interval
         self.window_minutes = window_minutes
         self.enabled = True
+        self.mesh_alert_manager = mesh_alert_manager
+        self.mesh_alert_threshold = mesh_alert_threshold
 
         # État interne
         self.strikes = deque(maxlen=1000)  # Éclairs récents
@@ -94,6 +99,8 @@ class BlitzMonitor:
         info_print(f"   Position: {lat:.4f}, {lon:.4f}")
         info_print(f"   Rayon: {radius_km}km, Window: {window_minutes}min")
         info_print(f"   Geohashes: {', '.join(self.geohashes)}")
+        if mesh_alert_manager and mesh_alert_manager.subscribed_nodes:
+            info_print(f"   Alertes Mesh: Activées (seuil: {mesh_alert_threshold} éclairs)")
 
     def _get_position_from_interface(self, interface) -> Tuple[Optional[float], Optional[float]]:
         """
@@ -424,6 +431,7 @@ class BlitzMonitor:
     def check_and_report(self) -> Optional[str]:
         """
         Vérifier les éclairs récents et générer un rapport
+        Envoie également une alerte Mesh si le seuil est dépassé
 
         Returns:
             str: Rapport formaté ou None si pas d'éclairs
@@ -446,9 +454,45 @@ class BlitzMonitor:
         # Si éclairs détectés, générer rapport
         if count > 0:
             self.last_strike_count = count
+            
+            # Envoyer alerte Mesh si seuil dépassé
+            if count >= self.mesh_alert_threshold:
+                self.send_mesh_alert(recent)
+            
             return self._format_report(recent)
 
         return None
+
+    def send_mesh_alert(self, strikes: List[Dict]) -> int:
+        """
+        Envoyer une alerte Mesh aux nœuds abonnés
+        
+        Args:
+            strikes: Liste des éclairs détectés
+        
+        Returns:
+            int: Nombre de nœuds ayant reçu l'alerte
+        """
+        if not self.mesh_alert_manager:
+            debug_print("⚡ Pas de gestionnaire d'alertes Mesh configuré")
+            return 0
+        
+        count = len(strikes)
+        if count < self.mesh_alert_threshold:
+            debug_print(f"⚡ Seuil non atteint: {count}/{self.mesh_alert_threshold}")
+            return 0
+        
+        # Générer le message compact pour LoRa
+        message = self._format_report(strikes, compact=True)
+        
+        # Envoyer via le gestionnaire d'alertes Mesh
+        sent_count = self.mesh_alert_manager.send_alert(
+            alert_type='blitz',
+            message=message,
+            force=False  # Respecter le throttling
+        )
+        
+        return sent_count
 
     def _format_report(self, strikes: List[Dict], compact: bool = True) -> str:
         """

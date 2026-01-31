@@ -36,6 +36,7 @@ from mqtt_neighbor_collector import MQTTNeighborCollector
 from mesh_traceroute_manager import MeshTracerouteManager
 from db_error_monitor import DBErrorMonitor
 from reboot_semaphore import RebootSemaphore
+from mesh_alert_manager import MeshAlertManager
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -124,7 +125,8 @@ class MeshBot:
                     departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
                     check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 28800),
                     alert_throttle=globals().get('VIGILANCE_ALERT_THROTTLE', 3600),
-                    alert_levels=globals().get('VIGILANCE_ALERT_LEVELS', ['Orange', 'Rouge'])
+                    alert_levels=globals().get('VIGILANCE_ALERT_LEVELS', ['Orange', 'Rouge']),
+                    mesh_alert_manager=None  # Sera mis à jour dans start() après init
                 )
             except Exception as e:
                 error_print(f"Erreur initialisation vigilance monitor: {e}")
@@ -1914,6 +1916,50 @@ class MeshBot:
                 info_print("📊 ESPHome télémétrie désactivée - télémétrie embarquée inchangée")
 
             # ========================================
+            # GESTIONNAIRE D'ALERTES MESH
+            # ========================================
+            # Initialiser le gestionnaire d'alertes Mesh (avant vigilance/blitz)
+            self.mesh_alert_manager = None
+            if globals().get('MESH_ALERTS_ENABLED', False):
+                try:
+                    info_print("📢 Initialisation du gestionnaire d'alertes Mesh...")
+                    subscribed_nodes = globals().get('MESH_ALERT_SUBSCRIBED_NODES', [])
+                    throttle_seconds = globals().get('MESH_ALERT_THROTTLE_SECONDS', 1800)
+                    
+                    # Convertir les IDs en int si nécessaire (support hex strings)
+                    normalized_nodes = []
+                    for node in subscribed_nodes:
+                        if isinstance(node, str):
+                            # Convertir hex string vers int
+                            if node.startswith('0x'):
+                                normalized_nodes.append(int(node, 16))
+                            else:
+                                normalized_nodes.append(int(node))
+                        else:
+                            normalized_nodes.append(node)
+                    
+                    if normalized_nodes:
+                        self.mesh_alert_manager = MeshAlertManager(
+                            message_sender=self.message_handler.router.sender,
+                            subscribed_nodes=normalized_nodes,
+                            throttle_seconds=throttle_seconds
+                        )
+                        info_print("✅ Gestionnaire d'alertes Mesh initialisé")
+                    else:
+                        info_print("ℹ️ Alertes Mesh activées mais aucun nœud abonné")
+                except Exception as e:
+                    error_print(f"Erreur initialisation mesh alert manager: {e}")
+                    error_print(traceback.format_exc())
+                    self.mesh_alert_manager = None
+            else:
+                debug_print("ℹ️ Alertes Mesh désactivées (MESH_ALERTS_ENABLED=False)")
+            
+            # Mettre à jour le mesh_alert_manager dans vigilance_monitor si initialisé
+            if self.vigilance_monitor and self.mesh_alert_manager:
+                self.vigilance_monitor.mesh_alert_manager = self.mesh_alert_manager
+                info_print("✅ Vigilance monitor connecté aux alertes Mesh")
+
+            # ========================================
             # MONITORING ÉCLAIRS BLITZORTUNG
             # ========================================
             if globals().get('BLITZ_ENABLED', False):
@@ -1924,6 +1970,8 @@ class MeshBot:
                     blitz_lon = globals().get('BLITZ_LONGITUDE', 0.0)
                     lat = blitz_lat if blitz_lat != 0.0 else None
                     lon = blitz_lon if blitz_lon != 0.0 else None
+                    
+                    mesh_alert_threshold = globals().get('BLITZ_MESH_ALERT_THRESHOLD', 5)
 
                     self.blitz_monitor = BlitzMonitor(
                         lat=lat,
@@ -1931,7 +1979,9 @@ class MeshBot:
                         radius_km=globals().get('BLITZ_RADIUS_KM', 50),
                         check_interval=globals().get('BLITZ_CHECK_INTERVAL', 900),
                         window_minutes=globals().get('BLITZ_WINDOW_MINUTES', 15),
-                        interface=self.interface
+                        interface=self.interface,
+                        mesh_alert_manager=self.mesh_alert_manager,
+                        mesh_alert_threshold=mesh_alert_threshold
                     )
 
                     if self.blitz_monitor.enabled:
