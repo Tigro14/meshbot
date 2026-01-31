@@ -1915,49 +1915,9 @@ class MeshBot:
             else:
                 info_print("📊 ESPHome télémétrie désactivée - télémétrie embarquée inchangée")
 
-            # ========================================
-            # GESTIONNAIRE D'ALERTES MESH
-            # ========================================
-            # Initialiser le gestionnaire d'alertes Mesh (avant vigilance/blitz)
+            # NOTE: Gestionnaire d'alertes Mesh initialisé plus tard après MessageHandler
+            # (voir section après MeshTracerouteManager)
             self.mesh_alert_manager = None
-            if globals().get('MESH_ALERTS_ENABLED', False):
-                try:
-                    info_print("📢 Initialisation du gestionnaire d'alertes Mesh...")
-                    subscribed_nodes = globals().get('MESH_ALERT_SUBSCRIBED_NODES', [])
-                    throttle_seconds = globals().get('MESH_ALERT_THROTTLE_SECONDS', 1800)
-                    
-                    # Convertir les IDs en int si nécessaire (support hex strings)
-                    normalized_nodes = []
-                    for node in subscribed_nodes:
-                        if isinstance(node, str):
-                            # Convertir hex string vers int
-                            if node.startswith('0x'):
-                                normalized_nodes.append(int(node, 16))
-                            else:
-                                normalized_nodes.append(int(node))
-                        else:
-                            normalized_nodes.append(node)
-                    
-                    if normalized_nodes:
-                        self.mesh_alert_manager = MeshAlertManager(
-                            message_sender=self.message_handler.router.sender,
-                            subscribed_nodes=normalized_nodes,
-                            throttle_seconds=throttle_seconds
-                        )
-                        info_print("✅ Gestionnaire d'alertes Mesh initialisé")
-                    else:
-                        info_print("ℹ️ Alertes Mesh activées mais aucun nœud abonné")
-                except Exception as e:
-                    error_print(f"Erreur initialisation mesh alert manager: {e}")
-                    error_print(traceback.format_exc())
-                    self.mesh_alert_manager = None
-            else:
-                debug_print("ℹ️ Alertes Mesh désactivées (MESH_ALERTS_ENABLED=False)")
-            
-            # Mettre à jour le mesh_alert_manager dans vigilance_monitor si initialisé
-            if self.vigilance_monitor and self.mesh_alert_manager:
-                self.vigilance_monitor.mesh_alert_manager = self.mesh_alert_manager
-                info_print("✅ Vigilance monitor connecté aux alertes Mesh")
 
             # ========================================
             # MONITORING ÉCLAIRS BLITZORTUNG
@@ -1980,7 +1940,7 @@ class MeshBot:
                         check_interval=globals().get('BLITZ_CHECK_INTERVAL', 900),
                         window_minutes=globals().get('BLITZ_WINDOW_MINUTES', 15),
                         interface=self.interface,
-                        mesh_alert_manager=self.mesh_alert_manager,
+                        mesh_alert_manager=None,  # Sera mis à jour après MessageHandler init
                         mesh_alert_threshold=mesh_alert_threshold
                     )
 
@@ -2064,6 +2024,53 @@ class MeshBot:
             self.message_handler.router.mesh_traceroute = self.mesh_traceroute
             self.message_handler.router.network_handler.mesh_traceroute = self.mesh_traceroute
             info_print("✅ MessageHandler créé")
+
+            # ========================================
+            # GESTIONNAIRE D'ALERTES MESH
+            # ========================================
+            # Initialiser le gestionnaire d'alertes Mesh (après message_handler)
+            if globals().get('MESH_ALERTS_ENABLED', False):
+                try:
+                    info_print("📢 Initialisation du gestionnaire d'alertes Mesh...")
+                    subscribed_nodes = globals().get('MESH_ALERT_SUBSCRIBED_NODES', [])
+                    throttle_seconds = globals().get('MESH_ALERT_THROTTLE_SECONDS', 1800)
+                    
+                    # Convertir les IDs en int si nécessaire (support hex strings)
+                    normalized_nodes = []
+                    for node in subscribed_nodes:
+                        if isinstance(node, str):
+                            # Convertir hex string vers int
+                            if node.startswith('0x'):
+                                normalized_nodes.append(int(node, 16))
+                            else:
+                                normalized_nodes.append(int(node))
+                        else:
+                            normalized_nodes.append(node)
+                    
+                    if normalized_nodes:
+                        self.mesh_alert_manager = MeshAlertManager(
+                            message_sender=self.message_handler.router.sender,
+                            subscribed_nodes=normalized_nodes,
+                            throttle_seconds=throttle_seconds
+                        )
+                        info_print("✅ Gestionnaire d'alertes Mesh initialisé")
+                    else:
+                        info_print("ℹ️ Alertes Mesh activées mais aucun nœud abonné")
+                except Exception as e:
+                    error_print(f"Erreur initialisation mesh alert manager: {e}")
+                    error_print(traceback.format_exc())
+                    self.mesh_alert_manager = None
+            else:
+                debug_print("ℹ️ Alertes Mesh désactivées (MESH_ALERTS_ENABLED=False)")
+            
+            # Mettre à jour le mesh_alert_manager dans vigilance_monitor et blitz_monitor
+            if self.vigilance_monitor and self.mesh_alert_manager:
+                self.vigilance_monitor.mesh_alert_manager = self.mesh_alert_manager
+                info_print("✅ Vigilance monitor connecté aux alertes Mesh")
+            
+            if self.blitz_monitor and self.mesh_alert_manager:
+                self.blitz_monitor.mesh_alert_manager = self.mesh_alert_manager
+                info_print("✅ Blitz monitor connecté aux alertes Mesh")
 
             # ========================================
             # INTÉGRATION PLATEFORMES MESSAGERIE
