@@ -7,6 +7,7 @@ Centralise la configuration de Telegram, Discord, Matrix, etc.
 
 from platforms import PlatformConfig
 from config import *
+# config.py already imports config_priv, so all params are available here
 
 
 # ========================================

@@ -3,6 +3,7 @@ __pycache__/
 *.db
 map/*.json
 config.py
+config.priv.py
 test_thread_names.py
 monitor.log
 xiao.priv
