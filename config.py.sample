@@ -13,10 +13,36 @@ Les paramètres sensibles (tokens, mots de passe, IDs) sont dans config.priv.py
 # Si le fichier n'existe pas, créer le depuis config.priv.py.sample
 try:
     from config_priv import *
-except ImportError:
-    print("⚠️  ATTENTION: config.priv.py introuvable!")
-    print("   Copier config.priv.py.sample vers config.priv.py et remplir vos valeurs")
-    print("   Utilisation des valeurs par défaut (non fonctionnelles)")
+except (ImportError, SyntaxError) as e:
+    import os
+    import sys
+    import traceback
+    
+    # Afficher le chemin où Python cherche le fichier
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    config_priv_path = os.path.join(current_dir, 'config_priv.py')
+    
+    print("⚠️  ATTENTION: Impossible d'importer config_priv.py!")
+    print(f"   Répertoire actuel: {current_dir}")
+    print(f"   Fichier recherché: {config_priv_path}")
+    print(f"   Fichier existe: {os.path.exists(config_priv_path)}")
+    
+    if os.path.exists(config_priv_path):
+        print(f"   Permissions: {oct(os.stat(config_priv_path).st_mode)[-3:]}")
+        print(f"   Taille: {os.path.getsize(config_priv_path)} octets")
+        print(f"   ⚠️  ERREUR: {type(e).__name__}: {e}")
+        if isinstance(e, SyntaxError):
+            print("   → Le fichier contient une ERREUR DE SYNTAXE Python")
+            print(f"   → Ligne {e.lineno}: {e.text.strip() if e.text else 'N/A'}")
+        else:
+            print("   → Le fichier existe mais l'import a échoué")
+        print("   → Vérifier le contenu avec: python3 -m py_compile config_priv.py")
+        print("   → Ou utiliser: python3 diagnose_config_priv.py")
+    else:
+        print("   → Le fichier n'existe pas à cet emplacement")
+        print("   → Copier config.priv.py.sample vers config_priv.py et remplir vos valeurs")
+    
+    print("\n   ⚠️  Utilisation des valeurs par défaut (non fonctionnelles)")
     
     # Valeurs par défaut pour éviter les erreurs d'import
     TELEGRAM_BOT_TOKEN = "******************"
