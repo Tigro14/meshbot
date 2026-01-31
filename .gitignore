@@ -2,7 +2,6 @@ __pycache__/
 *.json
 *.db
 map/*.json
-config.py
 config.priv.py
 test_thread_names.py
 monitor.log
