@@ -19,15 +19,15 @@ except ImportError:
     print("   Utilisation des valeurs par défaut (non fonctionnelles)")
     
     # Valeurs par défaut pour éviter les erreurs d'import
-    #TELEGRAM_BOT_TOKEN = "******************"
-    #TELEGRAM_AUTHORIZED_USERS = []
-    #TELEGRAM_ALERT_USERS = []
-    #TELEGRAM_TO_MESH_MAPPING = {}
-    #MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password_here"
-    #REBOOT_AUTHORIZED_USERS = []
-    #REBOOT_PASSWORD = "your_password_secret"
-    #MESH_ALERT_SUBSCRIBED_NODES = []
-    #CLI_TO_MESH_MAPPING = {}
+    TELEGRAM_BOT_TOKEN = "******************"
+    TELEGRAM_AUTHORIZED_USERS = []
+    TELEGRAM_ALERT_USERS = []
+    TELEGRAM_TO_MESH_MAPPING = {}
+    MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password_here"
+    REBOOT_AUTHORIZED_USERS = []
+    REBOOT_PASSWORD = "your_password_secret"
+    MESH_ALERT_SUBSCRIBED_NODES = []
+    CLI_TO_MESH_MAPPING = {}
 
 # ========================================
 # CONFIGURATION MODE DE CONNEXION
