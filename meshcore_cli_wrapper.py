@@ -865,16 +865,35 @@ class MeshCoreCLIWrapper:
                     error_print(traceback.format_exc())
                     error_print("   ⚠️ Les messages peuvent ne pas être reçus automatiquement")
                 
-                # Boucle pour maintenir l'event loop actif
-                while self.running:
-                    await asyncio.sleep(0.1)  # Pause async pour laisser le dispatcher fonctionner
+                # NOTE: Ne PAS utiliser while self.running ici!
+                # La boucle d'événements se termine automatiquement quand on appelle stop()
+                # On schedule juste les tâches d'initialisation et on laisse la boucle tourner
             
-            # Exécuter la coroutine dans la boucle
-            self._loop.run_until_complete(event_loop_task())
+            # Schedule la coroutine d'initialisation
+            self._loop.create_task(event_loop_task())
+            
+            # Exécuter la boucle d'événements jusqu'à ce qu'elle soit arrêtée
+            # CRITICAL FIX: Utiliser run_forever() au lieu de run_until_complete()
+            # run_forever() permet au dispatcher meshcore de traiter les événements
+            # run_until_complete() bloquait et empêchait les callbacks d'être invoqués
+            info_print("🔄 [MESHCORE-CLI] Démarrage boucle d'événements...")
+            self._loop.run_forever()
             
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur boucle événements: {e}")
             error_print(traceback.format_exc())
+        finally:
+            # Cleanup: fermer proprement la boucle
+            try:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(self._loop)
+                for task in pending:
+                    task.cancel()
+                # Wait for cancellation
+                self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                self._loop.close()
+            except Exception as cleanup_err:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur nettoyage loop: {cleanup_err}")
         
         info_print("📡 [MESHCORE-CLI] Arrêt écoute événements")
     
@@ -1239,24 +1258,43 @@ class MeshCoreCLIWrapper:
         
         self.running = False
         
-        if self.message_thread:
-            self.message_thread.join(timeout=2)
+        # Stop the async event loop if running
+        if hasattr(self, '_loop') and self._loop and self._loop.is_running():
+            info_print("🛑 [MESHCORE-CLI] Arrêt de la boucle d'événements...")
+            self._loop.call_soon_threadsafe(self._loop.stop)
         
-        if self.healthcheck_thread:
+        if self.message_thread and self.message_thread.is_alive():
+            info_print("⏳ [MESHCORE-CLI] Attente du thread de messages...")
+            self.message_thread.join(timeout=5)
+        
+        if self.healthcheck_thread and self.healthcheck_thread.is_alive():
+            info_print("⏳ [MESHCORE-CLI] Attente du thread healthcheck...")
             self.healthcheck_thread.join(timeout=2)
         
         if self.meshcore:
             try:
-                # Fermer avec l'API async
-                self._loop.run_until_complete(self.meshcore.disconnect())
+                # Fermer avec l'API async - créer une nouvelle boucle si nécessaire
+                if hasattr(self, '_loop') and not self._loop.is_closed():
+                    # Utiliser la boucle existante si pas fermée
+                    if not self._loop.is_running():
+                        self._loop.run_until_complete(self.meshcore.disconnect())
+                else:
+                    # Créer une nouvelle boucle temporaire pour la déconnexion
+                    temp_loop = asyncio.new_event_loop()
+                    try:
+                        temp_loop.run_until_complete(self.meshcore.disconnect())
+                    finally:
+                        temp_loop.close()
             except Exception as e:
-                error_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture: {e}")
+                error_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture meshcore: {e}")
         
-        if hasattr(self, '_loop'):
+        # Close the event loop if not already closed
+        if hasattr(self, '_loop') and self._loop and not self._loop.is_closed():
             try:
                 self._loop.close()
-            except Exception:
-                pass
+                info_print("✅ [MESHCORE-CLI] Boucle d'événements fermée")
+            except Exception as e:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture loop: {e}")
         
         info_print("✅ [MESHCORE-CLI] Connexion fermée")
 
