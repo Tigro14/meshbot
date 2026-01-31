@@ -1237,16 +1237,48 @@ def load_new_data(self, hours=24):
 
 ### Configuration File Structure
 
-The bot uses a two-tier configuration system:
+The bot uses a **three-tier configuration system** for better security and organization:
 
-1. **`config.py`** - Main configuration (hardware, services, limits, AI)
-2. **`platform_config.py`** - Platform-specific configurations (Telegram, Discord, etc.)
+1. **`config.py`** - Public configuration (hardware, features, limits, AI)
+2. **`config_priv.py`** - Private configuration (tokens, passwords, user IDs) - **gitignored**
+3. **`platform_config.py`** - Platform-specific configurations (Telegram, Discord, etc.)
+
+#### Private Configuration (`config_priv.py`)
+
+**NEW:** Sensitive parameters are now isolated in a separate gitignored file.
+
+```python
+# config_priv.py.sample - Template (committed to git)
+# config_priv.py - Local instance (gitignored, never committed)
+
+# SENSITIVE PARAMETERS ONLY
+TELEGRAM_BOT_TOKEN = "******************"
+TELEGRAM_AUTHORIZED_USERS = [123456789]
+TELEGRAM_ALERT_USERS = [123456789]
+TELEGRAM_TO_MESH_MAPPING = {...}
+MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password_here"
+REBOOT_AUTHORIZED_USERS = [123456789, 0x16fad3dc]
+REBOOT_PASSWORD = "your_password_secret"
+MESH_ALERT_SUBSCRIBED_NODES = []
+CLI_TO_MESH_MAPPING = {}
+```
 
 #### Main Configuration (`config.py`)
+
+**PUBLIC PARAMETERS** - Safe to share, commit examples
 
 ```python
 # config.py.sample - Template (committed to git)
 # config.py - Local instance (gitignored)
+
+# IMPORTS PRIVATE CONFIG (with fallback if missing)
+try:
+    from config_priv import *
+except ImportError:
+    # Fallback defaults if config_priv.py doesn't exist
+    print("⚠️  config.priv.py introuvable!")
+    TELEGRAM_BOT_TOKEN = "******************"
+    # ... other defaults
 
 # Structure
 # ========================================
@@ -1290,25 +1322,15 @@ TELEGRAM_AI_CONFIG = {
 # PLATFORM CONFIGURATION
 # ========================================
 TELEGRAM_ENABLED = True
-TELEGRAM_BOT_TOKEN = "******************"
-TELEGRAM_AUTHORIZED_USERS = []
-TELEGRAM_ALERT_USERS = []
-TELEGRAM_TO_MESH_MAPPING = {...}
-
-# ========================================
-# SECURITY
-# ========================================
-REBOOT_PASSWORD = "secret"
-REBOOT_AUTHORIZED_USERS = [12345678, 0x16fad3dc]
+# NOTE: TELEGRAM_BOT_TOKEN, TELEGRAM_AUTHORIZED_USERS, etc.
+#       are imported from config_priv.py
 
 # ========================================
 # MONITORING & ALERTS
 # ========================================
 TEMP_WARNING_THRESHOLD = 60
 CPU_WARNING_THRESHOLD = 90
-
-# TCP disconnect alerts (TCP mode only)
-TCP_DISCONNECT_ALERT_ENABLED = True  # Alert via Telegram when TCP connection lost
+TCP_DISCONNECT_ALERT_ENABLED = True
 
 # ========================================
 # DEBUG
@@ -1354,14 +1376,34 @@ DISCORD_PLATFORM_CONFIG = PlatformConfig(
 
 ### Configuration Best Practices
 
-1. **Always update `config.py.sample`** when adding new options
-2. **Never commit `config.py`** (contains secrets)
-3. **Update `platform_config.py`** when adding new platforms
-4. **Use descriptive comments** for each option
-5. **Group related options** with section headers
-6. **Provide sensible defaults** where possible
-7. **Document units** (seconds, characters, percent, etc.)
-8. **Test platform configs** independently before enabling
+1. **Always update `config.py.sample`** when adding new public options
+2. **Always update `config.priv.py.sample`** when adding new sensitive options
+3. **Never commit `config.py`** or **`config_priv.py`** (both gitignored)
+4. **Separate concerns**: Public params in config.py, sensitive in config_priv.py
+5. **Update `platform_config.py`** when adding new platforms
+6. **Use descriptive comments** for each option
+7. **Group related options** with section headers
+8. **Provide sensible defaults** where possible
+9. **Document units** (seconds, characters, percent, etc.)
+10. **Test platform configs** independently before enabling
+
+#### What Goes Where?
+
+**config.py (Public - Safe to share)**
+- Hardware configuration (ports, hosts, IPs)
+- Feature enable/disable flags
+- Thresholds and intervals
+- AI configuration (prompts, limits)
+- System limits and tuning parameters
+- Non-sensitive network settings
+
+**config_priv.py (Private - Never share)**
+- API tokens (Telegram bot token)
+- Passwords (reboot, MQTT, etc.)
+- User IDs (authorized users, alert recipients)
+- User-to-mesh mappings
+- Subscribed node lists
+- Any data that could compromise security
 
 ### Environment-Specific Configuration
 
@@ -2759,9 +2801,26 @@ This document should be updated when:
 - Performance patterns evolve
 - New platforms are added
 
-**Last updated**: 2026-01-07
+**Last updated**: 2026-01-31
 **Updated by**: GitHub Copilot
-**Changes in this update (2026-01-07)**:
+**Changes in this update (2026-01-31)**:
+- **NEW: Configuration Separation** - Sensitive parameters isolated for better security
+  - Created `config.priv.py.sample` for sensitive parameters only (tokens, passwords, user IDs)
+  - Updated `config.py.sample` to import from config_priv with graceful fallback
+  - Removed duplicate CLI_* parameters (were defined twice in old config)
+  - Updated `.gitignore` to include `config.priv.py`
+  - Created `CONFIG_MIGRATION.md` with migration guide for existing users
+  - Created `test_config_separation.py` with comprehensive test suite
+  - Benefits: 
+    - ✅ Secrets never committed to git
+    - ✅ Easier to share public config
+    - ✅ Clear separation between public and private params
+    - ✅ No duplicate parameters
+    - ✅ Fully backward compatible (config.py imports config_priv automatically)
+  - Files affected: config.py.sample, config.priv.py.sample, .gitignore, README.md, CLAUDE.md
+  - Testing: All 4 tests pass (import without priv, import with priv, no duplicates, isolation verified)
+
+**Previous changes (2026-01-07)**:
 - **NEW: TCP Health Monitoring Improvements** - Configurable health checks and packet reception diagnostics
   - Added `TCP_HEALTH_CHECK_INTERVAL` configuration option in config.py
   - Made TCP health check interval user-configurable (default: 30s)

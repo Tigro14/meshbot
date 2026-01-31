@@ -147,21 +147,49 @@ pip install meshtastic pypubsub requests python-telegram-bot \
 
 ### Configuration
 
-1. **Copier le template de configuration**
+**⚠️ NOUVEAU : Configuration séparée en deux fichiers**
+
+La configuration est maintenant divisée en deux fichiers pour une meilleure sécurité :
+- **config.py** : Paramètres publics (ports, fonctionnalités, limites)
+- **config_priv.py** : Paramètres sensibles (tokens, mots de passe, IDs utilisateurs) - **gitignored**
+
+1. **Copier les templates de configuration**
    ```bash
    cp config.py.sample config.py
+   cp config.priv.py.sample config_priv.py
    ```
    
    **OU** utiliser un exemple prêt à l'emploi :
    ```bash
    # Pour mode Serial (connexion USB)
    cp config.serial.example config.py
+   cp config.priv.py.sample config_priv.py
    
    # Pour mode TCP (connexion réseau)
    cp config.tcp.example config.py
+   cp config.priv.py.sample config_priv.py
    ```
 
-2. **Éditer `config.py` avec vos paramètres**
+2. **Éditer `config_priv.py` avec vos paramètres SENSIBLES**
+
+   ```python
+   # Token Telegram (obtenir via @BotFather)
+   TELEGRAM_BOT_TOKEN = "1234567890:ABCdef..."
+   
+   # Utilisateurs autorisés (IDs Telegram)
+   TELEGRAM_AUTHORIZED_USERS = [123456789]
+   
+   # Mot de passe pour commande /rebootpi
+   REBOOT_PASSWORD = "your_secret_password"
+   
+   # Utilisateurs autorisés à rebooter
+   REBOOT_AUTHORIZED_USERS = [123456789, 0x16fad3dc]
+   
+   # Mot de passe MQTT
+   MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password"
+   ```
+
+3. **Éditer `config.py` avec vos paramètres PUBLICS**
 
    **Mode de connexion (CONNECTION_MODE)**
    

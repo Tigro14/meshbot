@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""
+Configuration privée pour le bot Meshtastic
+Contient les paramètres sensibles (tokens, mots de passe, IDs utilisateurs)
+
+⚠️ NE PAS COMMITER CE FICHIER DANS GIT
+Copier ce fichier vers config.priv.py et remplir avec vos valeurs réelles
+"""
+
+# ========================================
+# CONFIGURATION TELEGRAM - PARAMETRES SENSIBLES
+# ========================================
+
+# Token du bot Telegram
+# Obtenir via @BotFather sur Telegram
+TELEGRAM_BOT_TOKEN = "******************"
+
+# Utilisateurs Telegram autorisés (liste vide = tous autorisés)
+# Format: [123456789, 987654321, ...]
+TELEGRAM_AUTHORIZED_USERS = []
+
+# Utilisateurs Telegram à alerter (IDs Telegram)
+# Si vide, utilise TELEGRAM_AUTHORIZED_USERS
+TELEGRAM_ALERT_USERS = []
+
+# Mapping des utilisateurs Telegram vers des identités Meshtastic
+# Format: {telegram_id: {"node_id": 0x..., "short_name": "...", "display_name": "..."}}
+TELEGRAM_TO_MESH_MAPPING = {
+    # Exemple:
+    # 123456789: {
+    #     "node_id": 0x16fad3dc,
+    #     "short_name": "tigro",
+    #     "display_name": "Tigro User"
+    # },
+    # 987654321: {
+    #     "node_id": 0x12345678,
+    #     "short_name": "autre",
+    #     "display_name": "Autre User"
+    # }
+}
+
+# ========================================
+# CONFIGURATION MQTT - PARAMETRES SENSIBLES
+# ========================================
+
+# Mot de passe MQTT pour la collecte de voisins
+MQTT_NEIGHBOR_PASSWORD = "your_mqtt_password_here"
+
+# ========================================
+# CONFIGURATION REBOOT - PARAMETRES SENSIBLES
+# ========================================
+
+# Utilisateurs autorisés à rebooter le Pi (IDs Telegram et Mesh)
+# Format: [telegram_id, 0xmesh_id, ...]
+REBOOT_AUTHORIZED_USERS = [
+    # Exemples:
+    # 123456789,    # Telegram ID
+    # 0x16fad3dc    # Mesh node ID
+]
+
+# Mot de passe pour la commande /rebootpi
+REBOOT_PASSWORD = "your_password_secret"
+
+# ========================================
+# CONFIGURATION ALERTES MESH - PARAMETRES SENSIBLES
+# ========================================
+
+# Nœuds abonnés aux alertes (recevront des DM en cas d'alerte critique)
+# Format: Liste d'IDs de nœuds (int ou hex) - Ex: [0x16fad3dc, 305419896, 0x12345678]
+# Laisser vide [] pour désactiver les alertes Mesh
+MESH_ALERT_SUBSCRIBED_NODES = []
+
+# ========================================
+# CONFIGURATION CLI - PARAMETRES SENSIBLES
+# ========================================
+
+# Mapping CLI vers identité Mesh (optionnel)
+# Si défini, les messages CLI apparaîtront comme venant de ce nœud
+CLI_TO_MESH_MAPPING = {
+    # Par défaut, la CLI n'a pas de mapping mesh
+    # Décommenter et configurer si besoin:
+    # 0xC11A0001: {
+    #     "mesh_id": 0x12345678,
+    #     "mesh_name": "DevUser"
+    # }
+}
