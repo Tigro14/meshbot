@@ -100,6 +100,11 @@ CONNECTION_MODE = 'serial'  # 'serial' ou 'tcp'
 # Configuration connexion série Meshtastic (utilisée si CONNECTION_MODE='serial')
 SERIAL_PORT = "/dev/ttyACM0"
 
+# Retry logic for serial port (if port is temporarily locked)
+# Useful when port is briefly used by another process and becomes available again
+SERIAL_PORT_RETRIES = 3  # Number of retry attempts
+SERIAL_PORT_RETRY_DELAY = 2  # Delay in seconds between retries
+
 # Configuration connexion TCP Meshtastic (utilisée si CONNECTION_MODE='tcp')
 TCP_HOST = "192.168.1.38"
 TCP_PORT = 4403
