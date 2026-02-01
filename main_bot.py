@@ -1662,6 +1662,28 @@ class MeshBot:
             # 2. MeshCore (if Meshtastic disabled) - Companion mode for DMs only
             # 3. Standalone (neither enabled) - Test mode
             
+            # ========================================
+            # VALIDATION: SERIAL PORT CONFLICT DETECTION
+            # ========================================
+            # Check if both are configured to use the same serial port
+            # This would cause "Resource temporarily unavailable" errors
+            if meshtastic_enabled and meshcore_enabled:
+                serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
+                meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                if connection_mode == 'serial' and serial_port == meshcore_port:
+                    error_print("❌ ERREUR DE CONFIGURATION: Conflit de port série détecté!")
+                    error_print(f"   SERIAL_PORT = {serial_port}")
+                    error_print(f"   MESHCORE_SERIAL_PORT = {meshcore_port}")
+                    error_print("   → Les deux interfaces ne peuvent pas utiliser le même port")
+                    error_print("   → Meshtastic sera utilisé (priorité)")
+                    error_print("   → MeshCore sera ignoré pour éviter le conflit")
+                    error_print("")
+                    error_print("   SOLUTION: Dans config.py, utiliser des ports différents:")
+                    error_print("     SERIAL_PORT = \"/dev/ttyACM0\"  # Meshtastic")
+                    error_print("     MESHCORE_SERIAL_PORT = \"/dev/ttyACM2\"  # MeshCore")
+                    error_print("")
+            
             if not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
                 info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
@@ -1790,6 +1812,17 @@ class MeshBot:
                 # MODE MESHCORE COMPANION - Connexion série MeshCore
                 # ========================================
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # DEFENSIVE CHECK: This block should NEVER run if meshtastic_enabled is True
+                # Log comprehensive state for debugging configuration conflicts
+                if meshtastic_enabled:
+                    error_print("❌ FATAL ERROR: MeshCore initialization attempted with MESHTASTIC_ENABLED=True")
+                    error_print(f"   meshtastic_enabled = {meshtastic_enabled}")
+                    error_print(f"   meshcore_enabled = {meshcore_enabled}")
+                    error_print(f"   connection_mode = {connection_mode}")
+                    error_print("   → This should NEVER happen - check code logic")
+                    return False
+                
                 info_print(f"🔗 Mode MESHCORE COMPANION: Connexion série {meshcore_port}")
                 info_print("   → Fonctionnalités disponibles: /bot, /weather, /power, /sys, /help")
                 info_print("   → Fonctionnalités désactivées: /nodes, /my, /trace, /stats (Meshtastic requis)")
