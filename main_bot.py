@@ -1656,44 +1656,27 @@ class MeshBot:
             meshcore_enabled = globals().get('MESHCORE_ENABLED', False)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
+            # Priority order when both are enabled:
+            # 1. Meshtastic (if enabled) - Full mesh capabilities
+            # 2. MeshCore (if Meshtastic disabled) - Companion mode for DMs only
+            # 3. Standalone (neither enabled) - Test mode
+            
             if not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
                 info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
                 info_print("   → Bot en mode test uniquement (commandes limitées)")
                 self.interface = MeshCoreStandaloneInterface()
                 
-            elif meshcore_enabled:
-                # ========================================
-                # MODE MESHCORE COMPANION - Connexion série MeshCore
-                # ========================================
-                meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
-                info_print(f"🔗 Mode MESHCORE COMPANION: Connexion série {meshcore_port}")
-                info_print("   → Fonctionnalités disponibles: /bot, /weather, /power, /sys, /help")
-                info_print("   → Fonctionnalités désactivées: /nodes, /my, /trace, /stats (Meshtastic requis)")
+            elif meshtastic_enabled and meshcore_enabled:
+                # Both enabled - warn user and prioritize Meshtastic
+                info_print("⚠️ AVERTISSEMENT: MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux activés")
+                info_print("   → Priorité donnée à Meshtastic (capacités mesh complètes)")
+                info_print("   → MeshCore sera ignoré. Pour utiliser MeshCore:")
+                info_print("   →   Définir MESHTASTIC_ENABLED = False dans config.py")
+                info_print("")
+                # Continue to Meshtastic connection (next if blocks)
                 
-                self.interface = MeshCoreSerialInterface(meshcore_port)
-                
-                if not self.interface.connect():
-                    error_print("❌ Échec connexion série MeshCore")
-                    return False
-                
-                # Configure node_manager for pubkey lookups
-                if hasattr(self.interface, 'set_node_manager'):
-                    self.interface.set_node_manager(self.node_manager)
-                
-                # Démarrer la lecture des messages
-                if not self.interface.start_reading():
-                    error_print("❌ Échec démarrage lecture MeshCore")
-                    return False
-                
-                # Configurer le callback pour les messages reçus
-                self.interface.set_message_callback(self.on_message)
-                info_print(f"✅ Callback MeshCore configuré: {self.on_message}")
-                info_print(f"   Interface type: {type(self.interface).__name__}")
-                info_print(f"   Callback set to: on_message method")
-                info_print("✅ Connexion MeshCore établie")
-                
-            elif meshtastic_enabled and connection_mode == 'tcp':
+            if meshtastic_enabled and connection_mode == 'tcp':
                 # ========================================
                 # MODE TCP - Connexion réseau
                 # ========================================
@@ -1800,6 +1783,37 @@ class MeshBot:
                 # Stabilisation
                 time.sleep(3)
                 info_print("✅ Connexion série stable")
+                
+            elif meshcore_enabled and not meshtastic_enabled:
+                # ========================================
+                # MODE MESHCORE COMPANION - Connexion série MeshCore
+                # ========================================
+                meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                info_print(f"🔗 Mode MESHCORE COMPANION: Connexion série {meshcore_port}")
+                info_print("   → Fonctionnalités disponibles: /bot, /weather, /power, /sys, /help")
+                info_print("   → Fonctionnalités désactivées: /nodes, /my, /trace, /stats (Meshtastic requis)")
+                
+                self.interface = MeshCoreSerialInterface(meshcore_port)
+                
+                if not self.interface.connect():
+                    error_print("❌ Échec connexion série MeshCore")
+                    return False
+                
+                # Configure node_manager for pubkey lookups
+                if hasattr(self.interface, 'set_node_manager'):
+                    self.interface.set_node_manager(self.node_manager)
+                
+                # Démarrer la lecture des messages
+                if not self.interface.start_reading():
+                    error_print("❌ Échec démarrage lecture MeshCore")
+                    return False
+                
+                # Configurer le callback pour les messages reçus
+                self.interface.set_message_callback(self.on_message)
+                info_print(f"✅ Callback MeshCore configuré: {self.on_message}")
+                info_print(f"   Interface type: {type(self.interface).__name__}")
+                info_print(f"   Callback set to: on_message method")
+                info_print("✅ Connexion MeshCore établie")
             
             # ========================================
             # RÉUTILISATION DE L'INTERFACE PRINCIPALE
