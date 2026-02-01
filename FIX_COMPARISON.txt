@@ -1,0 +1,110 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║         FIX COMPARISON: Source Detection Logic                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│ BEFORE FIX (INCORRECT ❌)                                                  │
+│ File: main_bot.py, Line 496                                               │
+└───────────────────────────────────────────────────────────────────────────┘
+
+if globals().get('MESHCORE_ENABLED', False):
+    # Mode MeshCore companion - tous les paquets viennent de MeshCore
+    source = 'meshcore'
+    debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)")
+
+❌ PROBLEM:
+   - Checks CONFIG variable 'MESHCORE_ENABLED'
+   - When both MESHTASTIC_ENABLED=True and MESHCORE_ENABLED=True
+   - ALL packets labeled as 'meshcore' (INCORRECT!)
+   - Meshtastic node 14FRS711QRA labeled as 'meshcore' (BUG!)
+
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│ AFTER FIX (CORRECT ✅)                                                     │
+│ File: main_bot.py, Line 497                                               │
+└───────────────────────────────────────────────────────────────────────────┘
+
+if isinstance(self.interface, (MeshCoreSerialInterface, MeshCoreStandaloneInterface)):
+    # L'interface active est réellement MeshCore
+    source = 'meshcore'
+    debug_print("🔍 Source détectée: MeshCore (interface active)")
+
+✅ SOLUTION:
+   - Checks ACTUAL interface type using isinstance()
+   - When both enabled, Meshtastic interface is active
+   - isinstance() returns False for Meshtastic interface
+   - Meshtastic packets correctly labeled as 'local' or 'tcp'
+   - Only real MeshCore interfaces labeled as 'meshcore'
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                        KEY DIFFERENCE                                     ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+BEFORE: Check CONFIG → globals().get('MESHCORE_ENABLED', False)
+        └─ Returns what USER configured (intention)
+        └─ Not necessarily what's ACTUALLY running!
+
+AFTER:  Check TYPE → isinstance(self.interface, MeshCore*)
+        └─ Returns what's ACTUALLY active (reality)
+        └─ Matches actual interface created during init!
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                     LOG OUTPUT COMPARISON                                 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+BEFORE FIX ❌:
+-------------
+[DEBUG] 🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)
+[INFO] 🔵 add_packet ENTRY | source=meshcore | from=0x2f9fb748
+[INFO] 💾 [SAVE-MESHCORE] Tentative sauvegarde: POSITION_APP de 14FRS711QRA
+[INFO] ✅ [SAVE-MESHCORE] Paquet sauvegardé avec succès dans meshcore_packets
+                     ^^^^^^^^^
+                     WRONG TABLE for Meshtastic packet!
+
+AFTER FIX ✅:
+------------
+[INFO] 🔵 add_packet ENTRY | source=local | from=0x2f9fb748
+[DEBUG] 📊 Paquet enregistré ([local]): POSITION_APP de 14FRS711QRA
+[INFO] 💿 [ROUTE-SAVE] Routage paquet: source=local, type=POSITION_APP
+                     ^^^^^^^^^^^^^^^
+                     CORRECT source and table!
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                    TRUTH TABLE                                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+Config State              │ Interface Created  │ isinstance() │ Source
+─────────────────────────┼───────────────────┼──────────────┼──────────
+MESHTASTIC=True          │ SerialInterface   │ False        │ 'local' ✅
+MESHCORE=False           │ (Meshtastic)      │              │
+─────────────────────────┼───────────────────┼──────────────┼──────────
+MESHTASTIC=False         │ MeshCoreSerial    │ True         │ 'meshcore' ✅
+MESHCORE=True            │ Interface         │              │
+─────────────────────────┼───────────────────┼──────────────┼──────────
+MESHTASTIC=True          │ SerialInterface   │ False        │ 'local' ✅
+MESHCORE=True (BOTH!)    │ (Meshtastic)      │              │ (FIXED!)
+                         │ Priority: Mesh    │              │
+─────────────────────────┼───────────────────┼──────────────┼──────────
+
+Key: ✅ = Correct behavior
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                      IMPACT SUMMARY                                       ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+✅ Accurate source detection
+✅ Correct database tables (packets vs meshcore_packets)
+✅ Accurate traffic statistics
+✅ Helpful debug logs
+✅ No config changes needed
+✅ No breaking changes
+✅ MeshCore still works when it's really MeshCore
+
+Change: 1 line of logic
+Impact: Fixes critical misclassification bug
+Risk:   Minimal (only changes source detection, not routing)
+
