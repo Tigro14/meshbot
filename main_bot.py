@@ -1858,7 +1858,7 @@ class MeshBot:
                 info_print("")
                 # Continue to Meshtastic connection (next if blocks)
                 
-            if meshtastic_enabled and connection_mode == 'tcp':
+            elif meshtastic_enabled and connection_mode == 'tcp':
                 # ========================================
                 # MODE TCP - Connexion réseau
                 # ========================================
