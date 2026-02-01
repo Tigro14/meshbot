@@ -3,6 +3,26 @@
 Interface série MeshCore pour le bot en mode companion
 Implémentation du protocole binaire MeshCore selon:
 https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol
+
+⚠️ IMPORTANT: Cette interface est LIMITÉE
+===============================================
+Cette implémentation est destinée à:
+  ✅ Debugging de paquets MeshCore
+  ✅ Monitoring RF (voir les paquets qui passent)
+  ✅ Développement et tests du protocole
+
+Elle N'EST PAS destinée à:
+  ❌ Interaction DM complète avec le bot
+  ❌ Gestion complète des contacts
+  ❌ Fonctionnalités avancées de l'API MeshCore
+
+Pour une interaction DM complète, utilisez:
+  → MeshCoreCLIWrapper (avec library meshcore-cli)
+  
+Cette interface de base ne devrait être utilisée que si:
+  - Vous n'avez pas accès à meshcore-cli library
+  - Vous voulez uniquement déboguer les paquets
+  - Vous développez/testez le protocole MeshCore
 """
 
 import serial
@@ -69,6 +89,7 @@ class MeshCoreSerialInterface:
         self.serial = None
         self.running = False
         self.read_thread = None
+        self.poll_thread = None  # Thread de polling actif (NEW)
         self.message_callback = None
         
         # Buffer pour assembly de trames
@@ -113,6 +134,8 @@ class MeshCoreSerialInterface:
             return False
         
         self.running = True
+        
+        # Thread de lecture (passif + écoute push notifications)
         self.read_thread = threading.Thread(
             target=self._read_loop,
             name="MeshCore-Reader",
@@ -120,7 +143,57 @@ class MeshCoreSerialInterface:
         )
         self.read_thread.start()
         info_print("✅ [MESHCORE] Thread de lecture démarré")
+        
+        # Thread de polling actif (demande périodique de messages)
+        self.poll_thread = threading.Thread(
+            target=self._poll_loop,
+            name="MeshCore-Poller",
+            daemon=True
+        )
+        self.poll_thread.start()
+        info_print("✅ [MESHCORE] Thread de polling démarré")
+        
         return True
+    
+    def _poll_loop(self):
+        """
+        Boucle de polling actif pour demander les messages en attente
+        Envoie périodiquement CMD_SYNC_NEXT_MESSAGE pour récupérer les messages
+        """
+        info_print("🔄 [MESHCORE-POLL] Démarrage du polling actif...")
+        poll_interval = 5  # Demander les messages toutes les 5 secondes
+        
+        while self.running and self.serial and self.serial.is_open:
+            try:
+                # Envoyer CMD_SYNC_NEXT_MESSAGE pour demander le prochain message en attente
+                # Format protocole MeshCore:
+                # - 0x3C ('<') : start marker (app -> radio)
+                # - 2 bytes : length (little-endian)
+                # - N bytes : payload (command code + data)
+                
+                # Payload: juste le command code
+                payload = bytes([CMD_SYNC_NEXT_MESSAGE])
+                length = len(payload)
+                
+                # Construire le paquet
+                packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+                
+                self.serial.write(packet)
+                debug_print(f"📤 [MESHCORE-POLL] Demande de messages en attente (protocole binaire)")
+                
+                # Attendre avant la prochaine demande
+                time.sleep(poll_interval)
+                
+            except serial.SerialException as e:
+                error_print(f"❌ [MESHCORE-POLL] Erreur série: {e}")
+                break
+            except Exception as e:
+                error_print(f"❌ [MESHCORE-POLL] Erreur polling: {e}")
+                error_print(traceback.format_exc())
+                # Continuer malgré l'erreur
+                time.sleep(poll_interval)
+        
+        info_print("🛑 [MESHCORE-POLL] Thread de polling arrêté")
     
     def _read_loop(self):
         """Boucle de lecture des messages série (exécutée dans un thread)"""
@@ -224,8 +297,42 @@ class MeshCoreSerialInterface:
             # Pour l'instant, logger les données binaires sans les afficher
             debug_print(f"🔍 [MESHCORE-BINARY] Tentative de décodage protocole MeshCore ({len(raw_data)} octets)")
             
-            # TODO: Implémenter le décodage du protocole binaire MeshCore
-            # Pour l'instant, on ignore les données binaires
+            # Check for push notification codes
+            if len(raw_data) > 0:
+                first_byte = raw_data[0]
+                
+                # PUSH_CODE_MSG_WAITING = 0x83
+                if first_byte == 0x83:
+                    info_print(f"📬 [MESHCORE-PUSH] Message en attente détecté (PUSH_CODE_MSG_WAITING)")
+                    # Demander immédiatement le message via CMD_SYNC_NEXT_MESSAGE
+                    try:
+                        # Utiliser le protocole binaire
+                        payload = bytes([CMD_SYNC_NEXT_MESSAGE])
+                        length = len(payload)
+                        packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+                        self.serial.write(packet)
+                        debug_print(f"📤 [MESHCORE-PUSH] Demande de récupération du message (protocole binaire)")
+                    except Exception as sync_err:
+                        error_print(f"❌ [MESHCORE-PUSH] Erreur envoi SYNC_NEXT: {sync_err}")
+                    return
+                
+                # PUSH_CODE_ADVERT = 0x80
+                elif first_byte == 0x80:
+                    debug_print(f"📡 [MESHCORE-PUSH] Advertisement reçu (PUSH_CODE_ADVERT)")
+                    return
+                
+                # PUSH_CODE_PATH_UPDATED = 0x81
+                elif first_byte == 0x81:
+                    debug_print(f"🗺️ [MESHCORE-PUSH] Route mise à jour (PUSH_CODE_PATH_UPDATED)")
+                    return
+                
+                # PUSH_CODE_SEND_CONFIRMED = 0x82
+                elif first_byte == 0x82:
+                    debug_print(f"✅ [MESHCORE-PUSH] Envoi confirmé (PUSH_CODE_SEND_CONFIRMED)")
+                    return
+            
+            # TODO: Implémenter le décodage complet du protocole binaire MeshCore
+            # Pour l'instant, on ignore les données binaires non reconnues
             # Le protocole binaire de MeshCore devra être documenté et implémenté ici
             
             # Structure attendue (à documenter/adapter selon spec MeshCore):
@@ -282,9 +389,17 @@ class MeshCoreSerialInterface:
         info_print("🛑 [MESHCORE] Fermeture interface...")
         self.running = False
         
+        # Attendre l'arrêt du thread de lecture
         if self.read_thread and self.read_thread.is_alive():
+            info_print("⏳ [MESHCORE] Attente du thread de lecture...")
             self.read_thread.join(timeout=2.0)
         
+        # Attendre l'arrêt du thread de polling
+        if self.poll_thread and self.poll_thread.is_alive():
+            info_print("⏳ [MESHCORE] Attente du thread de polling...")
+            self.poll_thread.join(timeout=2.0)
+        
+        # Fermer le port série
         if self.serial and self.serial.is_open:
             self.serial.close()
         

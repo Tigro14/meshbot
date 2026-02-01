@@ -86,6 +86,25 @@ TCP_PORT = 4403
 # ========================================
 # Mode companion pour MeshCore - Connexion serial uniquement pour DM
 # Permet d'utiliser le bot avec MeshCore sans connexion Meshtastic
+#
+# ⚠️ IMPORTANT: Deux implémentations disponibles
+# ===============================================
+# 1. MeshCoreCLIWrapper (RECOMMANDÉ):
+#    - Utilise la library meshcore-cli (installation: pip install meshcore-cli)
+#    - Support COMPLET de l'API MeshCore
+#    - Interaction DM complète (envoi/réception)
+#    - Gestion des contacts et chiffrement
+#    - ✅ Utilisez ceci pour un bot fonctionnel
+#
+# 2. MeshCoreSerialInterface (BASIQUE):
+#    - Implémentation de base du protocole binaire
+#    - Debugging de paquets seulement
+#    - ❌ N'utilisez PAS pour interaction DM normale
+#    - ✅ Utilisez uniquement pour déboguer/développer
+#
+# Le bot essaiera d'abord MeshCoreCLIWrapper (si library disponible),
+# puis retombera sur MeshCoreSerialInterface (pour debugging uniquement).
+#
 # Les fonctionnalités disponibles en mode companion:
 #   - /bot (AI), /weather, /rain, /power, /sys, /help
 #   - /blitz (si activé), /vigilance (si activé)

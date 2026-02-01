@@ -112,30 +112,10 @@ class MeshCoreCLIWrapper:
             
             info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
             
-            # Load contacts immediately during connection (like meshcore-cli does)
-            try:
-                info_print(f"🔄 [MESHCORE-CLI] Chargement des contacts...")
-                if hasattr(self.meshcore, 'ensure_contacts'):
-                    # Call ensure_contacts in the event loop we just created
-                    if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
-                        loop.run_until_complete(self.meshcore.ensure_contacts())
-                    else:
-                        self.meshcore.ensure_contacts()
-                    
-                    # Flush pending contacts
-                    if hasattr(self.meshcore, 'flush_pending_contacts'):
-                        self.meshcore.flush_pending_contacts()
-                    
-                    # Check contact count
-                    if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
-                        contact_count = len(self.meshcore.contacts)
-                        info_print(f"✅ [MESHCORE-CLI] {contact_count} contact(s) chargé(s)")
-                    else:
-                        debug_print(f"⚠️ [MESHCORE-CLI] Aucun contact chargé")
-                else:
-                    debug_print(f"⚠️ [MESHCORE-CLI] ensure_contacts() non disponible")
-            except Exception as contact_err:
-                debug_print(f"⚠️ [MESHCORE-CLI] Erreur chargement contacts: {contact_err}")
+            # NOTE: Contact loading removed from connect() to reduce noise
+            # Contacts will be synced in the event loop via sync_contacts()
+            # This sync is essential for DM decryption but doesn't need to happen
+            # twice (once in connect, once in event loop)
             
             # Récupérer le node ID si possible
             try:
@@ -389,7 +369,7 @@ class MeshCoreCLIWrapper:
                     except ValueError:
                         contact_id = int(contact_id)
             
-            info_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
+            debug_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
             
             # Extract GPS coordinates from meshcore contact (uses adv_lat/adv_lon fields)
             lat = contact.get('lat') or contact.get('latitude') or contact.get('adv_lat')
@@ -410,7 +390,7 @@ class MeshCoreCLIWrapper:
                     'source': 'meshcore'
                 }
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
-                info_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé dans meshcore_contacts: {name}")
+                debug_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé: {name}")
             else:
                 # Fallback to in-memory storage if SQLite not available
                 if contact_id not in self.node_manager.node_names:
@@ -432,7 +412,7 @@ class MeshCoreCLIWrapper:
                     if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
                         self.node_manager.node_names[contact_id]['publicKey'] = public_key
                         # Data is automatically saved to SQLite via persistence
-                        info_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté pour contact existant: {name}")
+                        debug_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté: {name}")
             
             return contact_id
             
@@ -510,7 +490,7 @@ class MeshCoreCLIWrapper:
         # Check 2: Contact sync capability
         debug_print("\n2️⃣  Vérification capacité sync contacts...")
         if hasattr(self.meshcore, 'sync_contacts'):
-            info_print("   ✅ Méthode sync_contacts() disponible")
+            debug_print("   ✅ Méthode sync_contacts() disponible")
         else:
             error_print("   ❌ Méthode sync_contacts() NON disponible")
             issues_found.append("sync_contacts() non disponible - la synchronisation des contacts ne peut pas être effectuée")
@@ -556,14 +536,14 @@ class MeshCoreCLIWrapper:
             if hasattr(self.meshcore, 'contacts'):
                 contacts = self.meshcore.contacts
                 if contacts:
-                    info_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
+                    debug_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
                 else:
                     error_print("   ⚠️  Liste de contacts vide")
                     error_print("      Le déchiffrement des DM peut échouer")
             elif hasattr(self.meshcore, 'get_contacts'):
                 contacts = await self.meshcore.get_contacts()
                 if contacts:
-                    info_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
+                    debug_print(f"   ✅ {len(contacts)} contact(s) synchronisé(s)")
                 else:
                     error_print("   ⚠️  Liste de contacts vide")
                     error_print("      Le déchiffrement des DM peut échouer")
@@ -718,37 +698,22 @@ class MeshCoreCLIWrapper:
                 # CRITICAL: Sync contacts first to enable CONTACT_MSG_RECV events
                 try:
                     if hasattr(self.meshcore, 'sync_contacts'):
-                        info_print("🔄 [MESHCORE-CLI] Synchronisation des contacts...")
-                        
-                        # Debug: Check initial state
+                        # Get initial count for comparison
+                        initial_count = 0
                         if hasattr(self.meshcore, 'contacts'):
                             initial_contacts = self.meshcore.contacts
                             initial_count = len(initial_contacts) if initial_contacts else 0
-                            debug_print(f"📊 [MESHCORE-SYNC] Contacts AVANT sync: {initial_count}")
-                        else:
-                            debug_print("⚠️ [MESHCORE-SYNC] meshcore.contacts n'existe pas encore")
                         
+                        # Sync contacts (silent unless DEBUG_MODE)
                         await self.meshcore.sync_contacts()
-                        info_print("✅ [MESHCORE-CLI] Contacts synchronisés")
                         
-                        # Debug: Check post-sync state
+                        # Check post-sync state
                         if hasattr(self.meshcore, 'contacts'):
                             post_contacts = self.meshcore.contacts
                             post_count = len(post_contacts) if post_contacts else 0
-                            debug_print(f"📊 [MESHCORE-SYNC] Contacts APRÈS sync: {post_count}")
                             
                             # SAVE CONTACTS TO DATABASE (like NODEINFO for Meshtastic)
-                            # DEBUG: Log all conditions to diagnose save failures
-                            debug_print(f"🔍 [MESHCORE-SYNC] Check save conditions:")
-                            debug_print(f"   post_count > 0: {post_count > 0} (count={post_count})")
-                            debug_print(f"   self.node_manager exists: {self.node_manager is not None}")
-                            if self.node_manager:
-                                debug_print(f"   has persistence attr: {hasattr(self.node_manager, 'persistence')}")
-                                if hasattr(self.node_manager, 'persistence'):
-                                    debug_print(f"   persistence is not None: {self.node_manager.persistence is not None}")
-                            
                             if post_count > 0 and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
-                                info_print(f"💾 [MESHCORE-SYNC] Sauvegarde {post_count} contacts dans SQLite...")
                                 saved_count = 0
                                 for contact in post_contacts:
                                     try:
@@ -780,69 +745,25 @@ class MeshCoreCLIWrapper:
                                         self.node_manager.persistence.save_meshcore_contact(contact_data)
                                         saved_count += 1
                                     except Exception as save_err:
-                                        error_print(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
+                                        # Only log errors, not every save
+                                        debug_print(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
                                 
-                                info_print(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés dans meshcore_contacts")
+                                # Single summary line instead of verbose logging
+                                info_print(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
                             elif post_count > 0:
-                                # Contacts were synced but save conditions failed
-                                error_print(f"❌ [MESHCORE-SYNC] {post_count} contacts synchronisés mais NON SAUVEGARDÉS!")
-                                error_print("   → Causes possibles:")
+                                # Contacts were synced but save conditions failed - only show in DEBUG
+                                debug_print(f"⚠️ [MESHCORE-SYNC] {post_count} contacts synchronisés mais NON SAUVEGARDÉS")
                                 if not self.node_manager:
-                                    error_print("      ❌ node_manager n'est pas configuré (None)")
-                                    error_print("         Solution: Appeler interface.set_node_manager(node_manager) AVANT start_reading()")
-                                elif not hasattr(self.node_manager, 'persistence'):
-                                    error_print("      ❌ node_manager n'a pas d'attribut 'persistence'")
-                                elif not self.node_manager.persistence:
-                                    error_print("      ❌ node_manager.persistence est None")
-                                    error_print("         Solution: Initialiser TrafficPersistence et l'assigner à node_manager.persistence")
+                                    debug_print("   → node_manager non configuré")
+                                elif not hasattr(self.node_manager, 'persistence') or not self.node_manager.persistence:
+                                    debug_print("   → persistence non configuré")
                             
                             if post_count == 0:
+                                # Only warn if no contacts found - important to know
                                 error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
-                                error_print("   → Raisons possibles:")
-                                error_print("   1. Mode companion: nécessite appairage avec app mobile")
-                                error_print("   2. Base de contacts vide dans meshcore-cli")
-                                error_print("   3. Problème de clé privée pour déchiffrement")
-                                
-                                # Check if this is companion mode
-                                if hasattr(self.meshcore, 'mode'):
-                                    debug_print(f"   Mode MeshCore: {self.meshcore.mode}")
-                                
-                                # Check private key status
-                                has_key = False
-                                for key_attr in ['private_key', 'key', 'node_key', 'device_key']:
-                                    if hasattr(self.meshcore, key_attr):
-                                        key_value = getattr(self.meshcore, key_attr, None)
-                                        if key_value is not None:
-                                            has_key = True
-                                            debug_print(f"   ✅ {key_attr} est défini")
-                                        else:
-                                            debug_print(f"   ⚠️ {key_attr} est None")
-                                
-                                if not has_key:
-                                    error_print("   ❌ Aucune clé privée trouvée!")
-                                    error_print("      → DMs chiffrés ne peuvent PAS être déchiffrés")
-                                    error_print("      → Contacts ne peuvent PAS être synchronisés")
-                            else:
-                                # Success: show contact details
-                                debug_print(f"✅ [MESHCORE-SYNC] {post_count} contact(s) disponibles:")
-                                for i, contact in enumerate(list(post_contacts)[:5]):  # Show first 5
-                                    c_name = contact.get('name', 'Unknown')
-                                    c_id = contact.get('contact_id') or contact.get('node_id', 'N/A')
-                                    c_pk = contact.get('public_key') or contact.get('publicKey', '')
-                                    pk_prefix = ''
-                                    if c_pk:
-                                        if isinstance(c_pk, bytes):
-                                            pk_prefix = c_pk.hex()[:12]
-                                        elif isinstance(c_pk, str):
-                                            try:
-                                                import base64
-                                                pk_bytes = base64.b64decode(c_pk)
-                                                pk_prefix = pk_bytes.hex()[:12]
-                                            except:
-                                                pk_prefix = c_pk[:12]
-                                    debug_print(f"   {i+1}. {c_name} (ID: {c_id}, PK: {pk_prefix}...)")
+                                error_print("   → Raisons: mode companion (appairage requis), base vide, ou problème de clé")
                         
-                        # Check if contacts were actually synced
+                        # Check if contacts were actually synced (silent unless DEBUG)
                         await self._verify_contacts()
                     else:
                         info_print("⚠️ [MESHCORE-CLI] sync_contacts() non disponible")
@@ -865,16 +786,35 @@ class MeshCoreCLIWrapper:
                     error_print(traceback.format_exc())
                     error_print("   ⚠️ Les messages peuvent ne pas être reçus automatiquement")
                 
-                # Boucle pour maintenir l'event loop actif
-                while self.running:
-                    await asyncio.sleep(0.1)  # Pause async pour laisser le dispatcher fonctionner
+                # NOTE: Ne PAS utiliser while self.running ici!
+                # La boucle d'événements se termine automatiquement quand on appelle stop()
+                # On schedule juste les tâches d'initialisation et on laisse la boucle tourner
             
-            # Exécuter la coroutine dans la boucle
-            self._loop.run_until_complete(event_loop_task())
+            # Schedule la coroutine d'initialisation
+            self._loop.create_task(event_loop_task())
+            
+            # Exécuter la boucle d'événements jusqu'à ce qu'elle soit arrêtée
+            # CRITICAL FIX: Utiliser run_forever() au lieu de run_until_complete()
+            # run_forever() permet au dispatcher meshcore de traiter les événements
+            # run_until_complete() bloquait et empêchait les callbacks d'être invoqués
+            info_print("🔄 [MESHCORE-CLI] Démarrage boucle d'événements...")
+            self._loop.run_forever()
             
         except Exception as e:
             error_print(f"❌ [MESHCORE-CLI] Erreur boucle événements: {e}")
             error_print(traceback.format_exc())
+        finally:
+            # Cleanup: fermer proprement la boucle
+            try:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(self._loop)
+                for task in pending:
+                    task.cancel()
+                # Wait for cancellation
+                self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                self._loop.close()
+            except Exception as cleanup_err:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur nettoyage loop: {cleanup_err}")
         
         info_print("📡 [MESHCORE-CLI] Arrêt écoute événements")
     
@@ -1239,24 +1179,43 @@ class MeshCoreCLIWrapper:
         
         self.running = False
         
-        if self.message_thread:
-            self.message_thread.join(timeout=2)
+        # Stop the async event loop if running
+        if hasattr(self, '_loop') and self._loop and self._loop.is_running():
+            info_print("🛑 [MESHCORE-CLI] Arrêt de la boucle d'événements...")
+            self._loop.call_soon_threadsafe(self._loop.stop)
         
-        if self.healthcheck_thread:
+        if self.message_thread and self.message_thread.is_alive():
+            info_print("⏳ [MESHCORE-CLI] Attente du thread de messages...")
+            self.message_thread.join(timeout=5)
+        
+        if self.healthcheck_thread and self.healthcheck_thread.is_alive():
+            info_print("⏳ [MESHCORE-CLI] Attente du thread healthcheck...")
             self.healthcheck_thread.join(timeout=2)
         
         if self.meshcore:
             try:
-                # Fermer avec l'API async
-                self._loop.run_until_complete(self.meshcore.disconnect())
+                # Fermer avec l'API async - créer une nouvelle boucle si nécessaire
+                if hasattr(self, '_loop') and not self._loop.is_closed():
+                    # Utiliser la boucle existante si pas fermée
+                    if not self._loop.is_running():
+                        self._loop.run_until_complete(self.meshcore.disconnect())
+                else:
+                    # Créer une nouvelle boucle temporaire pour la déconnexion
+                    temp_loop = asyncio.new_event_loop()
+                    try:
+                        temp_loop.run_until_complete(self.meshcore.disconnect())
+                    finally:
+                        temp_loop.close()
             except Exception as e:
-                error_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture: {e}")
+                error_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture meshcore: {e}")
         
-        if hasattr(self, '_loop'):
+        # Close the event loop if not already closed
+        if hasattr(self, '_loop') and self._loop and not self._loop.is_closed():
             try:
                 self._loop.close()
-            except Exception:
-                pass
+                info_print("✅ [MESHCORE-CLI] Boucle d'événements fermée")
+            except Exception as e:
+                debug_print(f"⚠️ [MESHCORE-CLI] Erreur fermeture loop: {e}")
         
         info_print("✅ [MESHCORE-CLI] Connexion fermée")
 
