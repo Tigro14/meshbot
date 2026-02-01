@@ -59,6 +59,8 @@ except (ImportError, SyntaxError) as e:
 # CONFIGURATION MODE DE CONNEXION
 # ========================================
 
+DUAL_NETWORK_MODE=True
+
 # Activer/désactiver la connexion Meshtastic
 # Si False, le bot peut fonctionner en mode "companion" pour MeshCore
 # sans aucune connexion Meshtastic active
