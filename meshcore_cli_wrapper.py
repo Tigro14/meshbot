@@ -876,7 +876,12 @@ class MeshCoreCLIWrapper:
             # Méthode 1: Chercher dans payload (dict)
             if isinstance(payload, dict):
                 sender_id = payload.get('contact_id') or payload.get('sender_id')
-                pubkey_prefix = payload.get('pubkey_prefix')
+                # FIX: Check multiple field name variants for pubkey_prefix
+                # Similar to publicKey vs public_key issue, meshcore-cli may use different naming
+                pubkey_prefix = (payload.get('pubkey_prefix') or 
+                                payload.get('pubkeyPrefix') or 
+                                payload.get('public_key_prefix') or 
+                                payload.get('publicKeyPrefix'))
                 debug_print(f"📋 [MESHCORE-DM] Payload dict - contact_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 2: Chercher dans les attributs de l'event
@@ -886,12 +891,25 @@ class MeshCoreCLIWrapper:
                 if isinstance(attributes, dict):
                     sender_id = attributes.get('contact_id') or attributes.get('sender_id')
                     if pubkey_prefix is None:
-                        pubkey_prefix = attributes.get('pubkey_prefix')
+                        # FIX: Check multiple field name variants for pubkey_prefix
+                        pubkey_prefix = (attributes.get('pubkey_prefix') or 
+                                       attributes.get('pubkeyPrefix') or 
+                                       attributes.get('public_key_prefix') or 
+                                       attributes.get('publicKeyPrefix'))
             
             # Méthode 3: Chercher directement sur l'event
             if sender_id is None and hasattr(event, 'contact_id'):
                 sender_id = event.contact_id
                 debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
+            
+            # Méthode 3b: Chercher pubkey_prefix directement sur l'event
+            if pubkey_prefix is None:
+                for attr_name in ['pubkey_prefix', 'pubkeyPrefix', 'public_key_prefix', 'publicKeyPrefix']:
+                    if hasattr(event, attr_name):
+                        pubkey_prefix = getattr(event, attr_name)
+                        if pubkey_prefix:
+                            debug_print(f"📋 [MESHCORE-DM] Event direct {attr_name}: {pubkey_prefix}")
+                            break
             
             debug_print(f"🔍 [MESHCORE-DM] Après extraction - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
