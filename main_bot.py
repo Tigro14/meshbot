@@ -608,6 +608,14 @@ class MeshBot:
             # ========================================
             # PHASE 3: TRAITEMENT DES COMMANDES
             # ========================================
+            
+            # Track network source for reply routing (dual mode)
+            if self._dual_mode_active and network_source and self.message_handler:
+                # Store which network this sender came from
+                # This allows MessageSender to route replies back to the correct network
+                if hasattr(self.message_handler.router, 'sender'):
+                    self.message_handler.router.sender.set_sender_network(from_id, network_source)
+                    debug_print(f"📍 Tracked sender network: 0x{from_id:08x} → {network_source}")
 
             # Traiter les réponses TRACEROUTE_APP (avant TEXT_MESSAGE_APP)
             if portnum == 'TRACEROUTE_APP':
