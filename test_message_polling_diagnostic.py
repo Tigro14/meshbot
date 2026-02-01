@@ -57,11 +57,51 @@ def test_meshtastic_pubsub():
         
         print("✅ Interface created")
         
-        # Define callback
+        # Get local node ID for DM detection
+        local_node_id = interface.myInfo.my_node_num if hasattr(interface, 'myInfo') else None
+        print(f"   Local node ID: 0x{local_node_id:08x}" if local_node_id else "   Local node ID: Unknown")
+        
+        # Define callback with detailed analysis
         messages_received = []
+        dm_messages = []
+        broadcast_messages = []
+        text_messages = []
+        
         def on_message(packet, interface):
-            print(f"📨 CALLBACK INVOKED! Packet from: 0x{packet.get('from', 0):08x}")
+            from_id = packet.get('from', 0)
+            to_id = packet.get('to', 0)
+            decoded = packet.get('decoded', {})
+            portnum = decoded.get('portnum', 'UNKNOWN')
+            
+            # Determine if DM or broadcast
+            is_broadcast = (to_id in [0xFFFFFFFF, 0])
+            msg_type = "BROADCAST" if is_broadcast else "DM"
+            
+            # Try to decode message content
+            message_content = None
+            if portnum == 'TEXT_MESSAGE_APP':
+                payload = decoded.get('payload', b'')
+                try:
+                    message_content = payload.decode('utf-8').strip()
+                except:
+                    message_content = "[ENCRYPTED or BINARY]"
+            
+            # Print detailed info
+            print(f"📨 CALLBACK INVOKED! From: 0x{from_id:08x}")
+            print(f"   Type: {portnum} | To: 0x{to_id:08x} ({msg_type})")
+            if message_content:
+                # Truncate long messages
+                display_content = message_content if len(message_content) <= 50 else message_content[:47] + "..."
+                print(f"   Content: \"{display_content}\"")
+            
+            # Categorize
             messages_received.append(packet)
+            if is_broadcast:
+                broadcast_messages.append(packet)
+            else:
+                dm_messages.append(packet)
+            if portnum == 'TEXT_MESSAGE_APP' and message_content and message_content != "[ENCRYPTED or BINARY]":
+                text_messages.append((from_id, message_content, msg_type))
         
         # Subscribe
         pub.subscribe(on_message, "meshtastic.receive")
@@ -74,12 +114,37 @@ def test_meshtastic_pubsub():
         
         # Results
         print(f"\n📊 Messages received: {len(messages_received)}")
+        print(f"   - DMs: {len(dm_messages)}")
+        print(f"   - Broadcasts: {len(broadcast_messages)}")
+        print(f"   - Text messages: {len(text_messages)}")
+        
         if len(messages_received) > 0:
-            print("✅ pub.subscribe() is WORKING")
-            for i, msg in enumerate(messages_received[:3]):
-                print(f"   Message {i+1}: from 0x{msg.get('from', 0):08x}")
+            print("\n✅ pub.subscribe() is WORKING")
+            
+            # Show text messages details
+            if text_messages:
+                print(f"\n📝 Text messages received:")
+                for i, (from_id, content, msg_type) in enumerate(text_messages[:5]):
+                    display_content = content if len(content) <= 60 else content[:57] + "..."
+                    print(f"   {i+1}. From 0x{from_id:08x} ({msg_type}): \"{display_content}\"")
+            
+            # User guidance
+            if len(dm_messages) == 0:
+                print("\n⚠️  NO DMs received!")
+                print("   Possible reasons:")
+                print("   1. You sent broadcasts instead of DMs")
+                print("   2. Your DMs are encrypted and couldn't be decoded")
+                print("   3. You didn't send any messages")
+                print("\n💡 To send a DM to the bot:")
+                print("   1. Open Meshtastic app")
+                print("   2. Go to bot's node in 'Messages'")
+                print("   3. Send a message directly to the bot (not to channel)")
+                
+            if len(text_messages) == 0 and len(messages_received) > 0:
+                print("\n⚠️  Packets received but NO readable text messages!")
+                print("   Your messages might be encrypted or not TEXT_MESSAGE_APP type")
         else:
-            print("❌ No messages received")
+            print("\n❌ No messages received")
             print("   Possible causes:")
             print("   1. No messages sent to the bot")
             print("   2. Meshtastic library not publishing to topic")
