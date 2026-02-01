@@ -196,8 +196,10 @@ class DualInterfaceManager:
         if self.has_meshcore():
             # For MeshCore, we set the callback directly
             if hasattr(self.meshcore_interface, 'set_message_callback'):
+                # FIX: Lambda must accept 2 parameters (packet, interface) 
+                # meshcore_cli_wrapper calls callback with 2 args: callback(packet, None)
                 self.meshcore_interface.set_message_callback(
-                    lambda packet: self.on_meshcore_message(packet, self.meshcore_interface)
+                    lambda packet, interface=None: self.on_meshcore_message(packet, self.meshcore_interface)
                 )
                 info_print("✅ MeshCore message callback registered")
     
