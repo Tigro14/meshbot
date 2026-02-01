@@ -155,9 +155,10 @@ def test_comprehensive_debug_still_works():
     # Call add_packet
     monitor.add_packet(packet, source='meshcore', my_node_id=0x87654321, interface=mock_interface)
     
-    # Check for comprehensive debug box
+    # Check for comprehensive debug box - now should say "MESHCORE PACKET DEBUG"
     box_start = [msg for msg in captured_debug if '╔═══' in msg]
-    box_content = [msg for msg in captured_debug if 'MESHCORE PACKET DEBUG' in msg or 'PACKET DEBUG' in msg]
+    # Updated to check for either network type label
+    box_content = [msg for msg in captured_debug if 'PACKET DEBUG' in msg]
     
     print(f"\n📦 Comprehensive debug box found: {len(box_start) > 0}")
     print(f"📦 Box content lines: {len(box_content)}")

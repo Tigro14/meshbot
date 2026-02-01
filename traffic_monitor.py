@@ -979,8 +979,8 @@ class TrafficMonitor:
             # === DIAGNOSTIC: About to call comprehensive debug ===
             info_print(f"🔍 About to call _log_comprehensive_packet_debug for source={source} type={packet_type}")
             
-            # === AFFICHAGE COMPLET MESHCORE (comprehensive debug) ===
-            self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken)
+            # === AFFICHAGE COMPLET (comprehensive debug with network source) ===
+            self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken, source=source)
 
         except Exception as e:
             import traceback
@@ -1014,12 +1014,21 @@ class TrafficMonitor:
         except Exception:
             return None
 
-    def _log_comprehensive_packet_debug(self, packet, packet_type, sender_name, from_id, snr, hops_taken):
+    def _log_comprehensive_packet_debug(self, packet, packet_type, sender_name, from_id, snr, hops_taken, source='unknown'):
         """
-        Affichage complet et détaillé du paquet Meshcore pour debug approfondi
+        Affichage complet et détaillé du paquet pour debug approfondi
+        
+        Args:
+            packet: Packet dictionary
+            packet_type: Type of packet (TEXT_MESSAGE_APP, etc.)
+            sender_name: Name of sender node
+            from_id: Sender node ID
+            snr: Signal-to-noise ratio
+            hops_taken: Number of hops
+            source: Network source ('meshtastic', 'meshcore', 'tcp', 'local', etc.)
         """
         # === DIAGNOSTIC ENTRY ===
-        info_print(f"🔷 _log_comprehensive_packet_debug CALLED | type={packet_type} | from=0x{from_id:08x}")
+        info_print(f"🔷 _log_comprehensive_packet_debug CALLED | source={source} | type={packet_type} | from=0x{from_id:08x}")
         
         try:
             # === SECTION 1: IDENTITÉ DU PAQUET ===
@@ -1027,8 +1036,16 @@ class TrafficMonitor:
             rx_time = packet.get('rxTime', 0)
             rx_time_str = datetime.fromtimestamp(rx_time).strftime('%H:%M:%S') if rx_time else 'N/A'
             
+            # Determine network label based on source
+            if source == 'meshcore':
+                network_label = "🔗 MESHCORE PACKET DEBUG"
+            elif source in ['meshtastic', 'local', 'tcp', 'tigrog2']:
+                network_label = "🌐 MESHTASTIC PACKET DEBUG"
+            else:
+                network_label = f"📦 PACKET DEBUG ({source})"
+            
             debug_print(f"╔═══════════════════════════════════════════════════════════════")
-            debug_print(f"║ 📦 MESHCORE PACKET DEBUG - {packet_type}")
+            debug_print(f"║ {network_label} - {packet_type}")
             debug_print(f"╠═══════════════════════════════════════════════════════════════")
             debug_print(f"║ Packet ID: {packet_id}")
             debug_print(f"║ RX Time:   {rx_time_str} ({rx_time})")
