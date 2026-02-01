@@ -215,9 +215,17 @@ class MeshCoreCLIWrapper:
                         debug_print(f"💡 [MESHCORE-QUERY] Les contacts se chargeront en arrière-plan")
                         
                         # Try to mark contacts as dirty to trigger reload
-                        if hasattr(self.meshcore, 'contacts_dirty'):
-                            self.meshcore.contacts_dirty = True
-                            debug_print(f"🔄 [MESHCORE-QUERY] contacts_dirty défini à True pour forcer le rechargement")
+                        # FIX: contacts_dirty is a read-only property, use private attribute _contacts_dirty instead
+                        if hasattr(self.meshcore, '_contacts_dirty'):
+                            self.meshcore._contacts_dirty = True
+                            debug_print(f"🔄 [MESHCORE-QUERY] _contacts_dirty défini à True pour forcer le rechargement")
+                        elif hasattr(self.meshcore, 'contacts_dirty'):
+                            # Fallback: try the property (may fail if read-only)
+                            try:
+                                self.meshcore.contacts_dirty = True
+                                debug_print(f"🔄 [MESHCORE-QUERY] contacts_dirty défini à True pour forcer le rechargement")
+                            except AttributeError as e:
+                                debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de définir contacts_dirty: {e}")
                     else:
                         # It's synchronous - just call it
                         self.meshcore.ensure_contacts()
