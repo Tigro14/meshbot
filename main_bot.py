@@ -44,6 +44,9 @@ from platforms.telegram_platform import TelegramPlatform
 from platforms.cli_server_platform import CLIServerPlatform
 from platform_config import get_enabled_platforms
 
+# Import du gestionnaire dual interface (Meshtastic + MeshCore simultanément)
+from dual_interface_manager import DualInterfaceManager, NetworkSource
+
 # Import de l'interface MeshCore (mode companion)
 # Tente d'utiliser meshcore-cli library si disponible, sinon fallback vers impl basique
 try:
@@ -69,6 +72,11 @@ class MeshBot:
         self.running = False
         
         self.start_time = time.time()
+        
+        # Dual interface manager for Meshtastic + MeshCore simultaneous connection
+        # Only used when DUAL_NETWORK_MODE = True
+        self.dual_interface = None
+        self._dual_mode_active = False
         
         # Load TCP configuration from config if available
         import config as cfg
@@ -420,7 +428,7 @@ class MeshBot:
             error_print(traceback.format_exc())
             return False  # En cas d'erreur, ne pas filtrer
 
-    def on_message(self, packet, interface=None):
+    def on_message(self, packet, interface=None, network_source=None):
         """
         Gestionnaire des messages reçus
         
@@ -428,18 +436,25 @@ class MeshBot:
         - Tous les paquets viennent de la même interface (serial OU tcp)
         - Tous les messages sont traités directement
         
+        En mode dual (DUAL_NETWORK_MODE=True):
+        - Les paquets peuvent venir de Meshtastic OU MeshCore
+        - network_source indique l'origine (NetworkSource.MESHTASTIC ou NetworkSource.MESHCORE)
+        - Les réponses sont routées vers le réseau source
+        
         En mode legacy (multi-nodes):
         - Architecture en 3 phases pour distinguer serial/TCP
         - Filtrage selon PROCESS_TCP_COMMANDS
         
         Args:
-            packet: Packet Meshtastic reçu
+            packet: Packet Meshtastic ou MeshCore reçu
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
+            network_source: NetworkSource enum (Meshtastic/MeshCore) si en mode dual
         """
         # === DIAGNOSTIC: Log EVERY call to on_message ===
         try:
             from_id = packet.get('from', 0) if packet else None
-            info_print(f"🔔 on_message CALLED | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            network_tag = f"[{network_source}]" if network_source else ""
+            info_print(f"🔔 on_message CALLED {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
         except:
             info_print(f"🔔 on_message CALLED | packet={packet is not None} | interface={interface is not None}")
         
@@ -488,15 +503,27 @@ class MeshBot:
             # DÉTERMINER LE MODE DE FONCTIONNEMENT
             # ========================================
             # En mode single-node, tous les paquets viennent de notre interface unique
+            # En mode dual, les paquets viennent de Meshtastic OU MeshCore (via network_source)
             # Pas besoin de filtrage par source
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            # IMPORTANT: Vérifier MeshCore en PREMIER car il peut utiliser CONNECTION_MODE='serial'
-            if globals().get('MESHCORE_ENABLED', False):
-                # Mode MeshCore companion - tous les paquets viennent de MeshCore
+            # IMPORTANT: Vérifier le mode dual EN PREMIER
+            if self._dual_mode_active and network_source:
+                # Mode dual: utiliser le network_source fourni
+                if network_source == NetworkSource.MESHTASTIC:
+                    source = 'meshtastic'
+                    debug_print("🔍 Source détectée: Meshtastic (dual mode)")
+                elif network_source == NetworkSource.MESHCORE:
+                    source = 'meshcore'
+                    debug_print("🔍 Source détectée: MeshCore (dual mode)")
+                else:
+                    source = 'unknown'
+                    debug_print(f"🔍 Source détectée: Unknown ({network_source})")
+            elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
+                # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
-                debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)")
+                debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True, single mode)")
             elif self._is_tcp_mode():
                 source = 'tcp'
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
@@ -581,6 +608,14 @@ class MeshBot:
             # ========================================
             # PHASE 3: TRAITEMENT DES COMMANDES
             # ========================================
+            
+            # Track network source for reply routing (dual mode)
+            if self._dual_mode_active and network_source and self.message_handler:
+                # Store which network this sender came from
+                # This allows MessageSender to route replies back to the correct network
+                if hasattr(self.message_handler.router, 'sender'):
+                    self.message_handler.router.sender.set_sender_network(from_id, network_source)
+                    debug_print(f"📍 Tracked sender network: 0x{from_id:08x} → {network_source}")
 
             # Traiter les réponses TRACEROUTE_APP (avant TEXT_MESSAGE_APP)
             if portnum == 'TRACEROUTE_APP':
@@ -1654,25 +1689,91 @@ class MeshBot:
             # ========================================
             meshtastic_enabled = globals().get('MESHTASTIC_ENABLED', True)
             meshcore_enabled = globals().get('MESHCORE_ENABLED', False)
+            dual_mode = globals().get('DUAL_NETWORK_MODE', False)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
-            # Priority order when both are enabled:
-            # 1. Meshtastic (if enabled) - Full mesh capabilities
-            # 2. MeshCore (if Meshtastic disabled) - Companion mode for DMs only
-            # 3. Standalone (neither enabled) - Test mode
+            # Priority order:
+            # 1. Dual mode (if DUAL_NETWORK_MODE=True) - Both Meshtastic AND MeshCore
+            # 2. Meshtastic (if enabled) - Full mesh capabilities
+            # 3. MeshCore (if Meshtastic disabled) - Companion mode for DMs only
+            # 4. Standalone (neither enabled) - Test mode
             
-            if not meshtastic_enabled and not meshcore_enabled:
+            if dual_mode and meshtastic_enabled and meshcore_enabled:
+                # ========================================
+                # MODE DUAL - Meshtastic + MeshCore simultanément
+                # ========================================
+                info_print("🔄 MODE DUAL: Connexion simultanée Meshtastic + MeshCore")
+                info_print("   → Deux réseaux mesh actifs en parallèle")
+                info_print("   → Statistiques agrégées des deux réseaux")
+                info_print("   → Réponses routées vers le réseau source")
+                
+                self._dual_mode_active = True
+                
+                # Initialize dual interface manager
+                self.dual_interface = DualInterfaceManager(message_callback=self.on_message)
+                
+                # Setup Meshtastic interface
+                info_print("🌐 Configuration interface Meshtastic...")
+                if connection_mode == 'tcp':
+                    tcp_host = globals().get('TCP_HOST', '192.168.1.38')
+                    tcp_port = globals().get('TCP_PORT', 4403)
+                    meshtastic_interface = OptimizedTCPInterface(hostname=tcp_host, portNumber=tcp_port)
+                    info_print(f"✅ Meshtastic TCP: {tcp_host}:{tcp_port}")
+                else:
+                    serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
+                    meshtastic_interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                    info_print(f"✅ Meshtastic Serial: {serial_port}")
+                
+                self.dual_interface.set_meshtastic_interface(meshtastic_interface)
+                
+                # Setup MeshCore interface
+                meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                info_print(f"🔗 Configuration interface MeshCore: {meshcore_port}...")
+                meshcore_interface = MeshCoreSerialInterface(meshcore_port)
+                
+                if not meshcore_interface.connect():
+                    error_print("❌ Échec connexion MeshCore - Mode dual désactivé")
+                    info_print("   → Fallback sur Meshtastic uniquement")
+                    self._dual_mode_active = False
+                    self.interface = meshtastic_interface
+                else:
+                    # Configure node_manager for pubkey lookups
+                    if hasattr(meshcore_interface, 'set_node_manager'):
+                        meshcore_interface.set_node_manager(self.node_manager)
+                    
+                    if not meshcore_interface.start_reading():
+                        error_print("❌ Échec démarrage lecture MeshCore - Mode dual désactivé")
+                        self._dual_mode_active = False
+                        self.interface = meshtastic_interface
+                    else:
+                        self.dual_interface.set_meshcore_interface(meshcore_interface)
+                        
+                        # Setup callbacks for both interfaces
+                        self.dual_interface.setup_message_callbacks()
+                        
+                        # Set primary interface for compatibility (use Meshtastic for full features)
+                        self.interface = self.dual_interface.get_primary_interface()
+                        
+                        info_print("✅ Mode dual initialisé avec succès")
+                        info_print(f"   → Meshtastic: {type(meshtastic_interface).__name__}")
+                        info_print(f"   → MeshCore: {type(meshcore_interface).__name__}")
+                
+                # Stabilization
+                time.sleep(3)
+                
+            elif not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
                 info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
                 info_print("   → Bot en mode test uniquement (commandes limitées)")
                 self.interface = MeshCoreStandaloneInterface()
                 
-            elif meshtastic_enabled and meshcore_enabled:
-                # Both enabled - warn user and prioritize Meshtastic
+            elif meshtastic_enabled and meshcore_enabled and not dual_mode:
+                # Both enabled but dual mode NOT enabled - warn user and prioritize Meshtastic
                 info_print("⚠️ AVERTISSEMENT: MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux activés")
                 info_print("   → Priorité donnée à Meshtastic (capacités mesh complètes)")
                 info_print("   → MeshCore sera ignoré. Pour utiliser MeshCore:")
                 info_print("   →   Définir MESHTASTIC_ENABLED = False dans config.py")
+                info_print("   → OU activer le mode dual: DUAL_NETWORK_MODE = True")
                 info_print("")
                 # Continue to Meshtastic connection (next if blocks)
                 

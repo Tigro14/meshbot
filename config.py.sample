@@ -59,6 +59,29 @@ except (ImportError, SyntaxError) as e:
 # CONFIGURATION MODE DE CONNEXION
 # ========================================
 
+# ⭐ NOUVEAU: Mode réseau dual (Meshtastic + MeshCore simultanément)
+# ====================================================================
+# Permet au bot d'être présent sur DEUX réseaux mesh différents en même temps
+# (ex: réseau Meshtastic principal + réseau MeshCore secondaire)
+#
+# Options:
+#   False - Mode classique: UN SEUL réseau (Meshtastic OU MeshCore)
+#   True  - Mode dual: DEUX réseaux (Meshtastic ET MeshCore simultanément)
+#
+# ⚠️ Prérequis pour mode dual:
+#   - MESHTASTIC_ENABLED = True
+#   - MESHCORE_ENABLED = True
+#   - Deux radios physiques (ex: /dev/ttyACM0 + /dev/ttyUSB0)
+#   - Fréquences différentes pour éviter les interférences
+#
+# Fonctionnement en mode dual:
+#   ✅ Reçoit messages des DEUX réseaux
+#   ✅ Statistiques agrégées des DEUX réseaux
+#   ✅ Commandes complètes Meshtastic (car interface principale)
+#   ✅ DMs MeshCore en parallèle
+#   ⚠️ Les réponses vont vers le réseau source du message
+DUAL_NETWORK_MODE = False  # True = Activer mode dual, False = Mode classique
+
 # Activer/désactiver la connexion Meshtastic
 # Si False, le bot peut fonctionner en mode "companion" pour MeshCore
 # sans aucune connexion Meshtastic active
@@ -87,9 +110,9 @@ TCP_PORT = 4403
 # Mode companion pour MeshCore - Connexion serial uniquement pour DM
 # Permet d'utiliser le bot avec MeshCore sans connexion Meshtastic
 #
-# ⚠️ IMPORTANT: VOUS NE POUVEZ PAS UTILISER LES DEUX EN MÊME TEMPS
-# ==================================================================
-# Le bot ne peut se connecter qu'à UNE SEULE interface à la fois:
+# ⚠️ MODE CLASSIQUE: UN SEUL RÉSEAU (si DUAL_NETWORK_MODE=False)
+# ================================================================
+# En mode classique, le bot ne peut se connecter qu'à UNE interface:
 #   → Soit Meshtastic (full mesh: broadcasts + DMs + topology)
 #   → Soit MeshCore (DMs uniquement, mode companion)
 #   → PAS les deux simultanément
@@ -99,21 +122,37 @@ TCP_PORT = 4403
 #   → MeshCore sera ignoré automatiquement
 #   → Un message d'avertissement sera affiché
 #
+# ⭐ MODE DUAL: DEUX RÉSEAUX SIMULTANÉS (si DUAL_NETWORK_MODE=True)
+# ==================================================================
+# En mode dual, le bot peut se connecter aux DEUX réseaux en même temps:
+#   → Meshtastic + MeshCore fonctionnent simultanément
+#   → Nécessite MESHTASTIC_ENABLED=True ET MESHCORE_ENABLED=True
+#   → Nécessite deux radios physiques (ex: /dev/ttyACM0 + /dev/ttyUSB0)
+#   → Les réponses sont routées vers le réseau source
+#   → Statistiques agrégées des deux réseaux
+#
 # RECOMMANDATION: Si vous avez un radio Meshtastic, utilisez-le!
 #   → Meshtastic fait TOUT ce que MeshCore fait, et beaucoup plus
 #   → MeshCore est utile uniquement si vous n'avez PAS de radio Meshtastic
 #
 # Configuration selon votre matériel:
 #   
-#   Option A - Avec radio Meshtastic (RECOMMANDÉ):
+#   Option A - Avec radio Meshtastic uniquement (RECOMMANDÉ):
+#     DUAL_NETWORK_MODE = False
 #     MESHTASTIC_ENABLED = True
 #     MESHCORE_ENABLED = False
 #   
 #   Option B - Avec radio MeshCore uniquement:
+#     DUAL_NETWORK_MODE = False
 #     MESHTASTIC_ENABLED = False
 #     MESHCORE_ENABLED = True
+#   
+#   Option C - Avec DEUX radios (Meshtastic + MeshCore):
+#     DUAL_NETWORK_MODE = True
+#     MESHTASTIC_ENABLED = True
+#     MESHCORE_ENABLED = True
 #
-# Pour plus d'informations, voir: DUAL_INTERFACE_FAQ.md
+# Pour plus d'informations, voir: DUAL_NETWORK_MODE.md
 #
 # ⚠️ IMPORTANT: Deux implémentations disponibles
 # ===============================================

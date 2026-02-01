@@ -9,16 +9,24 @@ from config import *
 from utils import *
 
 class MessageSender:
-    def __init__(self, interface, node_manager):
+    def __init__(self, interface, node_manager, dual_interface_manager=None):
         self.node_manager = node_manager
         
         # Stocker le serial_manager au lieu de l'interface directe
         # Cela permet d'avoir toujours l'interface à jour après une reconnexion
         self.interface_provider = interface  # Peut être interface ou serial_manager
         
+        # Dual interface manager for routing messages to correct network
+        self.dual_interface = dual_interface_manager
+        
         # Throttling des commandes utilisateurs
         self.user_commands = {}  # user_id -> [timestamps des commandes]
         self._last_echo_id = None  # Cache doublons echo
+        
+        # Network routing: track which network each user came from
+        # Format: {sender_id: network_source}
+        # This allows replies to go back to the correct network
+        self._sender_network_map = {}
 
     def _get_interface(self):
         """
@@ -28,6 +36,30 @@ class MessageSender:
         if hasattr(self.interface_provider, 'get_interface'):
             return self.interface_provider.get_interface()
         return self.interface_provider
+    
+    def set_sender_network(self, sender_id, network_source):
+        """
+        Track which network a sender came from
+        
+        Args:
+            sender_id: Node ID of sender
+            network_source: NetworkSource enum value (Meshtastic/MeshCore)
+        """
+        if network_source:
+            self._sender_network_map[sender_id] = network_source
+            debug_print(f"📍 Network route: 0x{sender_id:08x} → {network_source}")
+    
+    def get_sender_network(self, sender_id):
+        """
+        Get which network a sender came from
+        
+        Args:
+            sender_id: Node ID of sender
+            
+        Returns:
+            NetworkSource enum value or None
+        """
+        return self._sender_network_map.get(sender_id)
 
     def check_throttling(self, sender_id, sender_info):
         """Vérifier le throttling des commandes pour un utilisateur"""
@@ -100,6 +132,32 @@ class MessageSender:
             return
         
         try:
+            # ========================================
+            # DUAL MODE: Route to correct network
+            # ========================================
+            if self.dual_interface and self.dual_interface.is_dual_mode():
+                # Get which network this sender came from
+                network_source = self.get_sender_network(sender_id)
+                
+                if network_source:
+                    debug_print(f"[DUAL MODE] Routing reply to {network_source} network")
+                    success = self.dual_interface.send_message(message, sender_id, network_source)
+                    if success:
+                        info_print(f"✅ Message envoyé via {network_source} → {sender_info}")
+                    else:
+                        error_print(f"❌ Échec envoi via {network_source} → {sender_info}")
+                    return
+                else:
+                    # No network mapping - use primary interface (Meshtastic)
+                    debug_print("[DUAL MODE] No network mapping, using primary interface")
+                    success = self.dual_interface.send_message(message, sender_id, None)
+                    if success:
+                        info_print(f"✅ Message envoyé (primary) → {sender_info}")
+                    return
+            
+            # ========================================
+            # SINGLE MODE: Use standard interface
+            # ========================================
             # Récupérer l'interface active
             # Si c'est un serial_manager, get_interface() retourne l'interface connectée
             # Si c'est déjà une interface directe, on l'utilise telle quelle
@@ -128,15 +186,16 @@ class MessageSender:
             import traceback
             error_print(traceback.format_exc())
             
-            # Essayer avec le format hex string
-            try:
-                hex_id = f"!{sender_id:08x}"
-                debug_print(f"[RETRY] Tentative format hex: {hex_id}")
-                interface.sendText(message, destinationId=hex_id)
-                info_print(f"✅ Message envoyé (hex) → {sender_info}")
-            except Exception as e2:
-                error_print(f"❌ Échec définitif → {sender_info}: {e2}")
-                error_print(traceback.format_exc())
+            # Essayer avec le format hex string (single mode only)
+            if not (self.dual_interface and self.dual_interface.is_dual_mode()):
+                try:
+                    hex_id = f"!{sender_id:08x}"
+                    debug_print(f"[RETRY] Tentative format hex: {hex_id}")
+                    interface.sendText(message, destinationId=hex_id)
+                    info_print(f"✅ Message envoyé (hex) → {sender_info}")
+                except Exception as e2:
+                    error_print(f"❌ Échec définitif → {sender_info}: {e2}")
+                    error_print(traceback.format_exc())
 
     def _reconnect(self):
         try:
