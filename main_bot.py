@@ -492,11 +492,12 @@ class MeshBot:
             is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
-            # IMPORTANT: Vérifier MeshCore en PREMIER car il peut utiliser CONNECTION_MODE='serial'
-            if globals().get('MESHCORE_ENABLED', False):
-                # Mode MeshCore companion - tous les paquets viennent de MeshCore
+            # IMPORTANT: Vérifier le TYPE d'interface réel, pas seulement la config
+            # Car si MESHTASTIC_ENABLED=True et MESHCORE_ENABLED=True, c'est Meshtastic qui est actif
+            if isinstance(self.interface, (MeshCoreSerialInterface, MeshCoreStandaloneInterface)):
+                # L'interface active est réellement MeshCore
                 source = 'meshcore'
-                debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True)")
+                debug_print("🔍 Source détectée: MeshCore (interface active)")
             elif self._is_tcp_mode():
                 source = 'tcp'
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
