@@ -26,7 +26,14 @@ def test_meshtastic_pubsub():
         # Import dependencies
         from pubsub import pub
         import meshtastic.serial_interface
-        from config import MESHTASTIC_ENABLED, CONNECTION_MODE, SERIAL_PORT, TCP_HOST, TCP_PORT
+        import config
+        
+        # Import required config with fallbacks for optional TCP settings
+        MESHTASTIC_ENABLED = getattr(config, 'MESHTASTIC_ENABLED', True)
+        CONNECTION_MODE = getattr(config, 'CONNECTION_MODE', 'serial')
+        SERIAL_PORT = getattr(config, 'SERIAL_PORT', '/dev/ttyACM0')
+        TCP_HOST = getattr(config, 'TCP_HOST', None)
+        TCP_PORT = getattr(config, 'TCP_PORT', None)
         
         if not MESHTASTIC_ENABLED:
             print("❌ MESHTASTIC_ENABLED=False - Test skipped")
@@ -37,7 +44,12 @@ def test_meshtastic_pubsub():
         
         # Create interface
         if CONNECTION_MODE.lower() == 'tcp':
+            if TCP_HOST is None or TCP_PORT is None:
+                print("❌ TCP mode selected but TCP_HOST or TCP_PORT not configured in config.py")
+                print("   Please add TCP_HOST and TCP_PORT to your config.py or use CONNECTION_MODE='serial'")
+                return False
             print(f"   Creating TCP interface: {TCP_HOST}:{TCP_PORT}")
+            import meshtastic.tcp_interface
             interface = meshtastic.tcp_interface.TCPInterface(hostname=TCP_HOST, portNumber=TCP_PORT)
         else:
             print(f"   Creating serial interface: {SERIAL_PORT}")
@@ -97,7 +109,11 @@ def test_meshcore_cli_wrapper():
     try:
         # Import dependencies
         from meshcore_cli_wrapper import MeshCoreCLIWrapper
-        from config import MESHCORE_ENABLED, MESHCORE_SERIAL_PORT
+        import config
+        
+        # Import with fallbacks for optional config
+        MESHCORE_ENABLED = getattr(config, 'MESHCORE_ENABLED', False)
+        MESHCORE_SERIAL_PORT = getattr(config, 'MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
         
         if not MESHCORE_ENABLED:
             print("❌ MESHCORE_ENABLED=False - Test skipped")
@@ -183,7 +199,11 @@ def test_meshcore_serial_interface():
     try:
         # Import dependencies
         from meshcore_serial_interface import MeshCoreSerialInterface
-        from config import MESHCORE_ENABLED, MESHCORE_SERIAL_PORT
+        import config
+        
+        # Import with fallbacks for optional config
+        MESHCORE_ENABLED = getattr(config, 'MESHCORE_ENABLED', False)
+        MESHCORE_SERIAL_PORT = getattr(config, 'MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
         
         if not MESHCORE_ENABLED:
             print("❌ MESHCORE_ENABLED=False - Test skipped")
