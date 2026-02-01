@@ -146,12 +146,20 @@ class MeshCoreSerialInterface:
         while self.running and self.serial and self.serial.is_open:
             try:
                 # Envoyer CMD_SYNC_NEXT_MESSAGE pour demander le prochain message en attente
-                # Format: CMD_SYNC_NEXT_MESSAGE = 10
-                # TODO: Implémenter l'envoi du command code selon le protocole MeshCore
-                # Pour l'instant, on utilise un format texte simple
-                cmd = "SYNC_NEXT\n"
-                self.serial.write(cmd.encode('utf-8'))
-                debug_print(f"📤 [MESHCORE-POLL] Demande de messages en attente")
+                # Format protocole MeshCore:
+                # - 0x3C ('<') : start marker (app -> radio)
+                # - 2 bytes : length (little-endian)
+                # - N bytes : payload (command code + data)
+                
+                # Payload: juste le command code
+                payload = bytes([CMD_SYNC_NEXT_MESSAGE])
+                length = len(payload)
+                
+                # Construire le paquet
+                packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+                
+                self.serial.write(packet)
+                debug_print(f"📤 [MESHCORE-POLL] Demande de messages en attente (protocole binaire)")
                 
                 # Attendre avant la prochaine demande
                 time.sleep(poll_interval)
@@ -278,9 +286,12 @@ class MeshCoreSerialInterface:
                     info_print(f"📬 [MESHCORE-PUSH] Message en attente détecté (PUSH_CODE_MSG_WAITING)")
                     # Demander immédiatement le message via CMD_SYNC_NEXT_MESSAGE
                     try:
-                        cmd = "SYNC_NEXT\n"
-                        self.serial.write(cmd.encode('utf-8'))
-                        debug_print(f"📤 [MESHCORE-PUSH] Demande de récupération du message")
+                        # Utiliser le protocole binaire
+                        payload = bytes([CMD_SYNC_NEXT_MESSAGE])
+                        length = len(payload)
+                        packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+                        self.serial.write(packet)
+                        debug_print(f"📤 [MESHCORE-PUSH] Demande de récupération du message (protocole binaire)")
                     except Exception as sync_err:
                         error_print(f"❌ [MESHCORE-PUSH] Erreur envoi SYNC_NEXT: {sync_err}")
                     return
