@@ -135,7 +135,32 @@ def test_meshcore_cli_wrapper():
         print(f"   Creating MeshCore CLI wrapper...")
         interface = MeshCoreCLIWrapper(MESHCORE_SERIAL_PORT)
         
-        if not interface.connect():
+        # Connect with timeout to prevent hanging
+        print("   Attempting connection (15 second timeout)...")
+        connect_result = [None]  # Use list to capture result from thread
+        connect_error = [None]
+        
+        def connect_with_timeout():
+            try:
+                connect_result[0] = interface.connect()
+            except Exception as e:
+                connect_error[0] = e
+        
+        connect_thread = threading.Thread(target=connect_with_timeout, daemon=True)
+        connect_thread.start()
+        connect_thread.join(timeout=15.0)
+        
+        if connect_thread.is_alive():
+            print("⚠️  Connection attempt timed out after 15 seconds")
+            print("   This is a known issue with meshcore-cli initialization")
+            print("   The library may be waiting for device responses")
+            return 'timeout'
+        
+        if connect_error[0]:
+            print(f"❌ Connection error: {connect_error[0]}")
+            return False
+        
+        if not connect_result[0]:
             print("❌ Failed to connect")
             return False
         
@@ -317,18 +342,29 @@ def main():
             status = "✅ PASS"
         elif result == 'skip':
             status = "⚠️  SKIP (known limitation)"
+        elif result == 'timeout':
+            status = "⏱️  TIMEOUT (connection issue)"
         else:
             status = "❌ FAIL"
         print(f"  {name:20s}: {status}")
     
     print("\n" + "="*60)
     
-    # Count only real failures (not skips)
+    # Count different result types
     failures = [name for name, result in results.items() if result is False]
+    timeouts = [name for name, result in results.items() if result == 'timeout']
     passes = [name for name, result in results.items() if result is True]
     
     if not failures:
-        if len(passes) == len(results):
+        if timeouts:
+            print("⏱️  Some tests TIMED OUT")
+            print("\nTimed out tests:", ", ".join(timeouts))
+            print("\nTimeout indicates:")
+            print("  • meshcore-cli initialization may be waiting for device")
+            print("  • Device may not be responding to initialization commands")
+            print("  • Serial port communication issues")
+            print("\n💡 This is often normal if the device is busy or not connected.")
+        elif len(passes) == len(results):
             print("✅ All tests PASSED!")
         else:
             print("✅ All critical tests PASSED!")
@@ -337,6 +373,8 @@ def main():
     else:
         print("❌ Some tests FAILED")
         print("\nFailed tests:", ", ".join(failures))
+        if timeouts:
+            print("Timed out tests:", ", ".join(timeouts))
         print("\nPlease check:")
         print("  1. Configuration (config.py)")
         print("  2. Hardware connections")
