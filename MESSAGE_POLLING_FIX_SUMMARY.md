@@ -3,6 +3,29 @@
 ## Problem Statement
 "The bot has now two nodes attached: a Meshtastic and a Meshcore. For the moment it seems the polling for the messages is broken both sides, DM sent to both nodes to the bot are marked as received but get no answer (even with DEBUG log)."
 
+## Updates
+
+### 2026-02-01: Diagnostic Test Fix ✅ FIXED
+**Problem:** Diagnostic test script failed for users with serial-only Meshtastic configuration:
+```
+❌ Import error: cannot import name 'TCP_HOST' from 'config'
+```
+
+**Root Cause:** Test script tried to import `TCP_HOST` and `TCP_PORT` unconditionally, but these variables don't exist in serial-only configs.
+
+**Fix:** Changed imports to use `getattr()` with defaults, making TCP configuration optional for serial mode.
+
+**Files Changed:**
+- `test_message_polling_diagnostic.py` - Graceful config imports with getattr()
+
+**Documentation Added:**
+- `DIAGNOSTIC_TEST_CONFIG_GUIDE.md` - Complete guide for all config scenarios
+- `test_config_import_graceful.py` - Unit test for config import patterns
+
+**See:** [Diagnostic Test Configuration Guide](DIAGNOSTIC_TEST_CONFIG_GUIDE.md)
+
+---
+
 ## Root Causes Identified
 
 ### 1. MeshCore CLI Wrapper - Async Event Loop Blocking ✅ FIXED
