@@ -758,7 +758,7 @@ class MeshCoreCLIWrapper:
                                 elif not hasattr(self.node_manager, 'persistence') or not self.node_manager.persistence:
                                     debug_print("   → persistence non configuré")
                             
-                             if post_count == 0:
+                            if post_count == 0:
                                 # Only warn if no contacts found - important to know
                                 error_print("⚠️ [MESHCORE-SYNC] ATTENTION: sync_contacts() n'a trouvé AUCUN contact!")
                                 error_print("   → Raisons: mode companion (appairage requis), base vide, ou problème de clé")
