@@ -35,6 +35,16 @@ except ImportError:
     get_route_type_name = None
     get_payload_type_name = None
 
+# Try to import PyNaCl for key validation
+try:
+    import nacl.public
+    import nacl.encoding
+    NACL_AVAILABLE = True
+    debug_print("✅ [MESHCORE] PyNaCl disponible (validation clés)")
+except ImportError:
+    NACL_AVAILABLE = False
+    debug_print("ℹ️  [MESHCORE] PyNaCl non disponible (validation clés désactivée)")
+
 
 class MeshCoreCLIWrapper:
     """
@@ -429,6 +439,97 @@ class MeshCoreCLIWrapper:
             error_print(traceback.format_exc())
             return None
     
+    def _validate_key_pair(self, private_key_data, public_key_data=None):
+        """
+        Validate that a private key can derive the expected public key
+        
+        Args:
+            private_key_data: Private key as bytes, hex string, or base64 string
+            public_key_data: Optional expected public key for comparison
+            
+        Returns:
+            tuple: (is_valid: bool, derived_public_key: bytes or None, error_message: str or None)
+        """
+        if not NACL_AVAILABLE:
+            return (None, None, "PyNaCl non disponible - installer avec: pip install PyNaCl")
+        
+        try:
+            import base64
+            
+            # Parse private key
+            private_key_bytes = None
+            
+            if isinstance(private_key_data, bytes):
+                private_key_bytes = private_key_data
+            elif isinstance(private_key_data, str):
+                # Try hex first
+                try:
+                    if len(private_key_data) == 64:  # 32 bytes in hex = 64 chars
+                        private_key_bytes = bytes.fromhex(private_key_data)
+                    elif len(private_key_data) == 128:  # 64 bytes in hex (priv+pub)
+                        private_key_bytes = bytes.fromhex(private_key_data[:64])  # First 32 bytes
+                except ValueError:
+                    pass
+                
+                # Try base64 if hex failed
+                if private_key_bytes is None:
+                    try:
+                        decoded = base64.b64decode(private_key_data)
+                        if len(decoded) >= 32:
+                            private_key_bytes = decoded[:32]  # First 32 bytes
+                    except Exception:
+                        pass
+            
+            if private_key_bytes is None or len(private_key_bytes) != 32:
+                return (False, None, f"Clé privée invalide (doit être 32 octets, reçu: {len(private_key_bytes) if private_key_bytes else 0})")
+            
+            # Create Curve25519 private key object
+            private_key = nacl.public.PrivateKey(private_key_bytes)
+            
+            # Derive public key
+            derived_public_key = private_key.public_key
+            derived_public_key_bytes = bytes(derived_public_key)
+            
+            # If expected public key provided, compare
+            if public_key_data is not None:
+                # Parse expected public key
+                expected_public_key_bytes = None
+                
+                if isinstance(public_key_data, bytes):
+                    expected_public_key_bytes = public_key_data
+                elif isinstance(public_key_data, str):
+                    # Try hex
+                    try:
+                        if len(public_key_data) == 64:  # 32 bytes in hex
+                            expected_public_key_bytes = bytes.fromhex(public_key_data)
+                    except ValueError:
+                        pass
+                    
+                    # Try base64
+                    if expected_public_key_bytes is None:
+                        try:
+                            expected_public_key_bytes = base64.b64decode(public_key_data)
+                        except Exception:
+                            pass
+                
+                if expected_public_key_bytes and len(expected_public_key_bytes) >= 32:
+                    expected_public_key_bytes = expected_public_key_bytes[:32]
+                    
+                    # Compare keys
+                    if derived_public_key_bytes == expected_public_key_bytes:
+                        return (True, derived_public_key_bytes, None)
+                    else:
+                        derived_hex = derived_public_key_bytes.hex()[:16]
+                        expected_hex = expected_public_key_bytes.hex()[:16]
+                        return (False, derived_public_key_bytes, 
+                               f"Clé publique ne correspond pas! Dérivée: {derived_hex}... vs Attendue: {expected_hex}...")
+            
+            # No comparison needed, just validate derivation worked
+            return (True, derived_public_key_bytes, None)
+            
+        except Exception as e:
+            return (False, None, f"Erreur validation clé: {e}")
+    
     async def _check_configuration(self):
         """Check MeshCore configuration and report potential issues"""
         info_print("\n" + "="*60)
@@ -491,6 +592,81 @@ class MeshCoreCLIWrapper:
             
             if not has_private_key:
                 issues_found.append("Aucune clé privée trouvée (ni en mémoire ni sous forme de fichier) - les messages chiffrés ne peuvent pas être déchiffrés")
+            else:
+                # NEW: Validate key pair if PyNaCl is available
+                debug_print("\n   🔐 Validation paire de clés privée/publique...")
+                if not NACL_AVAILABLE:
+                    debug_print("   ℹ️  PyNaCl non disponible - validation de clé ignorée")
+                    debug_print("      Installer avec: pip install PyNaCl")
+                else:
+                    # Try to get private key data for validation
+                    private_key_data = None
+                    public_key_data = None
+                    
+                    # Try to get from memory attributes
+                    for attr in found_key_attrs:
+                        try:
+                            value = getattr(self.meshcore, attr)
+                            if value is not None:
+                                private_key_data = value
+                                debug_print(f"   📝 Utilisation de {attr} pour validation")
+                                break
+                        except Exception:
+                            pass
+                    
+                    # Try to get from key file
+                    if private_key_data is None and found_key_files:
+                        try:
+                            key_file = found_key_files[0]
+                            with open(key_file, 'rb') as f:
+                                private_key_data = f.read()
+                            debug_print(f"   📝 Utilisation du fichier {key_file} pour validation")
+                        except Exception as e:
+                            debug_print(f"   ⚠️  Impossible de lire {key_file}: {e}")
+                    
+                    # Try to get public key for comparison
+                    if hasattr(self.meshcore, 'public_key'):
+                        try:
+                            public_key_data = getattr(self.meshcore, 'public_key')
+                        except Exception:
+                            pass
+                    elif hasattr(self.meshcore, 'node_id'):
+                        # node_id is derived from first 4 bytes of public key
+                        # but we can't reverse it, so just validate derivation works
+                        pass
+                    
+                    if private_key_data is not None:
+                        is_valid, derived_public_key, error_msg = self._validate_key_pair(
+                            private_key_data, 
+                            public_key_data
+                        )
+                        
+                        if is_valid is None:
+                            debug_print(f"   ℹ️  {error_msg}")
+                        elif is_valid:
+                            info_print("   ✅ Clé privée valide - peut dériver une clé publique")
+                            if derived_public_key:
+                                derived_hex = derived_public_key.hex()
+                                info_print(f"   🔑 Clé publique dérivée: {derived_hex[:16]}...{derived_hex[-16:]}")
+                                # Derive node_id from public key (first 4 bytes)
+                                derived_node_id = int.from_bytes(derived_public_key[:4], 'big')
+                                info_print(f"   🆔 Node ID dérivé: 0x{derived_node_id:08x}")
+                                
+                                # Compare with actual node_id if available
+                                if hasattr(self.meshcore, 'node_id'):
+                                    actual_node_id = self.meshcore.node_id
+                                    if actual_node_id == derived_node_id:
+                                        info_print(f"   ✅ Node ID correspond: 0x{actual_node_id:08x}")
+                                    else:
+                                        error_print(f"   ❌ Node ID ne correspond PAS!")
+                                        error_print(f"      Dérivé:  0x{derived_node_id:08x}")
+                                        error_print(f"      Actuel:  0x{actual_node_id:08x}")
+                                        issues_found.append(f"Node ID dérivé (0x{derived_node_id:08x}) != Node ID actuel (0x{actual_node_id:08x}) - la clé privée ne correspond pas au device!")
+                        else:
+                            error_print(f"   ❌ Validation de clé échouée: {error_msg}")
+                            issues_found.append(f"Validation de paire de clés échouée: {error_msg}")
+                    else:
+                        debug_print("   ⚠️  Impossible d'obtenir les données de clé privée pour validation")
         except Exception as e:
             error_print(f"   ⚠️  Erreur vérification clé privée: {e}")
             issues_found.append(f"Erreur vérification clé privée: {e}")
