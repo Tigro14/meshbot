@@ -21,7 +21,7 @@ class MessageRouter:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
                  bot_start_time=None, blitz_monitor=None, vigilance_monitor=None,
-                 broadcast_tracker=None, companion_mode=False):
+                 broadcast_tracker=None, companion_mode=False, dual_interface_manager=None):
 
         # Dépendances
         self.node_manager = node_manager
@@ -46,7 +46,8 @@ class MessageRouter:
         ]
 
         # Message sender (gère envoi et throttling)
-        self.sender = MessageSender(interface, node_manager)
+        # Pass dual_interface_manager for correct network routing in dual mode
+        self.sender = MessageSender(interface, node_manager, dual_interface_manager)
 
         # Gestionnaires de commandes par domaine
         self.ai_handler = AICommands(llama_client, self.sender, broadcast_tracker=broadcast_tracker)

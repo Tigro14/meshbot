@@ -16,7 +16,8 @@ class MessageHandler:
     def __init__(self, llama_client, esphome_client, remote_nodes_client,
                  node_manager, context_manager, interface, traffic_monitor=None,
                  bot_start_time=None, blitz_monitor=None, vigilance_monitor=None,
-                 broadcast_tracker=None, mqtt_neighbor_collector=None, companion_mode=False):
+                 broadcast_tracker=None, mqtt_neighbor_collector=None, companion_mode=False,
+                 dual_interface_manager=None):
 
         # Créer le router qui gère tout
         self.router = MessageRouter(
@@ -31,7 +32,8 @@ class MessageHandler:
             blitz_monitor,
             vigilance_monitor,
             broadcast_tracker,
-            companion_mode  # Passer le mode companion au router
+            companion_mode,  # Passer le mode companion au router
+            dual_interface_manager  # Passer le dual interface manager
         )
         
         # Exposer les propriétés nécessaires pour compatibilité

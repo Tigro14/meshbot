@@ -2294,7 +2294,8 @@ class MeshBot:
                 self.vigilance_monitor,
                 broadcast_tracker=self._track_broadcast,  # Callback pour tracker les broadcasts
                 mqtt_neighbor_collector=self.mqtt_neighbor_collector,  # MQTT collector reference
-                companion_mode=(meshcore_enabled or not meshtastic_enabled)  # Mode companion si pas Meshtastic
+                companion_mode=(meshcore_enabled or not meshtastic_enabled),  # Mode companion si pas Meshtastic
+                dual_interface_manager=self.dual_interface  # Pass dual interface for routing
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)
