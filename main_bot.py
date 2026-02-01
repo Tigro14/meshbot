@@ -1767,12 +1767,13 @@ class MeshBot:
                 info_print("   → Bot en mode test uniquement (commandes limitées)")
                 self.interface = MeshCoreStandaloneInterface()
                 
-            elif meshtastic_enabled and meshcore_enabled:
-                # Both enabled - warn user and prioritize Meshtastic
+            elif meshtastic_enabled and meshcore_enabled and not dual_mode:
+                # Both enabled but dual mode NOT enabled - warn user and prioritize Meshtastic
                 info_print("⚠️ AVERTISSEMENT: MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux activés")
                 info_print("   → Priorité donnée à Meshtastic (capacités mesh complètes)")
                 info_print("   → MeshCore sera ignoré. Pour utiliser MeshCore:")
                 info_print("   →   Définir MESHTASTIC_ENABLED = False dans config.py")
+                info_print("   → OU activer le mode dual: DUAL_NETWORK_MODE = True")
                 info_print("")
                 # Continue to Meshtastic connection (next if blocks)
                 
