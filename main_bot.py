@@ -1890,6 +1890,17 @@ class MeshBot:
                 # MODE MESHCORE COMPANION - Connexion série MeshCore
                 # ========================================
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # DEFENSIVE CHECK: This block should NEVER run if meshtastic_enabled is True
+                # Log comprehensive state for debugging configuration conflicts
+                if meshtastic_enabled:
+                    error_print("❌ FATAL ERROR: MeshCore initialization attempted with MESHTASTIC_ENABLED=True")
+                    error_print(f"   meshtastic_enabled = {meshtastic_enabled}")
+                    error_print(f"   meshcore_enabled = {meshcore_enabled}")
+                    error_print(f"   connection_mode = {connection_mode}")
+                    error_print("   → This should NEVER happen - check code logic")
+                    return False
+                
                 info_print(f"🔗 Mode MESHCORE COMPANION: Connexion série {meshcore_port}")
                 info_print("   → Fonctionnalités disponibles: /bot, /weather, /power, /sys, /help")
                 info_print("   → Fonctionnalités désactivées: /nodes, /my, /trace, /stats (Meshtastic requis)")
