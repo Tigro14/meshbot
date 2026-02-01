@@ -3,6 +3,26 @@
 Interface série MeshCore pour le bot en mode companion
 Implémentation du protocole binaire MeshCore selon:
 https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol
+
+⚠️ IMPORTANT: Cette interface est LIMITÉE
+===============================================
+Cette implémentation est destinée à:
+  ✅ Debugging de paquets MeshCore
+  ✅ Monitoring RF (voir les paquets qui passent)
+  ✅ Développement et tests du protocole
+
+Elle N'EST PAS destinée à:
+  ❌ Interaction DM complète avec le bot
+  ❌ Gestion complète des contacts
+  ❌ Fonctionnalités avancées de l'API MeshCore
+
+Pour une interaction DM complète, utilisez:
+  → MeshCoreCLIWrapper (avec library meshcore-cli)
+  
+Cette interface de base ne devrait être utilisée que si:
+  - Vous n'avez pas accès à meshcore-cli library
+  - Vous voulez uniquement déboguer les paquets
+  - Vous développez/testez le protocole MeshCore
 """
 
 import serial
