@@ -1074,16 +1074,22 @@ class MeshCoreCLIWrapper:
                                        attributes.get('publicKeyPrefix'))
             
             # Méthode 3: Chercher directement sur l'event
+            # IMPORTANT: Check for actual None, not just falsy (to handle MagicMock in tests)
             if sender_id is None and hasattr(event, 'contact_id'):
-                sender_id = event.contact_id
-                debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
+                attr_value = event.contact_id
+                # Only use it if it's actually a valid value (not None, not mock)
+                if attr_value is not None and isinstance(attr_value, int):
+                    sender_id = attr_value
+                    debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
             
             # Méthode 3b: Chercher pubkey_prefix directement sur l'event
             if pubkey_prefix is None:
                 for attr_name in ['pubkey_prefix', 'pubkeyPrefix', 'public_key_prefix', 'publicKeyPrefix']:
                     if hasattr(event, attr_name):
-                        pubkey_prefix = getattr(event, attr_name)
-                        if pubkey_prefix:
+                        attr_value = getattr(event, attr_name)
+                        # Only use if it's a non-empty string
+                        if attr_value and isinstance(attr_value, str):
+                            pubkey_prefix = attr_value
                             debug_print(f"📋 [MESHCORE-DM] Event direct {attr_name}: {pubkey_prefix}")
                             break
             
@@ -1105,6 +1111,51 @@ class MeshCoreCLIWrapper:
                     sender_id = self.query_contact_by_pubkey_prefix(pubkey_prefix)
                     if sender_id:
                         info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli API)")
+            
+            # Méthode 5: FALLBACK - Derive node_id from pubkey_prefix
+            # In MeshCore/Meshtastic, the node_id is the FIRST 4 BYTES of the 32-byte public key
+            # If we have a pubkey_prefix (which is a hex string of the public key), we can derive the node_id
+            # This allows us to process DMs even when the contact isn't in the device's contact list yet
+            if sender_id is None and pubkey_prefix:
+                try:
+                    debug_print(f"🔑 [MESHCORE-DM] FALLBACK: Dérivation node_id depuis pubkey_prefix")
+                    
+                    # pubkey_prefix is a hex string (e.g., '143bcd7f1b1f...')
+                    # We need the first 8 hex chars (= 4 bytes) for the node_id
+                    if len(pubkey_prefix) >= 8:
+                        # First 8 hex chars = first 4 bytes = node_id
+                        node_id_hex = pubkey_prefix[:8]
+                        sender_id = int(node_id_hex, 16)
+                        info_print(f"✅ [MESHCORE-DM] Node_id dérivé de pubkey: {pubkey_prefix[:12]}... → 0x{sender_id:08x}")
+                        
+                        # Save this contact for future reference (even though not in device's contact list)
+                        if self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                            try:
+                                # Reconstruct full 32-byte public key from prefix (pad with zeros if needed)
+                                # pubkey_prefix might be partial, so we pad to 64 hex chars (32 bytes)
+                                full_pubkey_hex = pubkey_prefix + '0' * (64 - len(pubkey_prefix))
+                                public_key_bytes = bytes.fromhex(full_pubkey_hex)
+                                
+                                contact_data = {
+                                    'node_id': sender_id,
+                                    'name': f"Node-{sender_id:08x}",  # Default name
+                                    'shortName': f"{sender_id:08x}",
+                                    'hwModel': None,
+                                    'publicKey': public_key_bytes,
+                                    'lat': None,
+                                    'lon': None,
+                                    'alt': None,
+                                    'source': 'meshcore_derived'  # Mark as derived, not synced
+                                }
+                                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                debug_print(f"💾 [MESHCORE-DM] Contact dérivé sauvegardé: 0x{sender_id:08x}")
+                            except Exception as save_err:
+                                debug_print(f"⚠️ [MESHCORE-DM] Erreur sauvegarde contact dérivé: {save_err}")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
+                except Exception as derive_err:
+                    error_print(f"❌ [MESHCORE-DM] Erreur dérivation node_id: {derive_err}")
+                    error_print(traceback.format_exc())
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             
