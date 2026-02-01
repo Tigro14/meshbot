@@ -87,6 +87,34 @@ TCP_PORT = 4403
 # Mode companion pour MeshCore - Connexion serial uniquement pour DM
 # Permet d'utiliser le bot avec MeshCore sans connexion Meshtastic
 #
+# ⚠️ IMPORTANT: VOUS NE POUVEZ PAS UTILISER LES DEUX EN MÊME TEMPS
+# ==================================================================
+# Le bot ne peut se connecter qu'à UNE SEULE interface à la fois:
+#   → Soit Meshtastic (full mesh: broadcasts + DMs + topology)
+#   → Soit MeshCore (DMs uniquement, mode companion)
+#   → PAS les deux simultanément
+#
+# Quand MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux True:
+#   → Le bot connectera à Meshtastic (priorité aux capacités complètes)
+#   → MeshCore sera ignoré automatiquement
+#   → Un message d'avertissement sera affiché
+#
+# RECOMMANDATION: Si vous avez un radio Meshtastic, utilisez-le!
+#   → Meshtastic fait TOUT ce que MeshCore fait, et beaucoup plus
+#   → MeshCore est utile uniquement si vous n'avez PAS de radio Meshtastic
+#
+# Configuration selon votre matériel:
+#   
+#   Option A - Avec radio Meshtastic (RECOMMANDÉ):
+#     MESHTASTIC_ENABLED = True
+#     MESHCORE_ENABLED = False
+#   
+#   Option B - Avec radio MeshCore uniquement:
+#     MESHTASTIC_ENABLED = False
+#     MESHCORE_ENABLED = True
+#
+# Pour plus d'informations, voir: DUAL_INTERFACE_FAQ.md
+#
 # ⚠️ IMPORTANT: Deux implémentations disponibles
 # ===============================================
 # 1. MeshCoreCLIWrapper (RECOMMANDÉ):
