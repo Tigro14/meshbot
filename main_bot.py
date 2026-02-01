@@ -10,6 +10,8 @@ import traceback
 import signal
 import sys
 import subprocess
+import serial
+import serial.serialutil
 import meshtastic
 import meshtastic.serial_interface
 import meshtastic.tcp_interface
@@ -1698,6 +1700,46 @@ class MeshBot:
             # 3. MeshCore (if Meshtastic disabled) - Companion mode for DMs only
             # 4. Standalone (neither enabled) - Test mode
             
+            # ========================================
+            # VALIDATION: PORT CONFLICT DETECTION
+            # ========================================
+            # Prevent serial port conflicts in dual mode or when both are serial
+            if dual_mode and meshtastic_enabled and meshcore_enabled:
+                # Check if both are using serial connections
+                if connection_mode == 'serial':
+                    serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
+                    meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                    
+                    # Normalize paths for comparison
+                    import os
+                    serial_port_abs = os.path.abspath(serial_port) if serial_port else None
+                    meshcore_port_abs = os.path.abspath(meshcore_port) if meshcore_port else None
+                    
+                    if serial_port_abs and meshcore_port_abs and serial_port_abs == meshcore_port_abs:
+                        error_print("❌ ERREUR FATALE: Conflit de port série détecté!")
+                        error_print(f"   SERIAL_PORT = {serial_port}")
+                        error_print(f"   MESHCORE_SERIAL_PORT = {meshcore_port}")
+                        error_print("")
+                        error_print("   Les deux interfaces tentent d'utiliser le MÊME port série.")
+                        error_print("   Cela causera une erreur '[Errno 11] Could not exclusively lock port'.")
+                        error_print("")
+                        error_print("   📝 SOLUTION: Utiliser deux ports série différents")
+                        error_print("")
+                        error_print("   Exemple de configuration:")
+                        error_print("     DUAL_NETWORK_MODE = True")
+                        error_print("     MESHTASTIC_ENABLED = True")
+                        error_print("     MESHCORE_ENABLED = True")
+                        error_print("     CONNECTION_MODE = 'serial'")
+                        error_print("     SERIAL_PORT = '/dev/ttyACM0'        # Radio Meshtastic")
+                        error_print("     MESHCORE_SERIAL_PORT = '/dev/ttyUSB0'  # Radio MeshCore")
+                        error_print("")
+                        error_print("   Ou en mode simple (un seul réseau):")
+                        error_print("     DUAL_NETWORK_MODE = False")
+                        error_print("     MESHTASTIC_ENABLED = True")
+                        error_print("     MESHCORE_ENABLED = False")
+                        error_print("")
+                        return False
+            
             if dual_mode and meshtastic_enabled and meshcore_enabled:
                 # ========================================
                 # MODE DUAL - Meshtastic + MeshCore simultanément
@@ -1721,10 +1763,49 @@ class MeshBot:
                     info_print(f"✅ Meshtastic TCP: {tcp_host}:{tcp_port}")
                 else:
                     serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
-                    meshtastic_interface = meshtastic.serial_interface.SerialInterface(serial_port)
-                    info_print(f"✅ Meshtastic Serial: {serial_port}")
+                    
+                    # Retry logic for serial port
+                    max_retries = globals().get('SERIAL_PORT_RETRIES', 3)
+                    retry_delay = globals().get('SERIAL_PORT_RETRY_DELAY', 2)
+                    
+                    meshtastic_interface = None
+                    last_error = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            meshtastic_interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                            info_print(f"✅ Meshtastic Serial: {serial_port}")
+                            break
+                        except serial.serialutil.SerialException as e:
+                            last_error = e
+                            error_msg = str(e)
+                            
+                            if "exclusively lock" in error_msg or "Resource temporarily unavailable" in error_msg:
+                                error_print(f"❌ Port Meshtastic verrouillé (tentative {attempt + 1}/{max_retries}): {serial_port}")
+                                
+                                if attempt < max_retries - 1:
+                                    info_print(f"   ⏳ Nouvelle tentative dans {retry_delay} secondes...")
+                                    time.sleep(retry_delay)
+                                else:
+                                    error_print("")
+                                    error_print("   ❌ Impossible d'ouvrir le port Meshtastic après plusieurs tentatives")
+                                    error_print("   → Mode dual désactivé, vérifier la configuration")
+                            else:
+                                error_print(f"❌ Erreur série Meshtastic: {e}")
+                                break
+                        except Exception as e:
+                            last_error = e
+                            error_print(f"❌ Erreur inattendue Meshtastic: {e}")
+                            break
+                    
+                    if not meshtastic_interface:
+                        error_print("❌ Échec création interface Meshtastic - Mode dual désactivé")
+                        error_print("   → Fallback sur MeshCore uniquement")
+                        self._dual_mode_active = False
+                        # Will continue to setup MeshCore below
                 
-                self.dual_interface.set_meshtastic_interface(meshtastic_interface)
+                if meshtastic_interface:
+                    self.dual_interface.set_meshtastic_interface(meshtastic_interface)
                 
                 # Setup MeshCore interface
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
@@ -1878,8 +1959,78 @@ class MeshBot:
                 serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
                 
                 info_print(f"🔌 Mode SERIAL MESHTASTIC: Connexion série {serial_port}")
-                self.interface = meshtastic.serial_interface.SerialInterface(serial_port)
-                info_print("✅ Interface série créée")
+                
+                # Retry logic for serial port with better error handling
+                max_retries = globals().get('SERIAL_PORT_RETRIES', 3)
+                retry_delay = globals().get('SERIAL_PORT_RETRY_DELAY', 2)  # seconds
+                
+                serial_opened = False
+                last_error = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        self.interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                        serial_opened = True
+                        info_print("✅ Interface série créée")
+                        break
+                    except serial.serialutil.SerialException as e:
+                        last_error = e
+                        error_msg = str(e)
+                        
+                        # Check for common error cases
+                        if "exclusively lock" in error_msg or "Resource temporarily unavailable" in error_msg:
+                            error_print(f"❌ Port série verrouillé (tentative {attempt + 1}/{max_retries}): {serial_port}")
+                            error_print(f"   Erreur: {error_msg}")
+                            
+                            if attempt == 0:
+                                # On first attempt, provide diagnostic information
+                                error_print("")
+                                error_print("   📝 DIAGNOSTIC: Le port série est déjà utilisé par un autre processus")
+                                error_print("")
+                                error_print("   Causes possibles:")
+                                error_print("   1. Une autre instance du bot est en cours d'exécution")
+                                error_print("   2. MeshCore a déjà ouvert ce port (vérifier MESHCORE_SERIAL_PORT)")
+                                error_print("   3. Un autre programme utilise le port (ex: minicom, screen)")
+                                error_print("")
+                                error_print("   Commandes de diagnostic:")
+                                error_print(f"     sudo lsof {serial_port}  # Voir quel processus utilise le port")
+                                error_print(f"     sudo fuser {serial_port} # Alternative pour voir les processus")
+                                error_print("     ps aux | grep meshbot    # Voir les instances du bot")
+                                error_print("")
+                            
+                            if attempt < max_retries - 1:
+                                info_print(f"   ⏳ Nouvelle tentative dans {retry_delay} secondes...")
+                                time.sleep(retry_delay)
+                            else:
+                                error_print("")
+                                error_print("   ❌ Impossible d'ouvrir le port série après plusieurs tentatives")
+                                error_print("   → Vérifier qu'aucun autre processus n'utilise le port")
+                                error_print("   → Vérifier la configuration (SERIAL_PORT vs MESHCORE_SERIAL_PORT)")
+                        else:
+                            # Other serial errors (permission, doesn't exist, etc.)
+                            error_print(f"❌ Erreur série (tentative {attempt + 1}/{max_retries}): {e}")
+                            if "Permission denied" in error_msg:
+                                error_print("   → Permissions insuffisantes. Ajouter l'utilisateur au groupe 'dialout':")
+                                error_print(f"     sudo usermod -a -G dialout $USER")
+                                error_print("     (puis se reconnecter)")
+                            elif "No such file" in error_msg or "does not exist" in error_msg:
+                                error_print(f"   → Le port {serial_port} n'existe pas")
+                                error_print("   → Vérifier les ports disponibles avec: ls -la /dev/tty*")
+                            
+                            # For non-lock errors, fail fast (don't retry)
+                            break
+                    except Exception as e:
+                        last_error = e
+                        error_print(f"❌ Erreur inattendue lors de l'ouverture du port série: {e}")
+                        error_print(traceback.format_exc())
+                        break
+                
+                if not serial_opened:
+                    error_print("❌ Impossible d'ouvrir le port série Meshtastic")
+                    if last_error:
+                        error_print(f"   Dernière erreur: {last_error}")
+                    error_print("   Le bot ne peut pas démarrer sans connexion Meshtastic")
+                    return False
                 
                 # Stabilisation
                 time.sleep(3)
