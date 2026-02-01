@@ -77,7 +77,10 @@ class MessageRouter:
         if hasattr(actual_interface, 'localNode') and actual_interface.localNode:
             my_id = getattr(actual_interface.localNode, 'nodeNum', 0)
 
-        is_for_me = (to_id == my_id) if my_id else False
+        # Check if this is a MeshCore DM (marked by wrapper)
+        # MeshCore DMs are always "for us" even if to_id doesn't match my_id
+        is_meshcore_dm = packet.get('_meshcore_dm', False)
+        is_for_me = is_meshcore_dm or ((to_id == my_id) if my_id else False)
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
