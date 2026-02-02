@@ -375,6 +375,38 @@ class NetworkCommands:
         Cela évite les logs en double.
         """
         try:
+            # ========================================
+            # DUAL MODE: Route to correct network
+            # ========================================
+            if self.sender.dual_interface and self.sender.dual_interface.is_dual_mode():
+                # Get which network the sender came from
+                network_source = self.sender.get_sender_network(sender_id)
+                
+                if network_source:
+                    debug_print(f"🔍 [DUAL MODE] Routing {command} broadcast to {network_source} network")
+                    
+                    # Tracker le broadcast AVANT l'envoi pour éviter boucle
+                    if self.broadcast_tracker:
+                        self.broadcast_tracker(message)
+                    
+                    # Send broadcast to the correct network on public channel
+                    success = self.sender.dual_interface.send_message(
+                        message, 
+                        0xFFFFFFFF,  # Broadcast destination
+                        network_source,
+                        channelIndex=0  # Public channel
+                    )
+                    if success:
+                        info_print(f"✅ Broadcast {command} diffusé via {network_source} (canal public)")
+                    else:
+                        error_print(f"❌ Échec broadcast {command} via {network_source}")
+                    return
+                else:
+                    debug_print(f"⚠️ [DUAL MODE] No network mapping for {command}, using primary interface")
+            
+            # ========================================
+            # SINGLE MODE: Use direct interface
+            # ========================================
             # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
             interface = self.sender._get_interface()
             
