@@ -203,10 +203,11 @@ class MeshCoreCLIWrapper:
             pubkey_prefix = pubkey_hex[:12]
             
             # Create contact dict compatible with meshcore format
+            # CRITICAL: meshcore-cli expects 'public_key' (snake_case), not 'publicKey' (camelCase)
             contact = {
                 'node_id': contact_data['node_id'],
                 'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
-                'publicKey': contact_data['publicKey'],
+                'public_key': contact_data['publicKey'],  # Use snake_case for meshcore-cli API
             }
             
             # Initialize contacts dict if needed
