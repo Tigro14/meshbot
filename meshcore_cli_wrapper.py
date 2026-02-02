@@ -1165,6 +1165,33 @@ class MeshCoreCLIWrapper:
                 sender_id = self.node_manager.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
                     info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore cache)")
+                    
+                    # CRITICAL FIX: Load full contact data from DB and add to meshcore.contacts dict
+                    # This ensures get_contact_by_key_prefix() can find it when sending responses
+                    try:
+                        cursor = self.node_manager.persistence.conn.cursor()
+                        cursor.execute(
+                            "SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, source FROM meshcore_contacts WHERE node_id = ?",
+                            (str(sender_id),)
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            contact_data = {
+                                'node_id': sender_id,
+                                'name': row[1] if row[1] else f"Node-{sender_id:08x}",
+                                'shortName': row[2] if row[2] else '',
+                                'hwModel': row[3],
+                                'publicKey': row[4],  # BLOB
+                                'lat': row[5],
+                                'lon': row[6],
+                                'alt': row[7],
+                                'source': row[8] if row[8] else 'meshcore'
+                            }
+                            # Add to meshcore.contacts dict so get_contact_by_key_prefix() can find it
+                            self._add_contact_to_meshcore(contact_data)
+                            debug_print(f"💾 [MESHCORE-DM] Contact chargé depuis DB et ajouté au dict")
+                    except Exception as load_err:
+                        debug_print(f"⚠️ [MESHCORE-DM] Erreur chargement contact depuis DB: {load_err}")
                 else:
                     # Second try: query meshcore-cli API directly
                     debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
