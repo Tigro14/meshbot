@@ -7,7 +7,7 @@ Intégration avec le bot MeshBot en mode companion
 import threading
 import time
 import asyncio
-from utils import info_print, debug_print, error_print
+from utils import info_print, debug_print, error_print, info_print_mc, debug_print_mc
 import traceback
 
 # Try to import meshcore-cli
@@ -120,7 +120,7 @@ class MeshCoreCLIWrapper:
             # Sauvegarder l'event loop pour les opérations futures
             self._loop = loop
             
-            info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
+            info_print_mc(f"✅  Device connecté sur {self.port}")
             
             # NOTE: Contact loading removed from connect() to reduce noise
             # Contacts will be synced in the event loop via sync_contacts()
@@ -154,7 +154,7 @@ class MeshCoreCLIWrapper:
         """
         info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
         self.message_callback = callback
-        info_print(f"✅ [MESHCORE-CLI] message_callback set successfully")
+        info_print_mc(f"✅  message_callback set successfully")
     
     def set_node_manager(self, node_manager):
         """
@@ -196,7 +196,7 @@ class MeshCoreCLIWrapper:
             elif isinstance(public_key, str):
                 pubkey_hex = public_key
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Type publicKey non supporté: {type(public_key)}")
+                debug_print_mc(f"⚠️ [DM] Type publicKey non supporté: {type(public_key)}")
                 return False
             
             # Extract first 12 hex chars (6 bytes) = pubkey_prefix
@@ -217,13 +217,13 @@ class MeshCoreCLIWrapper:
             
             # Add to internal dict
             self.meshcore.contacts[pubkey_prefix] = contact
-            debug_print(f"✅ [MESHCORE-DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
-            debug_print(f"📊 [MESHCORE-DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
-            debug_print(f"📊 [MESHCORE-DM] Dict size: {len(self.meshcore.contacts)}")
+            debug_print_mc(f"✅ [DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
+            debug_print_mc(f"📊 [DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
+            debug_print_mc(f"📊 [DM] Dict size: {len(self.meshcore.contacts)}")
             return True
             
         except Exception as e:
-            debug_print(f"⚠️ [MESHCORE-DM] Erreur ajout contact à meshcore: {e}")
+            debug_print_mc(f"⚠️ [DM] Erreur ajout contact à meshcore: {e}")
             return False
     
     def query_contact_by_pubkey_prefix(self, pubkey_prefix):
@@ -1195,7 +1195,7 @@ class MeshCoreCLIWrapper:
                             self._add_contact_to_meshcore(contact_data)
                             debug_print(f"💾 [MESHCORE-DM] Contact chargé depuis DB et ajouté au dict")
                     except Exception as load_err:
-                        debug_print(f"⚠️ [MESHCORE-DM] Erreur chargement contact depuis DB: {load_err}")
+                        debug_print_mc(f"⚠️ [DM] Erreur chargement contact depuis DB: {load_err}")
                 else:
                     # Second try: query meshcore-cli API directly
                     debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
@@ -1243,9 +1243,9 @@ class MeshCoreCLIWrapper:
                                 self._add_contact_to_meshcore(contact_data)
                                 debug_print(f"💾 [MESHCORE-DM] Contact dérivé sauvegardé: 0x{sender_id:08x}")
                             except Exception as save_err:
-                                debug_print(f"⚠️ [MESHCORE-DM] Erreur sauvegarde contact dérivé: {save_err}")
+                                debug_print_mc(f"⚠️ [DM] Erreur sauvegarde contact dérivé: {save_err}")
                     else:
-                        debug_print(f"⚠️ [MESHCORE-DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
+                        debug_print_mc(f"⚠️ [DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
                 except Exception as derive_err:
                     error_print(f"❌ [MESHCORE-DM] Erreur dérivation node_id: {derive_err}")
                     error_print(traceback.format_exc())
@@ -1300,7 +1300,7 @@ class MeshCoreCLIWrapper:
             if self.message_callback:
                 info_print(f"📞 [MESHCORE-CLI] Calling message_callback for message from 0x{sender_id:08x}")
                 self.message_callback(packet, None)
-                info_print(f"✅ [MESHCORE-CLI] Callback completed successfully")
+                info_print_mc(f"✅  Callback completed successfully")
             else:
                 error_print(f"⚠️ [MESHCORE-CLI] No message_callback set!")
                 
@@ -1450,7 +1450,7 @@ class MeshCoreCLIWrapper:
                                 # TextMessage - show if public or direct
                                 text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
                                 msg_type = "📢 Public" if is_public else "📨 Direct"
-                                debug_print(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
+                                debug_print_mc(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
                             
                             elif hasattr(decoded_payload, 'app_data'):
                                 # Advert with app_data - show device info
@@ -1480,11 +1480,11 @@ class MeshCoreCLIWrapper:
                             # Group messages
                             elif packet.payload_type.name in ['GroupText', 'GroupData']:
                                 content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
-                                debug_print(f"👥 [RX_LOG] {content_type} (public broadcast)")
+                                debug_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
                             
                             # Routing packets
                             elif packet.payload_type.name == 'Trace':
-                                debug_print(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
+                                debug_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
                             elif packet.payload_type.name == 'Path':
                                 debug_print(f"🛣️  [RX_LOG] Path packet (routing info)")
                         
@@ -1544,14 +1544,14 @@ class MeshCoreCLIWrapper:
                 # But we can use the full key prefix for better matching
                 pubkey_hex = public_key_bytes.hex()
                 pubkey_prefix = pubkey_hex[:12]  # First 6 bytes = 12 hex chars minimum
-                debug_print(f"✅ [MESHCORE-DM] pubkey_prefix trouvé: {pubkey_prefix}")
+                debug_print_mc(f"✅ [DM] pubkey_prefix trouvé: {pubkey_prefix}")
                 return pubkey_prefix
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
+                debug_print_mc(f"⚠️ [DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
                 return None
                 
         except Exception as e:
-            debug_print(f"⚠️ [MESHCORE-DM] Erreur recherche pubkey_prefix: {e}")
+            debug_print_mc(f"⚠️ [DM] Erreur recherche pubkey_prefix: {e}")
             if self.debug:
                 error_print(traceback.format_exc())
             return None
@@ -1598,21 +1598,21 @@ class MeshCoreCLIWrapper:
                 
                 # DIAGNOSTIC: Show what's in meshcore.contacts dict
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
-                    debug_print(f"📊 [MESHCORE-DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
-                    debug_print(f"📊 [MESHCORE-DM] Dict keys: {list(self.meshcore.contacts.keys())}")
+                    debug_print_mc(f"📊 [DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
+                    debug_print_mc(f"📊 [DM] Dict keys: {list(self.meshcore.contacts.keys())}")
                 else:
-                    debug_print(f"⚠️ [MESHCORE-DM] meshcore.contacts is None or empty!")
+                    debug_print_mc(f"⚠️ [DM] meshcore.contacts is None or empty!")
                 
                 # FIX: Direct dict access instead of meshcore-cli method
                 # The get_contact_by_key_prefix() method doesn't work with our manually added contacts
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     contact = self.meshcore.contacts.get(pubkey_prefix)
                     if contact:
-                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
+                        debug_print_mc(f"✅ [DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
                     else:
-                        debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
+                        debug_print_mc(f"⚠️ [DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Pas de pubkey_prefix en DB, recherche avec node_id")
+                debug_print_mc(f"⚠️ [DM] Pas de pubkey_prefix en DB, recherche avec node_id")
                 # Fallback: try with node_id hex (8 chars) in dict
                 hex_id = f"{destinationId:08x}"
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
@@ -1621,7 +1621,7 @@ class MeshCoreCLIWrapper:
             # If not found, use the destinationId directly
             # The send_msg API should accept either contact dict or node_id
             if not contact:
-                debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
+                debug_print_mc(f"⚠️ [DM] Contact non trouvé, utilisation de l'ID directement")
                 contact = destinationId
             
             # Send via commands.send_msg
@@ -1640,7 +1640,7 @@ class MeshCoreCLIWrapper:
             # FIRE-AND-FORGET APPROACH
             # Don't wait for result - the coroutine is hanging waiting for ACK that never comes
             # Let the message send asynchronously in the background
-            debug_print(f"✅ [MESHCORE-DM] Message submitted to event loop (fire-and-forget)")
+            debug_print_mc(f"✅ [DM] Message submitted to event loop (fire-and-forget)")
             debug_print(f"📤 [MESHCORE-DM] Coroutine will complete asynchronously in background")
             
             # Optional: Add error handler to the future to log any exceptions
@@ -1649,9 +1649,9 @@ class MeshCoreCLIWrapper:
                     if fut.exception():
                         error_print(f"❌ [MESHCORE-DM] Async send error: {fut.exception()}")
                     else:
-                        debug_print(f"✅ [MESHCORE-DM] Async send completed successfully")
+                        debug_print_mc(f"✅ [DM] Async send completed successfully")
                 except Exception as e:
-                    debug_print(f"⚠️ [MESHCORE-DM] Future check error: {e}")
+                    debug_print_mc(f"⚠️ [DM] Future check error: {e}")
             
             future.add_done_callback(_log_future_result)
             

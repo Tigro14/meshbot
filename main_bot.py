@@ -54,10 +54,10 @@ from dual_interface_manager import DualInterfaceManager, NetworkSource
 try:
     from meshcore_cli_wrapper import MeshCoreCLIWrapper as MeshCoreSerialInterface
     from meshcore_serial_interface import MeshCoreStandaloneInterface
-    info_print("✅ [MESHCORE] Using meshcore-cli library")
+    info_print_mc("✅ Using meshcore-cli library")
 except ImportError:
     from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
-    info_print("⚠️ [MESHCORE] Using basic implementation (meshcore-cli not available)")
+    info_print_mc("⚠️ Using basic implementation (meshcore-cli not available)")
 
 class MeshBot:
     # Configuration pour la reconnexion TCP

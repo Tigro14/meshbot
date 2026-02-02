@@ -22,14 +22,50 @@ def lazy_import_re():
         import re
     return re
 
-def debug_print(message):
-    """Affiche seulement en mode debug"""
+def debug_print(message, source=None):
+    """
+    Affiche seulement en mode debug
+    
+    Args:
+        message: Message à afficher
+        source: Source optionnelle ('MC' pour MeshCore, 'MT' pour Meshtastic)
+    """
     if DEBUG_MODE:
-        print(f"[DEBUG] {message}", file=sys.stderr, flush=True)
+        if source:
+            print(f"[DEBUG][{source}] {message}", file=sys.stderr, flush=True)
+        else:
+            print(f"[DEBUG] {message}", file=sys.stderr, flush=True)
 
-def info_print(message):
-    """Affiche toujours (logs importants)"""
-    print(f"[INFO] {message}", flush=True)
+def info_print(message, source=None):
+    """
+    Affiche toujours (logs importants)
+    
+    Args:
+        message: Message à afficher
+        source: Source optionnelle ('MC' pour MeshCore, 'MT' pour Meshtastic)
+    """
+    if source:
+        print(f"[INFO][{source}] {message}", flush=True)
+    else:
+        print(f"[INFO] {message}", flush=True)
+
+# Convenience functions for MeshCore logs
+def debug_print_mc(message):
+    """Affiche un message debug MeshCore [DEBUG][MC]"""
+    debug_print(message, source='MC')
+
+def info_print_mc(message):
+    """Affiche un message info MeshCore [INFO][MC]"""
+    info_print(message, source='MC')
+
+# Convenience functions for Meshtastic logs
+def debug_print_mt(message):
+    """Affiche un message debug Meshtastic [DEBUG][MT]"""
+    debug_print(message, source='MT')
+
+def info_print_mt(message):
+    """Affiche un message info Meshtastic [INFO][MT]"""
+    info_print(message, source='MT')
 
 def conversation_print(message):
     """Log spécial pour les conversations"""
