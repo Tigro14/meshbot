@@ -566,15 +566,21 @@ class MeshBot:
             # PHASE 2: FILTRAGE (SELON MODE)
             # ========================================
             # En mode single-node: tous les paquets de notre interface sont traités
+            # En mode dual: tous les paquets de n'importe quelle interface sont traités
             # En mode legacy: filtrer selon PROCESS_TCP_COMMANDS
             
             # Get connection mode from globals (set in run() method)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
             # DEBUG: Log connection mode and filtering decision
-            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source}")
+            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source} | dual_mode={self._dual_mode_active}")
             
-            if connection_mode in ['serial', 'tcp']:
+            # FIX: En mode dual, ne PAS filtrer par interface car les deux interfaces sont "les nôtres"
+            if self._dual_mode_active:
+                # MODE DUAL: Tous les paquets des deux interfaces sont traités
+                debug_print(f"✅ [DUAL-MODE] Packet accepté (dual mode actif)")
+                # Continuer le traitement normalement
+            elif connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
                 if not is_from_our_interface:
                     debug_print(f"📊 Paquet externe ignoré en mode single-node")
