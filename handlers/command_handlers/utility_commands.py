@@ -207,18 +207,63 @@ class UtilityCommands:
             info_print(f"   Auteur short: {author_short}")
             info_print(f"   Longueur finale: {len(echo_response)} caractères")
             
+            info_print("")
+            info_print("📤 ENVOI DU MESSAGE BROADCAST...")
+            
+            # ========================================
+            # DUAL MODE: Route to correct network
+            # ========================================
+            if current_sender.dual_interface and current_sender.dual_interface.is_dual_mode():
+                # Get which network the sender came from
+                network_source = current_sender.get_sender_network(sender_id)
+                
+                if network_source:
+                    info_print(f"🔍 [DUAL MODE] Routing echo broadcast to {network_source} network")
+                    # Send broadcast (destination=0xFFFFFFFF) to the correct network on public channel
+                    success = current_sender.dual_interface.send_message(
+                        echo_response, 
+                        0xFFFFFFFF,  # Broadcast destination
+                        network_source,
+                        channelIndex=0  # Public channel
+                    )
+                    if success:
+                        info_print(f"✅ Echo broadcast envoyé via {network_source} (canal public)")
+                    else:
+                        error_print(f"❌ Échec envoi echo via {network_source}")
+                    
+                    # Tracker le broadcast pour la déduplication
+                    if self.broadcast_tracker:
+                        self.broadcast_tracker(echo_response)
+                        info_print("🔖 Broadcast tracké pour déduplication")
+                    
+                    current_sender.log_conversation(sender_id, sender_info, message, echo_response)
+                    return
+                else:
+                    info_print("⚠️ [DUAL MODE] No network mapping, using primary interface")
+            
+            # ========================================
+            # SINGLE MODE: Use direct interface
+            # ========================================
             # Vérifier node info
             if hasattr(interface, 'localNode') and interface.localNode:
                 node = interface.localNode
                 if hasattr(node, 'shortName'):
                     info_print(f"✅ Node connecté: {node.shortName}")
             
-            info_print("")
-            info_print("📤 ENVOI DU MESSAGE VIA INTERFACE PARTAGÉE...")
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            # MeshCore requires destinationId parameter, Meshtastic broadcasts by default
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
             
-            # Utiliser l'interface partagée - pas de nouvelle connexion!
-            interface.sendText(echo_response)
-            info_print("✅ Message envoyé via interface partagée")
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                info_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(echo_response, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print("✅ Message envoyé via MeshCore (broadcast, canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                info_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(echo_response, channelIndex=0)
+                info_print("✅ Message envoyé via Meshtastic (broadcast, canal public)")
             
             # Tracker le broadcast pour la déduplication
             if self.broadcast_tracker:
@@ -1012,10 +1057,19 @@ class UtilityCommands:
             
             debug_print(f"📡 Broadcast {command} via interface partagée...")
             
-            # Utiliser l'interface partagée - PAS de nouvelle connexion TCP!
-            interface.sendText(message)
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
             
-            info_print(f"✅ Broadcast {command} diffusé")
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                debug_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(message, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via MeshCore (canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                debug_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(message, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via Meshtastic (canal public)")
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")

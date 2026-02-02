@@ -375,6 +375,38 @@ class NetworkCommands:
         Cela évite les logs en double.
         """
         try:
+            # ========================================
+            # DUAL MODE: Route to correct network
+            # ========================================
+            if self.sender.dual_interface and self.sender.dual_interface.is_dual_mode():
+                # Get which network the sender came from
+                network_source = self.sender.get_sender_network(sender_id)
+                
+                if network_source:
+                    debug_print(f"🔍 [DUAL MODE] Routing {command} broadcast to {network_source} network")
+                    
+                    # Tracker le broadcast AVANT l'envoi pour éviter boucle
+                    if self.broadcast_tracker:
+                        self.broadcast_tracker(message)
+                    
+                    # Send broadcast to the correct network on public channel
+                    success = self.sender.dual_interface.send_message(
+                        message, 
+                        0xFFFFFFFF,  # Broadcast destination
+                        network_source,
+                        channelIndex=0  # Public channel
+                    )
+                    if success:
+                        info_print(f"✅ Broadcast {command} diffusé via {network_source} (canal public)")
+                    else:
+                        error_print(f"❌ Échec broadcast {command} via {network_source}")
+                    return
+                else:
+                    debug_print(f"⚠️ [DUAL MODE] No network mapping for {command}, using primary interface")
+            
+            # ========================================
+            # SINGLE MODE: Use direct interface
+            # ========================================
             # Récupérer l'interface partagée (évite de créer une nouvelle connexion TCP)
             interface = self.sender._get_interface()
             
@@ -388,10 +420,19 @@ class NetworkCommands:
             
             debug_print(f"📡 Broadcast {command} via interface partagée...")
             
-            # Utiliser l'interface partagée - PAS de nouvelle connexion TCP!
-            interface.sendText(message)
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
             
-            info_print(f"✅ Broadcast {command} diffusé")
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                debug_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(message, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via MeshCore (canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                debug_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(message, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via Meshtastic (canal public)")
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")

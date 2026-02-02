@@ -203,15 +203,16 @@ class DualInterfaceManager:
                 )
                 info_print("✅ MeshCore message callback registered")
     
-    def send_message(self, text, destination_id, network_source=None):
+    def send_message(self, text, destination_id, network_source=None, channelIndex=0):
         """
         Send message to appropriate network
         
         Args:
             text: Message text
-            destination_id: Target node ID
+            destination_id: Target node ID (use 0xFFFFFFFF for broadcast)
             network_source: Which network to use (NetworkSource enum)
                            If None, uses primary interface (Meshtastic preferred)
+            channelIndex: Channel index (0 = public/default channel)
         
         Returns:
             bool: True if sent successfully
@@ -230,11 +231,20 @@ class DualInterfaceManager:
                 error_print("❌ No interface available for sending")
                 return False
             
-            # Send via interface
+            # Send via interface with channelIndex support
             if hasattr(interface, 'sendText'):
-                interface.sendText(text, destinationId=destination_id)
+                # Check if interface is MeshCore (requires both destinationId and channelIndex)
+                is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
+                
+                if is_meshcore:
+                    # MeshCore requires explicit destinationId and channelIndex
+                    interface.sendText(text, destinationId=destination_id, channelIndex=channelIndex)
+                else:
+                    # Meshtastic: channelIndex is optional
+                    interface.sendText(text, destinationId=destination_id, channelIndex=channelIndex)
+                
                 network_name = "Meshtastic" if interface == self.meshtastic_interface else "MeshCore"
-                debug_print(f"✅ Message sent via {network_name}: '{text[:50]}'")
+                debug_print(f"✅ Message sent via {network_name} (channel {channelIndex}): '{text[:50]}'")
                 return True
             else:
                 error_print(f"❌ Interface {type(interface).__name__} doesn't support sendText")
