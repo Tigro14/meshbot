@@ -759,7 +759,7 @@
                 // Auto-detect owner node (hopsAway == 0 or missing hopsAway field)
                 // This is the node directly connected (Serial or TCP) to the bot
                 for (const [nodeId, nodeData] of Object.entries(data['Nodes in mesh'])) {
-                    if (nodeData.hopsAway === 0 || nodeData.hopsAway === undefined || nodeData.hopsAway === null) {
+                    if (nodeData.hopsAway === 0 || nodeData.hopsAway == null) {
                         myNodeId = nodeId;
                         myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
                         console.log('✓ Nœud propriétaire détecté:', myNodeId, '-', myNodeName);

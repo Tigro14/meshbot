@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -163,9 +163,9 @@
             // Simulate the owner node detection logic from map.html
             const nodes = testCase.data['Nodes in mesh'];
             
-            // First pass: Look for owner node (hopsAway == 0 or undefined)
+            // First pass: Look for owner node (hopsAway == 0 or null/undefined)
             for (const [nodeId, nodeData] of Object.entries(nodes)) {
-                if (nodeData.hopsAway === 0 || nodeData.hopsAway === undefined || nodeData.hopsAway === null) {
+                if (nodeData.hopsAway === 0 || nodeData.hopsAway == null) {
                     myNodeId = nodeId;
                     myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
                     break;
