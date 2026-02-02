@@ -1336,8 +1336,11 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
-            # Log RF activity with basic info
-            debug_print(f"📡 [RX_LOG] Paquet RF reçu - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:20]}...")
+            # Calculate hex data length for display
+            hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
+            
+            # Log RF activity with basic info including packet size
+            debug_print(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
@@ -1372,6 +1375,16 @@ class MeshCoreCLIWrapper:
                     
                     info_parts.append(f"Route: {route_name}")
                     
+                    # Add packet size and version info
+                    if packet.total_bytes > 0:
+                        info_parts.append(f"Size: {packet.total_bytes}B")
+                    
+                    # Add payload version if not default
+                    if hasattr(packet, 'payload_version') and packet.payload_version:
+                        version_str = str(packet.payload_version).replace('PayloadVersion.', '')
+                        if version_str != 'Version1':  # Only show if not default
+                            info_parts.append(f"Ver: {version_str}")
+                    
                     # Add message hash if available
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
@@ -1379,6 +1392,10 @@ class MeshCoreCLIWrapper:
                     # Add path info if available
                     if packet.path_length > 0:
                         info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Add transport codes if available (useful for debugging routing)
+                    if hasattr(packet, 'transport_codes') and packet.transport_codes:
+                        info_parts.append(f"Transport: {packet.transport_codes}")
                     
                     # Check if packet is valid (only flag as invalid for non-unknown-type errors)
                     if unknown_type_error:
@@ -1391,11 +1408,34 @@ class MeshCoreCLIWrapper:
                     # Log decoded packet information
                     debug_print(f"📦 [RX_LOG] {' | '.join(info_parts)}")
                     
-                    # Log non-unknown-type errors only
+                    # Categorize and display errors with better formatting
                     if packet.errors:
-                        other_errors = [e for e in packet.errors if "is not a valid PayloadType" not in e]
-                        for error in other_errors[:3]:  # Show first 3 non-type errors
+                        # Separate errors into categories
+                        structural_errors = []
+                        content_errors = []
+                        unknown_type_errors = []
+                        
+                        for error in packet.errors:
+                            if "is not a valid PayloadType" in error:
+                                unknown_type_errors.append(error)
+                            elif "too short" in error.lower() or "truncated" in error.lower():
+                                structural_errors.append(error)
+                            else:
+                                content_errors.append(error)
+                        
+                        # Display structural errors first (most critical)
+                        for error in structural_errors[:2]:  # Show first 2
                             debug_print(f"   ⚠️ {error}")
+                        
+                        # Display content errors
+                        for error in content_errors[:2]:  # Show first 2
+                            debug_print(f"   ⚠️ {error}")
+                        
+                        # Unknown type errors are informational only (already shown in Type field)
+                        # Don't re-display them unless in debug mode
+                        if self.debug and unknown_type_errors:
+                            for error in unknown_type_errors:
+                                debug_print(f"   ℹ️  {error}")
                     
                     # If payload is decoded, show a preview
                     if packet.payload and isinstance(packet.payload, dict):
@@ -1412,6 +1452,12 @@ class MeshCoreCLIWrapper:
                                 if isinstance(app_data, dict):
                                     name = app_data.get('name', 'Unknown')
                                     debug_print(f"📢 [RX_LOG] Advert from: {name}")
+                        
+                        # In debug mode, show raw payload info if available
+                        if self.debug:
+                            raw_payload = packet.payload.get('raw', '')
+                            if raw_payload:
+                                debug_print(f"   🔍 Raw payload: {raw_payload[:40]}...")
                     
                 except Exception as decode_error:
                     # Decoder failed, but that's OK - packet might be malformed or incomplete
