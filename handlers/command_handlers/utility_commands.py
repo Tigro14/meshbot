@@ -216,9 +216,20 @@ class UtilityCommands:
             info_print("")
             info_print("📤 ENVOI DU MESSAGE VIA INTERFACE PARTAGÉE...")
             
-            # Utiliser l'interface partagée - pas de nouvelle connexion!
-            interface.sendText(echo_response)
-            info_print("✅ Message envoyé via interface partagée")
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            # MeshCore requires destinationId parameter, Meshtastic broadcasts by default
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
+            
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                info_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(echo_response, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print("✅ Message envoyé via MeshCore (broadcast, canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                info_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(echo_response, channelIndex=0)
+                info_print("✅ Message envoyé via Meshtastic (broadcast, canal public)")
             
             # Tracker le broadcast pour la déduplication
             if self.broadcast_tracker:
@@ -1012,10 +1023,19 @@ class UtilityCommands:
             
             debug_print(f"📡 Broadcast {command} via interface partagée...")
             
-            # Utiliser l'interface partagée - PAS de nouvelle connexion TCP!
-            interface.sendText(message)
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
             
-            info_print(f"✅ Broadcast {command} diffusé")
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                debug_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(message, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via MeshCore (canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                debug_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(message, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via Meshtastic (canal public)")
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")

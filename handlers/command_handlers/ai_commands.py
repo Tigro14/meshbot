@@ -82,10 +82,19 @@ class AICommands:
             
             debug_print(f"📡 Broadcast {command} via interface partagée...")
             
-            # Utiliser l'interface partagée - PAS de nouvelle connexion TCP!
-            interface.sendText(message)
+            # Detect interface type to handle MeshCore vs Meshtastic differences
+            is_meshcore = hasattr(interface, '__class__') and 'MeshCore' in interface.__class__.__name__
             
-            info_print(f"✅ Broadcast {command} diffusé")
+            if is_meshcore:
+                # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                debug_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                interface.sendText(message, destinationId=0xFFFFFFFF, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via MeshCore (canal public)")
+            else:
+                # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                debug_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                interface.sendText(message, channelIndex=0)
+                info_print(f"✅ Broadcast {command} diffusé via Meshtastic (canal public)")
             
         except Exception as e:
             error_print(f"❌ Échec broadcast {command}: {e}")

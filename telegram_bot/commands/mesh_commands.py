@@ -72,7 +72,19 @@ class MeshCommands(TelegramCommandBase):
                     
                     try:
                         debug_print(f"📤 Envoi via interface bot: '{message}'")
-                        self.interface.sendText(message)
+                        
+                        # Detect interface type to handle MeshCore vs Meshtastic differences
+                        is_meshcore = hasattr(self.interface, '__class__') and 'MeshCore' in self.interface.__class__.__name__
+                        
+                        if is_meshcore:
+                            # MeshCore: Send as broadcast (0xFFFFFFFF) on public channel (channelIndex=0)
+                            debug_print("🔍 Interface MeshCore détectée - envoi broadcast sur canal public")
+                            self.interface.sendText(message, destinationId=0xFFFFFFFF, channelIndex=0)
+                        else:
+                            # Meshtastic: Broadcast on public channel (channelIndex=0 is default)
+                            debug_print("🔍 Interface Meshtastic détectée - envoi broadcast sur canal public")
+                            self.interface.sendText(message, channelIndex=0)
+                        
                         # Wait a bit for message to be queued
                         time.sleep(2)
                         info_print(f"✅ Message envoyé via interface TCP principale")
