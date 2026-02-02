@@ -1520,17 +1520,20 @@ class MeshCoreCLIWrapper:
                 else:
                     debug_print(f"⚠️ [MESHCORE-DM] meshcore.contacts is None or empty!")
                 
-                # Try to get contact by key prefix (public key prefix)
-                if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
-                    contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
+                # FIX: Direct dict access instead of meshcore-cli method
+                # The get_contact_by_key_prefix() method doesn't work with our manually added contacts
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    contact = self.meshcore.contacts.get(pubkey_prefix)
                     if contact:
-                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
             else:
                 debug_print(f"⚠️ [MESHCORE-DM] Pas de pubkey_prefix en DB, recherche avec node_id")
-                # Fallback: try with node_id hex (unlikely to work but worth trying)
+                # Fallback: try with node_id hex (8 chars) in dict
                 hex_id = f"{destinationId:08x}"
-                if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
-                    contact = self.meshcore.get_contact_by_key_prefix(hex_id)
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    contact = self.meshcore.contacts.get(hex_id)
             
             # If not found, use the destinationId directly
             # The send_msg API should accept either contact dict or node_id
