@@ -216,6 +216,8 @@ class MeshCoreCLIWrapper:
             # Add to internal dict
             self.meshcore.contacts[pubkey_prefix] = contact
             debug_print(f"✅ [MESHCORE-DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
+            debug_print(f"📊 [MESHCORE-DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
+            debug_print(f"📊 [MESHCORE-DM] Dict size: {len(self.meshcore.contacts)}")
             return True
             
         except Exception as e:
@@ -1510,6 +1512,13 @@ class MeshCoreCLIWrapper:
             
             if pubkey_prefix:
                 debug_print(f"🔍 [MESHCORE-DM] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+                
+                # DIAGNOSTIC: Show what's in meshcore.contacts dict
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    debug_print(f"📊 [MESHCORE-DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
+                    debug_print(f"📊 [MESHCORE-DM] Dict keys: {list(self.meshcore.contacts.keys())}")
+                else:
+                    debug_print(f"⚠️ [MESHCORE-DM] meshcore.contacts is None or empty!")
                 
                 # Try to get contact by key prefix (public key prefix)
                 if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
