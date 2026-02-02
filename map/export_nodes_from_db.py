@@ -250,18 +250,7 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         except Exception as e:
                             log(f"⚠️  Erreur parsing position pour {node_key}: {e}")
                 
-                persistence.close()
-                log(f"   • SNR disponible pour {len(snr_data)} nœuds")
-                log(f"   • Last heard pour {len(last_heard_data)} nœuds")
-                log(f"   • MQTT last heard pour {len(mqtt_last_heard_data)} nœuds")
-                log(f"   • Hops disponible pour {len(hops_data)} nœuds")
-                log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
-                log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
-                log(f"   • MQTT nodes avec position (packets): {len(mqtt_node_data)} nœuds")
-                log(f"   • Telemetry disponible pour {len(telemetry_data)} nœuds")
-                log(f"   • Node stats disponible pour {len(node_stats_data)} nœuds")
-                
-                # Extract 7-day telemetry history for graphing
+                # Extract 7-day telemetry history for graphing (BEFORE closing database)
                 log(f"📊 Extraction de l'historique télémétrie (7 jours)...")
                 telemetry_history = {}
                 history_days = 7
@@ -330,6 +319,18 @@ def export_nodes_from_files(node_names_file='../node_names.json', db_path='../tr
                         telemetry_history[node_id_str] = [history[i] for i in range(0, len(history), step)][:max_points]
                 
                 log(f"   • Historique télémétrie pour {len(telemetry_history)} nœuds")
+                
+                # Close database connection AFTER all queries are complete
+                persistence.close()
+                log(f"   • SNR disponible pour {len(snr_data)} nœuds")
+                log(f"   • Last heard pour {len(last_heard_data)} nœuds")
+                log(f"   • MQTT last heard pour {len(mqtt_last_heard_data)} nœuds")
+                log(f"   • Hops disponible pour {len(hops_data)} nœuds")
+                log(f"   • Neighbors disponible pour {len(neighbors_data)} nœuds")
+                log(f"   • MQTT active nodes: {len(mqtt_active_nodes)} nœuds")
+                log(f"   • MQTT nodes avec position (packets): {len(mqtt_node_data)} nœuds")
+                log(f"   • Telemetry disponible pour {len(telemetry_data)} nœuds")
+                log(f"   • Node stats disponible pour {len(node_stats_data)} nœuds")
                 
             except Exception as e:
                 log(f"⚠️  Erreur enrichissement SQLite (non bloquant): {e}")
