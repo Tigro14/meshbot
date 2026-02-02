@@ -445,8 +445,8 @@ MESH_ALERT_THROTTLE_SECONDS = 1800  # 30 minutes entre deux alertes identiques (
 # ========================================
 
 # Configuration collecte voisins via MQTT Meshtastic
-MQTT_NEIGHBOR_ENABLED = False  # Activer/désactiver la collecte de voisins via MQTT
-MQTT_NEIGHBOR_SERVER = "serveurperso.com"  # Serveur MQTT Meshtastic
+MQTT_NEIGHBOR_ENABLED = True  # Activer/désactiver la collecte de voisins via MQTT
+MQTT_NEIGHBOR_SERVER = "mqtt.meshtastic.com"  # Serveur MQTT Meshtastic
 MQTT_NEIGHBOR_PORT = 1883  # Port MQTT (1883 standard, 8883 pour TLS)
 MQTT_NEIGHBOR_USER = "meshdev"  # Utilisateur MQTT
 # NOTE: MQTT_NEIGHBOR_PASSWORD est défini dans config.priv.py
