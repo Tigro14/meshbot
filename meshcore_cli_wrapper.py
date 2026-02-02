@@ -204,10 +204,11 @@ class MeshCoreCLIWrapper:
             
             # Create contact dict compatible with meshcore format
             # CRITICAL: meshcore-cli expects 'public_key' (snake_case), not 'publicKey' (camelCase)
+            # CRITICAL: meshcore-cli expects hex string, not bytes (calls fromhex() internally)
             contact = {
                 'node_id': contact_data['node_id'],
                 'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
-                'public_key': contact_data['publicKey'],  # Use snake_case for meshcore-cli API
+                'public_key': contact_data['publicKey'].hex(),  # Convert bytes to hex string for API
             }
             
             # Initialize contacts dict if needed
