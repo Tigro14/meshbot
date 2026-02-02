@@ -154,7 +154,7 @@ CHANNEL_0_PSK = None  # None = utiliser la PSK par défaut Meshtastic
 # NOTE: L'ID du node (nodeNum) est automatiquement détecté depuis la connexion
 #       via interface.localNode.nodeNum - pas besoin de le configurer manuellement
 #REMOTE_NODE_HOST = "192.168.1.38"  # IP du node distant (TCP mode ou monitoring)
-/bin/bash: line 1: q: command not found
+REMOTE_NODE_NAME = "tigro G2 MiniPV"        # Nom d'affichage pour les alertes
 
 # ========================================
 # CONFIGURATION LEGACY MULTI-NODES (AVANCÉ)
