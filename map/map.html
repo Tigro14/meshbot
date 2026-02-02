@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte Réseau Meshtastic - Paris IDF vu par tigro G2 PV</title>
+    <title>Carte Réseau Meshtastic - Paris IDF</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -501,7 +501,7 @@
                 <circle cx="12" cy="12" r="10" stroke="#1a73e8" stroke-width="2"/>
                 <path d="M12 6v6l4 2" stroke="#1a73e8" stroke-width="2" stroke-linecap="round"/>
             </svg>
-            <div class="stats-title">Réseau Mesh vu par tigro G2 PV</div>
+            <div class="stats-title" id="statsTitle">Réseau Mesh</div>
         </div>
         
         <div class="view-buttons">
@@ -563,7 +563,8 @@
         let meshData = null;
         let currentFilter = '24';
         let currentView = 'both';  // Changed from 'nodes' to 'both' to show nodes + links by default
-        let myNodeId = '!a2e175ac';
+        let myNodeId = null;  // Will be auto-detected from data (node with hopsAway == 0)
+        let myNodeName = 'Mon Nœud';  // Will be set from detected owner node
         let linkLayerGroup = L.layerGroup();
         let linkCount = 0;
         
@@ -754,6 +755,42 @@
                 
                 console.log('✓ JSON chargé avec succès!');
                 console.log('Nombre de nœuds:', Object.keys(data['Nodes in mesh']).length);
+                
+                // Auto-detect owner node (hopsAway == 0 or missing hopsAway field)
+                // This is the node directly connected (Serial or TCP) to the bot
+                for (const [nodeId, nodeData] of Object.entries(data['Nodes in mesh'])) {
+                    if (nodeData.hopsAway === 0 || nodeData.hopsAway == null) {
+                        myNodeId = nodeId;
+                        myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
+                        console.log('✓ Nœud propriétaire détecté:', myNodeId, '-', myNodeName);
+                        
+                        // Update page title with owner node name
+                        document.title = `Carte Réseau Meshtastic - Vu par ${myNodeName}`;
+                        
+                        // Update stats title with owner node name
+                        const statsTitle = document.getElementById('statsTitle');
+                        if (statsTitle) {
+                            statsTitle.textContent = `Réseau Mesh vu par ${myNodeName}`;
+                        }
+                        
+                        break;  // Found owner node, stop searching
+                    }
+                }
+                
+                // If no owner node found, log warning
+                if (!myNodeId) {
+                    console.warn('⚠️ Aucun nœud propriétaire trouvé (hopsAway == 0)');
+                    console.warn('   Utilisation du fallback: premier nœud de la liste');
+                    // Fallback: use first node with position
+                    for (const [nodeId, nodeData] of Object.entries(data['Nodes in mesh'])) {
+                        if (nodeData.position) {
+                            myNodeId = nodeId;
+                            myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
+                            console.log('✓ Nœud fallback:', myNodeId, '-', myNodeName);
+                            break;
+                        }
+                    }
+                }
                 
                 return { nodes: data['Nodes in mesh'] };
             } catch (error) {
