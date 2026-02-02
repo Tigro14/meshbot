@@ -1335,6 +1335,53 @@ class MeshCoreCLIWrapper:
             if self.debug:
                 error_print(traceback.format_exc())
 
+    def _get_pubkey_prefix_for_node(self, node_id):
+        """
+        Get public key prefix for a node_id from database
+        
+        When a MeshCore DM arrives, we save the contact with its full publicKey.
+        When sending a response, we need to look up the contact in meshcore using
+        the pubkey_prefix, not the node_id (node_id is only the first 4 bytes of the key).
+        
+        Args:
+            node_id: int node ID
+            
+        Returns:
+            str: hex string of public key prefix (first 12 chars minimum), or None
+        """
+        if not self.node_manager or not hasattr(self.node_manager, 'persistence'):
+            debug_print("⚠️ [MESHCORE-DM] NodeManager ou persistence non disponible")
+            return None
+        
+        try:
+            debug_print(f"🔍 [MESHCORE-DM] Recherche pubkey_prefix pour node 0x{node_id:08x}")
+            
+            # Query meshcore_contacts table
+            cursor = self.node_manager.persistence.conn.cursor()
+            cursor.execute(
+                "SELECT publicKey FROM meshcore_contacts WHERE node_id = ?",
+                (str(node_id),)
+            )
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                public_key_bytes = row[0]
+                # Convert to hex, take first 12 chars minimum (6 bytes)
+                # But we can use the full key prefix for better matching
+                pubkey_hex = public_key_bytes.hex()
+                pubkey_prefix = pubkey_hex[:12]  # First 6 bytes = 12 hex chars minimum
+                debug_print(f"✅ [MESHCORE-DM] pubkey_prefix trouvé: {pubkey_prefix}")
+                return pubkey_prefix
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
+                return None
+                
+        except Exception as e:
+            debug_print(f"⚠️ [MESHCORE-DM] Erreur recherche pubkey_prefix: {e}")
+            if self.debug:
+                error_print(traceback.format_exc())
+            return None
+
     def sendText(self, text, destinationId, wantAck=False, channelIndex=0):
         """
         Envoie un message texte via MeshCore
@@ -1364,19 +1411,31 @@ class MeshCoreCLIWrapper:
                 error_print(f"   → Attributs disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
                 return False
             
-            # Get the contact by ID (hex node ID)
+            # Get the contact using pubkey_prefix (not node_id!)
+            # The node_id is only the first 4 bytes of the 32-byte public key
+            # meshcore-cli's get_contact_by_key_prefix expects at least 12 hex chars (6 bytes)
             contact = None
-            hex_id = f"{destinationId:08x}"
-            debug_print(f"🔍 [MESHCORE-DM] Recherche du contact avec ID hex: {hex_id}")
             
-            # Try to get contact by key prefix (public key prefix)
-            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
-                contact = self.meshcore.get_contact_by_key_prefix(hex_id)
-                if contact:
-                    debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+            # FIX: Look up the full pubkey_prefix from database instead of using node_id
+            pubkey_prefix = self._get_pubkey_prefix_for_node(destinationId)
             
-            # If not found, just use the destinationId directly
-            # The send_msg API should accept either contact dict or ID
+            if pubkey_prefix:
+                debug_print(f"🔍 [MESHCORE-DM] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+                
+                # Try to get contact by key prefix (public key prefix)
+                if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                    contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
+                    if contact:
+                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Pas de pubkey_prefix en DB, recherche avec node_id")
+                # Fallback: try with node_id hex (unlikely to work but worth trying)
+                hex_id = f"{destinationId:08x}"
+                if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
+                    contact = self.meshcore.get_contact_by_key_prefix(hex_id)
+            
+            # If not found, use the destinationId directly
+            # The send_msg API should accept either contact dict or node_id
             if not contact:
                 debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
                 contact = destinationId
