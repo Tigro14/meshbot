@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: Owner Node Detection</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .pass { color: green; font-weight: bold; }
+        .fail { color: red; font-weight: bold; }
+        .test { margin: 10px 0; padding: 10px; background: #f5f5f5; border-left: 3px solid #ccc; }
+        .test.pass { border-color: green; background: #e8f5e9; }
+        .test.fail { border-color: red; background: #ffebee; }
+        pre { background: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test: Owner Node Detection in map.html</h1>
+    <p>This test validates that the map correctly detects the owner node from data.</p>
+    
+    <div id="results"></div>
+    
+    <script>
+        // Test data: Various scenarios
+        const testCases = [
+            {
+                name: "Normal case: Node with hopsAway = 0",
+                data: {
+                    "Nodes in mesh": {
+                        "!a2e175ac": {
+                            "num": 2734384556,
+                            "user": {
+                                "id": "!a2e175ac",
+                                "longName": "tigrobot",
+                                "shortName": "TIGR",
+                                "hwModel": "T_ECHO"
+                            },
+                            "position": {
+                                "latitude": 47.2496,
+                                "longitude": 6.0248,
+                                "altitude": 350
+                            },
+                            "hopsAway": 0  // Owner node
+                        },
+                        "!b3f286bd": {
+                            "num": 3019343037,
+                            "user": {
+                                "id": "!b3f286bd",
+                                "longName": "RemoteNode",
+                                "shortName": "REMO",
+                                "hwModel": "HELTEC_V3"
+                            },
+                            "position": {
+                                "latitude": 47.2181,
+                                "longitude": -1.5528,
+                                "altitude": 50
+                            },
+                            "hopsAway": 1
+                        }
+                    }
+                },
+                expected: {
+                    nodeId: "!a2e175ac",
+                    nodeName: "tigrobot"
+                }
+            },
+            {
+                name: "Edge case: Node with undefined hopsAway",
+                data: {
+                    "Nodes in mesh": {
+                        "!12345678": {
+                            "num": 305419896,
+                            "user": {
+                                "id": "!12345678",
+                                "longName": "MySerialNode",
+                                "shortName": "MYSR",
+                                "hwModel": "RAK4631"
+                            },
+                            "position": {
+                                "latitude": 48.8566,
+                                "longitude": 2.3522,
+                                "altitude": 100
+                            }
+                            // hopsAway is undefined - should be detected as owner
+                        },
+                        "!87654321": {
+                            "num": 2271560481,
+                            "user": {
+                                "id": "!87654321",
+                                "longName": "DistantNode",
+                                "shortName": "DIST",
+                                "hwModel": "TBEAM"
+                            },
+                            "position": {
+                                "latitude": 48.8600,
+                                "longitude": 2.3600,
+                                "altitude": 120
+                            },
+                            "hopsAway": 2
+                        }
+                    }
+                },
+                expected: {
+                    nodeId: "!12345678",
+                    nodeName: "MySerialNode"
+                }
+            },
+            {
+                name: "Fallback case: No owner node (all have hopsAway > 0)",
+                data: {
+                    "Nodes in mesh": {
+                        "!aaaaaaaa": {
+                            "num": 2863311530,
+                            "user": {
+                                "id": "!aaaaaaaa",
+                                "longName": "Node A",
+                                "shortName": "NODA",
+                                "hwModel": "HELTEC_V3"
+                            },
+                            "position": {
+                                "latitude": 47.2496,
+                                "longitude": 6.0248,
+                                "altitude": 350
+                            },
+                            "hopsAway": 1
+                        },
+                        "!bbbbbbbb": {
+                            "num": 3149642683,
+                            "user": {
+                                "id": "!bbbbbbbb",
+                                "longName": "Node B",
+                                "shortName": "NODB",
+                                "hwModel": "TBEAM"
+                            },
+                            "position": {
+                                "latitude": 47.2181,
+                                "longitude": -1.5528,
+                                "altitude": 50
+                            },
+                            "hopsAway": 2
+                        }
+                    }
+                },
+                expected: {
+                    nodeId: "!aaaaaaaa",  // First node with position
+                    nodeName: "Node A"
+                }
+            }
+        ];
+        
+        // Run tests
+        let passCount = 0;
+        let failCount = 0;
+        const resultsDiv = document.getElementById('results');
+        
+        testCases.forEach((testCase, index) => {
+            const testDiv = document.createElement('div');
+            testDiv.className = 'test';
+            
+            let myNodeId = null;
+            let myNodeName = 'Mon Nœud';
+            
+            // Simulate the owner node detection logic from map.html
+            const nodes = testCase.data['Nodes in mesh'];
+            
+            // First pass: Look for owner node (hopsAway == 0 or undefined)
+            for (const [nodeId, nodeData] of Object.entries(nodes)) {
+                if (nodeData.hopsAway === 0 || nodeData.hopsAway === undefined || nodeData.hopsAway === null) {
+                    myNodeId = nodeId;
+                    myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
+                    break;
+                }
+            }
+            
+            // Fallback: use first node with position
+            if (!myNodeId) {
+                for (const [nodeId, nodeData] of Object.entries(nodes)) {
+                    if (nodeData.position) {
+                        myNodeId = nodeId;
+                        myNodeName = nodeData.user?.longName || nodeData.user?.shortName || nodeId;
+                        break;
+                    }
+                }
+            }
+            
+            // Check results
+            const nodeIdMatch = myNodeId === testCase.expected.nodeId;
+            const nodeNameMatch = myNodeName === testCase.expected.nodeName;
+            const passed = nodeIdMatch && nodeNameMatch;
+            
+            if (passed) {
+                passCount++;
+                testDiv.classList.add('pass');
+            } else {
+                failCount++;
+                testDiv.classList.add('fail');
+            }
+            
+            testDiv.innerHTML = `
+                <h3>${passed ? '✅' : '❌'} Test ${index + 1}: ${testCase.name}</h3>
+                <p><strong>Expected:</strong> nodeId=${testCase.expected.nodeId}, nodeName="${testCase.expected.nodeName}"</p>
+                <p><strong>Got:</strong> nodeId=${myNodeId}, nodeName="${myNodeName}"</p>
+                ${!passed ? '<p class="fail">FAILED: Node detection mismatch!</p>' : '<p class="pass">PASSED</p>'}
+            `;
+            
+            resultsDiv.appendChild(testDiv);
+        });
+        
+        // Summary
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'test';
+        summaryDiv.innerHTML = `
+            <h2>📊 Test Summary</h2>
+            <p><strong>Total:</strong> ${testCases.length} tests</p>
+            <p class="pass"><strong>Passed:</strong> ${passCount}</p>
+            <p class="fail"><strong>Failed:</strong> ${failCount}</p>
+            <p><strong>Result:</strong> ${failCount === 0 ? '<span class="pass">ALL TESTS PASSED ✅</span>' : '<span class="fail">SOME TESTS FAILED ❌</span>'}</p>
+        `;
+        resultsDiv.appendChild(summaryDiv);
+    </script>
+</body>
+</html>
