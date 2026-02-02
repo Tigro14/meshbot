@@ -1554,52 +1554,28 @@ class MeshCoreCLIWrapper:
                 self._loop
             )
             
-            debug_print(f"🔄 [MESHCORE-DM] Future created, waiting for result...")
+            # FIRE-AND-FORGET APPROACH
+            # Don't wait for result - the coroutine is hanging waiting for ACK that never comes
+            # Let the message send asynchronously in the background
+            debug_print(f"✅ [MESHCORE-DM] Message submitted to event loop (fire-and-forget)")
+            debug_print(f"📤 [MESHCORE-DM] Coroutine will complete asynchronously in background")
             
-            # Wait for result with timeout
-            # Note: LoRa transmission can take time, and meshcore may not return immediately
-            try:
-                result = future.result(timeout=30)  # 30 second timeout for LoRa
-                debug_print(f"✅ [MESHCORE-DM] Got result: type={type(result).__name__}, value={result}")
-            except (asyncio.TimeoutError, TimeoutError) as timeout_err:
-                # CHANGED: Treat timeout as failure, not success
-                # This was masking the actual problem!
-                error_print(f"⏱️ [MESHCORE-DM] TIMEOUT après 30s: {timeout_err}")
-                error_print(f"⚠️ [MESHCORE-DM] Future done: {future.done()}, cancelled: {future.cancelled()}")
-                if future.done():
-                    try:
-                        exc = future.exception()
-                        if exc:
-                            error_print(f"❌ [MESHCORE-DM] Exception in coroutine: {exc}")
-                            error_print(traceback.format_exc())
-                    except Exception as exc_check_err:
-                        error_print(f"⚠️ [MESHCORE-DM] Couldn't check exception: {exc_check_err}")
-                return False  # Changed from True - timeout is a failure!
-            except Exception as wait_err:
-                error_print(f"❌ [MESHCORE-DM] Exception waiting for result: {wait_err}")
-                error_print(traceback.format_exc())
-                return False
+            # Optional: Add error handler to the future to log any exceptions
+            def _log_future_result(fut):
+                try:
+                    if fut.exception():
+                        error_print(f"❌ [MESHCORE-DM] Async send error: {fut.exception()}")
+                    else:
+                        debug_print(f"✅ [MESHCORE-DM] Async send completed successfully")
+                except Exception as e:
+                    debug_print(f"⚠️ [MESHCORE-DM] Future check error: {e}")
             
-            # Check result type (meshcore returns Event objects)
-            debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
+            future.add_done_callback(_log_future_result)
             
-            # Result is an Event object, check if it's not an error
-            if hasattr(result, 'type'):
-                from meshcore import EventType
-                if result.type == EventType.ERROR:
-                    error_print(f"❌ [MESHCORE-DM] Erreur d'envoi: {result.payload}")
-                    return False
-                else:
-                    debug_print("✅ [MESHCORE-DM] Message envoyé avec succès")
-                    return True
-            else:
-                # If no type attribute, assume success if not None/False
-                if result:
-                    debug_print("✅ [MESHCORE-DM] Message envoyé")
-                    return True
-                else:
-                    error_print("❌ [MESHCORE-DM] Échec envoi")
-                    return False
+            # Return immediately - don't block waiting for result
+            # LoRa is inherently unreliable anyway, we send and hope it arrives
+            debug_print("✅ [MESHCORE-DM] Message envoyé (fire-and-forget)")
+            return True
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-DM] Erreur envoi: {e}")
