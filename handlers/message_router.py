@@ -85,6 +85,9 @@ class MessageRouter:
         is_from_me = (sender_id == my_id) if my_id else False
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
+        
+        # DEBUG: Log message routing decision
+        debug_print(f"🔍 [ROUTER-DEBUG] _meshcore_dm={is_meshcore_dm} | is_for_me={is_for_me} | is_broadcast={is_broadcast} | to=0x{to_id:08x}")
 
         # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, ia, info, propag, hop)
         broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/ia', '/info', '/propag', '/hop']

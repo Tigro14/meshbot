@@ -512,6 +512,11 @@ class MeshBot:
                     interface == self.interface or 
                     interface == self.dual_interface.meshcore_interface
                 )
+                # DEBUG: Log interface comparison
+                debug_print(f"🔍 [DUAL-MODE] interface={type(interface).__name__ if interface else 'None'}")
+                debug_print(f"🔍 [DUAL-MODE] self.interface={type(self.interface).__name__ if self.interface else 'None'}")
+                debug_print(f"🔍 [DUAL-MODE] meshcore_interface={type(self.dual_interface.meshcore_interface).__name__ if self.dual_interface.meshcore_interface else 'None'}")
+                debug_print(f"🔍 [DUAL-MODE] is_from_our_interface={is_from_our_interface}")
             else:
                 is_from_our_interface = (interface == self.interface)
             
@@ -566,6 +571,9 @@ class MeshBot:
             # Get connection mode from globals (set in run() method)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
+            # DEBUG: Log connection mode and filtering decision
+            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source}")
+            
             if connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
                 if not is_from_our_interface:
@@ -601,6 +609,10 @@ class MeshBot:
             
             # Check if this is a MeshCore DM (marked by wrapper)
             is_meshcore_dm = packet.get('_meshcore_dm', False)
+            
+            # DEBUG: Log MeshCore DM flag
+            if is_meshcore_dm:
+                info_print(f"🔍 [DEBUG] _meshcore_dm flag présent dans packet | from=0x{from_id:08x} | to=0x{to_id:08x}")
             
             # Broadcast can be to 0xFFFFFFFF or to 0 (both are broadcast addresses)
             # BUT: MeshCore DMs are NOT broadcasts even if to_id looks like broadcast
@@ -701,6 +713,8 @@ class MeshBot:
 
                 # Traiter les commandes
                 if message and self.message_handler:
+                    # DEBUG: Log avant appel process_text_message
+                    info_print(f"📞 [DEBUG] Appel process_text_message | message='{message}' | _meshcore_dm={packet.get('_meshcore_dm', False)}")
                     self.message_handler.process_text_message(packet, decoded, message)
         
         except Exception as e:
