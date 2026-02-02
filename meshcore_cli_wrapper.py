@@ -1437,21 +1437,56 @@ class MeshCoreCLIWrapper:
                             for error in unknown_type_errors:
                                 debug_print(f"   ℹ️  {error}")
                     
-                    # If payload is decoded, show a preview
+                    # Determine if packet is public/broadcast
+                    from meshcoredecoder.types import RouteType as RT
+                    is_public = packet.route_type in [RT.Flood, RT.TransportFlood]
+                    
+                    # If payload is decoded, show a preview with enhanced context
                     if packet.payload and isinstance(packet.payload, dict):
                         decoded_payload = packet.payload.get('decoded')
                         if decoded_payload:
-                            # Show payload type-specific info
+                            # Show payload type-specific info with public/family context
                             if hasattr(decoded_payload, 'text'):
-                                # TextMessage
+                                # TextMessage - show if public or direct
                                 text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
-                                debug_print(f"📝 [RX_LOG] Message: \"{text_preview}\"")
+                                msg_type = "📢 Public" if is_public else "📨 Direct"
+                                debug_print(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
+                            
                             elif hasattr(decoded_payload, 'app_data'):
-                                # Advert with app_data
+                                # Advert with app_data - show device info
                                 app_data = decoded_payload.app_data
                                 if isinstance(app_data, dict):
                                     name = app_data.get('name', 'Unknown')
-                                    debug_print(f"📢 [RX_LOG] Advert from: {name}")
+                                    
+                                    # Build advert info with device role and location
+                                    advert_parts = [f"from: {name}"]
+                                    
+                                    # Add device role if available
+                                    if 'device_role' in app_data:
+                                        role = app_data['device_role']
+                                        role_name = str(role).split('.')[-1]  # Extract enum name
+                                        advert_parts.append(f"Role: {role_name}")
+                                    
+                                    # Add location indicator
+                                    if app_data.get('has_location'):
+                                        location = app_data.get('location', {})
+                                        if location:
+                                            lat = location.get('latitude', 0)
+                                            lon = location.get('longitude', 0)
+                                            advert_parts.append(f"GPS: ({lat:.4f}, {lon:.4f})")
+                                    
+                                    debug_print(f"📢 [RX_LOG] Advert {' | '.join(advert_parts)}")
+                            
+                            # Group messages
+                            elif packet.payload_type.name in ['GroupText', 'GroupData']:
+                                content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
+                                debug_print(f"👥 [RX_LOG] {content_type} (public broadcast)")
+                            
+                            # Routing packets
+                            elif packet.payload_type.name == 'Trace':
+                                debug_print(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
+                            elif packet.payload_type.name == 'Path':
+                                debug_print(f"🛣️  [RX_LOG] Path packet (routing info)")
                         
                         # In debug mode, show raw payload info if available
                         if self.debug:
