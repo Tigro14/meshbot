@@ -506,8 +506,14 @@ class MeshBot:
             # ========================================
             # En mode single-node, tous les paquets viennent de notre interface unique
             # En mode dual, les paquets viennent de Meshtastic OU MeshCore (via network_source)
-            # Pas besoin de filtrage par source
-            is_from_our_interface = (interface == self.interface)
+            # FIX: In dual mode, check if interface is EITHER meshtastic OR meshcore
+            if self._dual_mode_active and self.dual_interface:
+                is_from_our_interface = (
+                    interface == self.interface or 
+                    interface == self.dual_interface.meshcore_interface
+                )
+            else:
+                is_from_our_interface = (interface == self.interface)
             
             # Déterminer la source pour les logs et stats
             # IMPORTANT: Vérifier le mode dual EN PREMIER
@@ -2288,7 +2294,8 @@ class MeshBot:
                 self.vigilance_monitor,
                 broadcast_tracker=self._track_broadcast,  # Callback pour tracker les broadcasts
                 mqtt_neighbor_collector=self.mqtt_neighbor_collector,  # MQTT collector reference
-                companion_mode=(meshcore_enabled or not meshtastic_enabled)  # Mode companion si pas Meshtastic
+                companion_mode=(meshcore_enabled or not meshtastic_enabled),  # Mode companion si pas Meshtastic
+                dual_interface_manager=self.dual_interface  # Pass dual interface for routing
             )
 
             # Initialiser le gestionnaire de traceroute mesh (après message_handler)

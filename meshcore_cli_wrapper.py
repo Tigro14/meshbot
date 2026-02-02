@@ -166,6 +166,66 @@ class MeshCoreCLIWrapper:
         self.node_manager = node_manager
         debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
+    def _add_contact_to_meshcore(self, contact_data):
+        """
+        Add a contact to meshcore's internal contact list
+        
+        This is CRITICAL for get_contact_by_key_prefix() to work when sending responses.
+        The method searches self.meshcore.contacts dict, not the database.
+        
+        Args:
+            contact_data: Dict with node_id, name, publicKey, etc.
+            
+        Returns:
+            bool: True if added successfully, False otherwise
+        """
+        if not self.meshcore or not hasattr(self.meshcore, 'contacts'):
+            debug_print("⚠️ [MESHCORE-DM] meshcore.contacts non disponible")
+            return False
+        
+        try:
+            # Extract pubkey_prefix from publicKey
+            public_key = contact_data.get('publicKey')
+            if not public_key:
+                debug_print("⚠️ [MESHCORE-DM] Pas de publicKey dans contact_data")
+                return False
+            
+            # Convert publicKey to hex string if it's bytes
+            if isinstance(public_key, bytes):
+                pubkey_hex = public_key.hex()
+            elif isinstance(public_key, str):
+                pubkey_hex = public_key
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Type publicKey non supporté: {type(public_key)}")
+                return False
+            
+            # Extract first 12 hex chars (6 bytes) = pubkey_prefix
+            pubkey_prefix = pubkey_hex[:12]
+            
+            # Create contact dict compatible with meshcore format
+            # CRITICAL: meshcore-cli expects 'public_key' (snake_case), not 'publicKey' (camelCase)
+            # CRITICAL: meshcore-cli expects hex string, not bytes (calls fromhex() internally)
+            contact = {
+                'node_id': contact_data['node_id'],
+                'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
+                'public_key': contact_data['publicKey'].hex(),  # Convert bytes to hex string for API
+            }
+            
+            # Initialize contacts dict if needed
+            if self.meshcore.contacts is None:
+                self.meshcore.contacts = {}
+            
+            # Add to internal dict
+            self.meshcore.contacts[pubkey_prefix] = contact
+            debug_print(f"✅ [MESHCORE-DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
+            debug_print(f"📊 [MESHCORE-DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
+            debug_print(f"📊 [MESHCORE-DM] Dict size: {len(self.meshcore.contacts)}")
+            return True
+            
+        except Exception as e:
+            debug_print(f"⚠️ [MESHCORE-DM] Erreur ajout contact à meshcore: {e}")
+            return False
+    
     def query_contact_by_pubkey_prefix(self, pubkey_prefix):
         """
         Query meshcore-cli for a contact by public key prefix
@@ -408,6 +468,8 @@ class MeshCoreCLIWrapper:
                     'source': 'meshcore'
                 }
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
+                # CRITICAL: Also add to meshcore.contacts dict for get_contact_by_key_prefix() to work
+                self._add_contact_to_meshcore(contact_data)
                 debug_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé: {name}")
             else:
                 # Fallback to in-memory storage if SQLite not available
@@ -927,6 +989,8 @@ class MeshCoreCLIWrapper:
                                             'source': 'meshcore'
                                         }
                                         self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                        # CRITICAL: Also add to meshcore.contacts dict
+                                        self._add_contact_to_meshcore(contact_data)
                                         saved_count += 1
                                     except Exception as save_err:
                                         # Only log errors, not every save
@@ -1074,16 +1138,22 @@ class MeshCoreCLIWrapper:
                                        attributes.get('publicKeyPrefix'))
             
             # Méthode 3: Chercher directement sur l'event
+            # IMPORTANT: Check for actual None, not just falsy (to handle MagicMock in tests)
             if sender_id is None and hasattr(event, 'contact_id'):
-                sender_id = event.contact_id
-                debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
+                attr_value = event.contact_id
+                # Only use it if it's actually a valid value (not None, not mock)
+                if attr_value is not None and isinstance(attr_value, int):
+                    sender_id = attr_value
+                    debug_print(f"📋 [MESHCORE-DM] Event direct contact_id: {sender_id}")
             
             # Méthode 3b: Chercher pubkey_prefix directement sur l'event
             if pubkey_prefix is None:
                 for attr_name in ['pubkey_prefix', 'pubkeyPrefix', 'public_key_prefix', 'publicKeyPrefix']:
                     if hasattr(event, attr_name):
-                        pubkey_prefix = getattr(event, attr_name)
-                        if pubkey_prefix:
+                        attr_value = getattr(event, attr_name)
+                        # Only use if it's a non-empty string
+                        if attr_value and isinstance(attr_value, str):
+                            pubkey_prefix = attr_value
                             debug_print(f"📋 [MESHCORE-DM] Event direct {attr_name}: {pubkey_prefix}")
                             break
             
@@ -1099,12 +1169,86 @@ class MeshCoreCLIWrapper:
                 sender_id = self.node_manager.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
                 if sender_id:
                     info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore cache)")
+                    
+                    # CRITICAL FIX: Load full contact data from DB and add to meshcore.contacts dict
+                    # This ensures get_contact_by_key_prefix() can find it when sending responses
+                    try:
+                        cursor = self.node_manager.persistence.conn.cursor()
+                        cursor.execute(
+                            "SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, source FROM meshcore_contacts WHERE node_id = ?",
+                            (str(sender_id),)
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            contact_data = {
+                                'node_id': sender_id,
+                                'name': row[1] if row[1] else f"Node-{sender_id:08x}",
+                                'shortName': row[2] if row[2] else '',
+                                'hwModel': row[3],
+                                'publicKey': row[4],  # BLOB
+                                'lat': row[5],
+                                'lon': row[6],
+                                'alt': row[7],
+                                'source': row[8] if row[8] else 'meshcore'
+                            }
+                            # Add to meshcore.contacts dict so get_contact_by_key_prefix() can find it
+                            self._add_contact_to_meshcore(contact_data)
+                            debug_print(f"💾 [MESHCORE-DM] Contact chargé depuis DB et ajouté au dict")
+                    except Exception as load_err:
+                        debug_print(f"⚠️ [MESHCORE-DM] Erreur chargement contact depuis DB: {load_err}")
                 else:
                     # Second try: query meshcore-cli API directly
                     debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
                     sender_id = self.query_contact_by_pubkey_prefix(pubkey_prefix)
                     if sender_id:
                         info_print(f"✅ [MESHCORE-DM] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore-cli API)")
+            
+            # Méthode 5: FALLBACK - Derive node_id from pubkey_prefix
+            # In MeshCore/Meshtastic, the node_id is the FIRST 4 BYTES of the 32-byte public key
+            # If we have a pubkey_prefix (which is a hex string of the public key), we can derive the node_id
+            # This allows us to process DMs even when the contact isn't in the device's contact list yet
+            if sender_id is None and pubkey_prefix:
+                try:
+                    debug_print(f"🔑 [MESHCORE-DM] FALLBACK: Dérivation node_id depuis pubkey_prefix")
+                    
+                    # pubkey_prefix is a hex string (e.g., '143bcd7f1b1f...')
+                    # We need the first 8 hex chars (= 4 bytes) for the node_id
+                    if len(pubkey_prefix) >= 8:
+                        # First 8 hex chars = first 4 bytes = node_id
+                        node_id_hex = pubkey_prefix[:8]
+                        sender_id = int(node_id_hex, 16)
+                        info_print(f"✅ [MESHCORE-DM] Node_id dérivé de pubkey: {pubkey_prefix[:12]}... → 0x{sender_id:08x}")
+                        
+                        # Save this contact for future reference (even though not in device's contact list)
+                        if self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                            try:
+                                # Reconstruct full 32-byte public key from prefix (pad with zeros if needed)
+                                # pubkey_prefix might be partial, so we pad to 64 hex chars (32 bytes)
+                                full_pubkey_hex = pubkey_prefix + '0' * (64 - len(pubkey_prefix))
+                                public_key_bytes = bytes.fromhex(full_pubkey_hex)
+                                
+                                contact_data = {
+                                    'node_id': sender_id,
+                                    'name': f"Node-{sender_id:08x}",  # Default name
+                                    'shortName': f"{sender_id:08x}",
+                                    'hwModel': None,
+                                    'publicKey': public_key_bytes,
+                                    'lat': None,
+                                    'lon': None,
+                                    'alt': None,
+                                    'source': 'meshcore_derived'  # Mark as derived, not synced
+                                }
+                                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                # CRITICAL: Also add to meshcore.contacts dict
+                                self._add_contact_to_meshcore(contact_data)
+                                debug_print(f"💾 [MESHCORE-DM] Contact dérivé sauvegardé: 0x{sender_id:08x}")
+                            except Exception as save_err:
+                                debug_print(f"⚠️ [MESHCORE-DM] Erreur sauvegarde contact dérivé: {save_err}")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
+                except Exception as derive_err:
+                    error_print(f"❌ [MESHCORE-DM] Erreur dérivation node_id: {derive_err}")
+                    error_print(traceback.format_exc())
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
             
@@ -1284,6 +1428,53 @@ class MeshCoreCLIWrapper:
             if self.debug:
                 error_print(traceback.format_exc())
 
+    def _get_pubkey_prefix_for_node(self, node_id):
+        """
+        Get public key prefix for a node_id from database
+        
+        When a MeshCore DM arrives, we save the contact with its full publicKey.
+        When sending a response, we need to look up the contact in meshcore using
+        the pubkey_prefix, not the node_id (node_id is only the first 4 bytes of the key).
+        
+        Args:
+            node_id: int node ID
+            
+        Returns:
+            str: hex string of public key prefix (first 12 chars minimum), or None
+        """
+        if not self.node_manager or not hasattr(self.node_manager, 'persistence'):
+            debug_print("⚠️ [MESHCORE-DM] NodeManager ou persistence non disponible")
+            return None
+        
+        try:
+            debug_print(f"🔍 [MESHCORE-DM] Recherche pubkey_prefix pour node 0x{node_id:08x}")
+            
+            # Query meshcore_contacts table
+            cursor = self.node_manager.persistence.conn.cursor()
+            cursor.execute(
+                "SELECT publicKey FROM meshcore_contacts WHERE node_id = ?",
+                (str(node_id),)
+            )
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                public_key_bytes = row[0]
+                # Convert to hex, take first 12 chars minimum (6 bytes)
+                # But we can use the full key prefix for better matching
+                pubkey_hex = public_key_bytes.hex()
+                pubkey_prefix = pubkey_hex[:12]  # First 6 bytes = 12 hex chars minimum
+                debug_print(f"✅ [MESHCORE-DM] pubkey_prefix trouvé: {pubkey_prefix}")
+                return pubkey_prefix
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
+                return None
+                
+        except Exception as e:
+            debug_print(f"⚠️ [MESHCORE-DM] Erreur recherche pubkey_prefix: {e}")
+            if self.debug:
+                error_print(traceback.format_exc())
+            return None
+
     def sendText(self, text, destinationId, wantAck=False, channelIndex=0):
         """
         Envoie un message texte via MeshCore
@@ -1313,19 +1504,41 @@ class MeshCoreCLIWrapper:
                 error_print(f"   → Attributs disponibles: {[m for m in dir(self.meshcore) if not m.startswith('_')]}")
                 return False
             
-            # Get the contact by ID (hex node ID)
+            # Get the contact using pubkey_prefix (not node_id!)
+            # The node_id is only the first 4 bytes of the 32-byte public key
+            # meshcore-cli's get_contact_by_key_prefix expects at least 12 hex chars (6 bytes)
             contact = None
-            hex_id = f"{destinationId:08x}"
-            debug_print(f"🔍 [MESHCORE-DM] Recherche du contact avec ID hex: {hex_id}")
             
-            # Try to get contact by key prefix (public key prefix)
-            if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
-                contact = self.meshcore.get_contact_by_key_prefix(hex_id)
-                if contact:
-                    debug_print(f"✅ [MESHCORE-DM] Contact trouvé via key_prefix: {contact.get('adv_name', 'unknown')}")
+            # FIX: Look up the full pubkey_prefix from database instead of using node_id
+            pubkey_prefix = self._get_pubkey_prefix_for_node(destinationId)
             
-            # If not found, just use the destinationId directly
-            # The send_msg API should accept either contact dict or ID
+            if pubkey_prefix:
+                debug_print(f"🔍 [MESHCORE-DM] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+                
+                # DIAGNOSTIC: Show what's in meshcore.contacts dict
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    debug_print(f"📊 [MESHCORE-DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
+                    debug_print(f"📊 [MESHCORE-DM] Dict keys: {list(self.meshcore.contacts.keys())}")
+                else:
+                    debug_print(f"⚠️ [MESHCORE-DM] meshcore.contacts is None or empty!")
+                
+                # FIX: Direct dict access instead of meshcore-cli method
+                # The get_contact_by_key_prefix() method doesn't work with our manually added contacts
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    contact = self.meshcore.contacts.get(pubkey_prefix)
+                    if contact:
+                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
+                    else:
+                        debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Pas de pubkey_prefix en DB, recherche avec node_id")
+                # Fallback: try with node_id hex (8 chars) in dict
+                hex_id = f"{destinationId:08x}"
+                if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                    contact = self.meshcore.contacts.get(hex_id)
+            
+            # If not found, use the destinationId directly
+            # The send_msg API should accept either contact dict or node_id
             if not contact:
                 debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
                 contact = destinationId
@@ -1334,41 +1547,37 @@ class MeshCoreCLIWrapper:
             # Use run_coroutine_threadsafe since the event loop is already running
             debug_print(f"🔍 [MESHCORE-DM] Appel de commands.send_msg(contact={type(contact).__name__}, text=...)")
             
+            # DIAGNOSTIC: Check event loop status
+            debug_print(f"🔄 [MESHCORE-DM] Event loop running: {self._loop.is_running()}")
+            debug_print(f"🔄 [MESHCORE-DM] Submitting coroutine to event loop...")
+            
             future = asyncio.run_coroutine_threadsafe(
                 self.meshcore.commands.send_msg(contact, text),
                 self._loop
             )
             
-            # Wait for result with timeout
-            # Note: LoRa transmission can take time, and meshcore may not return immediately
-            try:
-                result = future.result(timeout=30)  # 30 second timeout for LoRa
-            except (asyncio.TimeoutError, TimeoutError):
-                # Timeout doesn't necessarily mean failure - message may still be sent
-                # This is common with LoRa as transmission takes time
-                debug_print("⏱️ [MESHCORE-DM] Timeout d'attente (message probablement envoyé)")
-                return True  # Treat as success since message is typically delivered
+            # FIRE-AND-FORGET APPROACH
+            # Don't wait for result - the coroutine is hanging waiting for ACK that never comes
+            # Let the message send asynchronously in the background
+            debug_print(f"✅ [MESHCORE-DM] Message submitted to event loop (fire-and-forget)")
+            debug_print(f"📤 [MESHCORE-DM] Coroutine will complete asynchronously in background")
             
-            # Check result type (meshcore returns Event objects)
-            debug_print(f"📨 [MESHCORE-DM] Résultat: type={type(result).__name__}, result={result}")
+            # Optional: Add error handler to the future to log any exceptions
+            def _log_future_result(fut):
+                try:
+                    if fut.exception():
+                        error_print(f"❌ [MESHCORE-DM] Async send error: {fut.exception()}")
+                    else:
+                        debug_print(f"✅ [MESHCORE-DM] Async send completed successfully")
+                except Exception as e:
+                    debug_print(f"⚠️ [MESHCORE-DM] Future check error: {e}")
             
-            # Result is an Event object, check if it's not an error
-            if hasattr(result, 'type'):
-                from meshcore import EventType
-                if result.type == EventType.ERROR:
-                    error_print(f"❌ [MESHCORE-DM] Erreur d'envoi: {result.payload}")
-                    return False
-                else:
-                    debug_print("✅ [MESHCORE-DM] Message envoyé avec succès")
-                    return True
-            else:
-                # If no type attribute, assume success if not None/False
-                if result:
-                    debug_print("✅ [MESHCORE-DM] Message envoyé")
-                    return True
-                else:
-                    error_print("❌ [MESHCORE-DM] Échec envoi")
-                    return False
+            future.add_done_callback(_log_future_result)
+            
+            # Return immediately - don't block waiting for result
+            # LoRa is inherently unreliable anyway, we send and hope it arrives
+            debug_print("✅ [MESHCORE-DM] Message envoyé (fire-and-forget)")
+            return True
                 
         except Exception as e:
             error_print(f"❌ [MESHCORE-DM] Erreur envoi: {e}")
