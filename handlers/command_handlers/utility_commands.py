@@ -207,14 +207,48 @@ class UtilityCommands:
             info_print(f"   Auteur short: {author_short}")
             info_print(f"   Longueur finale: {len(echo_response)} caractères")
             
+            info_print("")
+            info_print("📤 ENVOI DU MESSAGE BROADCAST...")
+            
+            # ========================================
+            # DUAL MODE: Route to correct network
+            # ========================================
+            if current_sender.dual_interface and current_sender.dual_interface.is_dual_mode():
+                # Get which network the sender came from
+                network_source = current_sender.get_sender_network(sender_id)
+                
+                if network_source:
+                    info_print(f"🔍 [DUAL MODE] Routing echo broadcast to {network_source} network")
+                    # Send broadcast (destination=0xFFFFFFFF) to the correct network on public channel
+                    success = current_sender.dual_interface.send_message(
+                        echo_response, 
+                        0xFFFFFFFF,  # Broadcast destination
+                        network_source,
+                        channelIndex=0  # Public channel
+                    )
+                    if success:
+                        info_print(f"✅ Echo broadcast envoyé via {network_source} (canal public)")
+                    else:
+                        error_print(f"❌ Échec envoi echo via {network_source}")
+                    
+                    # Tracker le broadcast pour la déduplication
+                    if self.broadcast_tracker:
+                        self.broadcast_tracker(echo_response)
+                        info_print("🔖 Broadcast tracké pour déduplication")
+                    
+                    current_sender.log_conversation(sender_id, sender_info, message, echo_response)
+                    return
+                else:
+                    info_print("⚠️ [DUAL MODE] No network mapping, using primary interface")
+            
+            # ========================================
+            # SINGLE MODE: Use direct interface
+            # ========================================
             # Vérifier node info
             if hasattr(interface, 'localNode') and interface.localNode:
                 node = interface.localNode
                 if hasattr(node, 'shortName'):
                     info_print(f"✅ Node connecté: {node.shortName}")
-            
-            info_print("")
-            info_print("📤 ENVOI DU MESSAGE VIA INTERFACE PARTAGÉE...")
             
             # Detect interface type to handle MeshCore vs Meshtastic differences
             # MeshCore requires destinationId parameter, Meshtastic broadcasts by default
