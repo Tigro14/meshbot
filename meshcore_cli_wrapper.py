@@ -166,6 +166,62 @@ class MeshCoreCLIWrapper:
         self.node_manager = node_manager
         debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
     
+    def _add_contact_to_meshcore(self, contact_data):
+        """
+        Add a contact to meshcore's internal contact list
+        
+        This is CRITICAL for get_contact_by_key_prefix() to work when sending responses.
+        The method searches self.meshcore.contacts dict, not the database.
+        
+        Args:
+            contact_data: Dict with node_id, name, publicKey, etc.
+            
+        Returns:
+            bool: True if added successfully, False otherwise
+        """
+        if not self.meshcore or not hasattr(self.meshcore, 'contacts'):
+            debug_print("⚠️ [MESHCORE-DM] meshcore.contacts non disponible")
+            return False
+        
+        try:
+            # Extract pubkey_prefix from publicKey
+            public_key = contact_data.get('publicKey')
+            if not public_key:
+                debug_print("⚠️ [MESHCORE-DM] Pas de publicKey dans contact_data")
+                return False
+            
+            # Convert publicKey to hex string if it's bytes
+            if isinstance(public_key, bytes):
+                pubkey_hex = public_key.hex()
+            elif isinstance(public_key, str):
+                pubkey_hex = public_key
+            else:
+                debug_print(f"⚠️ [MESHCORE-DM] Type publicKey non supporté: {type(public_key)}")
+                return False
+            
+            # Extract first 12 hex chars (6 bytes) = pubkey_prefix
+            pubkey_prefix = pubkey_hex[:12]
+            
+            # Create contact dict compatible with meshcore format
+            contact = {
+                'node_id': contact_data['node_id'],
+                'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
+                'publicKey': contact_data['publicKey'],
+            }
+            
+            # Initialize contacts dict if needed
+            if self.meshcore.contacts is None:
+                self.meshcore.contacts = {}
+            
+            # Add to internal dict
+            self.meshcore.contacts[pubkey_prefix] = contact
+            debug_print(f"✅ [MESHCORE-DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
+            return True
+            
+        except Exception as e:
+            debug_print(f"⚠️ [MESHCORE-DM] Erreur ajout contact à meshcore: {e}")
+            return False
+    
     def query_contact_by_pubkey_prefix(self, pubkey_prefix):
         """
         Query meshcore-cli for a contact by public key prefix
@@ -408,6 +464,8 @@ class MeshCoreCLIWrapper:
                     'source': 'meshcore'
                 }
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
+                # CRITICAL: Also add to meshcore.contacts dict for get_contact_by_key_prefix() to work
+                self._add_contact_to_meshcore(contact_data)
                 debug_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé: {name}")
             else:
                 # Fallback to in-memory storage if SQLite not available
@@ -927,6 +985,8 @@ class MeshCoreCLIWrapper:
                                             'source': 'meshcore'
                                         }
                                         self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                        # CRITICAL: Also add to meshcore.contacts dict
+                                        self._add_contact_to_meshcore(contact_data)
                                         saved_count += 1
                                     except Exception as save_err:
                                         # Only log errors, not every save
@@ -1148,6 +1208,8 @@ class MeshCoreCLIWrapper:
                                     'source': 'meshcore_derived'  # Mark as derived, not synced
                                 }
                                 self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                # CRITICAL: Also add to meshcore.contacts dict
+                                self._add_contact_to_meshcore(contact_data)
                                 debug_print(f"💾 [MESHCORE-DM] Contact dérivé sauvegardé: 0x{sender_id:08x}")
                             except Exception as save_err:
                                 debug_print(f"⚠️ [MESHCORE-DM] Erreur sauvegarde contact dérivé: {save_err}")
