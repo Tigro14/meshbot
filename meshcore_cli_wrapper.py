@@ -809,7 +809,7 @@ class MeshCoreCLIWrapper:
             # MeshCore uses 'events' attribute for subscriptions
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (events.subscribe)")
+                info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
                 # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
                 # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
@@ -822,17 +822,17 @@ class MeshCoreCLIWrapper:
                 
                 if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh (broadcasts, télémétrie, etc.)")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
                 elif not rx_log_enabled:
-                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
-                    info_print("   → Le bot ne verra que les DM, pas les broadcasts")
+                    info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
+                    info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
                 elif not hasattr(EventType, 'RX_LOG_DATA'):
                     debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (dispatcher.subscribe)")
+                info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
                 
                 # Also subscribe to RX_LOG_DATA
                 rx_log_enabled = False
@@ -844,10 +844,10 @@ class MeshCoreCLIWrapper:
                 
                 if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
                 elif not rx_log_enabled:
-                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé")
+                    info_print_mc("ℹ️  RX_LOG_DATA désactivé")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
