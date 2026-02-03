@@ -100,12 +100,12 @@ class MeshCoreCLIWrapper:
             error_print("   Installation: pip install meshcore")
             raise ImportError("meshcore-cli library required")
         
-        info_print(f"🔧 [MESHCORE-CLI] Initialisation: {port} (debug={self.debug})")
+        info_print_mc(f"🔧 Initialisation: {port} (debug={self.debug})")
     
     def connect(self):
         """Établit la connexion avec MeshCore via meshcore-cli"""
         try:
-            info_print(f"🔌 [MESHCORE-CLI] Connexion à {self.port}...")
+            info_print_mc(f"🔌 Connexion à {self.port}...")
             
             # Créer l'objet MeshCore via factory method async
             # MeshCore utilise des factory methods: create_serial, create_ble, create_tcp
@@ -133,14 +133,14 @@ class MeshCoreCLIWrapper:
                 # Note: l'API meshcore-cli peut varier selon la version
                 if hasattr(self.meshcore, 'node_id'):
                     self.localNode.nodeNum = self.meshcore.node_id
-                    info_print(f"   Node ID: 0x{self.localNode.nodeNum:08x}")
+                    info_print_mc(f"   Node ID: 0x{self.localNode.nodeNum:08x}")
             except Exception as e:
-                debug_print(f"⚠️ [MESHCORE-CLI] Impossible de récupérer node_id: {e}")
+                debug_print_mc(f"⚠️ Impossible de récupérer node_id: {e}")
             
             return True
             
         except Exception as e:
-            error_print(f"❌ [MESHCORE-CLI] Erreur connexion: {e}")
+            error_print(f"❌ [MC] Erreur connexion: {e}")
             error_print(traceback.format_exc())
             return False
     
@@ -152,7 +152,7 @@ class MeshCoreCLIWrapper:
         Args:
             callback: Fonction à appeler lors de la réception d'un message
         """
-        info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
+        debug_print_mc(f"📝 Setting message_callback to {callback}")
         self.message_callback = callback
         info_print_mc(f"✅  message_callback set successfully")
     
@@ -809,7 +809,7 @@ class MeshCoreCLIWrapper:
             # MeshCore uses 'events' attribute for subscriptions
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (events.subscribe)")
+                info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
                 # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
                 # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
@@ -822,17 +822,17 @@ class MeshCoreCLIWrapper:
                 
                 if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh (broadcasts, télémétrie, etc.)")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
                 elif not rx_log_enabled:
-                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
-                    info_print("   → Le bot ne verra que les DM, pas les broadcasts")
+                    info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
+                    info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
                 elif not hasattr(EventType, 'RX_LOG_DATA'):
                     debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print("✅ [MESHCORE-CLI] Souscription aux messages DM (dispatcher.subscribe)")
+                info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
                 
                 # Also subscribe to RX_LOG_DATA
                 rx_log_enabled = False
@@ -844,10 +844,10 @@ class MeshCoreCLIWrapper:
                 
                 if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print("✅ [MESHCORE-CLI] Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print("   → Le bot peut maintenant voir TOUS les paquets mesh")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
+                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
                 elif not rx_log_enabled:
-                    info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé")
+                    info_print_mc("ℹ️  RX_LOG_DATA désactivé")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -868,7 +868,7 @@ class MeshCoreCLIWrapper:
             daemon=True
         )
         self.message_thread.start()
-        info_print("✅ [MESHCORE-CLI] Thread événements démarré")
+        info_print_mc("✅ Thread événements démarré")
         
         # Start healthcheck monitoring
         self.healthcheck_thread = threading.Thread(
@@ -877,7 +877,7 @@ class MeshCoreCLIWrapper:
             daemon=True
         )
         self.healthcheck_thread.start()
-        info_print("✅ [MESHCORE-CLI] Healthcheck monitoring démarré")
+        info_print_mc("✅ Healthcheck monitoring démarré")
         
         # Initialize last message time
         self.last_message_time = time.time()
@@ -902,20 +902,20 @@ class MeshCoreCLIWrapper:
                     if time_since_last_message > self.message_timeout:
                         if self.connection_healthy:
                             # First time detecting the issue
-                            error_print(f"⚠️ [MESHCORE-HEALTHCHECK] ALERTE: Aucun message reçu depuis {int(time_since_last_message)}s")
-                            error_print(f"   → La connexion au nœud semble perdue")
-                            error_print(f"   → Vérifiez: 1) Le nœud est allumé")
-                            error_print(f"   →          2) Le câble série est connecté ({self.port})")
-                            error_print(f"   →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
+                            error_print(f"⚠️ [MC] ALERTE HEALTHCHECK: Aucun message reçu depuis {int(time_since_last_message)}s")
+                            error_print(f"   [MC] → La connexion au nœud semble perdue")
+                            error_print(f"   [MC] → Vérifiez: 1) Le nœud est allumé")
+                            error_print(f"   [MC] →          2) Le câble série est connecté ({self.port})")
+                            error_print(f"   [MC] →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
                             self.connection_healthy = False
                     else:
                         # Connection is healthy
                         if not self.connection_healthy:
-                            info_print(f"✅ [MESHCORE-HEALTHCHECK] Connexion rétablie (message reçu il y a {int(time_since_last_message)}s)")
+                            info_print_mc(f"✅ Connexion rétablie (message reçu il y a {int(time_since_last_message)}s)")
                             self.connection_healthy = True
                         
                         if self.debug:
-                            debug_print(f"🏥 [MESHCORE-HEALTHCHECK] OK - dernier message: {int(time_since_last_message)}s")
+                            debug_print_mc(f"🏥 Healthcheck OK - dernier message: {int(time_since_last_message)}s")
                 
                 # Sleep until next check
                 time.sleep(self.healthcheck_interval)
@@ -1389,9 +1389,14 @@ class MeshCoreCLIWrapper:
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
                     
-                    # Add path info if available
-                    if packet.path_length > 0:
-                        info_parts.append(f"Hops: {packet.path_length}")
+                    # Add hop count (always show, even if 0, for routing visibility)
+                    info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Add actual routing path if available (shows which nodes the packet traversed)
+                    if hasattr(packet, 'path') and packet.path:
+                        # Path is a list/array of node IDs the packet traveled through
+                        path_str = ' → '.join([f"0x{node:08x}" if isinstance(node, int) else str(node) for node in packet.path])
+                        info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
                     if hasattr(packet, 'transport_codes') and packet.transport_codes:
@@ -1460,6 +1465,17 @@ class MeshCoreCLIWrapper:
                                     
                                     # Build advert info with device role and location
                                     advert_parts = [f"from: {name}"]
+                                    
+                                    # Add public key prefix for node identification
+                                    if hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
+                                        pubkey_prefix = decoded_payload.public_key[:12]  # First 6 bytes (12 hex chars)
+                                        # Derive node ID from public key (first 4 bytes)
+                                        node_id_hex = decoded_payload.public_key[:8]  # First 4 bytes (8 hex chars)
+                                        try:
+                                            node_id = int(node_id_hex, 16)
+                                            advert_parts.append(f"Node: 0x{node_id:08x}")
+                                        except:
+                                            advert_parts.append(f"PubKey: {pubkey_prefix}...")
                                     
                                     # Add device role if available
                                     if 'device_role' in app_data:
