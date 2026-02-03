@@ -583,7 +583,7 @@ sudo journalctl -u rebootpi-watcher.service -f
 sudo tail -f /var/log/bot-reboot.log
 
 # Tester le mécanisme avec le module Python (SANS redémarrage réel)
-python3 test_reboot_semaphore.py
+python3 tests/test_reboot_semaphore.py
 
 # Test complet du signal (ATTENTION: redémarre le système!)
 # Version Python:
