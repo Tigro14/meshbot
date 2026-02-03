@@ -579,3 +579,17 @@ DB_AUTO_REBOOT_ERROR_THRESHOLD = 10
 
 # Variables globales d'état
 DEBUG_MODE = True
+
+# ========================================
+# MTMQTT DEBUG (Meshtastic MQTT Traffic)
+# ========================================
+# Enable detailed debugging of Meshtastic MQTT traffic
+# (from mqtt_neighbor_collector.py)
+#
+# When True: Shows detailed MQTT connection events, message reception,
+#            neighbor processing, and errors with [MTMQTT] prefix
+# When False: Only critical errors shown (minimal logging)
+#
+# Use case: Debug MQTT neighbor collection issues without full DEBUG_MODE
+# Note: MCMQTT (Meshcore MQTT) debug will be a separate flag (future)
+MTMQTT_DEBUG = False

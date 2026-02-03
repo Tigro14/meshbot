@@ -497,3 +497,4 @@ DB_AUTO_REBOOT_ERROR_THRESHOLD = 10
 
 # Variables globales d'état
 DEBUG_MODE = True
+MTMQTT_DEBUG = True

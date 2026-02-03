@@ -11,6 +11,7 @@ Configuration required in config.py:
 - MQTT_NEIGHBOR_SERVER: MQTT server address
 - MQTT_NEIGHBOR_USER: MQTT username
 - MQTT_NEIGHBOR_PASSWORD: MQTT password
+- MTMQTT_DEBUG: Enable detailed MQTT traffic debugging (default: False)
 """
 
 import time
@@ -18,6 +19,12 @@ import threading
 from collections import deque
 from typing import Optional, Dict, List, Any
 from utils import info_print, error_print, debug_print
+
+# Import MTMQTT_DEBUG flag from config
+try:
+    from config import MTMQTT_DEBUG
+except ImportError:
+    MTMQTT_DEBUG = False  # Default: disabled if not in config
 
 # Imports conditionnels
 try:
@@ -145,24 +152,38 @@ class MQTTNeighborCollector:
                 if not topic_pattern.endswith('#') and not topic_pattern.endswith('+'):
                     topic_pattern += '/#'  # Capturer tous les messages sous ce channel
                 info_print(f"   Abonné à: {topic_pattern} (topic spécifique)")
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Topic subscription: {topic_pattern}")
             else:
                 # Wildcard + pour capturer tous les régions/channels/gateways
                 topic_pattern = f"{self.mqtt_topic_root}/+/+/2/e/+"
                 info_print(f"   Abonné à: {topic_pattern} (pattern wildcard)")
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Wildcard subscription: {topic_pattern}")
             
             client.subscribe(topic_pattern)
+            
+            if MTMQTT_DEBUG:
+                info_print(f"[MTMQTT] Connected to {self.mqtt_server}:{self.mqtt_port}")
+                info_print(f"[MTMQTT] Ready to receive Meshtastic MQTT traffic")
             
         else:
             error_print(f"👥 Échec connexion MQTT: code {rc}")
             self.connected = False
+            if MTMQTT_DEBUG:
+                error_print(f"[MTMQTT] Connection failed: rc={rc}")
     
     def _on_mqtt_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         """Callback de déconnexion MQTT"""
         self.connected = False
         if reason_code != 0:
             error_print(f"👥 Déconnexion MQTT inattendue: code {reason_code}")
+            if MTMQTT_DEBUG:
+                error_print(f"[MTMQTT] Unexpected disconnect: reason_code={reason_code}")
         else:
             debug_print("👥 Déconnexion MQTT normale")
+            if MTMQTT_DEBUG:
+                info_print("[MTMQTT] Normal disconnect")
     
     def _decrypt_packet(self, encrypted_data, packet_id, from_id):
         """
@@ -419,16 +440,23 @@ class MQTTNeighborCollector:
         try:
             self.stats['messages_received'] += 1
             
+            if MTMQTT_DEBUG:
+                info_print(f"[MTMQTT] Received message on topic: {msg.topic}")
+            
             # Parser le ServiceEnvelope protobuf
             try:
                 envelope = mqtt_pb2.ServiceEnvelope()
                 envelope.ParseFromString(msg.payload)
             except Exception as e:
                 debug_print(f"👥 Erreur parsing ServiceEnvelope: {e}")
+                if MTMQTT_DEBUG:
+                    error_print(f"[MTMQTT] Failed to parse ServiceEnvelope: {e}")
                 return
             
             # Vérifier qu'il y a un packet
             if not envelope.HasField('packet'):
+                if MTMQTT_DEBUG:
+                    info_print("[MTMQTT] Envelope has no packet field, skipping")
                 return
             
             packet = envelope.packet
@@ -441,9 +469,14 @@ class MQTTNeighborCollector:
             packet_id = getattr(packet, 'id', 0)
             from_id = getattr(packet, 'from', 0)
             
+            if MTMQTT_DEBUG:
+                info_print(f"[MTMQTT] Packet from !{from_id:08x} (ID: {packet_id}) via gateway: {gateway_id}")
+            
             # Déduplication: vérifier si ce paquet a déjà été traité
             if self._is_duplicate_packet(packet_id, from_id):
                 self.stats['duplicates_filtered'] += 1
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Duplicate packet filtered: {packet_id} from !{from_id:08x}")
                 return
             
             # Vérifier qu'il y a des données décodées OU chiffrées
@@ -464,9 +497,13 @@ class MQTTNeighborCollector:
                     decoded = mesh_pb2.Data()
                     decoded.ParseFromString(decrypted_data)
                 except Exception as e:
+                    if MTMQTT_DEBUG:
+                        error_print(f"[MTMQTT] Failed to parse decrypted data: {e}")
                     return
             else:
                 # Ni decoded ni encrypted (ou crypto non disponible)
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Packet has no decoded/encrypted data or crypto unavailable")
                 return
             
             # Filtrer les paquets à logger: POSITION, TELEMETRY, NEIGHBORINFO et NODEINFO
@@ -478,6 +515,10 @@ class MQTTNeighborCollector:
                 portnums_pb2.PortNum.TELEMETRY_APP,
                 portnums_pb2.PortNum.NEIGHBORINFO_APP
             ]
+            
+            if MTMQTT_DEBUG:
+                portnum_name = portnums_pb2.PortNum.Name(portnum)
+                info_print(f"[MTMQTT] Processing {portnum_name} packet from !{from_id:08x}")
             
             if is_loggable:
                 portnum_names = {
@@ -520,12 +561,17 @@ class MQTTNeighborCollector:
             if decoded.portnum != portnums_pb2.PortNum.NEIGHBORINFO_APP:
                 return
             
+            if MTMQTT_DEBUG:
+                info_print(f"[MTMQTT] Processing NEIGHBORINFO from !{from_id:08x}")
+            
             # Parser le payload NeighborInfo
             try:
                 neighbor_info = mesh_pb2.NeighborInfo()
                 neighbor_info.ParseFromString(decoded.payload)
             except Exception as e:
                 debug_print(f"👥 Erreur parsing NeighborInfo: {e}")
+                if MTMQTT_DEBUG:
+                    error_print(f"[MTMQTT] Failed to parse NeighborInfo: {e}")
                 return
             
             # Extraire l'ID du nœud qui rapporte ses voisins
@@ -557,6 +603,12 @@ class MQTTNeighborCollector:
             if formatted_neighbors:
                 # Normaliser l'ID du nœud (int vers string "!xxxxxxxx")
                 node_id_str = f"!{node_id:08x}"
+                
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Node {node_id_str} reports {len(formatted_neighbors)} neighbors")
+                    for nb in formatted_neighbors:
+                        nb_id_str = f"!{nb['node_id']:08x}"
+                        info_print(f"[MTMQTT]   → Neighbor {nb_id_str} SNR={nb['snr']:.1f}dB")
                 
                 self.persistence.save_neighbor_info(node_id_str, formatted_neighbors, source='mqtt')
                 
@@ -629,8 +681,12 @@ class MQTTNeighborCollector:
         
         except Exception as e:
             error_print(f"👥 Erreur traitement message MQTT: {e}")
+            if MTMQTT_DEBUG:
+                error_print(f"[MTMQTT] Error processing message: {e}")
             import traceback
             debug_print(traceback.format_exc())
+            if MTMQTT_DEBUG:
+                error_print(f"[MTMQTT] Traceback: {traceback.format_exc()}")
     
     def start_monitoring(self):
         """Démarrer la collecte MQTT en arrière-plan avec retry logic"""
@@ -654,6 +710,8 @@ class MQTTNeighborCollector:
                 if self.mqtt_user and self.mqtt_password:
                     self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_password)
                     debug_print(f"👥 Authentification MQTT configurée (user: {self.mqtt_user})")
+                    if MTMQTT_DEBUG:
+                        info_print(f"[MTMQTT] Authentication configured for user: {self.mqtt_user}")
                 
                 # Configurer les callbacks
                 self.mqtt_client.on_connect = self._on_mqtt_connect
@@ -662,6 +720,9 @@ class MQTTNeighborCollector:
                 
                 # Configurer automatic reconnection
                 self.mqtt_client.reconnect_delay_set(min_delay=1, max_delay=120)
+                
+                if MTMQTT_DEBUG:
+                    info_print(f"[MTMQTT] Starting connection to {self.mqtt_server}:{self.mqtt_port}")
                 
                 # Se connecter au serveur de manière asynchrone (non-bloquant)
                 info_print(f"👥 Connexion à {self.mqtt_server}:{self.mqtt_port}...")
