@@ -351,7 +351,7 @@ class NodeManager:
             self.node_names[node_id]['alt'] = alt
             self.node_names[node_id]['last_update'] = time.time()
         
-        debug_print(f"📍 Position mise à jour pour {node_id:08x}: {lat:.5f}, {lon:.5f}")
+        debug_print_mt(f"📍 Position mise à jour pour {node_id:08x}: {lat:.5f}, {lon:.5f}")
     
     def update_node_database(self, interface):
         """Mettre à jour la base de données des nœuds"""
