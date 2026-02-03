@@ -513,10 +513,10 @@ class MeshBot:
                     interface == self.dual_interface.meshcore_interface
                 )
                 # DEBUG: Log interface comparison
-                debug_print(f"🔍 [DUAL-MODE] interface={type(interface).__name__ if interface else 'None'}")
-                debug_print(f"🔍 [DUAL-MODE] self.interface={type(self.interface).__name__ if self.interface else 'None'}")
-                debug_print(f"🔍 [DUAL-MODE] meshcore_interface={type(self.dual_interface.meshcore_interface).__name__ if self.dual_interface.meshcore_interface else 'None'}")
-                debug_print(f"🔍 [DUAL-MODE] is_from_our_interface={is_from_our_interface}")
+                #debug_print(f"🔍 [DUAL-MODE] interface={type(interface).__name__ if interface else 'None'}")
+                #debug_print(f"🔍 [DUAL-MODE] self.interface={type(self.interface).__name__ if self.interface else 'None'}")
+                #debug_print(f"🔍 [DUAL-MODE] meshcore_interface={type(self.dual_interface.meshcore_interface).__name__ if self.dual_interface.meshcore_interface else 'None'}")
+                #debug_print(f"🔍 [DUAL-MODE] is_from_our_interface={is_from_our_interface}")
             else:
                 is_from_our_interface = (interface == self.interface)
             
