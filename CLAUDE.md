@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Meshtastic-Llama Bot
 
-**Last Updated**: 2025-11-17
+**Last Updated**: 2026-02-03
 **Project**: Meshtastic-Llama Bot with Telegram Integration
 **Language**: Python 3.8+
 **Platform**: Raspberry Pi 5 / Linux
@@ -2938,16 +2938,58 @@ This document should be updated when:
 - Documented new `AlertManager` for Telegram notifications
 - Added `platform_config.py` to configuration documentation
 
-**Next review**: When significant changes occur or new platforms/features are implemented
+**Last review**: When significant changes occur or new platforms/features are implemented
+
+---
+
+## Recent Updates to This Document
+
+### 2026-02-03: Documentation Cleanup and Consolidation
+
+**Major documentation reorganization:**
+- Archived **412 markdown files** (118,516 lines) to `docs/archive/`
+- Retained **13 essential docs** in root directory
+- Created **DOCS_INDEX.md** for navigation
+- Created **docs/archive/README.md** for archive organization
+- Created **TEST_CLEANUP_GUIDE.md** for test/demo organization
+- Updated **README.md** with documentation section
+- Enhanced **CLAUDE.md** with documentation structure information
+
+**Archive Categories:**
+- 73 bug fix docs → `docs/archive/fixes/`
+- 44 PR summaries → `docs/archive/pull-requests/`
+- 27 implementation notes → `docs/archive/implementations/`
+- 42 visual guides → `docs/archive/visual-guides/`
+- 11 verification docs → `docs/archive/verification/`
+- 15 summary docs → `docs/archive/summaries/`
+- 163 feature docs → `docs/archive/features/`
+- 36 MeshCore docs → `docs/archive/meshcore/`
+- 47 network docs → `docs/archive/network/`
+
+**Benefits:**
+1. ✅ Clear documentation navigation
+2. ✅ Reduced confusion for new contributors
+3. ✅ Easier maintenance
+4. ✅ Historical docs preserved but not cluttering
+5. ✅ CLAUDE.md remains the single source of truth
+
+**Test/Demo Status:**
+- 221 test files analyzed (49 fix-specific candidates for archive)
+- 55 demo files analyzed (15 fix-specific candidates for archive)
+- Created TEST_CLEANUP_GUIDE.md for future organization
 
 ---
 
 ## Additional Resources
 
-### Documentation Files
+### Documentation Structure
 
-- **README.md**: User-facing documentation
-- **CLAUDE.md**: This file - AI assistant guide
+This project maintains a clean, focused documentation structure:
+
+#### Current Documentation (Root Directory)
+- **README.md**: User-facing documentation and setup guide
+- **CLAUDE.md**: This file - Comprehensive AI assistant guide
+- **DOCS_INDEX.md**: Documentation navigation and index
 - **CLI_USAGE.md**: CLI client usage guide with command history features
 - **BROWSE_TRAFFIC_DB.md**: Web UI for traffic database
 - **TRAFFIC_DB_VIEWER.md**: CLI database viewer
@@ -2955,13 +2997,60 @@ This document should be updated when:
 - **PLATFORMS.md**: Multi-platform architecture documentation
 - **TCP_ARCHITECTURE.md**: Network stack architecture (Meshtastic TCP vs HTTP/MQTT services)
 - **ENCRYPTED_PACKETS_EXPLAINED.md**: Guide to encrypted vs direct messages
-- **PR_DESCRIPTION.md**: Pull request templates and guidelines
+- **MESHCORE_COMPANION.md**: MeshCore companion mode documentation
+- **REBOOT_SEMAPHORE.md**: Reboot mechanism and semaphore-based signaling
+- **CONFIG_MIGRATION.md**: Configuration migration guide
+- **MIGRATION_GUIDE.md**: General migration guide
+- **TEST_CLEANUP_GUIDE.md**: Test and demo file organization guide
 - **llama.cpp-integration/README.md**: Llama.cpp setup guide
+- **map/README.md**: Map generation and network visualization
+
+#### Archived Documentation (docs/archive/)
+Over **412 markdown files** have been archived to maintain focus:
+- **fixes/**: Bug fix documentation (73 files)
+- **pull-requests/**: PR summaries and implementation notes (44 files)
+- **implementations/**: Implementation details (27 files)
+- **visual-guides/**: Diagrams and visual explanations (42 files)
+- **verification/**: Test plans and diagnostics (11 files)
+- **summaries/**: Historical summary documents (15 files)
+- **features/**: Individual feature documentation (163 files)
+- **meshcore/**: MeshCore-specific docs (36 files)
+- **network/**: TCP/MQTT connectivity docs (47 files)
+- **other/**: Miscellaneous documentation
+
+See **docs/archive/README.md** for detailed archive index.
+
+#### When to Reference Archives
+- Understanding bug fix history
+- Detailed implementation notes not in current docs
+- Design decision rationale
+- Troubleshooting similar past issues
+
+**Do NOT reference archives for:**
+- Day-to-day development (use CLAUDE.md)
+- Current architecture (use CLAUDE.md, PLATFORMS.md, TCP_ARCHITECTURE.md)
+- User documentation (use README.md)
+- Setup instructions (use README.md)
 
 ### External References
 
 - **Meshtastic Python Docs**: https://meshtastic.org/docs/software/python/cli/
 - **python-telegram-bot Docs**: https://python-telegram-bot.org/
+- **Llama.cpp**: https://github.com/ggerganov/llama.cpp
+
+### Documentation Maintenance Strategy
+
+**As of 2026-02-03**, the documentation has been cleaned up and consolidated:
+- **Before**: 465+ markdown files scattered in root directory
+- **After**: 13 essential docs in root + organized archives
+- **Benefit**: Clear navigation, reduced confusion, easier maintenance
+
+**Maintenance Guidelines:**
+1. Keep root documentation focused and up-to-date
+2. Update CLAUDE.md with architectural changes
+3. Archive old fix/PR documentation immediately after merge
+4. Use DOCS_INDEX.md for navigation
+5. Document test purposes in TEST_CLEANUP_GUIDE.md
 
 ---
 

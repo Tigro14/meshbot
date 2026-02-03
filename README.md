@@ -602,8 +602,48 @@ Le fichier `config.py` contient tous les paramètres configurables :
 - Configuration des nœuds distants
 - Paramètres d'affichage
 
+
 ## Limitations
 
 - Throttling : 5 commandes par 5 minutes par utilisateur
 - Messages limités à 180 caractères (contrainte LoRa)
 - Nécessite llama.cpp en fonctionnement pour `/bot`
+
+---
+
+## Documentation
+
+### Quick Start
+- **This file (README.md)**: Setup and user guide
+- **[DOCS_INDEX.md](DOCS_INDEX.md)**: Complete documentation index
+- **[CLAUDE.md](CLAUDE.md)**: Comprehensive developer guide (for AI assistants and contributors)
+
+### User Guides
+- **[CLI_USAGE.md](CLI_USAGE.md)**: Command-line interface usage
+- **[ENCRYPTED_PACKETS_EXPLAINED.md](ENCRYPTED_PACKETS_EXPLAINED.md)**: Understanding DM encryption
+
+### Developer Guides
+- **[CLAUDE.md](CLAUDE.md)**: Primary development resource (2,968+ lines)
+- **[PLATFORMS.md](PLATFORMS.md)**: Multi-platform architecture
+- **[TCP_ARCHITECTURE.md](TCP_ARCHITECTURE.md)**: Network stack architecture
+- **[STATS_CONSOLIDATION_PLAN.md](STATS_CONSOLIDATION_PLAN.md)**: Statistics system design
+
+### Configuration & Migration
+- **[CONFIG_MIGRATION.md](CONFIG_MIGRATION.md)**: Configuration updates
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**: General migration guide
+- **[MESHCORE_COMPANION.md](MESHCORE_COMPANION.md)**: MeshCore mode documentation
+- **[REBOOT_SEMAPHORE.md](REBOOT_SEMAPHORE.md)**: Remote reboot mechanism
+
+### Database Tools
+- **[BROWSE_TRAFFIC_DB.md](BROWSE_TRAFFIC_DB.md)**: Web UI for traffic database
+- **[TRAFFIC_DB_VIEWER.md](TRAFFIC_DB_VIEWER.md)**: CLI database viewer
+
+### Historical Documentation
+Over **412 archived documentation files** are available in `docs/archive/` for historical reference. See **[docs/archive/README.md](docs/archive/README.md)** for details.
+
+---
+
+## Crédits
+
+Bot créé par Tigro14. Intégration Llama, Telegram, ESPHome, statistiques avancées, et bien plus.
+
