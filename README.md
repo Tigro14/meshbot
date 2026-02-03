@@ -88,6 +88,76 @@ pip install meshcore  # Library officielle (recommandé)
 
 **Configuration** : Voir `config.meshcore.example` pour un exemple complet
 
+### Mode Dual-Network (NOUVEAU - AVANCÉ)
+Connexions simultanées Meshtastic ET MeshCore - Bot présent sur DEUX réseaux mesh différents
+
+**⭐ Mode le plus avancé : présence simultanée sur deux réseaux mesh indépendants**
+
+```mermaid
+graph TD
+    %% Styles
+    classDef node fill:#f9f,color:#000
+    classDef mcnode fill:#9f9,color:#000
+    classDef rpi fill:#bbf,color:#000
+    classDef connection stroke:#333,color:#000
+
+    %% Nodes
+    RPi5["Raspberry Pi 5<br/>(Bot + Llama.cpp)"]:::rpi
+    MeshNode["Meshtastic Node<br/>(Serial /dev/ttyACM0)"]:::node
+    MeshCoreNode["MeshCore Device<br/>(Serial /dev/ttyUSB0)"]:::mcnode
+    MeshNetwork["Réseau Meshtastic<br/>LoRa"]:::node
+    MeshCoreNetwork["Réseau MeshCore<br/>LoRa"]:::mcnode
+
+    %% Connections
+    RPi5 -- "USB" --> MeshNode
+    RPi5 -- "USB" --> MeshCoreNode
+    MeshNode -- "LoRa" --> MeshNetwork
+    MeshCoreNode -- "LoRa" --> MeshCoreNetwork
+```
+
+**Cas d'usage** : Présence sur deux réseaux mesh distincts (ex: réseau communautaire principal + réseau expérimental secondaire)
+
+**Prérequis** :
+- ✅ Deux radios physiques connectées au Raspberry Pi
+- ✅ Deux ports série distincts (ex: `/dev/ttyACM0` + `/dev/ttyUSB0`)
+- ✅ **Fréquences différentes** sur les deux radios (obligatoire pour éviter interférences)
+- ✅ MeshCore library installée (`pip install meshcore-cli`)
+
+**Fonctionnalités** :
+- ✅ Reçoit les messages des DEUX réseaux simultanément
+- ✅ Statistiques agrégées des DEUX réseaux
+- ✅ Toutes les commandes Meshtastic disponibles (car interface principale active)
+- ✅ DMs MeshCore en parallèle
+- ⚠️ Les réponses sont envoyées vers le réseau source du message
+
+**Configuration** : Voir `config.dual.example` pour un exemple complet
+
+**Activation** :
+```python
+# Dans config.py
+DUAL_NETWORK_MODE = True      # Activer mode dual
+MESHTASTIC_ENABLED = True     # Réseau Meshtastic actif
+CONNECTION_MODE = 'serial'    # Mode serial pour Meshtastic
+SERIAL_PORT = "/dev/ttyACM0"  # Port Meshtastic
+
+MESHCORE_ENABLED = True           # Réseau MeshCore actif
+MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port MeshCore
+```
+
+**Avantages** : 
+- Présence sur deux réseaux mesh distincts
+- Portée étendue (combine deux réseaux)
+- Redondance des communications
+- Expérimentation avec MeshCore tout en gardant Meshtastic
+
+**Inconvénients** : 
+- Configuration complexe
+- Nécessite deux radios physiques
+- Requiert attention aux fréquences pour éviter interférences
+- Consommation électrique plus élevée
+
+**⚠️ Important** : Ce mode est **différent** du mode dual-node Meshtastic legacy (Serial+TCP sur même réseau). En mode dual-network, vous êtes sur **deux réseaux mesh complètement distincts**.
+
 ```markdown
 ## Fonctionnalités
 
@@ -159,14 +229,22 @@ La configuration est maintenant divisée en deux fichiers pour une meilleure sé
    cp config.priv.py.sample config_priv.py
    ```
    
-   **OU** utiliser un exemple prêt à l'emploi :
+   **OU** utiliser un exemple prêt à l'emploi selon votre mode de fonctionnement :
    ```bash
-   # Pour mode Serial (connexion USB)
+   # Pour mode Serial (connexion USB Meshtastic)
    cp config.serial.example config.py
    cp config.priv.py.sample config_priv.py
    
-   # Pour mode TCP (connexion réseau)
+   # Pour mode TCP (connexion réseau Meshtastic)
    cp config.tcp.example config.py
+   cp config.priv.py.sample config_priv.py
+   
+   # Pour mode MeshCore Companion (MeshCore uniquement, sans Meshtastic)
+   cp config.meshcore.example config.py
+   cp config.priv.py.sample config_priv.py
+   
+   # Pour mode Dual-Network (Meshtastic + MeshCore simultanément - AVANCÉ)
+   cp config.dual.example config.py
    cp config.priv.py.sample config_priv.py
    ```
 
@@ -191,9 +269,32 @@ La configuration est maintenant divisée en deux fichiers pour une meilleure sé
 
 3. **Éditer `config.py` avec vos paramètres PUBLICS**
 
-   **Mode de connexion (CONNECTION_MODE)**
+   **Modes de fonctionnement disponibles**
    
-   Le bot supporte maintenant deux modes de connexion au réseau Meshtastic :
+   Le bot supporte quatre modes de fonctionnement différents :
+   
+   1. **Mode Meshtastic Serial** (recommandé pour débutants)
+      - Connexion USB directe à un node Meshtastic
+      - Toutes les fonctionnalités disponibles
+      
+   2. **Mode Meshtastic TCP** (déploiements avancés)
+      - Connexion réseau à un node Meshtastic distant
+      - Toutes les fonctionnalités disponibles
+      - Placement optimal de l'antenne
+      
+   3. **Mode MeshCore Companion** (sans Meshtastic)
+      - Connexion série à un device MeshCore uniquement
+      - Fonctionnalités limitées (pas d'accès aux stats réseau)
+      - Voir section "Mode MeshCore Companion" ci-dessus
+      
+   4. **Mode Dual-Network** (AVANCÉ - deux réseaux simultanés)
+      - Connexions simultanées Meshtastic ET MeshCore
+      - Présence sur deux réseaux mesh distincts
+      - Voir section "Mode Dual-Network" ci-dessus
+
+   **Configuration Meshtastic (modes 1, 2, 4)**
+   
+   Le bot supporte deux modes de connexion au réseau Meshtastic :
    
    - **Mode Serial (défaut)** : Connexion via port série USB/UART
      ```python
@@ -214,13 +315,31 @@ La configuration est maintenant divisée en deux fichiers pour une meilleure sé
      
      **Note:** Le mode TCP inclut désormais un système de récupération automatique. Si le node distant est inaccessible au démarrage (erreur "No route to host"), le bot tente automatiquement de le redémarrer via `meshtastic --reboot`. Voir [TCP_AUTO_REBOOT.md](TCP_AUTO_REBOOT.md) pour plus de détails.
    
+   **Configuration MeshCore (modes 3, 4)**
+   
+   Pour activer le mode MeshCore :
+   ```python
+   # Mode MeshCore uniquement (mode 3)
+   MESHTASTIC_ENABLED = False
+   MESHCORE_ENABLED = True
+   MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"
+   
+   # Mode Dual-Network (mode 4)
+   DUAL_NETWORK_MODE = True
+   MESHTASTIC_ENABLED = True
+   CONNECTION_MODE = 'serial'
+   SERIAL_PORT = "/dev/ttyACM0"
+   MESHCORE_ENABLED = True
+   MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"
+   ```
+   
    **Autres paramètres importants :**
    - Token Telegram (`TELEGRAM_BOT_TOKEN`) si intégration Telegram
    - Département pour vigilance météo (`VIGILANCE_DEPARTEMENT`)
    - Configuration AI Llama (host, port, prompts)
    - Autres paramètres selon besoins
 
-3. **Lancer le bot**
+4. **Lancer le bot**
    ```bash
    python main_script.py
    ```
@@ -232,20 +351,41 @@ La configuration est maintenant divisée en deux fichiers pour une meilleure sé
 
 ### Choix du mode de connexion
 
-**Mode Serial (recommandé pour débutants)**
+**Mode Serial Meshtastic (recommandé pour débutants)**
 - ✅ Connexion directe et stable
 - ✅ Pas de configuration réseau nécessaire
 - ✅ Latence minimale
+- ✅ Toutes les fonctionnalités disponibles
 - ❌ Nécessite un câble USB
 - ❌ Node doit être proche du Raspberry Pi
 
-**Mode TCP (pour déploiements avancés)**
+**Mode TCP Meshtastic (pour déploiements avancés)**
 - ✅ Node peut être placé à distance (meilleure position pour antenne)
 - ✅ Pas de câble USB nécessaire
 - ✅ Permet l'utilisation d'un node ROUTER existant
+- ✅ Toutes les fonctionnalités disponibles
 - ❌ Nécessite configuration WiFi/Ethernet du node
 - ❌ Dépend de la stabilité du réseau local
 - ❌ Latence légèrement supérieure
+
+**Mode MeshCore Companion (sans Meshtastic)**
+- ✅ Fonctionne avec matériel MeshCore uniquement
+- ✅ Pas besoin de device Meshtastic
+- ✅ Support protocole officiel MeshCore
+- ✅ Commandes AI, météo, système disponibles
+- ❌ Fonctionnalités réseau limitées (pas de /nodes, /stats, etc.)
+- ❌ DMs uniquement (pas de messages publics)
+
+**Mode Dual-Network (AVANCÉ)**
+- ✅ Présence simultanée sur deux réseaux mesh distincts
+- ✅ Portée étendue (combine deux réseaux)
+- ✅ Toutes les fonctionnalités Meshtastic disponibles
+- ✅ DMs MeshCore en parallèle
+- ✅ Expérimentation sans perdre réseau principal
+- ❌ Configuration complexe
+- ❌ Nécessite deux radios physiques
+- ❌ Attention aux fréquences (risque d'interférences)
+- ❌ Consommation électrique plus élevée
 
 **Exemple de cas d'usage TCP :**
 ```
@@ -256,8 +396,15 @@ Node Meshtastic ROUTER (extérieur, antenne optimale)
 Réseau mesh Meshtastic
 ```
 
+**Exemple de cas d'usage Dual-Network :**
+```
+Raspberry Pi 5 (serveur)
+    ├─ USB (/dev/ttyACM0) → Meshtastic → Réseau communautaire principal
+    └─ USB (/dev/ttyUSB0) → MeshCore → Réseau expérimental secondaire
+```
+
 **Note pour utilisateurs avancés :**
-L'architecture legacy multi-nodes (connexions Serial + TCP simultanées) reste supportée pour compatibilité. 
+L'architecture legacy multi-nodes (connexions Serial + TCP simultanées sur même réseau Meshtastic) reste supportée pour compatibilité. 
 Consultez [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) pour plus de détails.
 
 ### Installation en tant que service systemd
@@ -436,7 +583,7 @@ sudo journalctl -u rebootpi-watcher.service -f
 sudo tail -f /var/log/bot-reboot.log
 
 # Tester le mécanisme avec le module Python (SANS redémarrage réel)
-python3 test_reboot_semaphore.py
+python3 tests/test_reboot_semaphore.py
 
 # Test complet du signal (ATTENTION: redémarre le système!)
 # Version Python:

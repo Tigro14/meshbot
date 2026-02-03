@@ -1,12 +1,54 @@
 # Test & Demo Files Cleanup Guide
 
-## Current Situation
+## ✅ COMPLETED: Files Reorganized (2026-02-03)
 
-The repository contains:
-- **221 test files** (test_*.py)
-- **55 demo files** (demo_*.py)
+All test and demo files have been moved to dedicated subdirectories for better organization:
+- **160 test files** moved to `tests/` directory
+- **33 demo files** moved to `demos/` directory
 
-Many of these are for specific bug fixes, diagnostics, or old features that have been superseded.
+## Current Structure
+
+```
+meshbot/
+├── tests/                      # All test_*.py files
+│   ├── README.md              # Test documentation
+│   ├── archive/               # Archived tests
+│   │   └── fix-tests/        # Old bug fix tests
+│   └── test_*.py (160 files)
+│
+├── demos/                      # All demo_*.py files
+│   ├── README.md              # Demo documentation
+│   ├── archive/               # Archived demos
+│   └── demo_*.py (33 files)
+│
+└── [main project files]
+```
+
+## Import Updates
+
+All moved files have been updated to import from the project root using:
+
+```python
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+```
+
+This allows tests and demos to import main modules from their subdirectories.
+
+## Running Tests and Demos
+
+```bash
+# Run a test
+python3 tests/test_config_separation.py
+
+# Run a demo
+python3 demos/demo_db_neighbors.py
+```
+
+## Original Documentation (for reference)
+
+Many of these tests were created for specific bug fixes and diagnostics.
 
 ## Categorization
 
