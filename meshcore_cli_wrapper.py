@@ -1389,9 +1389,14 @@ class MeshCoreCLIWrapper:
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
                     
-                    # Add path info if available
-                    if packet.path_length > 0:
-                        info_parts.append(f"Hops: {packet.path_length}")
+                    # Add hop count (always show, even if 0, for routing visibility)
+                    info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Add actual routing path if available (shows which nodes the packet traversed)
+                    if hasattr(packet, 'path') and packet.path:
+                        # Path is a list/array of node IDs the packet traveled through
+                        path_str = ' → '.join([f"0x{node:08x}" if isinstance(node, int) else str(node) for node in packet.path])
+                        info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
                     if hasattr(packet, 'transport_codes') and packet.transport_codes:
@@ -1460,6 +1465,17 @@ class MeshCoreCLIWrapper:
                                     
                                     # Build advert info with device role and location
                                     advert_parts = [f"from: {name}"]
+                                    
+                                    # Add public key prefix for node identification
+                                    if hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
+                                        pubkey_prefix = decoded_payload.public_key[:12]  # First 6 bytes (12 hex chars)
+                                        # Derive node ID from public key (first 4 bytes)
+                                        node_id_hex = decoded_payload.public_key[:8]  # First 4 bytes (8 hex chars)
+                                        try:
+                                            node_id = int(node_id_hex, 16)
+                                            advert_parts.append(f"Node: 0x{node_id:08x}")
+                                        except:
+                                            advert_parts.append(f"PubKey: {pubkey_prefix}...")
                                     
                                     # Add device role if available
                                     if 'device_role' in app_data:
