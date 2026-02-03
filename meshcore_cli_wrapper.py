@@ -100,12 +100,12 @@ class MeshCoreCLIWrapper:
             error_print("   Installation: pip install meshcore")
             raise ImportError("meshcore-cli library required")
         
-        info_print(f"🔧 [MESHCORE-CLI] Initialisation: {port} (debug={self.debug})")
+        info_print_mc(f"🔧 Initialisation: {port} (debug={self.debug})")
     
     def connect(self):
         """Établit la connexion avec MeshCore via meshcore-cli"""
         try:
-            info_print(f"🔌 [MESHCORE-CLI] Connexion à {self.port}...")
+            info_print_mc(f"🔌 Connexion à {self.port}...")
             
             # Créer l'objet MeshCore via factory method async
             # MeshCore utilise des factory methods: create_serial, create_ble, create_tcp
@@ -133,14 +133,14 @@ class MeshCoreCLIWrapper:
                 # Note: l'API meshcore-cli peut varier selon la version
                 if hasattr(self.meshcore, 'node_id'):
                     self.localNode.nodeNum = self.meshcore.node_id
-                    info_print(f"   Node ID: 0x{self.localNode.nodeNum:08x}")
+                    info_print_mc(f"   Node ID: 0x{self.localNode.nodeNum:08x}")
             except Exception as e:
-                debug_print(f"⚠️ [MESHCORE-CLI] Impossible de récupérer node_id: {e}")
+                debug_print_mc(f"⚠️ Impossible de récupérer node_id: {e}")
             
             return True
             
         except Exception as e:
-            error_print(f"❌ [MESHCORE-CLI] Erreur connexion: {e}")
+            error_print(f"❌ [MC] Erreur connexion: {e}")
             error_print(traceback.format_exc())
             return False
     
@@ -152,7 +152,7 @@ class MeshCoreCLIWrapper:
         Args:
             callback: Fonction à appeler lors de la réception d'un message
         """
-        info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
+        debug_print_mc(f"📝 Setting message_callback to {callback}")
         self.message_callback = callback
         info_print_mc(f"✅  message_callback set successfully")
     
@@ -868,7 +868,7 @@ class MeshCoreCLIWrapper:
             daemon=True
         )
         self.message_thread.start()
-        info_print("✅ [MESHCORE-CLI] Thread événements démarré")
+        info_print_mc("✅ Thread événements démarré")
         
         # Start healthcheck monitoring
         self.healthcheck_thread = threading.Thread(
@@ -877,7 +877,7 @@ class MeshCoreCLIWrapper:
             daemon=True
         )
         self.healthcheck_thread.start()
-        info_print("✅ [MESHCORE-CLI] Healthcheck monitoring démarré")
+        info_print_mc("✅ Healthcheck monitoring démarré")
         
         # Initialize last message time
         self.last_message_time = time.time()
@@ -902,20 +902,20 @@ class MeshCoreCLIWrapper:
                     if time_since_last_message > self.message_timeout:
                         if self.connection_healthy:
                             # First time detecting the issue
-                            error_print(f"⚠️ [MESHCORE-HEALTHCHECK] ALERTE: Aucun message reçu depuis {int(time_since_last_message)}s")
-                            error_print(f"   → La connexion au nœud semble perdue")
-                            error_print(f"   → Vérifiez: 1) Le nœud est allumé")
-                            error_print(f"   →          2) Le câble série est connecté ({self.port})")
-                            error_print(f"   →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
+                            error_print(f"⚠️ [MC] ALERTE HEALTHCHECK: Aucun message reçu depuis {int(time_since_last_message)}s")
+                            error_print(f"   [MC] → La connexion au nœud semble perdue")
+                            error_print(f"   [MC] → Vérifiez: 1) Le nœud est allumé")
+                            error_print(f"   [MC] →          2) Le câble série est connecté ({self.port})")
+                            error_print(f"   [MC] →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
                             self.connection_healthy = False
                     else:
                         # Connection is healthy
                         if not self.connection_healthy:
-                            info_print(f"✅ [MESHCORE-HEALTHCHECK] Connexion rétablie (message reçu il y a {int(time_since_last_message)}s)")
+                            info_print_mc(f"✅ Connexion rétablie (message reçu il y a {int(time_since_last_message)}s)")
                             self.connection_healthy = True
                         
                         if self.debug:
-                            debug_print(f"🏥 [MESHCORE-HEALTHCHECK] OK - dernier message: {int(time_since_last_message)}s")
+                            debug_print_mc(f"🏥 Healthcheck OK - dernier message: {int(time_since_last_message)}s")
                 
                 # Sleep until next check
                 time.sleep(self.healthcheck_interval)
