@@ -1328,7 +1328,7 @@ class MeshCoreCLIWrapper:
             payload = event.payload if hasattr(event, 'payload') else event
             
             if not isinstance(payload, dict):
-                debug_print_mc(f"⚠️ [RX_LOG] Payload non-dict: {type(payload).__name__}")
+                info_print_mc(f"⚠️ [RX_LOG] Payload non-dict: {type(payload).__name__}")
                 return
             
             # Extract packet metadata
@@ -1340,7 +1340,8 @@ class MeshCoreCLIWrapper:
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
             
             # Log RF activity with basic info including packet size
-            debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
+            # Use info_print_mc so packet activity is always visible (not just in DEBUG_MODE)
+            info_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
@@ -1411,7 +1412,8 @@ class MeshCoreCLIWrapper:
                     info_parts.append(f"Status: {validity}")
                     
                     # Log decoded packet information
-                    debug_print_mc(f"📦 [RX_LOG] {' | '.join(info_parts)}")
+                    # Use info_print_mc so packet details are always visible
+                    info_print_mc(f"📦 [RX_LOG] {' | '.join(info_parts)}")
                     
                     # Categorize and display errors with better formatting
                     if packet.errors:
@@ -1455,7 +1457,7 @@ class MeshCoreCLIWrapper:
                                 # TextMessage - show if public or direct
                                 text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
                                 msg_type = "📢 Public" if is_public else "📨 Direct"
-                                debug_print_mc(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
+                                info_print_mc(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
                             
                             elif hasattr(decoded_payload, 'app_data'):
                                 # Advert with app_data - show device info
@@ -1491,18 +1493,18 @@ class MeshCoreCLIWrapper:
                                             lon = location.get('longitude', 0)
                                             advert_parts.append(f"GPS: ({lat:.4f}, {lon:.4f})")
                                     
-                                    debug_print_mc(f"📢 [RX_LOG] Advert {' | '.join(advert_parts)}")
+                                    info_print_mc(f"📢 [RX_LOG] Advert {' | '.join(advert_parts)}")
                             
                             # Group messages
                             elif packet.payload_type.name in ['GroupText', 'GroupData']:
                                 content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
-                                debug_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
+                                info_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
                             
                             # Routing packets
                             elif packet.payload_type.name == 'Trace':
-                                debug_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
+                                info_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
                             elif packet.payload_type.name == 'Path':
-                                debug_print_mc(f"🛣️  [RX_LOG] Path packet (routing info)")
+                                info_print_mc(f"🛣️  [RX_LOG] Path packet (routing info)")
                         
                         # In debug mode, show raw payload info if available
                         if self.debug:
@@ -1521,7 +1523,7 @@ class MeshCoreCLIWrapper:
                     debug_print_mc(f"📊 [RX_LOG] RF monitoring only (no hex data)")
             
         except Exception as e:
-            debug_print_mc(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
+            info_print_mc(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
             if self.debug:
                 error_print(traceback.format_exc())
 
