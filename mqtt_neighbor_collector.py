@@ -5,6 +5,11 @@ Ce module se connecte à un serveur MQTT Meshtastic pour recevoir
 les paquets NEIGHBORINFO_APP de tous les nœuds du réseau, permettant
 de construire une topologie complète au-delà de la portée radio directe.
 
+⚠️  MODE LECTURE SEULE (READ-ONLY)
+    Ce module effectue EXCLUSIVEMENT de la lecture de messages MQTT.
+    Aucune publication (publish) n'est effectuée vers les serveurs MQTT.
+    Les données reçues sont stockées localement uniquement.
+
 Supporte le format Protobuf ServiceEnvelope (msh/<region>/<channel>/2/e/<gateway>)
 
 Configuration required in config.py:

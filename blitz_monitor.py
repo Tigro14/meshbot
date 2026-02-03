@@ -5,6 +5,12 @@ Ce module se connecte au serveur MQTT public de Blitzortung.org
 pour recevoir les détections d'éclairs en temps réel et peut
 générer des alertes automatiques sur le réseau Meshtastic.
 
+⚠️  MODE LECTURE SEULE (READ-ONLY)
+    Ce module effectue EXCLUSIVEMENT de la lecture de messages MQTT.
+    Aucune publication (publish) n'est effectuée vers le serveur MQTT.
+    Les alertes générées sont envoyées sur le réseau Meshtastic
+    via l'interface série/TCP locale, PAS via MQTT.
+
 Utilise le serveur MQTT public : blitzortung.ha.sed.pl:1883
 """
 
