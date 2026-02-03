@@ -51,7 +51,7 @@ Exemples d'utilisation:
 import time
 import meshtastic.tcp_interface
 from tcp_interface_patch import OptimizedTCPInterface  # ✅ PATCH CPU
-from utils import debug_print, error_print, info_print
+from utils import debug_print, error_print, info_print, debug_print_mt, info_print_mt
 
 
 class SafeTCPConnection:
@@ -96,7 +96,7 @@ class SafeTCPConnection:
         """
         try:
             self._start_time = time.time()
-            debug_print(f"🔌 Connexion TCP à {self.hostname}:{self.port}")
+            debug_print_mt(f"🔌 Connexion TCP à {self.hostname}:{self.port}")
             
             self.interface = OptimizedTCPInterface(
                 hostname=self.hostname,
@@ -104,11 +104,11 @@ class SafeTCPConnection:
             )
             
             if self.wait_time > 0:
-                debug_print(f"⏱️  Attente {self.wait_time}s...")
+                debug_print_mt(f"⏱️  Attente {self.wait_time}s...")
                 time.sleep(self.wait_time)
             
             elapsed = time.time() - self._start_time
-            debug_print(f"✅ Connexion établie en {elapsed:.2f}s")
+            debug_print_mt(f"✅ Connexion établie en {elapsed:.2f}s")
             
             return self.interface
             
@@ -132,9 +132,9 @@ class SafeTCPConnection:
         if self.interface:
             try:
                 elapsed = time.time() - self._start_time if self._start_time else 0
-                debug_print(f"🔌 Fermeture connexion (durée: {elapsed:.2f}s)")
+                debug_print_mt(f"🔌 Fermeture connexion (durée: {elapsed:.2f}s)")
                 self.interface.close()
-                debug_print(f"✅ Connexion fermée")
+                debug_print_mt(f"✅ Connexion fermée")
             except Exception as e:
                 error_print(f"⚠️  Erreur fermeture: {e}")
             finally:
@@ -173,17 +173,17 @@ def send_text_to_remote(hostname, text, port=4403, wait_time=10):
             print(f"Erreur: {msg}")
     """
     try:
-        debug_print(f"📤 send_text_to_remote: {hostname} <- '{text}'")
+        debug_print_mt(f"📤 send_text_to_remote: {hostname} <- '{text}'")
         
         with SafeTCPConnection(hostname, port, wait_time=2, timeout=15) as interface:
-            debug_print(f"✅ Connexion établie")
-            debug_print(f"📤 Envoi texte: '{text}'")
+            debug_print_mt(f"✅ Connexion établie")
+            debug_print_mt(f"📤 Envoi texte: '{text}'")
             
             interface.sendText(text)
-            debug_print(f"✅ sendText() appelé")
+            debug_print_mt(f"✅ sendText() appelé")
             
             # Attendre que le message parte
-            debug_print(f"⏳ Attente {wait_time}s pour transmission...")
+            debug_print_mt(f"⏳ Attente {wait_time}s pour transmission...")
             time.sleep(wait_time)
             
             info_print(f"✅ Texte envoyé à {hostname}")
@@ -220,7 +220,7 @@ def quick_tcp_command(hostname, command, port=4403, wait_time=3):
             print("Reboot lancé")
     """
     try:
-        debug_print(f"⚡ quick_tcp_command: {hostname} <- '{command}'")
+        debug_print_mt(f"⚡ quick_tcp_command: {hostname} <- '{command}'")
         
         with SafeTCPConnection(hostname, port, wait_time=2) as interface:
             interface.sendText(command)
@@ -257,7 +257,7 @@ def broadcast_message(hostname, message, port=4403, wait_time=3):
         success, msg = broadcast_message("192.168.1.100", "Alert: maintenance")
     """
     try:
-        debug_print(f"📡 broadcast_message: via {hostname} -> réseau")
+        debug_print_mt(f"📡 broadcast_message: via {hostname} -> réseau")
         
         with SafeTCPConnection(hostname, port, wait_time=2) as interface:
             interface.sendText(message)

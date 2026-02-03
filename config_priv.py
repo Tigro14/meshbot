@@ -44,7 +44,8 @@ TELEGRAM_TO_MESH_MAPPING = {
     # }
 }
 
-MQTT_NEIGHBOR_PASSWORD = "large4cats"
+#MQTT_NEIGHBOR_PASSWORD = "large4cats"
+MQTT_NEIGHBOR_PASSWORD = "uplink"
 
 # ========================================
 # CONFIGURATION REBOOT - PARAMETRES SENSIBLES

@@ -7,7 +7,7 @@ Intégration avec le bot MeshBot en mode companion
 import threading
 import time
 import asyncio
-from utils import info_print, debug_print, error_print
+from utils import info_print, debug_print, error_print, info_print_mc, debug_print_mc
 import traceback
 
 # Try to import meshcore-cli
@@ -40,7 +40,7 @@ try:
     import nacl.public
     import nacl.encoding
     NACL_AVAILABLE = True
-    debug_print("✅ [MESHCORE] PyNaCl disponible (validation clés)")
+    debug_print_mc("✅  PyNaCl disponible (validation clés)")
 except ImportError:
     NACL_AVAILABLE = False
     debug_print("ℹ️  [MESHCORE] PyNaCl non disponible (validation clés désactivée)")
@@ -120,7 +120,7 @@ class MeshCoreCLIWrapper:
             # Sauvegarder l'event loop pour les opérations futures
             self._loop = loop
             
-            info_print(f"✅ [MESHCORE-CLI] Device connecté sur {self.port}")
+            info_print_mc(f"✅  Device connecté sur {self.port}")
             
             # NOTE: Contact loading removed from connect() to reduce noise
             # Contacts will be synced in the event loop via sync_contacts()
@@ -154,7 +154,7 @@ class MeshCoreCLIWrapper:
         """
         info_print(f"📝 [MESHCORE-CLI] Setting message_callback to {callback}")
         self.message_callback = callback
-        info_print(f"✅ [MESHCORE-CLI] message_callback set successfully")
+        info_print_mc(f"✅  message_callback set successfully")
     
     def set_node_manager(self, node_manager):
         """
@@ -164,7 +164,7 @@ class MeshCoreCLIWrapper:
             node_manager: NodeManager instance
         """
         self.node_manager = node_manager
-        debug_print("✅ [MESHCORE-CLI] NodeManager configuré")
+        debug_print_mc("✅  NodeManager configuré")
     
     def _add_contact_to_meshcore(self, contact_data):
         """
@@ -196,7 +196,7 @@ class MeshCoreCLIWrapper:
             elif isinstance(public_key, str):
                 pubkey_hex = public_key
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Type publicKey non supporté: {type(public_key)}")
+                debug_print_mc(f"⚠️ [DM] Type publicKey non supporté: {type(public_key)}")
                 return False
             
             # Extract first 12 hex chars (6 bytes) = pubkey_prefix
@@ -217,13 +217,13 @@ class MeshCoreCLIWrapper:
             
             # Add to internal dict
             self.meshcore.contacts[pubkey_prefix] = contact
-            debug_print(f"✅ [MESHCORE-DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
-            debug_print(f"📊 [MESHCORE-DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
-            debug_print(f"📊 [MESHCORE-DM] Dict size: {len(self.meshcore.contacts)}")
+            debug_print_mc(f"✅ [DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
+            debug_print_mc(f"📊 [DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
+            debug_print_mc(f"📊 [DM] Dict size: {len(self.meshcore.contacts)}")
             return True
             
         except Exception as e:
-            debug_print(f"⚠️ [MESHCORE-DM] Erreur ajout contact à meshcore: {e}")
+            debug_print_mc(f"⚠️ [DM] Erreur ajout contact à meshcore: {e}")
             return False
     
     def query_contact_by_pubkey_prefix(self, pubkey_prefix):
@@ -251,7 +251,7 @@ class MeshCoreCLIWrapper:
             return None
         
         try:
-            debug_print(f"🔍 [MESHCORE-QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
+            debug_print_mc(f"🔍 [QUERY] Recherche contact avec pubkey_prefix: {pubkey_prefix}")
             
             # Ensure contacts are loaded
             # CRITICAL FIX: Actually call ensure_contacts() to load contacts from device
@@ -261,45 +261,45 @@ class MeshCoreCLIWrapper:
             # First, try to flush any pending contacts
             if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
                 try:
-                    debug_print(f"🔄 [MESHCORE-QUERY] Appel flush_pending_contacts() pour finaliser les contacts en attente...")
+                    debug_print_mc(f"🔄 [QUERY] Appel flush_pending_contacts() pour finaliser les contacts en attente...")
                     self.meshcore.flush_pending_contacts()
-                    debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() terminé")
+                    debug_print_mc(f"✅ [QUERY] flush_pending_contacts() terminé")
                 except Exception as flush_err:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush_pending_contacts(): {flush_err}")
+                    debug_print_mc(f"⚠️ [QUERY] Erreur flush_pending_contacts(): {flush_err}")
             
             # Check if contacts are already loaded (may have been populated during connection)
             initial_count = 0
             if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                 initial_count = len(self.meshcore.contacts)
-                debug_print(f"📊 [MESHCORE-QUERY] Contacts déjà disponibles: {initial_count}")
+                debug_print_mc(f"📊 [QUERY] Contacts déjà disponibles: {initial_count}")
             
             # If no contacts yet, try to load them
             if initial_count == 0 and hasattr(self.meshcore, 'ensure_contacts'):
-                debug_print(f"🔄 [MESHCORE-QUERY] Appel ensure_contacts() pour charger les contacts...")
+                debug_print_mc(f"🔄 [QUERY] Appel ensure_contacts() pour charger les contacts...")
                 try:
                     # Call ensure_contacts() - it will load contacts if not already loaded
                     if asyncio.iscoroutinefunction(self.meshcore.ensure_contacts):
                         # It's async - DON'T use run_coroutine_threadsafe as it hangs
                         # Instead, just mark contacts as dirty and they'll load in background
-                        debug_print(f"⚠️ [MESHCORE-QUERY] ensure_contacts() est async - impossible d'appeler depuis ce contexte")
-                        debug_print(f"💡 [MESHCORE-QUERY] Les contacts se chargeront en arrière-plan")
+                        debug_print_mc(f"⚠️ [QUERY] ensure_contacts() est async - impossible d'appeler depuis ce contexte")
+                        debug_print_mc(f"💡 [QUERY] Les contacts se chargeront en arrière-plan")
                         
                         # Try to mark contacts as dirty to trigger reload
                         # FIX: contacts_dirty is a read-only property, use private attribute _contacts_dirty instead
                         if hasattr(self.meshcore, '_contacts_dirty'):
                             self.meshcore._contacts_dirty = True
-                            debug_print(f"🔄 [MESHCORE-QUERY] _contacts_dirty défini à True pour forcer le rechargement")
+                            debug_print_mc(f"🔄 [QUERY] _contacts_dirty défini à True pour forcer le rechargement")
                         elif hasattr(self.meshcore, 'contacts_dirty'):
                             # Fallback: try the property (may fail if read-only)
                             try:
                                 self.meshcore.contacts_dirty = True
-                                debug_print(f"🔄 [MESHCORE-QUERY] contacts_dirty défini à True pour forcer le rechargement")
+                                debug_print_mc(f"🔄 [QUERY] contacts_dirty défini à True pour forcer le rechargement")
                             except AttributeError as e:
-                                debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de définir contacts_dirty: {e}")
+                                debug_print_mc(f"⚠️ [QUERY] Impossible de définir contacts_dirty: {e}")
                     else:
                         # It's synchronous - just call it
                         self.meshcore.ensure_contacts()
-                        debug_print(f"✅ [MESHCORE-QUERY] ensure_contacts() terminé")
+                        debug_print_mc(f"✅ [QUERY] ensure_contacts() terminé")
                 except Exception as ensure_err:
                     error_print(f"⚠️ [MESHCORE-QUERY] Erreur ensure_contacts(): {ensure_err}")
                     error_print(traceback.format_exc())
@@ -308,25 +308,25 @@ class MeshCoreCLIWrapper:
                 if hasattr(self.meshcore, 'flush_pending_contacts') and callable(self.meshcore.flush_pending_contacts):
                     try:
                         self.meshcore.flush_pending_contacts()
-                        debug_print(f"✅ [MESHCORE-QUERY] flush_pending_contacts() après ensure_contacts")
+                        debug_print_mc(f"✅ [QUERY] flush_pending_contacts() après ensure_contacts")
                     except Exception as flush_err:
-                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur flush après ensure: {flush_err}")
+                        debug_print_mc(f"⚠️ [QUERY] Erreur flush après ensure: {flush_err}")
                 
                 # Check again if contacts are now available
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts is None:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Contacts toujours non chargés après ensure_contacts()")
+                    debug_print_mc(f"⚠️ [QUERY] Contacts toujours non chargés après ensure_contacts()")
                 else:
-                    debug_print(f"✅ [MESHCORE-QUERY] Contacts disponibles après ensure_contacts()")
+                    debug_print_mc(f"✅ [QUERY] Contacts disponibles après ensure_contacts()")
             elif initial_count > 0:
-                debug_print(f"✅ [MESHCORE-QUERY] Contacts déjà chargés, pas besoin d'appeler ensure_contacts()")
+                debug_print_mc(f"✅ [QUERY] Contacts déjà chargés, pas besoin d'appeler ensure_contacts()")
             else:
-                debug_print(f"⚠️ [MESHCORE-QUERY] meshcore.ensure_contacts() non disponible")
+                debug_print_mc(f"⚠️ [QUERY] meshcore.ensure_contacts() non disponible")
             
             # Debug: check if meshcore has contacts attribute
             if hasattr(self.meshcore, 'contacts'):
                 try:
                     contacts_count = len(self.meshcore.contacts) if self.meshcore.contacts else 0
-                    debug_print(f"📊 [MESHCORE-QUERY] Nombre de contacts disponibles: {contacts_count}")
+                    debug_print_mc(f"📊 [QUERY] Nombre de contacts disponibles: {contacts_count}")
                     
                     # Enhanced debug: show why contacts might be empty
                     if contacts_count == 0:
@@ -366,21 +366,21 @@ class MeshCoreCLIWrapper:
                                 pass
                     
                 except Exception as ce:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Impossible de compter les contacts: {ce}")
+                    debug_print_mc(f"⚠️ [QUERY] Impossible de compter les contacts: {ce}")
             
             # Query meshcore for contact by pubkey prefix
             contact = None
             if hasattr(self.meshcore, 'get_contact_by_key_prefix'):
-                debug_print(f"🔍 [MESHCORE-QUERY] Appel get_contact_by_key_prefix('{pubkey_prefix}')...")
+                debug_print_mc(f"🔍 [QUERY] Appel get_contact_by_key_prefix('{pubkey_prefix}')...")
                 contact = self.meshcore.get_contact_by_key_prefix(pubkey_prefix)
-                debug_print(f"📋 [MESHCORE-QUERY] Résultat: {type(contact).__name__} = {contact}")
+                debug_print_mc(f"📋 [QUERY] Résultat: {type(contact).__name__} = {contact}")
             else:
                 error_print(f"❌ [MESHCORE-QUERY] meshcore.get_contact_by_key_prefix() non disponible")
                 error_print(f"   → Vérifier version meshcore-cli (besoin >= 2.2.5)")
                 return None
             
             if not contact:
-                debug_print(f"⚠️ [MESHCORE-QUERY] Aucun contact trouvé pour pubkey_prefix: {pubkey_prefix}")
+                debug_print_mc(f"⚠️ [QUERY] Aucun contact trouvé pour pubkey_prefix: {pubkey_prefix}")
                 # Debug: list available pubkey prefixes
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     try:
@@ -400,7 +400,7 @@ class MeshCoreCLIWrapper:
                                         prefix = cpk[:12]
                                 debug_print(f"   {i+1}. {prefix}... (nom: {c.get('name', 'unknown')})")
                     except Exception as debug_err:
-                        debug_print(f"⚠️ [MESHCORE-QUERY] Erreur debug contacts: {debug_err}")
+                        debug_print_mc(f"⚠️ [QUERY] Erreur debug contacts: {debug_err}")
                 return None
             
             # Extract contact information
@@ -431,7 +431,7 @@ class MeshCoreCLIWrapper:
                         contact_id = int.from_bytes(public_key[:4], 'big')
                         debug_print(f"🔑 [MESHCORE-QUERY] Node ID dérivé du public_key: 0x{contact_id:08x}")
                 except Exception as pk_err:
-                    debug_print(f"⚠️ [MESHCORE-QUERY] Erreur extraction node_id depuis public_key: {pk_err}")
+                    debug_print_mc(f"⚠️ [QUERY] Erreur extraction node_id depuis public_key: {pk_err}")
             
             if not contact_id:
                 debug_print("⚠️ [MESHCORE-QUERY] Contact trouvé mais pas de contact_id et impossible de dériver du public_key")
@@ -447,7 +447,7 @@ class MeshCoreCLIWrapper:
                     except ValueError:
                         contact_id = int(contact_id)
             
-            debug_print(f"✅ [MESHCORE-QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
+            debug_print_mc(f"✅ [QUERY] Contact trouvé: {name or 'Unknown'} (0x{contact_id:08x})")
             
             # Extract GPS coordinates from meshcore contact (uses adv_lat/adv_lon fields)
             lat = contact.get('lat') or contact.get('latitude') or contact.get('adv_lat')
@@ -470,7 +470,7 @@ class MeshCoreCLIWrapper:
                 self.node_manager.persistence.save_meshcore_contact(contact_data)
                 # CRITICAL: Also add to meshcore.contacts dict for get_contact_by_key_prefix() to work
                 self._add_contact_to_meshcore(contact_data)
-                debug_print(f"💾 [MESHCORE-QUERY] Contact sauvegardé: {name}")
+                debug_print_mc(f"💾 [QUERY] Contact sauvegardé: {name}")
             else:
                 # Fallback to in-memory storage if SQLite not available
                 if contact_id not in self.node_manager.node_names:
@@ -492,7 +492,7 @@ class MeshCoreCLIWrapper:
                     if public_key and not self.node_manager.node_names[contact_id].get('publicKey'):
                         self.node_manager.node_names[contact_id]['publicKey'] = public_key
                         # Data is automatically saved to SQLite via persistence
-                        debug_print(f"💾 [MESHCORE-QUERY] PublicKey ajouté: {name}")
+                        debug_print_mc(f"💾 [QUERY] PublicKey ajouté: {name}")
             
             return contact_id
             
@@ -828,7 +828,7 @@ class MeshCoreCLIWrapper:
                     info_print("ℹ️  [MESHCORE-CLI] RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
                     info_print("   → Le bot ne verra que les DM, pas les broadcasts")
                 elif not hasattr(EventType, 'RX_LOG_DATA'):
-                    debug_print("⚠️ [MESHCORE-CLI] EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
+                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
@@ -1195,7 +1195,7 @@ class MeshCoreCLIWrapper:
                             self._add_contact_to_meshcore(contact_data)
                             debug_print(f"💾 [MESHCORE-DM] Contact chargé depuis DB et ajouté au dict")
                     except Exception as load_err:
-                        debug_print(f"⚠️ [MESHCORE-DM] Erreur chargement contact depuis DB: {load_err}")
+                        debug_print_mc(f"⚠️ [DM] Erreur chargement contact depuis DB: {load_err}")
                 else:
                     # Second try: query meshcore-cli API directly
                     debug_print(f"🔍 [MESHCORE-DM] Pas dans le cache meshcore, interrogation API meshcore-cli...")
@@ -1243,9 +1243,9 @@ class MeshCoreCLIWrapper:
                                 self._add_contact_to_meshcore(contact_data)
                                 debug_print(f"💾 [MESHCORE-DM] Contact dérivé sauvegardé: 0x{sender_id:08x}")
                             except Exception as save_err:
-                                debug_print(f"⚠️ [MESHCORE-DM] Erreur sauvegarde contact dérivé: {save_err}")
+                                debug_print_mc(f"⚠️ [DM] Erreur sauvegarde contact dérivé: {save_err}")
                     else:
-                        debug_print(f"⚠️ [MESHCORE-DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
+                        debug_print_mc(f"⚠️ [DM] pubkey_prefix trop court pour dériver node_id: {pubkey_prefix}")
                 except Exception as derive_err:
                     error_print(f"❌ [MESHCORE-DM] Erreur dérivation node_id: {derive_err}")
                     error_print(traceback.format_exc())
@@ -1300,7 +1300,7 @@ class MeshCoreCLIWrapper:
             if self.message_callback:
                 info_print(f"📞 [MESHCORE-CLI] Calling message_callback for message from 0x{sender_id:08x}")
                 self.message_callback(packet, None)
-                info_print(f"✅ [MESHCORE-CLI] Callback completed successfully")
+                info_print_mc(f"✅  Callback completed successfully")
             else:
                 error_print(f"⚠️ [MESHCORE-CLI] No message_callback set!")
                 
@@ -1328,7 +1328,7 @@ class MeshCoreCLIWrapper:
             payload = event.payload if hasattr(event, 'payload') else event
             
             if not isinstance(payload, dict):
-                debug_print(f"⚠️ [RX_LOG] Payload non-dict: {type(payload).__name__}")
+                debug_print_mc(f"⚠️ [RX_LOG] Payload non-dict: {type(payload).__name__}")
                 return
             
             # Extract packet metadata
@@ -1336,8 +1336,11 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
-            # Log RF activity with basic info
-            debug_print(f"📡 [RX_LOG] Paquet RF reçu - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:20]}...")
+            # Calculate hex data length for display
+            hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
+            
+            # Log RF activity with basic info including packet size
+            debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
@@ -1372,6 +1375,16 @@ class MeshCoreCLIWrapper:
                     
                     info_parts.append(f"Route: {route_name}")
                     
+                    # Add packet size and version info
+                    if packet.total_bytes > 0:
+                        info_parts.append(f"Size: {packet.total_bytes}B")
+                    
+                    # Add payload version if not default
+                    if hasattr(packet, 'payload_version') and packet.payload_version:
+                        version_str = str(packet.payload_version).replace('PayloadVersion.', '')
+                        if version_str != 'Version1':  # Only show if not default
+                            info_parts.append(f"Ver: {version_str}")
+                    
                     # Add message hash if available
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
@@ -1379,6 +1392,10 @@ class MeshCoreCLIWrapper:
                     # Add path info if available
                     if packet.path_length > 0:
                         info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Add transport codes if available (useful for debugging routing)
+                    if hasattr(packet, 'transport_codes') and packet.transport_codes:
+                        info_parts.append(f"Transport: {packet.transport_codes}")
                     
                     # Check if packet is valid (only flag as invalid for non-unknown-type errors)
                     if unknown_type_error:
@@ -1389,42 +1406,106 @@ class MeshCoreCLIWrapper:
                     info_parts.append(f"Status: {validity}")
                     
                     # Log decoded packet information
-                    debug_print(f"📦 [RX_LOG] {' | '.join(info_parts)}")
+                    debug_print_mc(f"📦 [RX_LOG] {' | '.join(info_parts)}")
                     
-                    # Log non-unknown-type errors only
+                    # Categorize and display errors with better formatting
                     if packet.errors:
-                        other_errors = [e for e in packet.errors if "is not a valid PayloadType" not in e]
-                        for error in other_errors[:3]:  # Show first 3 non-type errors
-                            debug_print(f"   ⚠️ {error}")
+                        # Separate errors into categories
+                        structural_errors = []
+                        content_errors = []
+                        unknown_type_errors = []
+                        
+                        for error in packet.errors:
+                            if "is not a valid PayloadType" in error:
+                                unknown_type_errors.append(error)
+                            elif "too short" in error.lower() or "truncated" in error.lower():
+                                structural_errors.append(error)
+                            else:
+                                content_errors.append(error)
+                        
+                        # Display structural errors first (most critical)
+                        for error in structural_errors[:2]:  # Show first 2
+                            debug_print_mc(f"   ⚠️ {error}")
+                        
+                        # Display content errors
+                        for error in content_errors[:2]:  # Show first 2
+                            debug_print_mc(f"   ⚠️ {error}")
+                        
+                        # Unknown type errors are informational only (already shown in Type field)
+                        # Don't re-display them unless in debug mode
+                        if self.debug and unknown_type_errors:
+                            for error in unknown_type_errors:
+                                debug_print_mc(f"   ℹ️  {error}")
                     
-                    # If payload is decoded, show a preview
+                    # Determine if packet is public/broadcast
+                    from meshcoredecoder.types import RouteType as RT
+                    is_public = packet.route_type in [RT.Flood, RT.TransportFlood]
+                    
+                    # If payload is decoded, show a preview with enhanced context
                     if packet.payload and isinstance(packet.payload, dict):
                         decoded_payload = packet.payload.get('decoded')
                         if decoded_payload:
-                            # Show payload type-specific info
+                            # Show payload type-specific info with public/family context
                             if hasattr(decoded_payload, 'text'):
-                                # TextMessage
+                                # TextMessage - show if public or direct
                                 text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
-                                debug_print(f"📝 [RX_LOG] Message: \"{text_preview}\"")
+                                msg_type = "📢 Public" if is_public else "📨 Direct"
+                                debug_print_mc(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
+                            
                             elif hasattr(decoded_payload, 'app_data'):
-                                # Advert with app_data
+                                # Advert with app_data - show device info
                                 app_data = decoded_payload.app_data
                                 if isinstance(app_data, dict):
                                     name = app_data.get('name', 'Unknown')
-                                    debug_print(f"📢 [RX_LOG] Advert from: {name}")
+                                    
+                                    # Build advert info with device role and location
+                                    advert_parts = [f"from: {name}"]
+                                    
+                                    # Add device role if available
+                                    if 'device_role' in app_data:
+                                        role = app_data['device_role']
+                                        role_name = str(role).split('.')[-1]  # Extract enum name
+                                        advert_parts.append(f"Role: {role_name}")
+                                    
+                                    # Add location indicator
+                                    if app_data.get('has_location'):
+                                        location = app_data.get('location', {})
+                                        if location:
+                                            lat = location.get('latitude', 0)
+                                            lon = location.get('longitude', 0)
+                                            advert_parts.append(f"GPS: ({lat:.4f}, {lon:.4f})")
+                                    
+                                    debug_print_mc(f"📢 [RX_LOG] Advert {' | '.join(advert_parts)}")
+                            
+                            # Group messages
+                            elif packet.payload_type.name in ['GroupText', 'GroupData']:
+                                content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
+                                debug_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
+                            
+                            # Routing packets
+                            elif packet.payload_type.name == 'Trace':
+                                debug_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
+                            elif packet.payload_type.name == 'Path':
+                                debug_print_mc(f"🛣️  [RX_LOG] Path packet (routing info)")
+                        
+                        # In debug mode, show raw payload info if available
+                        if self.debug:
+                            raw_payload = packet.payload.get('raw', '')
+                            if raw_payload:
+                                debug_print_mc(f"   🔍 Raw payload: {raw_payload[:40]}...")
                     
                 except Exception as decode_error:
                     # Decoder failed, but that's OK - packet might be malformed or incomplete
-                    debug_print(f"📊 [RX_LOG] Décodage non disponible: {str(decode_error)[:60]}")
+                    debug_print_mc(f"📊 [RX_LOG] Décodage non disponible: {str(decode_error)[:60]}")
             else:
                 # Decoder not available, show basic info
                 if not MESHCORE_DECODER_AVAILABLE:
-                    debug_print(f"📊 [RX_LOG] RF monitoring only (meshcore-decoder not installed)")
+                    debug_print_mc(f"📊 [RX_LOG] RF monitoring only (meshcore-decoder not installed)")
                 else:
-                    debug_print(f"📊 [RX_LOG] RF monitoring only (no hex data)")
+                    debug_print_mc(f"📊 [RX_LOG] RF monitoring only (no hex data)")
             
         except Exception as e:
-            debug_print(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
+            debug_print_mc(f"⚠️ [RX_LOG] Erreur traitement RX_LOG_DATA: {e}")
             if self.debug:
                 error_print(traceback.format_exc())
 
@@ -1463,14 +1544,14 @@ class MeshCoreCLIWrapper:
                 # But we can use the full key prefix for better matching
                 pubkey_hex = public_key_bytes.hex()
                 pubkey_prefix = pubkey_hex[:12]  # First 6 bytes = 12 hex chars minimum
-                debug_print(f"✅ [MESHCORE-DM] pubkey_prefix trouvé: {pubkey_prefix}")
+                debug_print_mc(f"✅ [DM] pubkey_prefix trouvé: {pubkey_prefix}")
                 return pubkey_prefix
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
+                debug_print_mc(f"⚠️ [DM] Pas de publicKey en DB pour node 0x{node_id:08x}")
                 return None
                 
         except Exception as e:
-            debug_print(f"⚠️ [MESHCORE-DM] Erreur recherche pubkey_prefix: {e}")
+            debug_print_mc(f"⚠️ [DM] Erreur recherche pubkey_prefix: {e}")
             if self.debug:
                 error_print(traceback.format_exc())
             return None
@@ -1517,21 +1598,21 @@ class MeshCoreCLIWrapper:
                 
                 # DIAGNOSTIC: Show what's in meshcore.contacts dict
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
-                    debug_print(f"📊 [MESHCORE-DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
-                    debug_print(f"📊 [MESHCORE-DM] Dict keys: {list(self.meshcore.contacts.keys())}")
+                    debug_print_mc(f"📊 [DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
+                    debug_print_mc(f"📊 [DM] Dict keys: {list(self.meshcore.contacts.keys())}")
                 else:
-                    debug_print(f"⚠️ [MESHCORE-DM] meshcore.contacts is None or empty!")
+                    debug_print_mc(f"⚠️ [DM] meshcore.contacts is None or empty!")
                 
                 # FIX: Direct dict access instead of meshcore-cli method
                 # The get_contact_by_key_prefix() method doesn't work with our manually added contacts
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     contact = self.meshcore.contacts.get(pubkey_prefix)
                     if contact:
-                        debug_print(f"✅ [MESHCORE-DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
+                        debug_print_mc(f"✅ [DM] Contact trouvé via dict direct: {contact.get('adv_name', 'unknown')}")
                     else:
-                        debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
+                        debug_print_mc(f"⚠️ [DM] Contact non trouvé dans dict (clé: {pubkey_prefix})")
             else:
-                debug_print(f"⚠️ [MESHCORE-DM] Pas de pubkey_prefix en DB, recherche avec node_id")
+                debug_print_mc(f"⚠️ [DM] Pas de pubkey_prefix en DB, recherche avec node_id")
                 # Fallback: try with node_id hex (8 chars) in dict
                 hex_id = f"{destinationId:08x}"
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
@@ -1540,7 +1621,7 @@ class MeshCoreCLIWrapper:
             # If not found, use the destinationId directly
             # The send_msg API should accept either contact dict or node_id
             if not contact:
-                debug_print(f"⚠️ [MESHCORE-DM] Contact non trouvé, utilisation de l'ID directement")
+                debug_print_mc(f"⚠️ [DM] Contact non trouvé, utilisation de l'ID directement")
                 contact = destinationId
             
             # Send via commands.send_msg
@@ -1559,7 +1640,7 @@ class MeshCoreCLIWrapper:
             # FIRE-AND-FORGET APPROACH
             # Don't wait for result - the coroutine is hanging waiting for ACK that never comes
             # Let the message send asynchronously in the background
-            debug_print(f"✅ [MESHCORE-DM] Message submitted to event loop (fire-and-forget)")
+            debug_print_mc(f"✅ [DM] Message submitted to event loop (fire-and-forget)")
             debug_print(f"📤 [MESHCORE-DM] Coroutine will complete asynchronously in background")
             
             # Optional: Add error handler to the future to log any exceptions
@@ -1568,9 +1649,9 @@ class MeshCoreCLIWrapper:
                     if fut.exception():
                         error_print(f"❌ [MESHCORE-DM] Async send error: {fut.exception()}")
                     else:
-                        debug_print(f"✅ [MESHCORE-DM] Async send completed successfully")
+                        debug_print_mc(f"✅ [DM] Async send completed successfully")
                 except Exception as e:
-                    debug_print(f"⚠️ [MESHCORE-DM] Future check error: {e}")
+                    debug_print_mc(f"⚠️ [DM] Future check error: {e}")
             
             future.add_done_callback(_log_future_result)
             

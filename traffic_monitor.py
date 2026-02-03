@@ -248,7 +248,7 @@ class TrafficMonitor:
         
         for key in search_keys:
             if key in nodes:
-                debug_print(f"🔍 Found node 0x{node_id:08x} in interface.nodes with key={key} (type={type(key).__name__})")
+                debug_print_mt(f"🔍 Found node 0x{node_id:08x} in interface.nodes with key={key} (type={type(key).__name__})")
                 return nodes[key], key
         
         return None, None
@@ -873,7 +873,7 @@ class TrafficMonitor:
                             }
                             # Mise à jour du node_manager (en mémoire)
                             self.node_manager.update_node_position(from_id, lat, lon, alt)
-                            debug_print(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+                            debug_print_mt(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             self.all_packets.append(packet_entry)
 
@@ -889,7 +889,7 @@ class TrafficMonitor:
             try:
                 packet_source = packet_entry.get('source', 'unknown')
                 
-                info_print(f"💿 [ROUTE-SAVE] Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
+                info_print_mt(f"💿 [ROUTE-SAVE] Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
                 
                 if packet_source == 'meshcore':
                     # Paquet MeshCore → table meshcore_packets
@@ -915,7 +915,7 @@ class TrafficMonitor:
             
             # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
             source_tag = f"[{packet_entry.get('source', '?')}]"
-            debug_print(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            debug_print_mt(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
             
             # Detailed debug logging (requires DEBUG_MODE)
             self._log_packet_debug(
@@ -952,7 +952,7 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
-            debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
 
             # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
@@ -970,11 +970,11 @@ class TrafficMonitor:
                         debug_print(f" {json.dumps(telemetry, indent=2, default=str)}")
 
                 if telemetry_info:
-                    debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
+                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
                 else:
-                    debug_print(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
+                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
-                debug_print(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+                debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
             
             # === AFFICHAGE CONCIS (concise two-line debug with network source) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken, source=source)
@@ -1062,7 +1062,7 @@ class TrafficMonitor:
             channel = packet.get('channel', 0)
             
             # Line 1: Main info
-            debug_print(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
+            debug_print_mt(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
             
             # === LINE 2: DETAILS ===
             packet_id = packet.get('id', 'N/A')
@@ -1146,7 +1146,7 @@ class TrafficMonitor:
             line2_parts.append(f"ID:{packet_id}")
             line2_parts.append(f"RX:{rx_time_str}")
             
-            debug_print(f"  └─ {' | '.join(line2_parts)}")
+            debug_print_mt(f"  └─ {' | '.join(line2_parts)}")
             
         except Exception as e:
             import traceback
