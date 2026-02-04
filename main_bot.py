@@ -2206,7 +2206,7 @@ class MeshBot:
                 info_print("🧪 Testing pubsub mechanism...")
                 try:
                     # Try to send a test message through pubsub to verify it works
-                    from pubsub import pub
+                    # Note: pub is already imported at module level (line 18)
                     
                     # Check if we're subscribed
                     subscribers = pub.getDefaultTopicMgr().getTopic("meshtastic.receive").getListeners()
