@@ -2159,9 +2159,32 @@ class MeshBot:
             info_print("=" * 80)
             info_print(f"   meshtastic_enabled = {meshtastic_enabled}")
             info_print(f"   meshcore_enabled = {meshcore_enabled}")
-            info_print(f"   dual_mode = {dual_mode}")
+            info_print(f"   dual_mode (config) = {dual_mode}")
+            info_print(f"   dual_mode (active) = {self._dual_mode_active}")
             info_print(f"   connection_mode = {connection_mode}")
             info_print(f"   interface type = {type(self.interface).__name__ if hasattr(self, 'interface') and self.interface else 'None'}")
+            
+            # Show which packet sources are active
+            if self._dual_mode_active:
+                info_print("   📡 ACTIVE NETWORKS:")
+                info_print("      ✅ Meshtastic (via primary interface)")
+                info_print("      ✅ MeshCore (via dual interface)")
+                info_print("      → Will see [DEBUG][MT] AND [DEBUG][MC] packets")
+            elif meshtastic_enabled and not meshcore_enabled:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ Meshtastic ONLY")
+                info_print("      → Will see [DEBUG][MT] packets only")
+            elif meshcore_enabled and not meshtastic_enabled:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ MeshCore ONLY")
+                info_print("      → Will see [DEBUG][MC] packets only")
+            elif meshtastic_enabled and meshcore_enabled and not dual_mode:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ Meshtastic ONLY (MeshCore ignored)")
+                info_print("      ⚠️  Both enabled but DUAL_NETWORK_MODE=False")
+                info_print("      → Will see [DEBUG][MT] packets only")
+                info_print("      → To enable MeshCore: Set DUAL_NETWORK_MODE=True")
+            
             info_print("=" * 80)
             
             if meshtastic_enabled:
