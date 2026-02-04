@@ -1775,9 +1775,6 @@ class MeshBot:
                 # MODE DUAL - Meshtastic + MeshCore simultanément
                 # ========================================
                 info_print("🔄 MODE DUAL: Connexion simultanée Meshtastic + MeshCore")
-                info_print("   → Deux réseaux mesh actifs en parallèle")
-                info_print("   → Statistiques agrégées des deux réseaux")
-                info_print("   → Réponses routées vers le réseau source")
                 
                 self._dual_mode_active = True
                 
@@ -1830,7 +1827,6 @@ class MeshBot:
                     
                     if not meshtastic_interface:
                         error_print("❌ Échec création interface Meshtastic - Mode dual désactivé")
-                        error_print("   → Fallback sur MeshCore uniquement")
                         self._dual_mode_active = False
                         # Will continue to setup MeshCore below
                 
@@ -1844,7 +1840,6 @@ class MeshBot:
                 
                 if not meshcore_interface.connect():
                     error_print("❌ Échec connexion MeshCore - Mode dual désactivé")
-                    info_print("   → Fallback sur Meshtastic uniquement")
                     self._dual_mode_active = False
                     self.interface = meshtastic_interface
                 else:
@@ -1875,17 +1870,11 @@ class MeshBot:
             elif not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
                 info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
-                info_print("   → Bot en mode test uniquement (commandes limitées)")
                 self.interface = MeshCoreStandaloneInterface()
                 
             elif meshtastic_enabled and meshcore_enabled and not dual_mode:
                 # Both enabled but dual mode NOT enabled - warn user and prioritize Meshtastic
                 info_print("⚠️ AVERTISSEMENT: MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux activés")
-                info_print("   → Priorité donnée à Meshtastic (capacités mesh complètes)")
-                info_print("   → MeshCore sera ignoré. Pour utiliser MeshCore:")
-                info_print("   →   Définir MESHTASTIC_ENABLED = False dans config.py")
-                info_print("   → OU activer le mode dual: DUAL_NETWORK_MODE = True")
-                info_print("")
                 # Continue to Meshtastic connection (next if blocks)
                 
             elif meshtastic_enabled and connection_mode == 'tcp':
