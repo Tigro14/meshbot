@@ -1,0 +1,86 @@
+═══════════════════════════════════════════════════════════════════════════
+  DÉPLOIEMENT: Fix "Pas de Paquets MeshCore [DEBUG][MC]"
+═══════════════════════════════════════════════════════════════════════════
+
+PROBLÈME
+--------
+✅ Paquets Meshtastic visibles: [DEBUG][MT]
+❌ Aucun paquet MeshCore: [DEBUG][MC]
+
+CAUSE
+-----
+MESHCORE_ENABLED=True mais DUAL_NETWORK_MODE=False
+→ Meshtastic prend priorité, MeshCore ignoré silencieusement
+
+SOLUTION RAPIDE
+---------------
+1. Déployer le fix (nouveaux diagnostics)
+2. Redémarrer le bot
+3. Lire les nouveaux logs de démarrage
+4. Choisir configuration appropriée
+
+DÉPLOIEMENT
+-----------
+cd /home/dietpi/bot
+git checkout copilot/update-sqlite-data-cleanup
+git pull
+sudo systemctl restart meshtastic-bot
+
+VÉRIFICATION (CRITIQUE!)
+------------------------
+journalctl -u meshtastic-bot --since "1 minute ago" | grep -A 25 "SUBSCRIPTION SETUP"
+
+ATTENDU
+-------
+   dual_mode (config) = False      ← Valeur dans config.py
+   dual_mode (active) = False      ← État réel du bot ⭐
+   interface type = SerialInterface
+   
+   📡 ACTIVE NETWORK:
+      ✅ Meshtastic ONLY (MeshCore ignored)
+      ⚠️  Both enabled but DUAL_NETWORK_MODE=False
+      → Will see [DEBUG][MT] packets only
+      → To enable MeshCore: Set DUAL_NETWORK_MODE=True
+
+SI VOUS VOULEZ VOIR [DEBUG][MC]
+--------------------------------
+
+Option A: Dual Mode (2 radios nécessaires)
+   Éditer config.py:
+   DUAL_NETWORK_MODE = True
+   MESHTASTIC_ENABLED = True
+   MESHCORE_ENABLED = True
+   SERIAL_PORT = "/dev/ttyACM0"
+   MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port DIFFÉRENT!
+
+Option B: MeshCore Uniquement (1 radio MeshCore)
+   Éditer config.py:
+   DUAL_NETWORK_MODE = False
+   MESHTASTIC_ENABLED = False  # Désactiver Meshtastic
+   MESHCORE_ENABLED = True
+
+Option C: Garder Meshtastic Uniquement (recommandé si suffisant)
+   Éditer config.py:
+   DUAL_NETWORK_MODE = False
+   MESHTASTIC_ENABLED = True
+   MESHCORE_ENABLED = False  # Désactiver MeshCore
+
+APRÈS MODIFICATION
+------------------
+sudo systemctl restart meshtastic-bot
+journalctl -u meshtastic-bot --since "1 minute ago" | grep -A 25 "SUBSCRIPTION SETUP"
+
+DOCUMENTATION COMPLÈTE
+----------------------
+• NO_MESHCORE_PACKETS_GUIDE.md - Guide détaillé (7 KB)
+• QUICK_FIX_NO_MC_PACKETS.md - Quick reference (1.5 KB)
+• SOLUTION_COMPLETE_NO_MC.md - Résumé technique (9 KB)
+
+SUPPORT
+-------
+Besoin d'aide? Partagez la sortie de:
+journalctl -u meshtastic-bot --since "1 minute ago" | grep -A 25 "SUBSCRIPTION SETUP"
+
+Les nouveaux diagnostics montreront exactement l'état du système.
+
+═══════════════════════════════════════════════════════════════════════════
