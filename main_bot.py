@@ -2619,16 +2619,35 @@ class MeshBot:
             except Exception as e:
                 error_print(f"⚠️ Erreur arrêt telegram_integration: {e}")
 
-            # 6. Fermer connexions série/TCP
+            # 6. Fermer dual interface manager (si utilisé)
+            try:
+                if hasattr(self, 'dual_interface') and self.dual_interface:
+                    self.dual_interface.close()
+                    self.dual_interface = None
+                    debug_print("✅ Dual interface fermée")
+            except Exception as e:
+                error_print(f"⚠️ Erreur fermeture dual_interface: {e}")
+
+            # 7. Fermer l'interface principale (Meshtastic/MeshCore)
+            try:
+                if self.interface:
+                    # Close the interface properly to stop internal threads and callbacks
+                    if hasattr(self.interface, 'close'):
+                        self.interface.close()
+                        debug_print("✅ Interface principale fermée")
+                    self.interface = None
+            except Exception as e:
+                error_print(f"⚠️ Erreur fermeture interface: {e}")
+
+            # 8. Fermer connexions série/TCP (wrapper)
             try:
                 if hasattr(self, 'safe_serial') and self.safe_serial:
                     self.safe_serial.close()
             except Exception as e:
                 error_print(f"⚠️ Erreur fermeture safe_serial: {e}")
 
-            # 7. Nettoyage final
+            # 9. Nettoyage final
             try:
-                self.interface = None
                 gc.collect()
             except Exception as e:
                 error_print(f"⚠️ Erreur nettoyage final: {e}")
