@@ -457,12 +457,12 @@ class MeshBot:
             from_id = packet.get('from', 0) if packet else None
             network_tag = f"[{network_source}]" if network_source else ""
             
-            # Log with BOTH logger and info_print for maximum visibility
-            logger.info(f"🔔🔔🔔 on_message CALLED (logger) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
-            info_print(f"🔔🔔🔔 on_message CALLED (print) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            # Log with BOTH methods for maximum visibility (dual logging)
+            info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
         except:
-            logger.info(f"🔔🔔🔔 on_message CALLED (logger) | packet={packet is not None} | interface={interface is not None}")
-            info_print(f"🔔🔔🔔 on_message CALLED (print) | packet={packet is not None} | interface={interface is not None}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info1-fallback) | packet={packet is not None} | interface={interface is not None}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info2-fallback) | packet={packet is not None} | interface={interface is not None}")
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
