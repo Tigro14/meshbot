@@ -452,13 +452,17 @@ class MeshBot:
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
             network_source: NetworkSource enum (Meshtastic/MeshCore) si en mode dual
         """
-        # === DIAGNOSTIC: Log EVERY call to on_message ===
+        # === ULTRA-VISIBLE DIAGNOSTIC: on_message called ===
         try:
             from_id = packet.get('from', 0) if packet else None
             network_tag = f"[{network_source}]" if network_source else ""
-            info_print(f"🔔 on_message CALLED {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            
+            # Log with BOTH logger and info_print for maximum visibility
+            logger.info(f"🔔🔔🔔 on_message CALLED (logger) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
+            info_print(f"🔔🔔🔔 on_message CALLED (print) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
         except:
-            info_print(f"🔔 on_message CALLED | packet={packet is not None} | interface={interface is not None}")
+            logger.info(f"🔔🔔🔔 on_message CALLED (logger) | packet={packet is not None} | interface={interface is not None}")
+            info_print(f"🔔🔔🔔 on_message CALLED (print) | packet={packet is not None} | interface={interface is not None}")
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
@@ -2159,6 +2163,18 @@ class MeshBot:
             # ========================================
             # En mode Meshtastic: S'abonner aux messages via pubsub
             # En mode MeshCore: Le callback est déjà configuré
+            
+            # === ULTRA-VISIBLE DIAGNOSTIC BANNER ===
+            info_print("=" * 80)
+            info_print("🔔 SUBSCRIPTION SETUP - CRITICAL FOR PACKET RECEPTION")
+            info_print("=" * 80)
+            info_print(f"   meshtastic_enabled = {meshtastic_enabled}")
+            info_print(f"   meshcore_enabled = {meshcore_enabled}")
+            info_print(f"   dual_mode = {dual_mode}")
+            info_print(f"   connection_mode = {connection_mode}")
+            info_print(f"   interface type = {type(self.interface).__name__ if hasattr(self, 'interface') and self.interface else 'None'}")
+            info_print("=" * 80)
+            
             if meshtastic_enabled:
                 # DOIT être fait immédiatement après la création de l'interface
                 # S'abonner aux différents types de messages Meshtastic
@@ -2166,14 +2182,47 @@ class MeshBot:
                 # - meshtastic.receive.data : messages de données
                 # - meshtastic.receive : messages génériques (fallback)
                 
+                info_print("📡 Subscribing to Meshtastic messages via pubsub...")
+                
                 # S'abonner avec le callback principal
                 # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
                 # (ce topic catch ALL messages: text, data, position, etc.)
                 pub.subscribe(self.on_message, "meshtastic.receive")
                 
-                info_print("✅ Abonné aux messages Meshtastic (receive)")
+                info_print("✅ ✅ ✅ SUBSCRIBED TO meshtastic.receive ✅ ✅ ✅")
+                info_print(f"   Callback: {self.on_message}")
+                info_print(f"   Topic: 'meshtastic.receive'")
+                info_print("   → Meshtastic interface should now publish packets to this callback")
+                info_print("   → You should see '🔔 on_message CALLED' when packets arrive")
             else:
-                info_print("ℹ️  Mode companion: Messages gérés par interface MeshCore")
+                info_print("ℹ️  ℹ️  ℹ️  Mode companion: Messages gérés par interface MeshCore")
+                info_print("   → MeshCore callback already configured")
+                info_print("   → Packets will arrive via MeshCore, not pubsub")
+            
+            info_print("=" * 80)
+            
+            # === TEST PUBSUB AFTER SUBSCRIPTION ===
+            if meshtastic_enabled:
+                info_print("🧪 Testing pubsub mechanism...")
+                try:
+                    # Try to send a test message through pubsub to verify it works
+                    from pubsub import pub
+                    
+                    # Check if we're subscribed
+                    subscribers = pub.getDefaultTopicMgr().getTopic("meshtastic.receive").getListeners()
+                    info_print(f"   Subscribers to 'meshtastic.receive': {len(subscribers)}")
+                    for i, sub in enumerate(subscribers):
+                        info_print(f"     [{i}] {sub}")
+                    
+                    if len(subscribers) > 0:
+                        info_print("   ✅ Subscription verified - at least one listener registered")
+                    else:
+                        info_print("   ⚠️  WARNING: No subscribers found! Subscription may have failed")
+                        
+                except Exception as e:
+                    info_print(f"   ⚠️  Could not verify subscription: {e}")
+            
+            info_print("=" * 80)
             
             self.running = True
 
