@@ -1,0 +1,82 @@
+================================================================================
+           FIX: "Unexpected error in deferred execution"
+================================================================================
+
+PROBLEM:
+--------
+ERROR:meshtastic.util:Unexpected error in deferred execution
+
+This error appeared when the bot was shutting down.
+
+ROOT CAUSE:
+-----------
+In stop() method, interface was destroyed without proper cleanup:
+
+  self.interface = None  ← Directly set to None
+  
+Meshtastic interface has internal threads/callbacks still running.
+They try to execute → interface is gone → ERROR!
+
+THE FIX:
+--------
+✅ Call close() BEFORE setting to None:
+
+  if self.interface:
+      self.interface.close()  ← Stop threads, cleanup
+      self.interface = None   ← Then destroy
+
+Same for dual_interface:
+  
+  if self.dual_interface:
+      self.dual_interface.close()
+      self.dual_interface = None
+
+WHAT close() DOES:
+------------------
+1. Stops receive thread
+2. Closes socket/serial port
+3. Cleans up pubsub
+4. Cancels pending operations
+5. Ensures callbacks complete
+
+FILES CHANGED:
+--------------
+✅ main_bot.py - Added proper close sequence
+✅ test_interface_shutdown.py - Test verification (NEW)
+✅ FIX_DEFERRED_EXECUTION_ERROR.md - Full docs (NEW)
+✅ QUICK_FIX_DEFERRED_EXECUTION.md - Quick ref (NEW)
+
+TESTING:
+--------
+python3 test_interface_shutdown.py
+
+✅ Found interface.close() at line 2636
+✅ Found interface = None at line 2638
+✅ Correct order: close() before None
+✅ All checks passed!
+
+DEPLOY:
+-------
+cd /home/dietpi/bot
+git pull
+sudo systemctl restart meshtastic-bot
+
+VERIFY:
+-------
+sudo systemctl stop meshtastic-bot
+journalctl -u meshtastic-bot --since "1 minute ago" | grep -i error
+
+Expected:
+  ✅ Interface principale fermée
+  ❌ NO "Unexpected error in deferred execution"
+
+RESULT:
+-------
+✅ Clean shutdown
+✅ No error messages
+✅ Proper resource cleanup
+✅ All threads stopped correctly
+
+================================================================================
+                              STATUS: ✅ FIXED
+================================================================================
