@@ -578,7 +578,7 @@ class NodeManager:
                     
                     # DEBUG: Additional packet structure logging (only in DEBUG_MODE)
                     if globals().get('DEBUG_MODE', False):
-                        debug_print(f"🔍 Full user_info structure: {user_info}")
+/bin/bash: line 1: q: command not found
                     
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
