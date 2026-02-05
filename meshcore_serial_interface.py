@@ -135,6 +135,16 @@ class MeshCoreSerialInterface:
         
         self.running = True
         
+        # Log initial diagnostics
+        info_print("=" * 80)
+        info_print("🔧 [MESHCORE] DÉMARRAGE DIAGNOSTICS")
+        info_print("=" * 80)
+        info_print(f"   Port série: {self.port}")
+        info_print(f"   Baudrate: {self.baudrate}")
+        info_print(f"   Port ouvert: {self.serial.is_open}")
+        info_print(f"   Message callback: {self.message_callback is not None}")
+        info_print("=" * 80)
+        
         # Thread de lecture (passif + écoute push notifications)
         self.read_thread = threading.Thread(
             target=self._read_loop,
@@ -152,6 +162,18 @@ class MeshCoreSerialInterface:
         )
         self.poll_thread.start()
         info_print("✅ [MESHCORE] Thread de polling démarré")
+        
+        # Wait a moment and verify threads are running
+        time.sleep(0.5)
+        if self.read_thread.is_alive():
+            info_print("✅ [MESHCORE] Read thread confirmed running")
+        else:
+            error_print("❌ [MESHCORE] Read thread NOT running!")
+        
+        if self.poll_thread.is_alive():
+            info_print("✅ [MESHCORE] Poll thread confirmed running")
+        else:
+            error_print("❌ [MESHCORE] Poll thread NOT running!")
         
         return True
     
@@ -199,23 +221,40 @@ class MeshCoreSerialInterface:
         """Boucle de lecture des messages série (exécutée dans un thread)"""
         info_print("📡 [MESHCORE] Début lecture messages MeshCore...")
         
+        # Counter for diagnostics
+        loop_iterations = 0
+        data_received_count = 0
+        last_activity_log = time.time()
+        
         while self.running and self.serial and self.serial.is_open:
             try:
+                loop_iterations += 1
+                
+                # Log activity periodically (every 60 seconds)
+                if time.time() - last_activity_log > 60:
+                    info_print(f"🔄 [MESHCORE-HEARTBEAT] Read loop active: {loop_iterations} iterations, {data_received_count} data packets received")
+                    last_activity_log = time.time()
+                
                 # Lecture des données disponibles
-                if self.serial.in_waiting > 0:
+                waiting = self.serial.in_waiting
+                if waiting > 0:
+                    data_received_count += 1
+                    info_print(f"📥 [MESHCORE-DATA] {waiting} bytes waiting (packet #{data_received_count})")
+                    
                     # Lire les données brutes
-                    raw_data = self.serial.read(self.serial.in_waiting)
+                    raw_data = self.serial.read(waiting)
+                    info_print(f"📦 [MESHCORE-RAW] Read {len(raw_data)} bytes: {raw_data[:20].hex() if len(raw_data) <= 20 else raw_data[:20].hex() + '...'}")
                     
                     # Vérifier si c'est du texte ou du binaire
                     try:
                         # Tenter de décoder comme texte UTF-8
                         line = raw_data.decode('utf-8', errors='strict').strip()
                         if line:
-                            debug_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
+                            info_print(f"📨 [MESHCORE-TEXT] Reçu: {line[:80]}{'...' if len(line) > 80 else ''}")
                             self._process_meshcore_line(line)
                     except UnicodeDecodeError:
                         # Données binaires (protocole binaire MeshCore natif)
-                        debug_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protocole binaire MeshCore)")
+                        info_print(f"📨 [MESHCORE-BINARY] Reçu: {len(raw_data)} octets (protocole binaire MeshCore)")
                         self._process_meshcore_binary(raw_data)
                 
                 time.sleep(0.1)  # Éviter de saturer le CPU
@@ -227,7 +266,7 @@ class MeshCoreSerialInterface:
                 error_print(f"❌ [MESHCORE] Erreur traitement message: {e}")
                 error_print(traceback.format_exc())
         
-        info_print("🛑 [MESHCORE] Thread de lecture arrêté")
+        info_print(f"🛑 [MESHCORE] Thread de lecture arrêté (après {loop_iterations} iterations, {data_received_count} packets)")
     
     def _process_meshcore_line(self, line):
         """

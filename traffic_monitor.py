@@ -927,8 +927,12 @@ class TrafficMonitor:
             source_tag = f"[{packet_entry.get('source', '?')}]"
             
             # ENHANCED DIAGNOSTIC: Use both logger and debug_print for redundancy
+            # FIX: Use debug_print_mc for MeshCore packets, debug_print_mt for Meshtastic
             logger.debug(f"📊 Paquet enregistré (logger debug) ({source_tag}): {packet_type} de {sender_name}")
-            debug_print_mt(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
+            if source == 'meshcore':
+                debug_print_mc(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
+            else:
+                debug_print_mt(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
             
             # Detailed debug logging (requires DEBUG_MODE)
             logger.debug(f"🔍 Calling _log_packet_debug for {packet_type}")
@@ -948,6 +952,8 @@ class TrafficMonitor:
     def _log_packet_debug(self, packet_type, source, sender_name, from_id, hops_taken, snr, packet):
         """
         Log debug unifié pour tous les types de paquets avec affichage complet
+        
+        FIX: Use debug_print_mc for MeshCore packets, debug_print_mt for Meshtastic
         """
         try:
             # Formater l'ID en hex court (5 derniers caractères)
@@ -970,7 +976,9 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
-            debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            # FIX: Use correct debug function based on source
+            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
+            debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
 
             # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
@@ -988,11 +996,11 @@ class TrafficMonitor:
                         debug_print(f" {json.dumps(telemetry, indent=2, default=str)}")
 
                 if telemetry_info:
-                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
+                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
                 else:
-                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
+                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
-                debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+                debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
             
             # === AFFICHAGE CONCIS (concise two-line debug with network source) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken, source=source)
@@ -1079,8 +1087,11 @@ class TrafficMonitor:
             # Channel
             channel = packet.get('channel', 0)
             
+            # FIX: Use correct debug function based on source
+            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
+            
             # Line 1: Main info
-            debug_print_mt(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
+            debug_func(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
             
             # === LINE 2: DETAILS ===
             packet_id = packet.get('id', 'N/A')
@@ -1164,7 +1175,7 @@ class TrafficMonitor:
             line2_parts.append(f"ID:{packet_id}")
             line2_parts.append(f"RX:{rx_time_str}")
             
-            debug_print_mt(f"  └─ {' | '.join(line2_parts)}")
+            debug_func(f"  └─ {' | '.join(line2_parts)}")
             
         except Exception as e:
             import traceback
