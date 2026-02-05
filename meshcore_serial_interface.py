@@ -109,6 +109,27 @@ class MeshCoreSerialInterface:
         
         info_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
         
+        # IMPORTANT WARNING: This basic implementation has limitations
+        error_print("⚠️  " * 20)
+        error_print("⚠️  [MESHCORE] UTILISATION DE L'IMPLÉMENTATION BASIQUE")
+        error_print("⚠️  " * 20)
+        error_print("   LIMITATIONS:")
+        error_print("   - Protocole binaire NON supporté (seul format texte)")
+        error_print("   - DM encryption NON supportée")
+        error_print("   - Auto message fetching LIMITÉ")
+        error_print("")
+        error_print("   IMPACT:")
+        error_print("   - Si MeshCore envoie du binaire: AUCUN paquet ne sera loggué")
+        error_print("   - Pas de logs [DEBUG][MC]")
+        error_print("   - Bot NE RÉPONDRA PAS aux DM")
+        error_print("")
+        error_print("   SOLUTION RECOMMANDÉE:")
+        error_print("   $ pip install meshcore meshcoredecoder")
+        error_print("   $ sudo systemctl restart meshtastic-bot")
+        error_print("")
+        error_print("   Pour support complet, utilisez meshcore-cli library")
+        error_print("⚠️  " * 20)
+        
     def connect(self):
         """Établit la connexion série avec MeshCore"""
         try:
@@ -381,6 +402,25 @@ class MeshCoreSerialInterface:
             # - Payload
             # - CRC checksum
             
+            # PROMINENT WARNING: This is why no packets are logged!
+            error_print("=" * 80)
+            error_print("❌ [MESHCORE-BINARY] PROTOCOLE BINAIRE NON SUPPORTÉ!")
+            error_print("=" * 80)
+            error_print("   PROBLÈME: Données binaires MeshCore reçues mais non décodées")
+            error_print(f"   TAILLE: {len(raw_data)} octets ignorés")
+            error_print("   IMPACT: Pas de logs [DEBUG][MC], pas de réponse aux DM")
+            error_print("")
+            error_print("   SOLUTION: Installer meshcore-cli library")
+            error_print("   $ pip install meshcore meshcoredecoder")
+            error_print("   $ sudo systemctl restart meshtastic-bot")
+            error_print("")
+            error_print("   Cette implémentation basique ne supporte QUE le format texte:")
+            error_print("   DM:<sender_id>:<message>")
+            error_print("")
+            error_print("   Pour un support complet, utilisez meshcore-cli library")
+            error_print("=" * 80)
+            
+            # Also log at debug level for those who filter errors
             debug_print(f"⚠️ [MESHCORE-BINARY] Décodage protocole MeshCore non implémenté - données ignorées")
             
         except Exception as e:
