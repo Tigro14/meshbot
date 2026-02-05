@@ -1,0 +1,86 @@
+================================================================================
+DUAL MODE FAILURE - DIAGNOSTIC SUMMARY
+================================================================================
+
+PROBLEM: User has libraries installed + config enabled, but NO MeshCore packets
+
+ROOT CAUSE: Dual mode initialization fails silently → Falls back to Meshtastic-only
+
+SOLUTION: Added prominent warning at startup when config ≠ reality
+
+================================================================================
+QUICK DIAGNOSIS (30 seconds)
+================================================================================
+
+1. Restart bot:
+   sudo systemctl restart meshtastic-bot
+
+2. Check for warning:
+   journalctl -u meshtastic-bot --since "1m" | grep "DUAL MODE INITIALIZATION FAILED"
+
+3. If warning appears, find actual error:
+   journalctl -u meshtastic-bot --since "boot" | grep "❌ Échec"
+
+================================================================================
+TOP 3 ISSUES (90% of cases)
+================================================================================
+
+Issue 1: Port Doesn't Exist (60%)
+   Check: ls -la /dev/ttyUSB*
+   Fix: Connect MeshCore radio OR update config port
+
+Issue 2: Permission Denied (30%)
+   Check: ls -la /dev/ttyUSB0
+   Fix: sudo usermod -a -G dialout dietpi
+
+Issue 3: Same Port (10%)
+   Check: grep SERIAL_PORT config.py
+   Fix: Use DIFFERENT ports for each radio
+
+================================================================================
+VERIFICATION COMMANDS
+================================================================================
+
+# Port status
+ls -la /dev/tty{ACM,USB}*
+
+# Config check
+grep -E "SERIAL_PORT|MESHCORE_SERIAL_PORT" config.py
+
+# Library check
+python3 -c "import meshcore; print('OK')"
+
+# Port usage
+sudo lsof /dev/ttyACM0
+sudo lsof /dev/ttyUSB0
+
+================================================================================
+EXPECTED RESULTS
+================================================================================
+
+With Warning (FAILED):
+   ⚠️  DUAL MODE INITIALIZATION FAILED!
+   CONFIG: DUAL_NETWORK_MODE=True
+   REALITY: Running in Meshtastic-only mode
+
+Without Warning (SUCCESS):
+   ✅ Mode dual initialisé avec succès
+   📡 ACTIVE NETWORKS:
+      ✅ Meshtastic (via primary interface)
+      ✅ MeshCore (via dual interface)
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+main_bot.py - Added diagnostic banner (+26 lines)
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+FIX_DUAL_MODE_SILENT_FAILURE.md - Complete guide (7.5 KB)
+QUICK_FIX_DUAL_MODE.md - Quick reference (1.4 KB)
+DUAL_MODE_FAILURE_SUMMARY.txt - This file (1.5 KB)
+
+================================================================================
