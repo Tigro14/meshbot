@@ -2185,6 +2185,32 @@ class MeshBot:
                 info_print("      → Will see [DEBUG][MT] packets only")
                 info_print("      → To enable MeshCore: Set DUAL_NETWORK_MODE=True")
             
+            # Add post-initialization diagnostic if config doesn't match reality
+            if dual_mode and meshtastic_enabled and meshcore_enabled:
+                if not self._dual_mode_active:
+                    error_print("=" * 80)
+                    error_print("⚠️  DUAL MODE INITIALIZATION FAILED!")
+                    error_print("=" * 80)
+                    error_print("   CONFIG: DUAL_NETWORK_MODE=True")
+                    error_print("   REALITY: Running in Meshtastic-only mode")
+                    error_print("")
+                    error_print("   POSSIBLE CAUSES:")
+                    error_print("   1. Meshtastic port creation failed")
+                    error_print("   2. MeshCore port connection failed")
+                    error_print("   3. MeshCore start_reading failed")
+                    error_print("")
+                    error_print("   CHECK LOGS ABOVE for error messages:")
+                    error_print("   - Look for '❌ Échec création interface Meshtastic'")
+                    error_print("   - Look for '❌ Échec connexion MeshCore'")
+                    error_print("   - Look for '❌ Échec démarrage lecture MeshCore'")
+                    error_print("")
+                    error_print("   VERIFY:")
+                    error_print(f"   - SERIAL_PORT exists and accessible")
+                    error_print(f"   - MESHCORE_SERIAL_PORT exists and accessible")
+                    error_print(f"   - Both ports are different")
+                    error_print(f"   - meshcore/meshcoredecoder libraries installed")
+                    error_print("=" * 80)
+            
             info_print("=" * 80)
             
             if meshtastic_enabled:
