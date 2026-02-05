@@ -576,10 +576,6 @@ class NodeManager:
                             debug_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
                     debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
                     
-                    # DEBUG: Additional packet structure logging (only in DEBUG_MODE)
-                    if globals().get('DEBUG_MODE', False):
-/bin/bash: line 1: q: command not found
-                    
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
                         info_print(f"⚠️ {name}: NODEINFO without public_key field (firmware < 2.5.0?)")
