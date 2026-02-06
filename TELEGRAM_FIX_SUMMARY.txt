@@ -1,0 +1,103 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    TELEGRAM BOT STARTUP FIX - SUMMARY                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+PROBLEM:
+--------
+TypeError: Updater.start_polling() got an unexpected keyword argument 'read_timeout'
+
+The bot was using deprecated API from python-telegram-bot v13.x with v21.0+
+
+ROOT CAUSE:
+-----------
+In python-telegram-bot v20.0+, timeout parameters were moved:
+❌ OLD: Pass to start_polling()
+✅ NEW: Configure in Application.builder()
+
+SOLUTION:
+---------
+
+1. BEFORE (telegram_integration.py lines 185, 199-208):
+   ┌────────────────────────────────────────────────────────────────────┐
+   │ self.application = Application.builder()                           │
+   │     .token(TELEGRAM_BOT_TOKEN).build()                             │
+   │                                                                      │
+   │ await self.application.updater.start_polling(                      │
+   │     poll_interval=5.0,                                             │
+   │     timeout=30,                                                     │
+   │     read_timeout=180,        # ❌ ERROR: Not supported in v20.0+  │
+   │     write_timeout=180,       # ❌ ERROR: Not supported in v20.0+  │
+   │     connect_timeout=180,     # ❌ ERROR: Not supported in v20.0+  │
+   │     pool_timeout=180,        # ❌ ERROR: Not supported in v20.0+  │
+   │     allowed_updates=Update.ALL_TYPES,                              │
+   │     drop_pending_updates=True                                      │
+   │ )                                                                   │
+   └────────────────────────────────────────────────────────────────────┘
+
+2. AFTER (telegram_integration.py lines 185-215):
+   ┌────────────────────────────────────────────────────────────────────┐
+   │ # Configure timeouts at Application builder level                  │
+   │ self.application = (                                               │
+   │     Application.builder()                                          │
+   │     .token(TELEGRAM_BOT_TOKEN)                                     │
+   │     .read_timeout(180)        # ✅ Configured at builder level    │
+   │     .write_timeout(180)       # ✅ Configured at builder level    │
+   │     .connect_timeout(180)     # ✅ Configured at builder level    │
+   │     .pool_timeout(180)        # ✅ Configured at builder level    │
+   │     .build()                                                       │
+   │ )                                                                   │
+   │                                                                      │
+   │ # start_polling with only valid parameters                         │
+   │ await self.application.updater.start_polling(                      │
+   │     poll_interval=5.0,                                             │
+   │     timeout=30,                                                     │
+   │     allowed_updates=Update.ALL_TYPES,                              │
+   │     drop_pending_updates=True                                      │
+   │ )                                                                   │
+   └────────────────────────────────────────────────────────────────────┘
+
+VALID start_polling() PARAMETERS (v21.0+):
+-------------------------------------------
+✅ poll_interval        - Time between polling requests
+✅ timeout              - Long poll timeout
+✅ bootstrap_retries    - Retry count for bootstrap
+✅ allowed_updates      - List of update types to receive
+✅ drop_pending_updates - Drop pending updates on startup
+✅ error_callback       - Async callback for errors
+
+❌ read_timeout         - MOVED to Application.builder()
+❌ write_timeout        - MOVED to Application.builder()
+❌ connect_timeout      - MOVED to Application.builder()
+❌ pool_timeout         - MOVED to Application.builder()
+
+FILES CHANGED:
+--------------
+1. telegram_integration.py      - Main fix (Application builder + start_polling)
+2. test_telegram_fix.py         - Test script to verify the fix (NEW)
+3. FIX_TELEGRAM_STARTUP_ERROR.md - Comprehensive documentation (NEW)
+
+IMPACT:
+-------
+✅ Zero functional changes - bot behaves exactly the same way
+✅ Maintains same timeout values (180 seconds for all operations)
+✅ Compatible with python-telegram-bot v21.0+
+✅ Well-documented with inline comments
+
+VERIFICATION:
+-------------
+1. Check python-telegram-bot version: pip show python-telegram-bot
+   → Should be >= 21.0
+2. Start the bot: python3 main_script.py
+3. Look for: "Bot Telegram en écoute (polling optimisé)..."
+4. Verify NO error: "TypeError: ... unexpected keyword argument 'read_timeout'"
+
+SUCCESS INDICATORS:
+-------------------
+✅ No TypeError on startup
+✅ "Initialisation bot Telegram..." appears in logs
+✅ "Bot Telegram en écoute (polling optimisé)..." appears in logs
+✅ Bot responds to Telegram commands
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                              END OF SUMMARY                                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
