@@ -49,6 +49,9 @@ from platform_config import get_enabled_platforms
 # Import du gestionnaire dual interface (Meshtastic + MeshCore simultanément)
 from dual_interface_manager import DualInterfaceManager, NetworkSource
 
+# Import du détecteur de ports USB automatique
+from usb_port_detector import USBPortDetector
+
 # Import de l'interface MeshCore (mode companion)
 # Tente d'utiliser meshcore-cli library si disponible, sinon fallback vers impl basique
 try:
@@ -1791,6 +1794,9 @@ class MeshBot:
                 else:
                     serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
                     
+                    # Auto-detect USB port if configured
+                    serial_port = USBPortDetector.resolve_port(serial_port, "Meshtastic")
+                    
                     # Retry logic for serial port
                     max_retries = globals().get('SERIAL_PORT_RETRIES', 3)
                     retry_delay = globals().get('SERIAL_PORT_RETRY_DELAY', 2)
@@ -1835,6 +1841,10 @@ class MeshBot:
                 
                 # Setup MeshCore interface
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # Auto-detect USB port if configured
+                meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
+                
                 info_print(f"🔗 Configuration interface MeshCore: {meshcore_port}...")
                 meshcore_interface = MeshCoreSerialInterface(meshcore_port)
                 
@@ -1977,6 +1987,9 @@ class MeshBot:
                 # ========================================
                 serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
                 
+                # Auto-detect USB port if configured
+                serial_port = USBPortDetector.resolve_port(serial_port, "Meshtastic")
+                
                 info_print(f"🔌 Mode SERIAL MESHTASTIC: Connexion série {serial_port}")
                 
                 # Retry logic for serial port with better error handling
@@ -2060,6 +2073,9 @@ class MeshBot:
                 # MODE MESHCORE COMPANION - Connexion série MeshCore
                 # ========================================
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # Auto-detect USB port if configured
+                meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
                 
                 # DEFENSIVE CHECK: This block should NEVER run if meshtastic_enabled is True
                 # Log comprehensive state for debugging configuration conflicts

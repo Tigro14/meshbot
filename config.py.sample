@@ -98,7 +98,41 @@ MESHTASTIC_ENABLED = True  # True = Connexion Meshtastic active, False = Mode st
 CONNECTION_MODE = 'serial'  # 'serial' ou 'tcp'
 
 # Configuration connexion série Meshtastic (utilisée si CONNECTION_MODE='serial')
-SERIAL_PORT = "/dev/ttyACM0"
+# 
+# ⭐ NOUVEAU: Auto-détection USB (recommandé pour éviter les changements de ports)
+# =============================================================================
+# Au lieu de spécifier un port fixe comme "/dev/ttyACM0", vous pouvez utiliser
+# l'auto-détection basée sur les attributs USB du périphérique:
+#
+# Formats supportés:
+#   "/dev/ttyACM0"                    - Port fixe (classique)
+#   "auto"                            - Premier périphérique USB série trouvé
+#   "auto:HT-n5262"                   - Détection par nom de produit
+#   "auto:product=HT-n5262"           - Détection explicite par produit
+#   "auto:serial=B5A131E366B43F18"    - Détection par numéro de série USB
+#   "auto:manufacturer=Heltec"        - Détection par fabricant
+#   "auto:product=HT-n5262,serial=B5A1..." - Critères multiples
+#
+# Avantages de l'auto-détection:
+#   ✅ Configuration robuste (les ports USB peuvent changer au redémarrage)
+#   ✅ Multi-device: identifie toujours le bon appareil même si l'ordre change
+#   ✅ Auto-documenté: on voit quel device est utilisé
+#   ✅ Fallback gracieux si la détection échoue
+#
+# Exemples selon votre matériel:
+#   - Heltec HT-n5262:     SERIAL_PORT = "auto:HT-n5262"
+#   - RAK WisBlock:        SERIAL_PORT = "auto:RAK"
+#   - TTGO T-Beam:         SERIAL_PORT = "auto:T-Beam"
+#   - Seeed XIAO nRF52840: SERIAL_PORT = "auto:XIAO nRF52840"
+#   - Par numéro série:    SERIAL_PORT = "auto:serial=B5A131E366B43F18"
+#
+# Pour voir les périphériques USB détectés:
+#   python3 usb_port_detector.py
+#
+# Pour voir les périphériques connectés système:
+#   ls -la /dev/ttyACM* /dev/ttyUSB*
+#   lsusb
+SERIAL_PORT = "/dev/ttyACM0"  # Port fixe OU auto-détection (ex: "auto:HT-n5262")
 
 # Retry logic for serial port (if port is temporarily locked)
 # Useful when port is briefly used by another process and becomes available again
@@ -183,7 +217,21 @@ TCP_PORT = 4403
 # Les fonctionnalités désactivées en mode companion:
 #   - /nodes, /my, /trace, /neighbors, /stats (requièrent Meshtastic)
 MESHCORE_ENABLED = False  # True = Activer mode companion MeshCore
-MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port série pour MeshCore
+
+# Port série MeshCore (supporte aussi l'auto-détection USB)
+# Formats identiques à SERIAL_PORT:
+#   "/dev/ttyUSB0"                    - Port fixe
+#   "auto:XIAO"                       - Détection par nom de produit
+#   "auto:serial=7CEF06581293BD9C"    - Détection par numéro de série
+#   "auto:manufacturer=Seeed"         - Détection par fabricant
+#
+# ⚠️ IMPORTANT en mode dual: Utilisez des critères différents de SERIAL_PORT
+#    pour que chaque radio soit correctement identifiée
+#
+# Exemple configuration dual mode:
+#   SERIAL_PORT = "auto:HT-n5262"              # Radio Meshtastic (Heltec)
+#   MESHCORE_SERIAL_PORT = "auto:XIAO nRF52"   # Radio MeshCore (Seeed XIAO)
+MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port fixe OU auto-détection (ex: "auto:XIAO")
 
 # MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
 # RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)
