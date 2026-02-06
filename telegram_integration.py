@@ -182,7 +182,16 @@ class TelegramIntegration:
         try:
             info_print("Initialisation bot Telegram...")
 
-            self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+            # Configure timeouts at the Application builder level (required for v20.0+)
+            self.application = (
+                Application.builder()
+                .token(TELEGRAM_BOT_TOKEN)
+                .read_timeout(180)
+                .write_timeout(180)
+                .connect_timeout(180)
+                .pool_timeout(180)
+                .build()
+            )
 
             # Enregistrer tous les handlers de commandes
             self._register_command_handlers()
@@ -196,13 +205,11 @@ class TelegramIntegration:
 
             info_print("Bot Telegram en écoute (polling optimisé)...")
 
+            # start_polling only accepts poll_interval, timeout, allowed_updates, drop_pending_updates
+            # (read_timeout, write_timeout, connect_timeout, pool_timeout removed in v20.0+)
             await self.application.updater.start_polling(
                 poll_interval=5.0,
                 timeout=30,
-                read_timeout=180,
-                write_timeout=180,
-                connect_timeout=180,
-                pool_timeout=180,
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
             )
