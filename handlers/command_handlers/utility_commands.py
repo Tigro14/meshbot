@@ -626,6 +626,7 @@ class UtilityCommands:
             "/sys",
             "/echo",
             "/nodes",
+            "/meshcore",
             "/nodesmc",
             "/nodemt",
             "/neighbors",
@@ -677,6 +678,9 @@ class UtilityCommands:
 
         📡 RÉSEAU MESHTASTIC
         • /nodes - Liste nœuds (auto-détection mode)
+        • /meshcore - Statut connexion MeshCore
+          Vérifier: port, threads, santé connexion
+          Aide: diagnostic "aucun paquet MeshCore"
         • /nodesmc [page|full] - Liste contacts MeshCore
           /nodesmc → Page 1 (7 contacts, 30j)
           /nodesmc 2 → Page 2

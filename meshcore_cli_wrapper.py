@@ -1681,6 +1681,27 @@ class MeshCoreCLIWrapper:
             error_print(traceback.format_exc())
             return False
     
+    
+    def get_connection_status(self):
+        """
+        Retourne le statut de connexion MeshCore pour diagnostics
+        
+        Returns:
+            dict: Statut détaillé de la connexion
+        """
+        return {
+            'port': self.port,
+            'baudrate': self.baudrate,
+            'connected': self.meshcore is not None,
+            'running': self.running,
+            'event_thread_alive': self.message_thread.is_alive() if self.message_thread else False,
+            'healthcheck_thread_alive': self.healthcheck_thread.is_alive() if self.healthcheck_thread else False,
+            'callback_configured': self.message_callback is not None,
+            'connection_healthy': self.connection_healthy,
+            'last_message_time': self.last_message_time,
+            'interface_type': 'MeshCoreCLIWrapper (meshcore-cli library)',
+        }
+    
     def close(self):
         """Ferme la connexion MeshCore"""
         info_print("🔌 [MESHCORE-CLI] Fermeture connexion...")

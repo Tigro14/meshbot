@@ -186,15 +186,40 @@ class MeshCoreSerialInterface:
         
         # Wait a moment and verify threads are running
         time.sleep(0.5)
-        if self.read_thread.is_alive():
+        read_ok = self.read_thread.is_alive()
+        poll_ok = self.poll_thread.is_alive()
+        
+        if read_ok:
             info_print("✅ [MESHCORE] Read thread confirmed running")
         else:
             error_print("❌ [MESHCORE] Read thread NOT running!")
         
-        if self.poll_thread.is_alive():
+        if poll_ok:
             info_print("✅ [MESHCORE] Poll thread confirmed running")
         else:
             error_print("❌ [MESHCORE] Poll thread NOT running!")
+        
+        # === CONNECTION VERIFICATION BANNER ===
+        info_print("=" * 80)
+        info_print("✅ [MESHCORE] CONNECTION VERIFICATION")
+        info_print("=" * 80)
+        info_print(f"   Port série: {self.port}")
+        info_print(f"   Baudrate: {self.baudrate}")
+        info_print(f"   Port ouvert: {self.serial.is_open}")
+        info_print(f"   Read thread: {'✅ RUNNING' if read_ok else '❌ STOPPED'}")
+        info_print(f"   Poll thread: {'✅ RUNNING' if poll_ok else '❌ STOPPED'}")
+        info_print(f"   Callback configuré: {'✅ YES' if self.message_callback else '❌ NO'}")
+        info_print("")
+        info_print("   📊 MONITORING ACTIF:")
+        info_print("   → Heartbeat: Toutes les 60 secondes")
+        info_print("   → Polling: Toutes les 5 secondes")
+        info_print("   → Logs: [MESHCORE-DATA] quand paquets arrivent")
+        info_print("")
+        if read_ok and poll_ok and self.message_callback:
+            info_print("   ✅ MeshCore companion prêt à recevoir des messages")
+        else:
+            error_print("   ⚠️  PROBLÈME: Vérifier les threads et le callback ci-dessus")
+        info_print("=" * 80)
         
         return True
     
@@ -252,8 +277,12 @@ class MeshCoreSerialInterface:
                 loop_iterations += 1
                 
                 # Log activity periodically (every 60 seconds)
+                # INFO level (not debug) so users can see MeshCore is alive
                 if time.time() - last_activity_log > 60:
-                    info_print(f"🔄 [MESHCORE-HEARTBEAT] Read loop active: {loop_iterations} iterations, {data_received_count} data packets received")
+                    status_icon = "✅" if data_received_count > 0 else "⏸️"
+                    info_print(f"{status_icon} [MESHCORE-HEARTBEAT] Connexion active | Iterations: {loop_iterations} | Paquets reçus: {data_received_count}")
+                    if data_received_count == 0:
+                        info_print("   ⚠️  Aucun paquet reçu depuis 60s - Vérifier radio MeshCore")
                     last_activity_log = time.time()
                 
                 # Lecture des données disponibles
@@ -462,6 +491,24 @@ class MeshCoreSerialInterface:
         self.message_callback = callback
         info_print(f"✅ [MESHCORE-SERIAL] message_callback set successfully")
         debug_print("✅ [MESHCORE] Callback message configuré")
+    
+    def get_connection_status(self):
+        """
+        Retourne le statut de connexion MeshCore pour diagnostics
+        
+        Returns:
+            dict: Statut détaillé de la connexion
+        """
+        return {
+            'port': self.port,
+            'baudrate': self.baudrate,
+            'connected': self.serial and self.serial.is_open if self.serial else False,
+            'running': self.running,
+            'read_thread_alive': self.read_thread.is_alive() if self.read_thread else False,
+            'poll_thread_alive': self.poll_thread.is_alive() if self.poll_thread else False,
+            'callback_configured': self.message_callback is not None,
+            'interface_type': 'MeshCoreSerialInterface (basic)',
+        }
     
     def close(self):
         """Ferme la connexion série MeshCore"""
