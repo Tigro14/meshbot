@@ -340,7 +340,7 @@ TELEGRAM_ENABLED = True  # Activer/désactiver l'intégration Telegram
 # ========================================
 
 # Serveur CLI TCP pour clients externes (cli_client.py)
-CLI_ENABLED = False  # Activer/désactiver le serveur CLI (utile pour dev/debug)
+CLI_ENABLED = True # Activer/désactiver le serveur CLI (utile pour dev/debug)
 CLI_SERVER_HOST = '127.0.0.1'  # Écoute seulement en local (sécurité)
 CLI_SERVER_PORT = 9999  # Port du serveur CLI
 
