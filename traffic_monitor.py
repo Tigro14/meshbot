@@ -629,7 +629,10 @@ class TrafficMonitor:
         # === DIAGNOSTIC ENTRY POINT ===
         # Log every packet entry with source to trace MeshCore packets
         from_id = packet.get('from', 0)
-        info_print(f"🔵 add_packet ENTRY | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
+        
+        # ENHANCED DIAGNOSTIC: Use BOTH logger and info_print for redundancy
+        logger.info(f"🔵 add_packet ENTRY (logger) | source={source} | from=0x{from_id:08x}")
+        info_print(f"🔵 add_packet ENTRY (print) | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
         
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
@@ -637,6 +640,7 @@ class TrafficMonitor:
         self._packet_add_count += 1
         if self._packet_add_count % 10 == 0:
             logger.info(f"📥 {self._packet_add_count} paquets reçus dans add_packet() (current queue: {len(self.all_packets)})")
+            info_print(f"📥 {self._packet_add_count} paquets reçus (info_print)")
 
         try:
             from_id = packet.get('from', 0)
@@ -876,6 +880,9 @@ class TrafficMonitor:
                             debug_print_mt(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             self.all_packets.append(packet_entry)
+            
+            # ENHANCED DIAGNOSTIC: Confirm packet was appended
+            logger.info(f"✅ Paquet ajouté à all_packets: {packet_type} de {sender_name} (total: {len(self.all_packets)})")
 
             # Log périodique des paquets enregistrés (tous les 25 paquets)
             if not hasattr(self, '_packet_saved_count'):
@@ -883,13 +890,16 @@ class TrafficMonitor:
             self._packet_saved_count += 1
             if self._packet_saved_count % 25 == 0:
                 logger.info(f"💾 {self._packet_saved_count} paquets enregistrés dans all_packets (size: {len(self.all_packets)})")
+                info_print(f"💾 {self._packet_saved_count} paquets enregistrés (info_print)")
 
             # Sauvegarder le paquet dans SQLite
             # IMPORTANT: Séparer les paquets MeshCore des paquets Meshtastic
             try:
                 packet_source = packet_entry.get('source', 'unknown')
                 
-                info_print_mt(f"💿 [ROUTE-SAVE] Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
+                # ENHANCED DIAGNOSTIC: Use both logger and info_print
+                logger.info(f"💿 [ROUTE-SAVE] (logger) source={packet_source}, type={packet_type}, from={sender_name}")
+                info_print_mt(f"💿 [ROUTE-SAVE] (print) Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
                 
                 if packet_source == 'meshcore':
                     # Paquet MeshCore → table meshcore_packets
@@ -915,14 +925,26 @@ class TrafficMonitor:
             
             # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
             source_tag = f"[{packet_entry.get('source', '?')}]"
-            debug_print_mt(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+            
+            # ENHANCED DIAGNOSTIC: Use both logger and debug_print for redundancy
+            # FIX: Use debug_print_mc for MeshCore packets, debug_print_mt for Meshtastic
+            logger.debug(f"📊 Paquet enregistré (logger debug) ({source_tag}): {packet_type} de {sender_name}")
+            if source == 'meshcore':
+                debug_print_mc(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
+            else:
+                debug_print_mt(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
             
             # Detailed debug logging (requires DEBUG_MODE)
+            logger.debug(f"🔍 Calling _log_packet_debug for {packet_type}")
             self._log_packet_debug(
                 packet_type, source, sender_name, from_id, hops_taken, snr, packet)
+            logger.debug(f"✅ _log_packet_debug completed for {packet_type}")
             
         except Exception as e:
             import traceback
+            # ENHANCED DIAGNOSTIC: Log exceptions with both methods
+            logger.error(f"❌ Exception in add_packet: {e}")
+            logger.error(traceback.format_exc())
             debug_print(f"Erreur enregistrement paquet: {e}")
             debug_print(traceback.format_exc())
 
@@ -930,6 +952,8 @@ class TrafficMonitor:
     def _log_packet_debug(self, packet_type, source, sender_name, from_id, hops_taken, snr, packet):
         """
         Log debug unifié pour tous les types de paquets avec affichage complet
+        
+        FIX: Use debug_print_mc for MeshCore packets, debug_print_mt for Meshtastic
         """
         try:
             # Formater l'ID en hex court (5 derniers caractères)
@@ -952,7 +976,9 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
-            debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+            # FIX: Use correct debug function based on source
+            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
+            debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
 
             # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
             # Info spécifique pour télémétrie
@@ -970,11 +996,11 @@ class TrafficMonitor:
                         debug_print(f" {json.dumps(telemetry, indent=2, default=str)}")
 
                 if telemetry_info:
-                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
+                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
                 else:
-                    debug_print_mt(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
+                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
             else:
-                debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+                debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
             
             # === AFFICHAGE CONCIS (concise two-line debug with network source) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken, source=source)
@@ -1061,8 +1087,11 @@ class TrafficMonitor:
             # Channel
             channel = packet.get('channel', 0)
             
+            # FIX: Use correct debug function based on source
+            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
+            
             # Line 1: Main info
-            debug_print_mt(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
+            debug_func(f"{network_icon} {source.upper()} {pkt_type_short} from {sender_name} ({node_id_short}) | {hop_info} | SNR:{snr_value:.1f}dB({snr_emoji}) | RSSI:{rssi}dBm | Ch:{channel}")
             
             # === LINE 2: DETAILS ===
             packet_id = packet.get('id', 'N/A')
@@ -1146,7 +1175,7 @@ class TrafficMonitor:
             line2_parts.append(f"ID:{packet_id}")
             line2_parts.append(f"RX:{rx_time_str}")
             
-            debug_print_mt(f"  └─ {' | '.join(line2_parts)}")
+            debug_func(f"  └─ {' | '.join(line2_parts)}")
             
         except Exception as e:
             import traceback

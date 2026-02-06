@@ -78,7 +78,7 @@ BOT_POSITION = (48.8252, 2.3622)
 CONNECTION_MODE = 'serial'  # 'serial' ou 'tcp'
 
 # Configuration connexion série Meshtastic (utilisée si CONNECTION_MODE='serial')
-SERIAL_PORT = "/dev/ttyACM2"
+SERIAL_PORT = "/dev/ttyACM0"
 
 # Configuration connexion TCP Meshtastic (utilisée si CONNECTION_MODE='tcp')
 #TCP_HOST = "192.168.1.38"
@@ -95,7 +95,7 @@ SERIAL_PORT = "/dev/ttyACM2"
 # Les fonctionnalités désactivées en mode companion:
 #   - /nodes, /my, /trace, /neighbors, /stats (requièrent Meshtastic)
 MESHCORE_ENABLED = True  # True = Activer mode companion MeshCore
-MESHCORE_SERIAL_PORT = "/dev/ttyACM0"  # Port série pour MeshCore
+MESHCORE_SERIAL_PORT = "/dev/ttyACM2"  # Port série pour MeshCore
 
 # MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
 # RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)

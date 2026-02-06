@@ -194,7 +194,7 @@ class TelegramIntegration:
             await self.application.initialize()
             await self.application.start()
 
-            info_print("Bot Telegram en écoute (polling optimisé)...")
+            #info_print("Bot Telegram en écoute (polling optimisé)...")
 
             await self.application.updater.start_polling(
                 poll_interval=5.0,
@@ -227,7 +227,7 @@ class TelegramIntegration:
 
     def _register_command_handlers(self):
         """Enregistrer tous les handlers de commandes"""
-        info_print("Enregistrement des handlers de commandes...")
+        #info_print("Enregistrement des handlers de commandes...")
 
         # Commandes basiques
         self.application.add_handler(CommandHandler("start", self.basic_commands.start_command))
@@ -249,12 +249,12 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("rx", self.network_commands.rx_command))
         self.application.add_handler(CommandHandler("neighbors", self.network_commands.neighbors_command))
         self.application.add_handler(CommandHandler("mqtt", self.network_commands.mqtt_command))
-        info_print("🔍 DEBUG: Enregistrement du handler /keys...")
+        #info_print("🔍 DEBUG: Enregistrement du handler /keys...")
         self.application.add_handler(CommandHandler("keys", self.network_commands.keys_command))
-        info_print(f"✅ DEBUG: Handler /keys enregistré (méthode: {self.network_commands.keys_command})")
-        info_print("🔍 DEBUG: Enregistrement du handler /propag...")
+        #info_print(f"✅ DEBUG: Handler /keys enregistré (méthode: {self.network_commands.keys_command})")
+        #info_print("🔍 DEBUG: Enregistrement du handler /propag...")
         self.application.add_handler(CommandHandler("propag", self.network_commands.propag_command))
-        info_print(f"✅ DEBUG: Handler /propag enregistré (méthode: {self.network_commands.propag_command})")
+        #info_print(f"✅ DEBUG: Handler /propag enregistré (méthode: {self.network_commands.propag_command})")
 
         # Commandes statistiques
         self.application.add_handler(CommandHandler("stats", self.stats_commands.stats_command))

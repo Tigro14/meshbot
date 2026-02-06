@@ -49,6 +49,9 @@ from platform_config import get_enabled_platforms
 # Import du gestionnaire dual interface (Meshtastic + MeshCore simultanément)
 from dual_interface_manager import DualInterfaceManager, NetworkSource
 
+# Import du détecteur de ports USB automatique
+from usb_port_detector import USBPortDetector
+
 # Import de l'interface MeshCore (mode companion)
 # Tente d'utiliser meshcore-cli library si disponible, sinon fallback vers impl basique
 try:
@@ -452,13 +455,17 @@ class MeshBot:
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
             network_source: NetworkSource enum (Meshtastic/MeshCore) si en mode dual
         """
-        # === DIAGNOSTIC: Log EVERY call to on_message ===
+        # === ULTRA-VISIBLE DIAGNOSTIC: on_message called ===
         try:
             from_id = packet.get('from', 0) if packet else None
             network_tag = f"[{network_source}]" if network_source else ""
-            info_print(f"🔔 on_message CALLED {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            
+            # Log with BOTH methods for maximum visibility (dual logging)
+            info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
         except:
-            info_print(f"🔔 on_message CALLED | packet={packet is not None} | interface={interface is not None}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info1-fallback) | packet={packet is not None} | interface={interface is not None}")
+            info_print(f"🔔🔔🔔 on_message CALLED (info2-fallback) | packet={packet is not None} | interface={interface is not None}")
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
@@ -1771,9 +1778,6 @@ class MeshBot:
                 # MODE DUAL - Meshtastic + MeshCore simultanément
                 # ========================================
                 info_print("🔄 MODE DUAL: Connexion simultanée Meshtastic + MeshCore")
-                info_print("   → Deux réseaux mesh actifs en parallèle")
-                info_print("   → Statistiques agrégées des deux réseaux")
-                info_print("   → Réponses routées vers le réseau source")
                 
                 self._dual_mode_active = True
                 
@@ -1789,6 +1793,9 @@ class MeshBot:
                     info_print(f"✅ Meshtastic TCP: {tcp_host}:{tcp_port}")
                 else:
                     serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
+                    
+                    # Auto-detect USB port if configured
+                    serial_port = USBPortDetector.resolve_port(serial_port, "Meshtastic")
                     
                     # Retry logic for serial port
                     max_retries = globals().get('SERIAL_PORT_RETRIES', 3)
@@ -1826,7 +1833,6 @@ class MeshBot:
                     
                     if not meshtastic_interface:
                         error_print("❌ Échec création interface Meshtastic - Mode dual désactivé")
-                        error_print("   → Fallback sur MeshCore uniquement")
                         self._dual_mode_active = False
                         # Will continue to setup MeshCore below
                 
@@ -1835,12 +1841,15 @@ class MeshBot:
                 
                 # Setup MeshCore interface
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # Auto-detect USB port if configured
+                meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
+                
                 info_print(f"🔗 Configuration interface MeshCore: {meshcore_port}...")
                 meshcore_interface = MeshCoreSerialInterface(meshcore_port)
                 
                 if not meshcore_interface.connect():
                     error_print("❌ Échec connexion MeshCore - Mode dual désactivé")
-                    info_print("   → Fallback sur Meshtastic uniquement")
                     self._dual_mode_active = False
                     self.interface = meshtastic_interface
                 else:
@@ -1871,17 +1880,11 @@ class MeshBot:
             elif not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
                 info_print("⚠️ Mode STANDALONE: Aucune connexion Meshtastic ni MeshCore")
-                info_print("   → Bot en mode test uniquement (commandes limitées)")
                 self.interface = MeshCoreStandaloneInterface()
                 
             elif meshtastic_enabled and meshcore_enabled and not dual_mode:
                 # Both enabled but dual mode NOT enabled - warn user and prioritize Meshtastic
                 info_print("⚠️ AVERTISSEMENT: MESHTASTIC_ENABLED et MESHCORE_ENABLED sont tous deux activés")
-                info_print("   → Priorité donnée à Meshtastic (capacités mesh complètes)")
-                info_print("   → MeshCore sera ignoré. Pour utiliser MeshCore:")
-                info_print("   →   Définir MESHTASTIC_ENABLED = False dans config.py")
-                info_print("   → OU activer le mode dual: DUAL_NETWORK_MODE = True")
-                info_print("")
                 # Continue to Meshtastic connection (next if blocks)
                 
             elif meshtastic_enabled and connection_mode == 'tcp':
@@ -1984,6 +1987,9 @@ class MeshBot:
                 # ========================================
                 serial_port = globals().get('SERIAL_PORT', '/dev/ttyACM0')
                 
+                # Auto-detect USB port if configured
+                serial_port = USBPortDetector.resolve_port(serial_port, "Meshtastic")
+                
                 info_print(f"🔌 Mode SERIAL MESHTASTIC: Connexion série {serial_port}")
                 
                 # Retry logic for serial port with better error handling
@@ -2067,6 +2073,9 @@ class MeshBot:
                 # MODE MESHCORE COMPANION - Connexion série MeshCore
                 # ========================================
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
+                
+                # Auto-detect USB port if configured
+                meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
                 
                 # DEFENSIVE CHECK: This block should NEVER run if meshtastic_enabled is True
                 # Log comprehensive state for debugging configuration conflicts
@@ -2159,6 +2168,67 @@ class MeshBot:
             # ========================================
             # En mode Meshtastic: S'abonner aux messages via pubsub
             # En mode MeshCore: Le callback est déjà configuré
+            
+            # === ULTRA-VISIBLE DIAGNOSTIC BANNER ===
+            info_print("=" * 80)
+            info_print("🔔 SUBSCRIPTION SETUP - CRITICAL FOR PACKET RECEPTION")
+            info_print("=" * 80)
+            info_print(f"   meshtastic_enabled = {meshtastic_enabled}")
+            info_print(f"   meshcore_enabled = {meshcore_enabled}")
+            info_print(f"   dual_mode (config) = {dual_mode}")
+            info_print(f"   dual_mode (active) = {self._dual_mode_active}")
+            info_print(f"   connection_mode = {connection_mode}")
+            info_print(f"   interface type = {type(self.interface).__name__ if hasattr(self, 'interface') and self.interface else 'None'}")
+            
+            # Show which packet sources are active
+            if self._dual_mode_active:
+                info_print("   📡 ACTIVE NETWORKS:")
+                info_print("      ✅ Meshtastic (via primary interface)")
+                info_print("      ✅ MeshCore (via dual interface)")
+                info_print("      → Will see [DEBUG][MT] AND [DEBUG][MC] packets")
+            elif meshtastic_enabled and not meshcore_enabled:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ Meshtastic ONLY")
+                info_print("      → Will see [DEBUG][MT] packets only")
+            elif meshcore_enabled and not meshtastic_enabled:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ MeshCore ONLY")
+                info_print("      → Will see [DEBUG][MC] packets only")
+            elif meshtastic_enabled and meshcore_enabled and not dual_mode:
+                info_print("   📡 ACTIVE NETWORK:")
+                info_print("      ✅ Meshtastic ONLY (MeshCore ignored)")
+                info_print("      ⚠️  Both enabled but DUAL_NETWORK_MODE=False")
+                info_print("      → Will see [DEBUG][MT] packets only")
+                info_print("      → To enable MeshCore: Set DUAL_NETWORK_MODE=True")
+            
+            # Add post-initialization diagnostic if config doesn't match reality
+            if dual_mode and meshtastic_enabled and meshcore_enabled:
+                if not self._dual_mode_active:
+                    error_print("=" * 80)
+                    error_print("⚠️  DUAL MODE INITIALIZATION FAILED!")
+                    error_print("=" * 80)
+                    error_print("   CONFIG: DUAL_NETWORK_MODE=True")
+                    error_print("   REALITY: Running in Meshtastic-only mode")
+                    error_print("")
+                    error_print("   POSSIBLE CAUSES:")
+                    error_print("   1. Meshtastic port creation failed")
+                    error_print("   2. MeshCore port connection failed")
+                    error_print("   3. MeshCore start_reading failed")
+                    error_print("")
+                    error_print("   CHECK LOGS ABOVE for error messages:")
+                    error_print("   - Look for '❌ Échec création interface Meshtastic'")
+                    error_print("   - Look for '❌ Échec connexion MeshCore'")
+                    error_print("   - Look for '❌ Échec démarrage lecture MeshCore'")
+                    error_print("")
+                    error_print("   VERIFY:")
+                    error_print(f"   - SERIAL_PORT exists and accessible")
+                    error_print(f"   - MESHCORE_SERIAL_PORT exists and accessible")
+                    error_print(f"   - Both ports are different")
+                    error_print(f"   - meshcore/meshcoredecoder libraries installed")
+                    error_print("=" * 80)
+            
+            info_print("=" * 80)
+            
             if meshtastic_enabled:
                 # DOIT être fait immédiatement après la création de l'interface
                 # S'abonner aux différents types de messages Meshtastic
@@ -2166,14 +2236,47 @@ class MeshBot:
                 # - meshtastic.receive.data : messages de données
                 # - meshtastic.receive : messages génériques (fallback)
                 
+                info_print("📡 Subscribing to Meshtastic messages via pubsub...")
+                
                 # S'abonner avec le callback principal
                 # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
                 # (ce topic catch ALL messages: text, data, position, etc.)
                 pub.subscribe(self.on_message, "meshtastic.receive")
                 
-                info_print("✅ Abonné aux messages Meshtastic (receive)")
+                info_print("✅ ✅ ✅ SUBSCRIBED TO meshtastic.receive ✅ ✅ ✅")
+                info_print(f"   Callback: {self.on_message}")
+                info_print(f"   Topic: 'meshtastic.receive'")
+                info_print("   → Meshtastic interface should now publish packets to this callback")
+                info_print("   → You should see '🔔 on_message CALLED' when packets arrive")
             else:
-                info_print("ℹ️  Mode companion: Messages gérés par interface MeshCore")
+                info_print("ℹ️  ℹ️  ℹ️  Mode companion: Messages gérés par interface MeshCore")
+                info_print("   → MeshCore callback already configured")
+                info_print("   → Packets will arrive via MeshCore, not pubsub")
+            
+            info_print("=" * 80)
+            
+            # === TEST PUBSUB AFTER SUBSCRIPTION ===
+            if meshtastic_enabled:
+                info_print("🧪 Testing pubsub mechanism...")
+                try:
+                    # Try to send a test message through pubsub to verify it works
+                    # Note: pub is already imported at module level (line 18)
+                    
+                    # Check if we're subscribed
+                    subscribers = pub.getDefaultTopicMgr().getTopic("meshtastic.receive").getListeners()
+                    info_print(f"   Subscribers to 'meshtastic.receive': {len(subscribers)}")
+                    for i, sub in enumerate(subscribers):
+                        info_print(f"     [{i}] {sub}")
+                    
+                    if len(subscribers) > 0:
+                        info_print("   ✅ Subscription verified - at least one listener registered")
+                    else:
+                        info_print("   ⚠️  WARNING: No subscribers found! Subscription may have failed")
+                        
+                except Exception as e:
+                    info_print(f"   ⚠️  Could not verify subscription: {e}")
+            
+            info_print("=" * 80)
             
             self.running = True
 
@@ -2581,16 +2684,35 @@ class MeshBot:
             except Exception as e:
                 error_print(f"⚠️ Erreur arrêt telegram_integration: {e}")
 
-            # 6. Fermer connexions série/TCP
+            # 6. Fermer dual interface manager (si utilisé)
+            try:
+                if hasattr(self, 'dual_interface') and self.dual_interface:
+                    self.dual_interface.close()
+                    self.dual_interface = None
+                    debug_print("✅ Dual interface fermée")
+            except Exception as e:
+                error_print(f"⚠️ Erreur fermeture dual_interface: {e}")
+
+            # 7. Fermer l'interface principale (Meshtastic/MeshCore)
+            try:
+                if self.interface:
+                    # Close the interface properly to stop internal threads and callbacks
+                    if hasattr(self.interface, 'close'):
+                        self.interface.close()
+                        debug_print("✅ Interface principale fermée")
+                    self.interface = None
+            except Exception as e:
+                error_print(f"⚠️ Erreur fermeture interface: {e}")
+
+            # 8. Fermer connexions série/TCP (wrapper)
             try:
                 if hasattr(self, 'safe_serial') and self.safe_serial:
                     self.safe_serial.close()
             except Exception as e:
                 error_print(f"⚠️ Erreur fermeture safe_serial: {e}")
 
-            # 7. Nettoyage final
+            # 9. Nettoyage final
             try:
-                self.interface = None
                 gc.collect()
             except Exception as e:
                 error_print(f"⚠️ Erreur nettoyage final: {e}")
