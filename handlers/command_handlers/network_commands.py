@@ -177,6 +177,115 @@ class NetworkCommands:
             import traceback
             error_print(traceback.format_exc())
             self.sender.send_single(error_msg, sender_id, sender_info)
+    
+    def handle_meshcore(self, message, sender_id, sender_info):
+        """Gérer la commande /meshcore - Vérifier le statut de connexion MeshCore
+        
+        Usage:
+            /meshcore        -> Statut de connexion détaillé
+            /meshcore status -> Alias pour /meshcore
+        """
+        info_print(f"MeshCore status check: {sender_info}")
+        
+        try:
+            # Check if MeshCore is enabled
+            import config
+            meshcore_enabled = getattr(config, 'MESHCORE_ENABLED', False)
+            dual_mode = getattr(config, 'DUAL_NETWORK_MODE', False)
+            
+            if not meshcore_enabled:
+                response = "⚠️ MeshCore désactivé\n"
+                response += "\n📝 Pour activer:\n"
+                response += "MESHCORE_ENABLED = True\n"
+                response += "MESHCORE_SERIAL_PORT = '/dev/ttyUSB0'"
+                self.sender.send_single(response, sender_id, sender_info)
+                return
+            
+            # Try to get the interface (could be single mode or dual mode)
+            meshcore_interface = None
+            
+            # Check dual mode first
+            if dual_mode and self.interface and hasattr(self.interface, '__class__'):
+                # In dual mode, check DualInterfaceManager
+                from dual_interface_manager import DualInterfaceManager
+                if hasattr(self.interface, 'meshcore_interface'):
+                    # interface might be DualInterfaceManager
+                    meshcore_interface = self.interface.meshcore_interface
+                elif isinstance(self.interface, DualInterfaceManager):
+                    meshcore_interface = self.interface.meshcore_interface
+            
+            # Check single MeshCore mode
+            if not meshcore_interface and self.interface:
+                # Check if interface itself is MeshCore
+                if hasattr(self.interface, '__class__') and 'MeshCore' in self.interface.__class__.__name__:
+                    meshcore_interface = self.interface
+            
+            if not meshcore_interface:
+                response = "❌ Interface MeshCore introuvable\n"
+                response += "\n📊 État de la configuration:\n"
+                response += f"MESHCORE_ENABLED = {meshcore_enabled}\n"
+                response += f"DUAL_NETWORK_MODE = {dual_mode}\n"
+                response += f"Interface type: {type(self.interface).__name__ if self.interface else 'None'}"
+                self.sender.send_single(response, sender_id, sender_info)
+                return
+            
+            # Get connection status if available
+            if hasattr(meshcore_interface, 'get_connection_status'):
+                status = meshcore_interface.get_connection_status()
+                
+                # Format response
+                response = "📡 STATUT MESHCORE COMPANION\n"
+                response += "=" * 40 + "\n"
+                response += f"Port: {status['port']}\n"
+                response += f"Baudrate: {status['baudrate']}\n"
+                response += f"Connecté: {'✅' if status['connected'] else '❌'}\n"
+                response += f"Running: {'✅' if status['running'] else '❌'}\n"
+                
+                # Thread status
+                if 'read_thread_alive' in status:
+                    # Basic interface (MeshCoreSerialInterface)
+                    response += f"Read thread: {'✅' if status['read_thread_alive'] else '❌'}\n"
+                    response += f"Poll thread: {'✅' if status['poll_thread_alive'] else '❌'}\n"
+                elif 'event_thread_alive' in status:
+                    # CLI wrapper (MeshCoreCLIWrapper)
+                    response += f"Event thread: {'✅' if status['event_thread_alive'] else '❌'}\n"
+                    response += f"Healthcheck: {'✅' if status['healthcheck_thread_alive'] else '❌'}\n"
+                    if 'connection_healthy' in status:
+                        response += f"Health: {'✅ OK' if status['connection_healthy'] else '⚠️ DÉGRADÉ'}\n"
+                    if 'last_message_time' in status and status['last_message_time']:
+                        import time
+                        seconds_ago = int(time.time() - status['last_message_time'])
+                        response += f"Dernier msg: {seconds_ago}s ago\n"
+                
+                response += f"Callback: {'✅' if status['callback_configured'] else '❌'}\n"
+                response += f"\nType: {status['interface_type']}\n"
+                
+                # Add health check advice
+                if status['connected'] and status['running']:
+                    response += "\n✅ Connexion active\n"
+                    response += "→ Attendre ~60s pour heartbeat\n"
+                    response += "→ Logs: [MESHCORE-HEARTBEAT]"
+                else:
+                    response += "\n⚠️ Problème de connexion\n"
+                    response += f"→ Vérifier {status['port']}\n"
+                    response += "→ Voir logs au démarrage"
+                
+                self.sender.send_single(response, sender_id, sender_info)
+            else:
+                # Fallback if get_connection_status not available
+                response = "📡 MESHCORE COMPANION\n"
+                response += "=" * 40 + "\n"
+                response += f"Interface: {type(meshcore_interface).__name__}\n"
+                response += "✅ Interface MeshCore active\n"
+                response += "\n⚠️ Statut détaillé non disponible\n"
+                response += "→ Mettre à jour meshcore_serial_interface.py"
+                self.sender.send_single(response, sender_id, sender_info)
+        
+        except Exception as e:
+            error_msg = f"Erreur /meshcore: {str(e)[:100]}"
+            error_print(f"Erreur handle_meshcore: {e}")
+            error_print(traceback.format_exc())
+            self.sender.send_single(error_msg, sender_id, sender_info)
 
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
         """Gérer la commande /my - Afficher vos signaux vus par votre node"""
