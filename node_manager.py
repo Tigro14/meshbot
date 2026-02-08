@@ -556,25 +556,25 @@ class NodeManager:
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
                     # Log detailed info about public key presence (DEBUG mode only for routine updates)
-                    debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
-                    debug_print(f"   Fields in packet: {list(user_info.keys())}")
-                    debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
-                    debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
+                    #debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
+                    #debug_print(f"   Fields in packet: {list(user_info.keys())}")
+                    #debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
+                    #debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
                     if 'public_key' in user_info:
                         pk_value = user_info.get('public_key')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
+                        #debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
                         if pk_value:
                             debug_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
                     if 'publicKey' in user_info:
                         pk_value = user_info.get('publicKey')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
+                        #debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
                         if pk_value:
                             debug_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
-                    debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
+                    #debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
                     
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
