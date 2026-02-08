@@ -463,6 +463,17 @@ class MeshBot:
             # Log with BOTH methods for maximum visibility (dual logging)
             info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
             info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            
+            # MC DEBUG: Ultra-visible MeshCore packet detection
+            if network_source and str(network_source).upper() == 'MESHCORE':
+                info_print_mc("=" * 80)
+                info_print_mc("🔗🔗🔗 MC DEBUG: MESHCORE PACKET RECEIVED IN on_message()")
+                info_print_mc("=" * 80)
+                info_print_mc(f"📍 Entry point: main_bot.py::on_message()")
+                info_print_mc(f"📦 From: 0x{from_id:08x if from_id else 0:08x}")
+                info_print_mc(f"🔗 Network source: {network_source}")
+                info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
+                info_print_mc("=" * 80)
         except:
             info_print(f"🔔🔔🔔 on_message CALLED (info1-fallback) | packet={packet is not None} | interface={interface is not None}")
             info_print(f"🔔🔔🔔 on_message CALLED (info2-fallback) | packet={packet is not None} | interface={interface is not None}")
@@ -537,6 +548,9 @@ class MeshBot:
                 elif network_source == NetworkSource.MESHCORE:
                     source = 'meshcore'
                     debug_print("🔍 Source détectée: MeshCore (dual mode)")
+                    # MC DEBUG: Ultra-visible source detection
+                    info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (dual mode)")
+                    info_print_mc(f"   → Packet sera traité avec source='meshcore'")
                 else:
                     source = 'unknown'
                     debug_print(f"🔍 Source détectée: Unknown ({network_source})")
@@ -544,6 +558,9 @@ class MeshBot:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
                 debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True, single mode)")
+                # MC DEBUG: Ultra-visible source detection
+                info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (single mode)")
+                info_print_mc(f"   → MESHCORE_ENABLED=True, dual_mode=False")
             elif self._is_tcp_mode():
                 source = 'tcp'
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
@@ -626,6 +643,15 @@ class MeshBot:
             # DEBUG: Log MeshCore DM flag
             if is_meshcore_dm:
                 info_print(f"🔍 [DEBUG] _meshcore_dm flag présent dans packet | from=0x{from_id:08x} | to=0x{to_id:08x}")
+                # MC DEBUG: Ultra-visible DM detection
+                info_print_mc("=" * 80)
+                info_print_mc("💌 MC DEBUG: MESHCORE DM DETECTED")
+                info_print_mc("=" * 80)
+                info_print_mc(f"📍 Location: main_bot.py::on_message() - DM detection")
+                info_print_mc(f"📦 From: 0x{from_id:08x}")
+                info_print_mc(f"📬 To: 0x{to_id:08x}")
+                info_print_mc(f"🏷️  _meshcore_dm flag: True")
+                info_print_mc("=" * 80)
             
             # Broadcast can be to 0xFFFFFFFF or to 0 (both are broadcast addresses)
             # BUT: MeshCore DMs are NOT broadcasts even if to_id looks like broadcast
@@ -679,6 +705,21 @@ class MeshBot:
                 if not message:
                     return
                 
+                # MC DEBUG: Log TEXT_MESSAGE_APP from MeshCore
+                if source == 'meshcore':
+                    info_print_mc("=" * 80)
+                    info_print_mc("📨 MC DEBUG: TEXT_MESSAGE_APP FROM MESHCORE")
+                    info_print_mc("=" * 80)
+                    info_print_mc(f"📍 Location: main_bot.py::on_message() - TEXT_MESSAGE_APP processing")
+                    info_print_mc(f"📦 From: 0x{from_id:08x}")
+                    info_print_mc(f"📬 To: 0x{to_id:08x}")
+                    info_print_mc(f"💬 Message: {message[:80]}{'...' if len(message) > 80 else ''}")
+                    info_print_mc(f"📢 Is broadcast: {is_broadcast}")
+                    info_print_mc(f"💌 Is DM: {not is_broadcast}")
+                    info_print_mc(f"🏷️  _meshcore_dm flag: {is_meshcore_dm}")
+                    info_print_mc(f"➡️  Continuing with message processing")
+                    info_print_mc("=" * 80)
+                
                 # ========================================
                 # DÉDUPLICATION BROADCASTS - Prévenir boucles infinies
                 # ========================================
@@ -728,7 +769,23 @@ class MeshBot:
                 if message and self.message_handler:
                     # DEBUG: Log avant appel process_text_message
                     info_print(f"📞 [DEBUG] Appel process_text_message | message='{message}' | _meshcore_dm={packet.get('_meshcore_dm', False)}")
+                    
+                    # MC DEBUG: Log command processing call
+                    if source == 'meshcore':
+                        info_print_mc("=" * 80)
+                        info_print_mc("🎯 MC DEBUG: CALLING process_text_message() FOR MESHCORE")
+                        info_print_mc("=" * 80)
+                        info_print_mc(f"📍 Location: main_bot.py::on_message() - before process_text_message()")
+                        info_print_mc(f"💬 Message: {message[:80]}{'...' if len(message) > 80 else ''}")
+                        info_print_mc(f"📦 From: 0x{from_id:08x}")
+                        info_print_mc(f"➡️  Calling: self.message_handler.process_text_message()")
+                        info_print_mc("=" * 80)
+                    
                     self.message_handler.process_text_message(packet, decoded, message)
+                    
+                    # MC DEBUG: Log command processing completion
+                    if source == 'meshcore':
+                        info_print_mc("✅ MC DEBUG: process_text_message() returned")
         
         except Exception as e:
             error_print(f"Erreur on_message: {e}")
