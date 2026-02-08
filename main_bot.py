@@ -601,14 +601,51 @@ class MeshBot:
                 debug_print(f"🔍 Interface était None, utilisation de self.interface")
                 
             # ========== VALIDATION BASIQUE ==========
+            # DIAGNOSTIC: Log packet structure BEFORE validation
+            info_print("=" * 80)
+            info_print("🔍 [PACKET-STRUCTURE] Analyzing packet structure")
+            info_print("=" * 80)
+            if packet:
+                info_print(f"✅ [PACKET-STRUCTURE] Packet exists, type: {type(packet)}")
+                if isinstance(packet, dict):
+                    info_print(f"📋 [PACKET-STRUCTURE] Keys: {list(packet.keys())}")
+                    info_print(f"   → 'from': {packet.get('from', 'MISSING')}")
+                    info_print(f"   → 'to': {packet.get('to', 'MISSING')}")
+                    info_print(f"   → 'id': {packet.get('id', 'MISSING')}")
+                    info_print(f"   → 'decoded': {bool(packet.get('decoded'))}")
+                    
+                    decoded_field = packet.get('decoded')
+                    if decoded_field:
+                        info_print(f"✅ [PACKET-STRUCTURE] Decoded exists")
+                        if isinstance(decoded_field, dict):
+                            info_print(f"📋 [PACKET-STRUCTURE] Decoded keys: {list(decoded_field.keys())}")
+                            info_print(f"   → 'portnum': {decoded_field.get('portnum', 'MISSING')}")
+                            info_print(f"   → 'payload': {bool(decoded_field.get('payload'))}")
+                    else:
+                        error_print("❌ [PACKET-STRUCTURE] NO DECODED FIELD!")
+                        error_print("   → This is likely why packet not being processed")
+            else:
+                error_print("❌ [PACKET-STRUCTURE] Packet is None or empty!")
+            info_print("=" * 80)
+            
             if not packet or 'from' not in packet:
-                debug_print(f"🔍 Validation échouée: packet={packet is not None}, has_from={'from' in packet if packet else False}")
+                error_print(f"❌ [VALIDATION] Packet validation failed - EARLY RETURN")
+                error_print(f"   → packet exists: {packet is not None}")
+                error_print(f"   → has 'from': {'from' in packet if packet else False}")
                 return
 
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
+            
+            info_print(f"✅ [VALIDATION] Basic validation passed")
+            info_print(f"   → from_id: 0x{from_id:08x}")
+            info_print(f"   → to_id: 0x{to_id:08x}")
 
             decoded = packet.get('decoded', {})
+            info_print(f"🔍 [DECODED] Checking for TEXT_MESSAGE_APP")
+            info_print(f"   → decoded exists: {bool(decoded)}")
+            info_print(f"   → portnum: {decoded.get('portnum', 'MISSING') if decoded else 'NO DECODED'}")
+            
             if decoded.get('portnum') == 'TEXT_MESSAGE_APP':
                 payload = decoded.get('payload', b'')
                 try:
@@ -616,6 +653,8 @@ class MeshBot:
                     info_print(f"📨 MESSAGE BRUT: '{msg}' | from=0x{from_id:08x} | to=0x{to_id:08x} | broadcast={to_id in [0xFFFFFFFF, 0]}")
                 except:
                     pass
+            else:
+                info_print(f"ℹ️  [DECODED] Not TEXT_MESSAGE_APP, portnum={decoded.get('portnum', 'MISSING') if decoded else 'NO DECODED'}")
             # ========== FIN VALIDATION ==========
 
 
