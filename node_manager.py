@@ -461,7 +461,7 @@ class NodeManager:
                                         self.node_names[node_id_int]['lon'] = lon
                                         self.node_names[node_id_int]['alt'] = alt
                                         self.node_names[node_id_int]['last_update'] = time.time()
-                                        debug_print(f"📍 Position mise à jour: {node_id_int:08x}")
+                                        #debug_print(f"📍 Position mise à jour: {node_id_int:08x}")
                                         updated_count += 1
                 
                 except Exception as e:
