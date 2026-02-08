@@ -57,10 +57,29 @@ from usb_port_detector import USBPortDetector
 try:
     from meshcore_cli_wrapper import MeshCoreCLIWrapper as MeshCoreSerialInterface
     from meshcore_serial_interface import MeshCoreStandaloneInterface
-    info_print_mc("✅ Using meshcore-cli library")
+    info_print_mc("=" * 80)
+    info_print_mc("✅ MESHCORE: Using meshcore-cli library (FULL SUPPORT)")
+    info_print_mc("=" * 80)
+    info_print_mc("   ✅ Binary protocol supported")
+    info_print_mc("   ✅ DM messages will be logged with [DEBUG][MC]")
+    info_print_mc("   ✅ Complete MeshCore API available")
+    info_print_mc("=" * 80)
+    MESHCORE_FULL_SUPPORT = True
 except ImportError:
     from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
-    info_print_mc("⚠️ Using basic implementation (meshcore-cli not available)")
+    info_print_mc("=" * 80)
+    info_print_mc("⚠️  MESHCORE: Using BASIC implementation (LIMITED)")
+    info_print_mc("=" * 80)
+    info_print_mc("   ❌ Binary protocol NOT supported")
+    info_print_mc("   ❌ DM messages will NOT be logged or processed")
+    info_print_mc("   ❌ Only text format DM:<sender_id>:<message> supported")
+    info_print_mc("")
+    info_print_mc("   📋 SYMPTOM: No logs when sending DM to MeshCore")
+    info_print_mc("   🔧 SOLUTION: Install meshcore-cli library")
+    info_print_mc("      $ pip install meshcore meshcoredecoder")
+    info_print_mc("      $ sudo systemctl restart meshtastic-bot")
+    info_print_mc("=" * 80)
+    MESHCORE_FULL_SUPPORT = False
 
 class MeshBot:
     # Configuration pour la reconnexion TCP

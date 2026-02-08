@@ -95,6 +95,9 @@ class MeshCoreSerialInterface:
         # Buffer pour assembly de trames
         self.read_buffer = bytearray()
         
+        # Statistics for diagnostics
+        self.binary_packets_rejected = 0  # Count of binary packets that couldn't be processed
+        
         # Informations du device MeshCore
         self.device_info = None
         self.self_info = None
@@ -443,11 +446,14 @@ class MeshCoreSerialInterface:
             # - CRC checksum
             
             # PROMINENT WARNING: This is why no packets are logged!
+            self.binary_packets_rejected += 1  # Track for diagnostics
+            
             error_print("=" * 80)
             error_print("❌ [MESHCORE-BINARY] PROTOCOLE BINAIRE NON SUPPORTÉ!")
             error_print("=" * 80)
             error_print("   PROBLÈME: Données binaires MeshCore reçues mais non décodées")
             error_print(f"   TAILLE: {len(raw_data)} octets ignorés")
+            error_print(f"   TOTAL REJETÉ: {self.binary_packets_rejected} packet(s)")
             error_print("   IMPACT: Pas de logs [DEBUG][MC], pas de réponse aux DM")
             error_print("")
             error_print("   SOLUTION: Installer meshcore-cli library")
