@@ -361,10 +361,21 @@ class MeshCoreSerialInterface:
                     # Appeler le callback si défini
                     if self.message_callback:
                         info_print(f"📞 [MESHCORE-TEXT] Calling message_callback for message from 0x{sender_id:08x}")
+                        # MC DEBUG: Ultra-visible callback invocation
+                        info_print_mc("=" * 80)
+                        info_print_mc("🔗 MC DEBUG: CALLING message_callback FROM meshcore_serial_interface")
+                        info_print_mc("=" * 80)
+                        info_print_mc(f"📍 Entry point: meshcore_serial_interface.py::_process_meshcore_line()")
+                        info_print_mc(f"📦 From: 0x{sender_id:08x}")
+                        info_print_mc(f"📨 Message: {message[:50]}{'...' if len(message) > 50 else ''}")
+                        info_print_mc(f"➡️  Calling callback: {self.message_callback}")
+                        info_print_mc("=" * 80)
                         self.message_callback(packet, None)
                         info_print(f"✅ [MESHCORE-TEXT] Callback completed successfully")
+                        info_print_mc("✅ MC DEBUG: Callback returned successfully")
                     else:
                         error_print(f"⚠️ [MESHCORE-TEXT] No message_callback set!")
+                        info_print_mc("❌ MC DEBUG: No message_callback configured!")
             else:
                 debug_print(f"⚠️ [MESHCORE] Ligne non reconnue: {line[:80]}")
         
