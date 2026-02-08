@@ -627,7 +627,7 @@ class NodeManager:
                                 }
                                 self.persistence.save_meshtastic_node(node_data)
                         else:
-                            # Track whether any data actually changed
+                            #Track whether any data actually changed
                             data_changed = False
                             
                             old_name = self.node_names[node_id]['name']
@@ -874,7 +874,7 @@ class NodeManager:
                         user_info['public_key'] = public_key  # Protobuf style
                         user_info['publicKey'] = public_key   # Dict style
                         injected_count += 1
-                        debug_print(f"      ✅ Injected key into existing node")
+                        #debug_print(f"      ✅ Injected key into existing node")
                     else:
                         #debug_print(f"      ℹ️ Key already present and matches")
                         # CRITICAL DEBUG: Verify the key is actually accessible
@@ -890,7 +890,7 @@ class NodeManager:
                 short_name = node_data.get('shortName', '')
                 hw_model = node_data.get('hwModel', '')
                 
-                debug_print(f"      Not in interface.nodes yet - creating entry")
+                #debug_print(f"      Not in interface.nodes yet - creating entry")
                 nodes[node_id] = {
                     'num': node_id,
                     'user': {
@@ -903,7 +903,7 @@ class NodeManager:
                     }
                 }
                 injected_count += 1
-                debug_print(f"      ✅ Created node in interface.nodes with key")
+                #debug_print(f"      ✅ Created node in interface.nodes with key")
         
         if injected_count > 0:
             info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
@@ -932,9 +932,9 @@ class NodeManager:
                     has_key = user_info.get('public_key') or user_info.get('publicKey')
                     if has_key:
                         nodes_with_keys_in_interface += 1
-                        debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
-                    else:
-                        debug_print(f"   DEBUG: Node {node_id} NO key")
+                        #debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
+                    #else:
+                        #debug_print(f"   DEBUG: Node {node_id} NO key")
         
         debug_print(f"   DEBUG SUMMARY: interface.nodes has {total_nodes_in_interface} total nodes")
         debug_print(f"   DEBUG SUMMARY: Checked {min(5, total_nodes_in_interface)} nodes, {nodes_with_keys_in_interface} have keys")
