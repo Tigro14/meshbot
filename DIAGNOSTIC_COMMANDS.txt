@@ -1,0 +1,124 @@
+============================================================
+MeshCore Packet Source Detection - Diagnostic Commands
+============================================================
+
+PROBLEM: MeshCore packets not showing [DEBUG][MC] classification
+
+QUICK DIAGNOSIS:
+===============
+
+1. Check what source is being assigned:
+   
+   journalctl -u meshbot -f | grep "Final source"
+   
+   Look for:
+   - "Final source = 'meshcore'" ✅ GOOD
+   - "Final source = 'local'" ❌ PROBLEM (should be meshcore)
+   - "Final source = 'tcp'" ❌ PROBLEM (should be meshcore)
+
+2. Check network_source parameter:
+   
+   journalctl -u meshbot -f | grep "network_source="
+   
+   Look for:
+   - "network_source=meshcore" ✅ GOOD
+   - "network_source=None" ❌ PROBLEM (not being passed)
+
+3. Check mode configuration:
+   
+   journalctl -u meshbot -f | grep "_dual_mode_active\|MESHCORE_ENABLED"
+   
+   Look for:
+   - "_dual_mode_active=True" and "network_source=meshcore" ✅ GOOD (dual mode)
+   - "MESHCORE_ENABLED=True" and "_dual_mode_active=False" ✅ GOOD (single mode)
+   - Both False ❌ PROBLEM (MeshCore not enabled)
+
+4. Check packet source classification:
+   
+   journalctl -u meshbot -f | grep "PACKET-SOURCE"
+   
+   Look for:
+   - "source='meshcore'" ✅ GOOD
+   - "source='local'" ❌ PROBLEM (wrong source)
+
+EXPECTED OUTPUT (Working):
+==========================
+
+[DEBUG] 🔍 [SOURCE-DEBUG] Final source = 'meshcore'
+[DEBUG] 🔍 [PACKET-SOURCE] add_packet called with source='meshcore'
+[INFO][MC] 🔗 MC DEBUG: MESHCORE PACKET IN add_packet()
+[DEBUG][MC] 📦 TEXT_MESSAGE_APP de NodeName abcde [direct] (SNR:12.5dB)
+
+PROBLEM OUTPUT (Not Working):
+==============================
+
+[DEBUG] 🔍 [SOURCE-DEBUG] Final source = 'local'  ← NOT meshcore!
+[DEBUG] 🔍 [PACKET-SOURCE] Non-MeshCore packet: source='local'
+[DEBUG][MT] 📦 TEXT_MESSAGE_APP de NodeName abcde [direct] (SNR:12.5dB)
+
+QUICK FIX:
+==========
+
+For Dual Mode (Meshtastic + MeshCore):
+  
+  # In config.py
+  DUAL_NETWORK_MODE = True
+  MESHCORE_ENABLED = True
+  DEBUG_MODE = True
+  
+  sudo systemctl restart meshbot
+
+For Single MeshCore Mode:
+  
+  # In config.py
+  MESHCORE_ENABLED = True
+  DEBUG_MODE = True
+  
+  sudo systemctl restart meshbot
+
+VERIFY FIX:
+===========
+
+After restart, run:
+
+journalctl -u meshbot -n 50 | grep -E "SOURCE-DEBUG|PACKET-SOURCE"
+
+Should see:
+  [DEBUG] 🔍 [SOURCE-DEBUG] Final source = 'meshcore'
+  [DEBUG] 🔍 [PACKET-SOURCE] add_packet called with source='meshcore'
+
+Then check for MeshCore logs:
+
+journalctl -u meshbot -f | grep '\[MC\]'
+
+Should see:
+  [INFO][MC] ...
+  [DEBUG][MC] ...
+
+FULL DOCUMENTATION:
+===================
+
+- MESHCORE_SOURCE_DETECTION_GUIDE.md - Complete diagnostic guide
+- QUICK_FIX_MESHCORE_SOURCE.md - Quick troubleshooting
+- MESHCORE_SOURCE_SUMMARY.md - Implementation summary
+
+TEST SUITE:
+===========
+
+To verify logging mechanism works:
+
+python3 test_meshcore_source_detection.py
+
+Should show:
+  ✅ All tests pass
+
+SHARE FOR SUPPORT:
+==================
+
+If issue persists, share:
+
+1. journalctl -u meshbot -n 100 | grep "SOURCE-DEBUG"
+2. grep -E "DUAL_NETWORK_MODE|MESHCORE_ENABLED|DEBUG_MODE" config.py
+3. journalctl -u meshbot -n 100 | grep "network_source="
+
+============================================================
