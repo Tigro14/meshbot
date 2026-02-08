@@ -540,8 +540,17 @@ class MeshBot:
             
             # Déterminer la source pour les logs et stats
             # IMPORTANT: Vérifier le mode dual EN PREMIER
+            
+            # DEBUG: Always log source determination for diagnostics
+            debug_print(f"🔍 [SOURCE-DEBUG] Determining packet source:")
+            debug_print(f"   _dual_mode_active={self._dual_mode_active}")
+            debug_print(f"   network_source={network_source} (type={type(network_source).__name__})")
+            debug_print(f"   MESHCORE_ENABLED={globals().get('MESHCORE_ENABLED', False)}")
+            debug_print(f"   is_from_our_interface={is_from_our_interface}")
+            
             if self._dual_mode_active and network_source:
                 # Mode dual: utiliser le network_source fourni
+                debug_print(f"🔍 [SOURCE-DEBUG] In dual mode, checking network_source")
                 if network_source == NetworkSource.MESHTASTIC:
                     source = 'meshtastic'
                     debug_print("🔍 Source détectée: Meshtastic (dual mode)")
@@ -554,6 +563,8 @@ class MeshBot:
                 else:
                     source = 'unknown'
                     debug_print(f"🔍 Source détectée: Unknown ({network_source})")
+                    debug_print(f"   NetworkSource.MESHCORE = {NetworkSource.MESHCORE}")
+                    debug_print(f"   network_source == NetworkSource.MESHCORE: {network_source == NetworkSource.MESHCORE}")
             elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
@@ -563,11 +574,17 @@ class MeshBot:
                 info_print_mc(f"   → MESHCORE_ENABLED=True, dual_mode=False")
             elif self._is_tcp_mode():
                 source = 'tcp'
+                debug_print("🔍 Source détectée: TCP mode")
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
+                debug_print("🔍 Source détectée: Serial/local mode")
             else:
                 # Mode legacy: distinguer serial vs TCP externe
                 source = 'local' if is_from_our_interface else 'tigrog2'
+                debug_print(f"🔍 Source détectée: Legacy mode ({'local' if is_from_our_interface else 'tigrog2'})")
+            
+            # Final source determination log
+            debug_print(f"🔍 [SOURCE-DEBUG] Final source = '{source}'")
 
             # Obtenir l'ID du nœud local pour filtrage
             my_id = None
