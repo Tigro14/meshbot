@@ -1969,34 +1969,72 @@ class MeshBot:
                 # Auto-detect USB port if configured
                 meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
                 
-                info_print(f"🔗 Configuration interface MeshCore: {meshcore_port}...")
-                meshcore_interface = MeshCoreSerialInterface(meshcore_port)
+                info_print("=" * 80)
+                info_print("🔗 MESHCORE DUAL MODE INITIALIZATION")
+                info_print("=" * 80)
+                info_print(f"📍 MeshCore port: {meshcore_port}")
+                info_print(f"🔧 Interface class: {MeshCoreSerialInterface.__name__}")
+                info_print("🔍 Creating MeshCore interface...")
                 
+                meshcore_interface = MeshCoreSerialInterface(meshcore_port)
+                info_print(f"✅ Interface object created: {type(meshcore_interface).__name__}")
+                
+                info_print("🔍 Attempting connection...")
                 if not meshcore_interface.connect():
-                    error_print("❌ Échec connexion MeshCore - Mode dual désactivé")
+                    error_print("=" * 80)
+                    error_print("❌ MESHCORE CONNECTION FAILED - Dual mode désactivé")
+                    error_print("=" * 80)
+                    error_print(f"   Port: {meshcore_port}")
+                    error_print("   → Check serial port exists and is accessible")
+                    error_print("   → Check no other process is using the port")
+                    error_print(f"   → Try: ls -la {meshcore_port}")
+                    error_print(f"   → Try: sudo lsof {meshcore_port}")
+                    error_print("=" * 80)
                     self._dual_mode_active = False
                     self.interface = meshtastic_interface
                 else:
+                    info_print("✅ MeshCore connection successful")
+                    
                     # Configure node_manager for pubkey lookups
                     if hasattr(meshcore_interface, 'set_node_manager'):
                         meshcore_interface.set_node_manager(self.node_manager)
+                        info_print("✅ Node manager configured for pubkey lookups")
                     
+                    info_print("🔍 Starting MeshCore serial reading thread...")
                     if not meshcore_interface.start_reading():
-                        error_print("❌ Échec démarrage lecture MeshCore - Mode dual désactivé")
+                        error_print("=" * 80)
+                        error_print("❌ MESHCORE START_READING FAILED - Dual mode désactivé")
+                        error_print("=" * 80)
+                        error_print("   → MeshCore serial thread did not start")
+                        error_print("   → Check logs above for thread creation errors")
+                        error_print("=" * 80)
                         self._dual_mode_active = False
                         self.interface = meshtastic_interface
                     else:
+                        info_print("✅ MeshCore reading thread started")
+                        
+                        info_print("🔍 Configuring dual interface manager...")
                         self.dual_interface.set_meshcore_interface(meshcore_interface)
+                        info_print("✅ MeshCore interface set in dual manager")
                         
                         # Setup callbacks for both interfaces
+                        info_print("🔍 Setting up message callbacks...")
                         self.dual_interface.setup_message_callbacks()
+                        info_print("✅ Message callbacks configured")
                         
                         # Set primary interface for compatibility (use Meshtastic for full features)
                         self.interface = self.dual_interface.get_primary_interface()
+                        info_print(f"✅ Primary interface: {type(self.interface).__name__}")
                         
-                        info_print("✅ Mode dual initialisé avec succès")
+                        info_print("=" * 80)
+                        info_print("✅ MESHCORE DUAL MODE INITIALIZATION COMPLETE")
+                        info_print("=" * 80)
                         info_print(f"   → Meshtastic: {type(meshtastic_interface).__name__}")
                         info_print(f"   → MeshCore: {type(meshcore_interface).__name__}")
+                        info_print("   → Bot will receive packets from BOTH networks")
+                        info_print("   → Meshtastic packets: [DEBUG][MT]")
+                        info_print("   → MeshCore packets: [DEBUG][MC]")
+                        info_print("=" * 80)
                 
                 # Stabilization
                 time.sleep(3)
