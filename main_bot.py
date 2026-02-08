@@ -2054,6 +2054,15 @@ class MeshBot:
                     error_print("=" * 80)
                     self._dual_mode_active = False
                     self.interface = meshtastic_interface
+                    
+                    # CRITICAL FIX: Configure callback when falling back to Meshtastic-only
+                    info_print("🔍 Configuring Meshtastic callback (dual mode failed)...")
+                    if hasattr(self.interface, 'set_message_callback'):
+                        self.interface.set_message_callback(self.on_message)
+                        info_print("✅ Meshtastic callback configured")
+                        info_print("✅ Meshtastic interface active (fallback from dual mode)")
+                    else:
+                        error_print("⚠️ Interface doesn't support set_message_callback")
                 else:
                     info_print("✅ MeshCore connection successful")
                     
@@ -2072,6 +2081,15 @@ class MeshBot:
                         error_print("=" * 80)
                         self._dual_mode_active = False
                         self.interface = meshtastic_interface
+                        
+                        # CRITICAL FIX: Configure callback when falling back to Meshtastic-only
+                        info_print("🔍 Configuring Meshtastic callback (dual mode failed)...")
+                        if hasattr(self.interface, 'set_message_callback'):
+                            self.interface.set_message_callback(self.on_message)
+                            info_print("✅ Meshtastic callback configured")
+                            info_print("✅ Meshtastic interface active (fallback from dual mode)")
+                        else:
+                            error_print("⚠️ Interface doesn't support set_message_callback")
                     else:
                         info_print("✅ MeshCore reading thread started")
                         
