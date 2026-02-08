@@ -511,8 +511,8 @@ class MeshBot:
             network_tag = f"[{network_source}]" if network_source else ""
             
             # Log with BOTH methods for maximum visibility (dual logging)
-            info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
-            info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            #info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
+            #info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
             
             # MC DEBUG: Ultra-visible MeshCore packet detection
             if network_source and str(network_source).upper() == 'MESHCORE':
