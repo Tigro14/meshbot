@@ -81,6 +81,56 @@ except ImportError:
     info_print_mc("=" * 80)
     MESHCORE_FULL_SUPPORT = False
 
+def _create_serial_interface_with_timeout(serial_port, timeout=10):
+    """
+    Create Meshtastic SerialInterface with timeout to prevent freeze.
+    
+    The SerialInterface constructor can block indefinitely if the device
+    doesn't respond properly (waiting for node info, syncing state, etc.).
+    This wrapper adds a timeout mechanism using threading.
+    
+    Args:
+        serial_port: Serial port path (e.g., /dev/ttyACM0)
+        timeout: Maximum seconds to wait (default: 10)
+    
+    Returns:
+        SerialInterface object if successful, None if timeout
+    """
+    result = {'interface': None, 'error': None}
+    
+    def create_interface():
+        try:
+            result['interface'] = meshtastic.serial_interface.SerialInterface(serial_port)
+        except Exception as e:
+            result['error'] = e
+    
+    thread = threading.Thread(target=create_interface, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    
+    if thread.is_alive():
+        # Thread still running = timeout occurred
+        error_print("=" * 80)
+        error_print(f"⏱️  TIMEOUT: Meshtastic SerialInterface creation exceeded {timeout}s")
+        error_print("=" * 80)
+        error_print(f"   Port: {serial_port}")
+        error_print("   → Device detected but not responding")
+        error_print("   → May be in wrong state, bootloader mode, or hung")
+        error_print("")
+        error_print("   💡 SOLUTIONS:")
+        error_print("      1. Power cycle the device (unplug power)")
+        error_print("      2. Unplug and replug USB cable")
+        error_print("      3. Press reset button on device")
+        error_print("      4. Check device is not in bootloader mode")
+        error_print("=" * 80)
+        return None
+    
+    if result['error']:
+        raise result['error']
+    
+    return result['interface']
+
+
 class MeshBot:
     # Configuration pour la reconnexion TCP
     # ESP32 needs time to fully release the old connection before accepting a new one
@@ -1930,7 +1980,19 @@ class MeshBot:
                     
                     for attempt in range(max_retries):
                         try:
-                            meshtastic_interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                            info_print(f"🔍 Creating Meshtastic SerialInterface (attempt {attempt + 1}/{max_retries})...")
+                            meshtastic_interface = _create_serial_interface_with_timeout(serial_port, timeout=10)
+                            
+                            if not meshtastic_interface:
+                                # Timeout occurred
+                                error_print(f"❌ Timeout creating Meshtastic interface (attempt {attempt + 1}/{max_retries})")
+                                if attempt < max_retries - 1:
+                                    info_print(f"   ⏳ Retrying in {retry_delay} seconds...")
+                                    time.sleep(retry_delay)
+                                else:
+                                    error_print("❌ All retries exhausted - Mode dual désactivé")
+                                continue
+                            
                             info_print(f"✅ Meshtastic Serial: {serial_port}")
                             break
                         except serial.serialutil.SerialException as e:
@@ -2163,7 +2225,19 @@ class MeshBot:
                 
                 for attempt in range(max_retries):
                     try:
-                        self.interface = meshtastic.serial_interface.SerialInterface(serial_port)
+                        info_print(f"🔍 Creating Meshtastic SerialInterface (attempt {attempt + 1}/{max_retries})...")
+                        self.interface = _create_serial_interface_with_timeout(serial_port, timeout=10)
+                        
+                        if not self.interface:
+                            # Timeout occurred
+                            error_print(f"❌ Timeout creating Meshtastic interface (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                info_print(f"   ⏳ Retrying in {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                            else:
+                                error_print("❌ All retries exhausted")
+                            continue
+                        
                         serial_opened = True
                         info_print("✅ Interface série créée")
                         break
