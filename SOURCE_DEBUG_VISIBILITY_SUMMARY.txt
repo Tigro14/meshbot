@@ -1,0 +1,162 @@
+================================================================================
+SOURCE-DEBUG VISIBILITY FIX - DEPLOYMENT GUIDE
+================================================================================
+
+PROBLEM: journalctl | grep "SOURCE-DEBUG" shows nothing after git pull/restart
+
+ROOT CAUSE: SOURCE-DEBUG logs only appear WHEN PACKETS ARE RECEIVED
+            Without packets → no logs → can't verify deployment
+
+SOLUTION: Added startup and periodic status logging
+
+================================================================================
+WHAT WAS ADDED
+================================================================================
+
+1. STARTUP BANNER (appears immediately)
+   ✅ Confirms code deployed
+   ✅ Shows git commit
+   ✅ Shows DEBUG_MODE status
+   ✅ Appears even with zero packets
+
+2. STATUS LOGGING (every 2 minutes)
+   ✅ Shows bot is alive
+   ✅ Shows packet count
+   ✅ Warns if no packets (explains missing SOURCE-DEBUG)
+   ✅ Confirms packets flowing
+
+================================================================================
+VERIFICATION AFTER DEPLOYMENT
+================================================================================
+
+STEP 1: Check Startup (Immediate)
+----------------------------------
+journalctl -u meshbot -n 100 | grep "MESHBOT STARTUP"
+
+EXPECTED:
+  [INFO] 🚀 MESHBOT STARTUP - SOURCE-DEBUG DIAGNOSTICS ENABLED
+  [INFO] 📅 Startup time: 2026-02-08 19:15:30
+  [INFO] 📦 Git commit: 9a8f3b0
+  [INFO] 🔍 DEBUG_MODE: ENABLED ✅
+  [DEBUG] 🔍 [SOURCE-DEBUG] Diagnostic logging initialized
+
+✅ If you see this → New code deployed successfully
+❌ If nothing → Bot not running or git pull failed
+
+STEP 2: Check Status (Wait 2 Minutes)
+--------------------------------------
+journalctl -u meshbot -f | grep "BOT STATUS"
+
+WAIT 2 MINUTES, then you'll see one of:
+
+A) NO PACKETS:
+  [INFO] 📊 BOT STATUS - Uptime: 2m 15s
+  [INFO] 📦 Packets this session: 0
+  [INFO] ⚠️  WARNING: No packets received yet!
+  [INFO]    → SOURCE-DEBUG logs will only appear when packets arrive
+  
+  ℹ️  This explains why SOURCE-DEBUG logs don't appear
+  ℹ️  Check Meshtastic connection
+
+B) PACKETS FLOWING:
+  [INFO] 📊 BOT STATUS - Uptime: 4m 30s
+  [INFO] 📦 Packets this session: 42
+  [INFO] ✅ Packets flowing normally (42 total)
+  
+  ℹ️  SOURCE-DEBUG logs should be appearing
+  ℹ️  Check with: journalctl -u meshbot -n 1000 | grep "SOURCE-DEBUG"
+
+STEP 3: Check SOURCE-DEBUG (If Packets Flowing)
+------------------------------------------------
+journalctl -u meshbot -f | grep "SOURCE-DEBUG"
+
+EXPECTED when packets arrive:
+  [DEBUG] 🔍 [SOURCE-DEBUG] Determining packet source:
+  [DEBUG]    _dual_mode_active=False
+  [DEBUG]    network_source=None
+  [DEBUG] 🔍 [SOURCE-DEBUG] Final source = 'local'
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+ISSUE 1: No Startup Banner
+---------------------------
+CAUSE: Bot not running or old code
+FIX:
+  sudo systemctl status meshbot
+  cd /home/dietpi/bot && git log --oneline -5
+  git pull
+  sudo systemctl restart meshbot
+
+ISSUE 2: "No packets received" in Status
+-----------------------------------------
+CAUSE: Meshtastic not receiving packets
+FIX:
+  # Check serial connection
+  ls -la /dev/ttyUSB* /dev/ttyACM*
+  
+  # Check config
+  grep -E "SERIAL_PORT|REMOTE_NODE" config.py
+  
+  # Check connection logs
+  journalctl -u meshbot -n 200 | grep -i "connect\|device"
+
+ISSUE 3: Packets Flowing but No SOURCE-DEBUG
+---------------------------------------------
+CAUSE: DEBUG_MODE disabled (very rare)
+FIX:
+  grep DEBUG_MODE config.py  # Should be True
+  
+  # If False, edit config.py:
+  DEBUG_MODE = True
+  sudo systemctl restart meshbot
+
+================================================================================
+QUICK DIAGNOSTIC SEQUENCE
+================================================================================
+
+# 1. Verify deployment
+journalctl -u meshbot -n 100 | grep "MESHBOT STARTUP"
+→ Should see startup banner immediately
+
+# 2. Wait 2 minutes, check status
+journalctl -u meshbot -f | grep "BOT STATUS"
+→ Shows packet count and explains SOURCE-DEBUG status
+
+# 3. If packets=0, investigate connection
+# 4. If packets>0, verify SOURCE-DEBUG logs
+journalctl -u meshbot -n 1000 | grep "SOURCE-DEBUG"
+→ Should see source determination logs
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+main_bot.py:
+  - __init__ method: +37 lines (startup banner)
+  - main loop: +22 lines (periodic status)
+
+New files:
+  - test_startup_diagnostics.py (test suite)
+  - FIX_SOURCE_DEBUG_VISIBILITY.md (full docs)
+  - QUICK_FIX_SOURCE_DEBUG_VISIBILITY.md (quick ref)
+
+================================================================================
+SUMMARY
+================================================================================
+
+BEFORE: SOURCE-DEBUG invisible without packets
+AFTER:  Can verify deployment and diagnose issues immediately
+
+USER CAN NOW:
+  ✅ Confirm code deployed (startup banner)
+  ✅ Confirm bot running (status every 2 min)
+  ✅ See if packets arriving (packet counter)
+  ✅ Understand why SOURCE-DEBUG missing (warnings)
+
+DEPLOYMENT RISK: NONE (only added logging)
+TESTING: All tests pass ✅
+STATUS: READY FOR PRODUCTION
+
+================================================================================
