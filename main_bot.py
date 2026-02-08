@@ -574,10 +574,10 @@ class MeshBot:
             
             # DEBUG: Always log source determination for diagnostics
             debug_print(f"🔍 [SOURCE-DEBUG] Determining packet source:")
-            debug_print(f"   _dual_mode_active={self._dual_mode_active}")
-            debug_print(f"   network_source={network_source} (type={type(network_source).__name__})")
-            debug_print(f"   MESHCORE_ENABLED={globals().get('MESHCORE_ENABLED', False)}")
-            debug_print(f"   is_from_our_interface={is_from_our_interface}")
+            debug_print(f"🔍 [SOURCE-DEBUG] → _dual_mode_active={self._dual_mode_active}")
+            debug_print(f"🔍 [SOURCE-DEBUG] → network_source={network_source} (type={type(network_source).__name__})")
+            debug_print(f"🔍 [SOURCE-DEBUG] → MESHCORE_ENABLED={globals().get('MESHCORE_ENABLED', False)}")
+            debug_print(f"🔍 [SOURCE-DEBUG] → is_from_our_interface={is_from_our_interface}")
             
             if self._dual_mode_active and network_source:
                 # Mode dual: utiliser le network_source fourni
@@ -590,19 +590,19 @@ class MeshBot:
                     debug_print("🔍 Source détectée: MeshCore (dual mode)")
                     # MC DEBUG: Ultra-visible source detection
                     info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (dual mode)")
-                    info_print_mc(f"   → Packet sera traité avec source='meshcore'")
+                    info_print_mc(f"🔗 MC DEBUG: → Packet sera traité avec source='meshcore'")
                 else:
                     source = 'unknown'
                     debug_print(f"🔍 Source détectée: Unknown ({network_source})")
-                    debug_print(f"   NetworkSource.MESHCORE = {NetworkSource.MESHCORE}")
-                    debug_print(f"   network_source == NetworkSource.MESHCORE: {network_source == NetworkSource.MESHCORE}")
+                    debug_print(f"🔍 [SOURCE-DEBUG] → NetworkSource.MESHCORE = {NetworkSource.MESHCORE}")
+                    debug_print(f"🔍 [SOURCE-DEBUG] → network_source == NetworkSource.MESHCORE: {network_source == NetworkSource.MESHCORE}")
             elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
                 debug_print("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True, single mode)")
                 # MC DEBUG: Ultra-visible source detection
                 info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (single mode)")
-                info_print_mc(f"   → MESHCORE_ENABLED=True, dual_mode=False")
+                info_print_mc(f"🔗 MC DEBUG: → MESHCORE_ENABLED=True, dual_mode=False")
             elif self._is_tcp_mode():
                 source = 'tcp'
                 debug_print("🔍 Source détectée: TCP mode")
