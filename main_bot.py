@@ -83,6 +83,37 @@ class MeshBot:
         self.dual_interface = None
         self._dual_mode_active = False
         
+        # === STARTUP DIAGNOSTIC LOGS ===
+        # These logs appear IMMEDIATELY on bot startup, confirming new code is deployed
+        info_print("=" * 80)
+        info_print("🚀 MESHBOT STARTUP - SOURCE-DEBUG DIAGNOSTICS ENABLED")
+        info_print("=" * 80)
+        info_print(f"📅 Startup time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Log git commit info if available
+        try:
+            import subprocess
+            git_commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], 
+                                                stderr=subprocess.DEVNULL).decode().strip()
+            info_print(f"📦 Git commit: {git_commit}")
+        except:
+            info_print("📦 Git commit: Unable to determine")
+        
+        # Log DEBUG_MODE status
+        debug_mode_status = "ENABLED ✅" if DEBUG_MODE else "DISABLED ❌"
+        info_print(f"🔍 DEBUG_MODE: {debug_mode_status}")
+        
+        # Log SOURCE-DEBUG availability
+        if DEBUG_MODE:
+            info_print("✅ SOURCE-DEBUG logging: ACTIVE (will log on packet reception)")
+            debug_print("🔍 [SOURCE-DEBUG] Diagnostic logging initialized")
+            debug_print("🔍 [SOURCE-DEBUG] Waiting for packets to trace source determination...")
+        else:
+            info_print("⚠️  SOURCE-DEBUG logging: INACTIVE (DEBUG_MODE is False)")
+        
+        info_print("=" * 80)
+        # === END STARTUP DIAGNOSTIC LOGS ===
+        
         # Load TCP configuration from config if available
         import config as cfg
         
@@ -2674,10 +2705,34 @@ class MeshBot:
             # BOUCLE PRINCIPALE
             # ========================================
             cleanup_counter = 0
+            status_log_counter = 0  # Counter for periodic status logging
+            
             while self.running:
                 try:
                     time.sleep(30)
                     cleanup_counter += 1
+                    status_log_counter += 1
+                    
+                    # Periodic status logging (every 2 minutes = 4 x 30s)
+                    if status_log_counter % 4 == 0:
+                        uptime = time.time() - self.start_time
+                        uptime_str = f"{int(uptime/60)}m {int(uptime%60)}s"
+                        
+                        # Log packet reception status
+                        info_print("=" * 80)
+                        info_print(f"📊 BOT STATUS - Uptime: {uptime_str}")
+                        info_print(f"📦 Packets this session: {self._packets_this_session}")
+                        info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
+                        
+                        if self._packets_this_session == 0:
+                            info_print("⚠️  WARNING: No packets received yet!")
+                            info_print("   → SOURCE-DEBUG logs will only appear when packets arrive")
+                            info_print("   → Check Meshtastic connection if packets expected")
+                        else:
+                            info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
+                        
+                        info_print("=" * 80)
+                    
                     if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
                         self.cleanup_cache()
                 except Exception as loop_error:
