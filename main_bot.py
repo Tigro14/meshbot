@@ -2052,23 +2052,24 @@ class MeshBot:
                 else:
                     info_print("✅ MeshCore connection successful")
                     
-                    # Display node info for wiring verification
+                    # Display node info for wiring verification (if available)
                     if hasattr(meshcore_interface, 'meshcore') and meshcore_interface.meshcore:
                         try:
                             if hasattr(meshcore_interface.meshcore, 'node_id'):
                                 node_id = meshcore_interface.meshcore.node_id
                                 info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
-                            else:
-                                debug_print_mc("⚠️ MeshCore object exists but no node_id available")
+                            # Node ID not yet available - this is normal during initialization
                         except Exception as e:
-                            debug_print_mc(f"⚠️ Error getting MeshCore node info: {e}")
+                            # Silently ignore - node ID display is optional
+                            pass
                     elif hasattr(meshcore_interface, 'localNode') and meshcore_interface.localNode:
                         try:
                             node_id = meshcore_interface.localNode.nodeNum
                             if node_id and node_id != 0xFFFFFFFE:  # Don't show unknown node ID
                                 info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
                         except Exception as e:
-                            debug_print_mc(f"⚠️ Error getting localNode info: {e}")
+                            # Silently ignore - node ID display is optional
+                            pass
                     
                     # Configure node_manager for pubkey lookups
                     if hasattr(meshcore_interface, 'set_node_manager'):
@@ -2372,23 +2373,24 @@ class MeshBot:
                 
                 info_print_mc("✅ MeshCore standalone connection successful")
                 
-                # Display node info for wiring verification
+                # Display node info for wiring verification (if available)
                 if hasattr(self.interface, 'meshcore') and self.interface.meshcore:
                     try:
                         if hasattr(self.interface.meshcore, 'node_id'):
                             node_id = self.interface.meshcore.node_id
                             info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
-                        else:
-                            debug_print_mc("⚠️ MeshCore object exists but no node_id available")
+                        # Node ID not yet available - this is normal during initialization
                     except Exception as e:
-                        debug_print_mc(f"⚠️ Error getting MeshCore node info: {e}")
+                        # Silently ignore - node ID display is optional
+                        pass
                 elif hasattr(self.interface, 'localNode') and self.interface.localNode:
                     try:
                         node_id = self.interface.localNode.nodeNum
                         if node_id and node_id != 0xFFFFFFFE:  # Don't show unknown node ID
                             info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
                     except Exception as e:
-                        debug_print_mc(f"⚠️ Error getting localNode info: {e}")
+                        # Silently ignore - node ID display is optional
+                        pass
                 
                 # Configure node_manager for pubkey lookups
                 if hasattr(self.interface, 'set_node_manager'):
