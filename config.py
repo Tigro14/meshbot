@@ -97,7 +97,7 @@ SERIAL_PORT = "auto:manufacturer=Heltec"
 #   - /nodes, /my, /trace, /neighbors, /stats (requièrent Meshtastic)
 MESHCORE_ENABLED = True  # True = Activer mode companion MeshCore
 #MESHCORE_SERIAL_PORT = "/dev/ttyACM2"  # Port série pour MeshCore
-MESHCORE_SERIAL_PORT = "auto:SERIAL=AD3BD7E791727052"
+MESHCORE_SERIAL_PORT = "auto:SERIAL=7CEF06581293BD9C"
 
 # MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
 # RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)
