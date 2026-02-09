@@ -17,6 +17,11 @@ pypubsub>=4.0.3
 # HTTP requests
 requests>=2.31.0
 
+# Character encoding detection for requests
+# Required by requests>=2.31.0 to properly detect text encoding
+# Without this, requests will show: "Unable to find acceptable character detection dependency"
+charset-normalizer>=3.0.0
+
 # === Telegram Integration ===
 # Telegram bot API
 python-telegram-bot>=21.0

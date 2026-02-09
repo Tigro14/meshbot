@@ -95,6 +95,9 @@ class MeshCoreSerialInterface:
         # Buffer pour assembly de trames
         self.read_buffer = bytearray()
         
+        # Statistics for diagnostics
+        self.binary_packets_rejected = 0  # Count of binary packets that couldn't be processed
+        
         # Informations du device MeshCore
         self.device_info = None
         self.self_info = None
@@ -361,10 +364,21 @@ class MeshCoreSerialInterface:
                     # Appeler le callback si défini
                     if self.message_callback:
                         info_print(f"📞 [MESHCORE-TEXT] Calling message_callback for message from 0x{sender_id:08x}")
+                        # MC DEBUG: Ultra-visible callback invocation
+                        info_print_mc("=" * 80)
+                        info_print_mc("🔗 MC DEBUG: CALLING message_callback FROM meshcore_serial_interface")
+                        info_print_mc("=" * 80)
+                        info_print_mc(f"📍 Entry point: meshcore_serial_interface.py::_process_meshcore_line()")
+                        info_print_mc(f"📦 From: 0x{sender_id:08x}")
+                        info_print_mc(f"📨 Message: {message[:50]}{'...' if len(message) > 50 else ''}")
+                        info_print_mc(f"➡️  Calling callback: {self.message_callback}")
+                        info_print_mc("=" * 80)
                         self.message_callback(packet, None)
                         info_print(f"✅ [MESHCORE-TEXT] Callback completed successfully")
+                        info_print_mc("✅ MC DEBUG: Callback returned successfully")
                     else:
                         error_print(f"⚠️ [MESHCORE-TEXT] No message_callback set!")
+                        info_print_mc("❌ MC DEBUG: No message_callback configured!")
             else:
                 debug_print(f"⚠️ [MESHCORE] Ligne non reconnue: {line[:80]}")
         
@@ -432,11 +446,14 @@ class MeshCoreSerialInterface:
             # - CRC checksum
             
             # PROMINENT WARNING: This is why no packets are logged!
+            self.binary_packets_rejected += 1  # Track for diagnostics
+            
             error_print("=" * 80)
             error_print("❌ [MESHCORE-BINARY] PROTOCOLE BINAIRE NON SUPPORTÉ!")
             error_print("=" * 80)
             error_print("   PROBLÈME: Données binaires MeshCore reçues mais non décodées")
             error_print(f"   TAILLE: {len(raw_data)} octets ignorés")
+            error_print(f"   TOTAL REJETÉ: {self.binary_packets_rejected} packet(s)")
             error_print("   IMPACT: Pas de logs [DEBUG][MC], pas de réponse aux DM")
             error_print("")
             error_print("   SOLUTION: Installer meshcore-cli library")

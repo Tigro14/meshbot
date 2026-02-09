@@ -351,7 +351,7 @@ class NodeManager:
             self.node_names[node_id]['alt'] = alt
             self.node_names[node_id]['last_update'] = time.time()
         
-        debug_print_mt(f"📍 Position mise à jour pour {node_id:08x}: {lat:.5f}, {lon:.5f}")
+        #debug_print_mt(f"📍 Position mise à jour pour {node_id:08x}: {lat:.5f}, {lon:.5f}")
     
     def update_node_database(self, interface):
         """Mettre à jour la base de données des nœuds"""
@@ -410,8 +410,8 @@ class NodeManager:
                                         'publicKey': public_key  # Store public key for DM decryption
                                     }
                                     updated_count += 1
-                                    if public_key:
-                                        debug_print(f"🔑 Clé publique extraite pour {name}")
+                                    #if public_key:
+                                        #debug_print(f"🔑 Clé publique extraite pour {name}")
                                 elif self.node_names[node_id_int]['name'] != name:
                                     old_name = self.node_names[node_id_int]['name']
                                     self.node_names[node_id_int]['name'] = name
@@ -461,7 +461,7 @@ class NodeManager:
                                         self.node_names[node_id_int]['lon'] = lon
                                         self.node_names[node_id_int]['alt'] = alt
                                         self.node_names[node_id_int]['last_update'] = time.time()
-                                        debug_print(f"📍 Position mise à jour: {node_id_int:08x}")
+                                        #debug_print(f"📍 Position mise à jour: {node_id_int:08x}")
                                         updated_count += 1
                 
                 except Exception as e:
@@ -556,25 +556,25 @@ class NodeManager:
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
                     # Log detailed info about public key presence (DEBUG mode only for routine updates)
-                    debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
-                    debug_print(f"   Fields in packet: {list(user_info.keys())}")
-                    debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
-                    debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
+                    #debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
+                    #debug_print(f"   Fields in packet: {list(user_info.keys())}")
+                    #debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
+                    #debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
                     if 'public_key' in user_info:
                         pk_value = user_info.get('public_key')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
+                        #debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
                         if pk_value:
                             debug_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
                     if 'publicKey' in user_info:
                         pk_value = user_info.get('publicKey')
                         pk_type = type(pk_value).__name__
                         pk_len = len(pk_value) if pk_value else 0
-                        debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
+                        #debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
                         if pk_value:
                             debug_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
-                    debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
+                    #debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
                     
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
@@ -627,7 +627,7 @@ class NodeManager:
                                 }
                                 self.persistence.save_meshtastic_node(node_data)
                         else:
-                            # Track whether any data actually changed
+                            #Track whether any data actually changed
                             data_changed = False
                             
                             old_name = self.node_names[node_id]['name']
@@ -874,7 +874,7 @@ class NodeManager:
                         user_info['public_key'] = public_key  # Protobuf style
                         user_info['publicKey'] = public_key   # Dict style
                         injected_count += 1
-                        debug_print(f"      ✅ Injected key into existing node")
+                        #debug_print(f"      ✅ Injected key into existing node")
                     else:
                         #debug_print(f"      ℹ️ Key already present and matches")
                         # CRITICAL DEBUG: Verify the key is actually accessible
@@ -890,7 +890,7 @@ class NodeManager:
                 short_name = node_data.get('shortName', '')
                 hw_model = node_data.get('hwModel', '')
                 
-                debug_print(f"      Not in interface.nodes yet - creating entry")
+                #debug_print(f"      Not in interface.nodes yet - creating entry")
                 nodes[node_id] = {
                     'num': node_id,
                     'user': {
@@ -903,7 +903,7 @@ class NodeManager:
                     }
                 }
                 injected_count += 1
-                debug_print(f"      ✅ Created node in interface.nodes with key")
+                #debug_print(f"      ✅ Created node in interface.nodes with key")
         
         if injected_count > 0:
             info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
@@ -932,9 +932,9 @@ class NodeManager:
                     has_key = user_info.get('public_key') or user_info.get('publicKey')
                     if has_key:
                         nodes_with_keys_in_interface += 1
-                        debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
-                    else:
-                        debug_print(f"   DEBUG: Node {node_id} NO key")
+                        #debug_print(f"   DEBUG: Node {node_id} HAS key (len={len(has_key)})")
+                    #else:
+                        #debug_print(f"   DEBUG: Node {node_id} NO key")
         
         debug_print(f"   DEBUG SUMMARY: interface.nodes has {total_nodes_in_interface} total nodes")
         debug_print(f"   DEBUG SUMMARY: Checked {min(5, total_nodes_in_interface)} nodes, {nodes_with_keys_in_interface} have keys")

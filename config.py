@@ -97,7 +97,7 @@ SERIAL_PORT = "auto:manufacturer=Heltec"
 #   - /nodes, /my, /trace, /neighbors, /stats (requièrent Meshtastic)
 MESHCORE_ENABLED = True  # True = Activer mode companion MeshCore
 #MESHCORE_SERIAL_PORT = "/dev/ttyACM2"  # Port série pour MeshCore
-MESHCORE_SERIAL_PORT = "auto:SERIAL=AD3BD7E791727052"
+MESHCORE_SERIAL_PORT = "auto:SERIAL=7CEF06581293BD9C"
 
 # MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
 # RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)
@@ -447,7 +447,7 @@ MESH_ALERT_THROTTLE_SECONDS = 1800  # 30 minutes entre deux alertes identiques (
 # ========================================
 
 # Configuration collecte voisins via MQTT Meshtastic
-MQTT_NEIGHBOR_ENABLED = True  # Activer/désactiver la collecte de voisins via MQTT
+MQTT_NEIGHBOR_ENABLED = False  # Activer/désactiver la collecte de voisins via MQTT
 MQTT_NEIGHBOR_SERVER = "mqtt.meshtastic.liamcottle.net"  # Serveur MQTT Meshtastic
 MQTT_NEIGHBOR_PORT = 1883  # Port MQTT (1883 standard, 8883 pour TLS)
 MQTT_NEIGHBOR_USER = "uplink"  # Utilisateur MQTT
@@ -499,4 +499,4 @@ DB_AUTO_REBOOT_ERROR_THRESHOLD = 10
 
 # Variables globales d'état
 DEBUG_MODE = True
-MTMQTT_DEBUG = True
+MTMQTT_DEBUG = False 
