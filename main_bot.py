@@ -560,17 +560,27 @@ class MeshBot:
         # === ULTRA-VISIBLE DIAGNOSTIC: on_message called ===
         # CRITICAL: These logs MUST appear when packets arrive
         # If not appearing, callback not being invoked
-        info_print("🔔🔔🔔 ========== on_message() CALLED ==========")
-        info_print(f"🔔 Packet: {packet is not None}")
-        info_print(f"🔔 Interface: {type(interface).__name__ if interface else 'None'}")
-        info_print(f"🔔 network_source: {network_source}")
         
+        # Determine which log function to use based on network_source
         try:
+            # Determine logging function based on network source
+            if network_source and str(network_source).upper() == 'MESHCORE':
+                log_func = info_print_mc
+                source_tag = "[MC]"
+            else:
+                log_func = info_print_mt
+                source_tag = "[MT]"
+            
+            log_func("🔔🔔🔔 ========== on_message() CALLED ==========")
+            log_func(f"🔔 Packet: {packet is not None}")
+            log_func(f"🔔 Interface: {type(interface).__name__ if interface else 'None'}")
+            log_func(f"🔔 network_source: {network_source}")
+            
             from_id = packet.get('from', 0) if packet else None
             network_tag = f"[{network_source}]" if network_source else ""
             
             # Log packet info
-            info_print(f"🔔 From ID: 0x{from_id:08x if from_id else 0:08x}")
+            log_func(f"🔔 From ID: 0x{from_id:08x if from_id else 0:08x}")
             
             # MC DEBUG: Ultra-visible MeshCore packet detection
             if network_source and str(network_source).upper() == 'MESHCORE':
@@ -582,10 +592,11 @@ class MeshBot:
                 info_print_mc(f"🔗 Network source: {network_source}")
                 info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
                 info_print_mc("=" * 80)
+            
+            log_func("🔔🔔🔔 ==========================================")
         except Exception as e:
-            info_print(f"🔔 Error getting packet details: {e}")
-        
-        info_print("🔔🔔🔔 ==========================================")
+            # Fallback to generic if we can't determine source
+            info_print(f"🔔 Error in on_message entry logging: {e}")
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
@@ -2410,10 +2421,10 @@ class MeshBot:
                 
                 # Configurer le callback pour les messages reçus
                 self.interface.set_message_callback(self.on_message)
-                info_print(f"✅ Callback MeshCore configuré: {self.on_message}")
-                info_print(f"   Interface type: {type(self.interface).__name__}")
-                info_print(f"   Callback set to: on_message method")
-                info_print("✅ Connexion MeshCore établie")
+                info_print_mc(f"✅ Callback MeshCore configuré: {self.on_message}")
+                info_print_mc(f"   Interface type: {type(self.interface).__name__}")
+                info_print_mc(f"   Callback set to: on_message method")
+                info_print_mc("✅ Connexion MeshCore établie")
             
             # ========================================
             # RÉUTILISATION DE L'INTERFACE PRINCIPALE
@@ -2538,22 +2549,22 @@ class MeshBot:
                 # - meshtastic.receive.data : messages de données
                 # - meshtastic.receive : messages génériques (fallback)
                 
-                info_print("📡 Subscribing to Meshtastic messages via pubsub...")
+                info_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
                 
                 # S'abonner avec le callback principal
                 # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
                 # (ce topic catch ALL messages: text, data, position, etc.)
                 pub.subscribe(self.on_message, "meshtastic.receive")
                 
-                info_print("✅ ✅ ✅ SUBSCRIBED TO meshtastic.receive ✅ ✅ ✅")
-                info_print(f"   Callback: {self.on_message}")
-                info_print(f"   Topic: 'meshtastic.receive'")
-                info_print("   → Meshtastic interface should now publish packets to this callback")
-                info_print("   → You should see '🔔 on_message CALLED' when packets arrive")
+                info_print_mt("✅ ✅ ✅ SUBSCRIBED TO meshtastic.receive ✅ ✅ ✅")
+                info_print_mt(f"   Callback: {self.on_message}")
+                info_print_mt(f"   Topic: 'meshtastic.receive'")
+                info_print_mt("   → Meshtastic interface should now publish packets to this callback")
+                info_print_mt("   → You should see '🔔 on_message CALLED' when packets arrive")
             else:
-                info_print("ℹ️  ℹ️  ℹ️  Mode companion: Messages gérés par interface MeshCore")
-                info_print("   → MeshCore callback already configured")
-                info_print("   → Packets will arrive via MeshCore, not pubsub")
+                info_print_mc("ℹ️  ℹ️  ℹ️  Mode companion: Messages gérés par interface MeshCore")
+                info_print_mc("   → MeshCore callback already configured")
+                info_print_mc("   → Packets will arrive via MeshCore, not pubsub")
             
             info_print("=" * 80)
             
@@ -2922,18 +2933,31 @@ class MeshBot:
                         info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
                         
                         # CRITICAL: Check interface health
+                        # Determine which interface type for appropriate logging prefix
+                        interface_type = None
+                        if hasattr(self, 'interface') and self.interface:
+                            interface_name = type(self.interface).__name__
+                            if 'MeshCore' in interface_name:
+                                interface_type = 'MC'
+                                log_func = info_print_mc
+                            else:
+                                interface_type = 'MT'
+                                log_func = info_print_mt
+                        else:
+                            log_func = info_print  # Fallback to generic
+                        
                         info_print("")
-                        info_print("🔍 [INTERFACE-HEALTH] Checking interface status:")
+                        log_func("🔍 [INTERFACE-HEALTH] Checking interface status:")
                         
                         # Check primary interface
                         if hasattr(self, 'interface') and self.interface:
-                            info_print(f"   ✅ Primary interface exists: {type(self.interface).__name__}")
+                            log_func(f"   ✅ Primary interface exists: {type(self.interface).__name__}")
                             
                             # Check if interface has localNode (indicates connected)
                             if hasattr(self.interface, 'localNode') and self.interface.localNode:
-                                info_print(f"   ✅ Interface connected (localNode exists)")
+                                log_func(f"   ✅ Interface connected (localNode exists)")
                                 if hasattr(self.interface.localNode, 'nodeNum'):
-                                    info_print(f"      Node: 0x{self.interface.localNode.nodeNum:08x}")
+                                    log_func(f"      Node: 0x{self.interface.localNode.nodeNum:08x}")
                             else:
                                 error_print("   ❌ Interface NOT connected (no localNode)")
                                 error_print("      → This explains why no packets are arriving!")
@@ -2941,24 +2965,24 @@ class MeshBot:
                             # Check callback registration
                             if hasattr(self.interface, '_messageCallback'):
                                 if self.interface._messageCallback:
-                                    info_print(f"   ✅ Callback registered")
+                                    log_func(f"   ✅ Callback registered")
                                 else:
                                     error_print("   ❌ Callback is None!")
                                     error_print("      → This explains why no packets are arriving!")
                             else:
-                                info_print("   ⚠️  Cannot check callback (no _messageCallback attr)")
+                                log_func("   ⚠️  Cannot check callback (no _messageCallback attr)")
                             
                             # Check serial port (if SerialInterface)
                             if hasattr(self.interface, 'devPath'):
-                                info_print(f"   📡 Serial port: {self.interface.devPath}")
+                                log_func(f"   📡 Serial port: {self.interface.devPath}")
                                 
                             # Check if stream exists and is open
                             if hasattr(self.interface, 'stream'):
                                 if self.interface.stream:
-                                    info_print(f"   ✅ Serial stream exists")
+                                    log_func(f"   ✅ Serial stream exists")
                                     if hasattr(self.interface.stream, 'isOpen'):
                                         if self.interface.stream.isOpen():
-                                            info_print(f"   ✅ Serial port is OPEN")
+                                            log_func(f"   ✅ Serial port is OPEN")
                                         else:
                                             error_print("   ❌ Serial port is CLOSED!")
                                             error_print("      → This explains why no packets are arriving!")
