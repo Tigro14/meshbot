@@ -1966,7 +1966,7 @@ class MeshBot:
                             
                             info_print(f"✅ Meshtastic Serial: {serial_port}")
                             
-                            # Display node name for wiring verification
+                            # Display node name for wiring verification (if available)
                             if hasattr(meshtastic_interface, 'localNode') and meshtastic_interface.localNode:
                                 try:
                                     node_info = meshtastic_interface.localNode
@@ -1974,12 +1974,11 @@ class MeshBot:
                                         long_name = getattr(node_info.user, 'longName', None)
                                         if long_name:
                                             info_print_mt(f"📡 Node Name: {long_name}")
-                                        else:
-                                            debug_print("⚠️ localNode.user exists but no longName")
-                                    else:
-                                        debug_print("⚠️ localNode exists but no user info")
+                                        # Node name not yet populated - this is normal during initialization
+                                    # User info not yet populated - this is normal during initialization
                                 except Exception as e:
-                                    debug_print(f"⚠️ Error getting node name: {e}")
+                                    # Silently ignore - node name display is optional
+                                    pass
                             
                             break
                         except serial.serialutil.SerialException as e:
@@ -2264,7 +2263,7 @@ class MeshBot:
                         serial_opened = True
                         info_print("✅ Interface série créée")
                         
-                        # Display node name for wiring verification
+                        # Display node name for wiring verification (if available)
                         if hasattr(self.interface, 'localNode') and self.interface.localNode:
                             try:
                                 node_info = self.interface.localNode
@@ -2272,12 +2271,11 @@ class MeshBot:
                                     long_name = getattr(node_info.user, 'longName', None)
                                     if long_name:
                                         info_print_mt(f"📡 Node Name: {long_name}")
-                                    else:
-                                        debug_print("⚠️ localNode.user exists but no longName")
-                                else:
-                                    debug_print("⚠️ localNode exists but no user info")
+                                    # Node name not yet populated - this is normal during initialization
+                                # User info not yet populated - this is normal during initialization
                             except Exception as e:
-                                debug_print(f"⚠️ Error getting node name: {e}")
+                                # Silently ignore - node name display is optional
+                                pass
                         
                         break
                     except serial.serialutil.SerialException as e:
