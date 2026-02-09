@@ -456,34 +456,57 @@ class MeshCoreSerialInterface:
             error_print(f"❌ [MESHCORE] Erreur traitement données binaires: {e}")
             error_print(traceback.format_exc())
     
-    def sendText(self, message, destinationId=None):
+    def sendText(self, message, destinationId=None, channelIndex=0):
         """
         Envoie un message texte via MeshCore
         
         Args:
             message: Texte à envoyer
-            destinationId: ID du destinataire (None = broadcast, mais désactivé en mode companion)
+            destinationId: ID du destinataire (None or 0xFFFFFFFF = broadcast sur canal)
+            channelIndex: Index du canal (0 = public, ignoré pour DM directs)
         """
         if not self.serial or not self.serial.is_open:
             error_print("❌ [MESHCORE] Port série non ouvert, impossible d'envoyer")
             return False
         
-        # En mode companion, on envoie uniquement des DM (pas de broadcast)
-        if destinationId is None:
-            debug_print("⚠️ [MESHCORE] Broadcast désactivé en mode companion")
-            return False
+        # Detect if this is a broadcast/channel message
+        is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
         
-        try:
-            # Format simple pour envoi DM via MeshCore
-            # TODO: Adapter selon le protocole binaire MeshCore réel
-            cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
-            self.serial.write(cmd.encode('utf-8'))
-            debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
-            return True
-        
-        except Exception as e:
-            error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
-            return False
+        if is_broadcast:
+            # Send as channel message (broadcast on specified channel)
+            try:
+                info_print(f"📢 [MESHCORE] Envoi broadcast sur canal {channelIndex}: {message[:50]}{'...' if len(message) > 50 else ''}")
+                
+                # Build binary packet for CMD_SEND_CHANNEL_TXT_MSG
+                # Protocol: 0x3C ('<') + length (2 bytes LE) + command (1 byte) + channel (1 byte) + message (UTF-8)
+                message_bytes = message.encode('utf-8')
+                payload = bytes([CMD_SEND_CHANNEL_TXT_MSG, channelIndex]) + message_bytes
+                length = len(payload)
+                
+                # Construct packet with framing
+                packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+                
+                self.serial.write(packet)
+                info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé sur canal {channelIndex} ({len(message_bytes)} octets)")
+                return True
+                
+            except Exception as e:
+                error_print(f"❌ [MESHCORE] Erreur envoi broadcast: {e}")
+                error_print(traceback.format_exc())
+                return False
+        else:
+            # Send as direct message (DM) to specific node
+            try:
+                # Format simple pour envoi DM via MeshCore
+                # TODO: Implémenter protocole binaire complet avec CMD_SEND_TXT_MSG
+                cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
+                self.serial.write(cmd.encode('utf-8'))
+                debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
+                return True
+            
+            except Exception as e:
+                error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
+                return False
     
     def set_message_callback(self, callback):
         """Définit le callback pour les messages reçus"""
