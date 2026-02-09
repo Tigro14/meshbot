@@ -773,7 +773,7 @@ class MeshBot:
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
             # DEBUG: Log connection mode and filtering decision
-            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source} | dual_mode={self._dual_mode_active}")
+            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source} | dual_mode_active={self._dual_mode_active}")
             
             # FIX: En mode dual, ne PAS filtrer par interface car les deux interfaces sont "les nôtres"
             if self._dual_mode_active:
@@ -2492,6 +2492,29 @@ class MeshBot:
             info_print(f"   dual_mode (active) = {self._dual_mode_active}")
             info_print(f"   connection_mode = {connection_mode}")
             info_print(f"   interface type = {type(self.interface).__name__ if hasattr(self, 'interface') and self.interface else 'None'}")
+            
+            # CRITICAL: Warn if dual mode config is True but active is False
+            if dual_mode and not self._dual_mode_active:
+                error_print("=" * 80)
+                error_print("⚠️  DUAL MODE MISMATCH DETECTED!")
+                error_print("=" * 80)
+                error_print(f"   Config: DUAL_NETWORK_MODE = True")
+                error_print(f"   Runtime: dual_mode_active = False")
+                error_print("")
+                error_print("   ❌ Dual mode initialization FAILED during startup")
+                error_print("   → Check logs above for error messages:")
+                error_print("      - 'Échec création interface Meshtastic'")
+                error_print("      - 'MESHCORE CONNECTION FAILED'")
+                error_print("      - 'MESHCORE START_READING FAILED'")
+                error_print("")
+                error_print("   📋 Bot running in FALLBACK mode:")
+                if hasattr(self, 'interface') and self.interface:
+                    interface_name = type(self.interface).__name__
+                    if 'MeshCore' in interface_name:
+                        error_print("      → Using MeshCore ONLY (Meshtastic failed)")
+                    else:
+                        error_print("      → Using Meshtastic ONLY (MeshCore failed)")
+                error_print("=" * 80)
             
             # Show which packet sources are active
             if self._dual_mode_active:
