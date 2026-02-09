@@ -1315,6 +1315,66 @@ class MeshCoreCLIWrapper:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")
             error_print(traceback.format_exc())
     
+    def _parse_meshcore_header(self, hex_string):
+        """
+        Parse MeshCore packet header to extract sender/receiver information
+        
+        MeshCore packet structure:
+        - Byte 0-3: Message type + version (1 byte type, 3 bytes reserved)
+        - Byte 4-7: Sender node ID (4 bytes, little-endian)
+        - Byte 8-11: Receiver node ID (4 bytes, little-endian)
+        - Byte 12-15: Message hash (4 bytes)
+        - Byte 16+: Payload data
+        
+        Args:
+            hex_string: Raw packet hex string
+            
+        Returns:
+            dict with sender_id, receiver_id, msg_hash or None if parsing fails
+        """
+        if not hex_string or len(hex_string) < 32:  # At least 16 bytes for header
+            return None
+        
+        try:
+            # Convert hex to bytes
+            data = bytes.fromhex(hex_string)
+            
+            # Parse header fields
+            sender_id = int.from_bytes(data[4:8], 'little')
+            receiver_id = int.from_bytes(data[8:12], 'little')
+            msg_hash = data[12:16].hex()
+            
+            return {
+                'sender_id': sender_id,
+                'receiver_id': receiver_id,
+                'msg_hash': msg_hash,
+            }
+        except Exception:
+            return None
+    
+    def _get_node_name(self, node_id):
+        """
+        Get human-readable name for a node ID from node database
+        
+        Args:
+            node_id: Node ID (integer)
+            
+        Returns:
+            Node name or "Unknown" if not in database
+        """
+        if not self.node_manager:
+            return "Unknown"
+        
+        try:
+            # Try to get node info from node manager
+            node_info = self.node_manager.get_node_info(node_id)
+            if node_info:
+                # Return short name if available, else long name, else hex ID
+                return node_info.get('short_name') or node_info.get('long_name') or f"0x{node_id:08x}"
+            return f"0x{node_id:08x}"
+        except Exception:
+            return f"0x{node_id:08x}"
+    
     def _on_rx_log_data(self, event):
         """
         Callback pour les événements RX_LOG_DATA (données RF brutes)
@@ -1346,8 +1406,27 @@ class MeshCoreCLIWrapper:
             # Calculate hex data length for display
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
             
-            # Log RF activity with basic info including packet size
-            debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
+            # Parse packet header to get sender/receiver information
+            header_info = self._parse_meshcore_header(raw_hex)
+            
+            # Build first log line with sender/receiver info if available
+            if header_info:
+                sender_id = header_info['sender_id']
+                receiver_id = header_info['receiver_id']
+                sender_name = self._get_node_name(sender_id)
+                receiver_name = self._get_node_name(receiver_id)
+                
+                # Check if broadcast (0xFFFFFFFF)
+                if receiver_id == 0xFFFFFFFF:
+                    direction_info = f"From: {sender_name} → Broadcast"
+                else:
+                    direction_info = f"From: {sender_name} → To: {receiver_name}"
+                
+                debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - {direction_info}")
+                debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{raw_hex[:40]}...")
+            else:
+                # Fallback to old format if header parsing fails
+                debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
