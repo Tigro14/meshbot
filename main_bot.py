@@ -287,6 +287,8 @@ class MeshBot:
         self._packet_timestamps = deque(maxlen=100)  # Keep last 100 packet times for rate analysis
         self._packets_this_session = 0  # Count packets per TCP session
         self._session_start_time = time.time()  # Session start for rate calculation
+        self._last_packet_count = 0  # Track if packets are still arriving
+        self._last_packet_time = time.time()  # When last packet arrived
         
         # Scheduled reconnection tracking (for TCP_FORCE_RECONNECT_INTERVAL)
         self._last_forced_reconnect = time.time()  # Track last scheduled reconnection
@@ -2919,10 +2921,74 @@ class MeshBot:
                         info_print(f"📦 Packets this session: {self._packets_this_session}")
                         info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
                         
+                        # CRITICAL: Check interface health
+                        info_print("")
+                        info_print("🔍 [INTERFACE-HEALTH] Checking interface status:")
+                        
+                        # Check primary interface
+                        if hasattr(self, 'interface') and self.interface:
+                            info_print(f"   ✅ Primary interface exists: {type(self.interface).__name__}")
+                            
+                            # Check if interface has localNode (indicates connected)
+                            if hasattr(self.interface, 'localNode') and self.interface.localNode:
+                                info_print(f"   ✅ Interface connected (localNode exists)")
+                                if hasattr(self.interface.localNode, 'nodeNum'):
+                                    info_print(f"      Node: 0x{self.interface.localNode.nodeNum:08x}")
+                            else:
+                                error_print("   ❌ Interface NOT connected (no localNode)")
+                                error_print("      → This explains why no packets are arriving!")
+                            
+                            # Check callback registration
+                            if hasattr(self.interface, '_messageCallback'):
+                                if self.interface._messageCallback:
+                                    info_print(f"   ✅ Callback registered")
+                                else:
+                                    error_print("   ❌ Callback is None!")
+                                    error_print("      → This explains why no packets are arriving!")
+                            else:
+                                info_print("   ⚠️  Cannot check callback (no _messageCallback attr)")
+                            
+                            # Check serial port (if SerialInterface)
+                            if hasattr(self.interface, 'devPath'):
+                                info_print(f"   📡 Serial port: {self.interface.devPath}")
+                                
+                            # Check if stream exists and is open
+                            if hasattr(self.interface, 'stream'):
+                                if self.interface.stream:
+                                    info_print(f"   ✅ Serial stream exists")
+                                    if hasattr(self.interface.stream, 'isOpen'):
+                                        if self.interface.stream.isOpen():
+                                            info_print(f"   ✅ Serial port is OPEN")
+                                        else:
+                                            error_print("   ❌ Serial port is CLOSED!")
+                                            error_print("      → This explains why no packets are arriving!")
+                                else:
+                                    error_print("   ❌ Serial stream is None!")
+                        else:
+                            error_print("   ❌ NO PRIMARY INTERFACE!")
+                            error_print("      → This explains why no packets are arriving!")
+                        
+                        # Check dual mode interface
+                        if hasattr(self, 'dual_interface') and self.dual_interface:
+                            info_print(f"   ℹ️  Dual interface manager exists")
+                        
+                        # Track if packets stopped arriving
+                        if hasattr(self, '_last_packet_count'):
+                            if self._packets_this_session == self._last_packet_count:
+                                time_since_last = time.time() - getattr(self, '_last_packet_time', time.time())
+                                if time_since_last > 120:  # More than 2 minutes
+                                    error_print(f"   ⚠️  NO NEW PACKETS for {int(time_since_last/60)} minutes!")
+                                    error_print("      → Interface may have disconnected")
+                            else:
+                                self._last_packet_time = time.time()
+                        
+                        self._last_packet_count = self._packets_this_session
+                        info_print("")
+                        
                         if self._packets_this_session == 0:
                             info_print("⚠️  WARNING: No packets received yet!")
                             info_print("   → SOURCE-DEBUG logs will only appear when packets arrive")
-                            info_print("   → Check Meshtastic connection if packets expected")
+                            info_print("   → Check interface health above")
                         else:
                             info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
                         
