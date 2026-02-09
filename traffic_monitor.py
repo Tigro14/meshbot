@@ -248,7 +248,7 @@ class TrafficMonitor:
         
         for key in search_keys:
             if key in nodes:
-                debug_print_mt(f"🔍 Found node 0x{node_id:08x} in interface.nodes with key={key} (type={type(key).__name__})")
+                # Removed excessive debug log: Found node in interface.nodes
                 return nodes[key], key
         
         return None, None
@@ -630,9 +630,7 @@ class TrafficMonitor:
         # Log every packet entry with source to trace MeshCore packets
         from_id = packet.get('from', 0)
         
-        # ENHANCED DIAGNOSTIC: Use BOTH logger and info_print for redundancy
-        logger.info(f"🔵 add_packet ENTRY (logger) | source={source} | from=0x{from_id:08x}")
-        info_print(f"🔵 add_packet ENTRY (print) | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
+        # Removed excessive debug logs: add_packet ENTRY (both logger and info_print)
         
         # MC DEBUG: Ultra-visible MeshCore packet detection
         if source == 'meshcore':

@@ -581,13 +581,9 @@ class MeshBot:
 
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
-            info_print(f"   → from_id: 0x{from_id:08x}")
-            info_print(f"   → to_id: 0x{to_id:08x}")
+            # Removed excessive debug logs: from_id, to_id, decoded checking
 
             decoded = packet.get('decoded', {})
-            info_print(f"🔍 [DECODED] Checking for TEXT_MESSAGE_APP")
-            info_print(f"   → decoded exists: {bool(decoded)}")
-            info_print(f"   → portnum: {decoded.get('portnum', 'MISSING') if decoded else 'NO DECODED'}")
             
             if decoded.get('portnum') == 'TEXT_MESSAGE_APP':
                 payload = decoded.get('payload', b'')
@@ -596,8 +592,7 @@ class MeshBot:
                     info_print(f"📨 MESSAGE BRUT: '{msg}' | from=0x{from_id:08x} | to=0x{to_id:08x} | broadcast={to_id in [0xFFFFFFFF, 0]}")
                 except:
                     pass
-            else:
-                info_print(f"ℹ️  [DECODED] Not TEXT_MESSAGE_APP, portnum={decoded.get('portnum', 'MISSING') if decoded else 'NO DECODED'}")
+            # Removed excessive debug log: Not TEXT_MESSAGE_APP
             # ========== FIN VALIDATION ==========
 
 
@@ -627,33 +622,33 @@ class MeshBot:
                 # Mode dual: utiliser le network_source fourni
                 if network_source == NetworkSource.MESHTASTIC:
                     source = 'meshtastic'
-                    debug_print("🔍 Source détectée: Meshtastic (dual mode)")
+                    # Removed excessive debug log: Source détectée Meshtastic
                 elif network_source == NetworkSource.MESHCORE:
                     source = 'meshcore'
-                    debug_print_mc("🔍 Source détectée: MeshCore (dual mode)")
+                    # Removed excessive debug logs: Source détectée MeshCore
                     # MC DEBUG: Ultra-visible source detection
                     info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (dual mode)")
                     info_print_mc(f"🔗 MC DEBUG: → Packet sera traité avec source='meshcore'")
                 else:
                     source = 'unknown'
-                    debug_print(f"🔍 Source détectée: Unknown ({network_source})")
+                    # Removed excessive debug log: Source détectée Unknown
             elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
-                debug_print_mc("🔍 Source détectée: MeshCore (MESHCORE_ENABLED=True, single mode)")
+                # Removed excessive debug logs: Source détectée MeshCore single mode
                 # MC DEBUG: Ultra-visible source detection
                 info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (single mode)")
                 info_print_mc(f"🔗 MC DEBUG: → MESHCORE_ENABLED=True, dual_mode=False")
             elif self._is_tcp_mode():
                 source = 'tcp'
-                debug_print("🔍 Source détectée: TCP mode")
+                # Removed excessive debug log: Source détectée TCP mode
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
-                debug_print("🔍 Source détectée: Serial/local mode")
+                # Removed excessive debug log: Source détectée Serial/local mode
             else:
                 # Mode legacy: distinguer serial vs TCP externe
                 source = 'local' if is_from_our_interface else 'tigrog2'
-                debug_print(f"🔍 Source détectée: Legacy mode ({'local' if is_from_our_interface else 'tigrog2'})")
+                # Removed excessive debug log: Source détectée Legacy mode
             
             # Log final source determination
 
@@ -684,13 +679,11 @@ class MeshBot:
             # Get connection mode from globals (set in run() method)
             connection_mode = globals().get('CONNECTION_MODE', 'serial').lower()
             
-            # DEBUG: Log connection mode and filtering decision
-            debug_print(f"🔍 [FILTER] connection_mode={connection_mode} | is_from_our_interface={is_from_our_interface} | source={source} | dual_mode_active={self._dual_mode_active}")
+            # Removed excessive debug logs: FILTER connection_mode and DUAL-MODE packet accepted
             
             # FIX: En mode dual, ne PAS filtrer par interface car les deux interfaces sont "les nôtres"
             if self._dual_mode_active:
                 # MODE DUAL: Tous les paquets des deux interfaces sont traités
-                debug_print(f"✅ [DUAL-MODE] Packet accepté (dual mode actif)")
                 # Continuer le traitement normalement
             elif connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
