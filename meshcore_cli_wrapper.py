@@ -680,11 +680,18 @@ class MeshCoreCLIWrapper:
                     if private_key_data is None and found_key_files:
                         try:
                             key_file = found_key_files[0]
-                            with open(key_file, 'rb') as f:
-                                private_key_data = f.read()
+                            # Read as text first (key files are usually hex or base64 text)
+                            with open(key_file, 'r') as f:
+                                private_key_data = f.read().strip()
                             debug_print(f"   📝 Utilisation du fichier {key_file} pour validation")
                         except Exception as e:
-                            debug_print(f"   ⚠️  Impossible de lire {key_file}: {e}")
+                            # If text reading fails, try binary
+                            try:
+                                with open(key_file, 'rb') as f:
+                                    private_key_data = f.read()
+                                debug_print(f"   📝 Utilisation du fichier {key_file} (binaire) pour validation")
+                            except Exception as e2:
+                                debug_print(f"   ⚠️  Impossible de lire {key_file}: {e2}")
                     
                     # Try to get public key for comparison
                     if hasattr(self.meshcore, 'public_key'):
@@ -738,8 +745,8 @@ class MeshCoreCLIWrapper:
         if hasattr(self.meshcore, 'sync_contacts'):
             debug_print("   ✅ Méthode sync_contacts() disponible")
         else:
-            error_print("   ❌ Méthode sync_contacts() NON disponible")
-            issues_found.append("sync_contacts() non disponible - la synchronisation des contacts ne peut pas être effectuée")
+            info_print("   ℹ️  Méthode sync_contacts() NON disponible (fonctionnalité optionnelle)")
+            # Note: Not added to issues_found - this is optional, not critical
         
         # Check 3: Auto message fetching
         debug_print("\n3️⃣  Vérification auto message fetching...")
@@ -1014,8 +1021,8 @@ class MeshCoreCLIWrapper:
                         # Check if contacts were actually synced (silent unless DEBUG)
                         await self._verify_contacts()
                     else:
-                        info_print("⚠️ [MESHCORE-CLI] sync_contacts() non disponible")
-                        error_print("   ⚠️ Sans sync_contacts(), le déchiffrement des DM peut échouer")
+                        info_print("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
+                        debug_print("   Note: Sans sync_contacts(), certains DM peuvent nécessiter un appairage manuel")
                 except Exception as e:
                     error_print(f"❌ [MESHCORE-CLI] Erreur sync_contacts: {e}")
                     error_print(traceback.format_exc())
