@@ -634,9 +634,6 @@ class TrafficMonitor:
         logger.info(f"🔵 add_packet ENTRY (logger) | source={source} | from=0x{from_id:08x}")
         info_print(f"🔵 add_packet ENTRY (print) | source={source} | from=0x{from_id:08x} | interface={type(interface).__name__ if interface else 'None'}")
         
-        # DEBUG: Always log source for classification debugging
-        debug_print(f"🔍 [PACKET-SOURCE] add_packet called with source='{source}' from=0x{from_id:08x}")
-        
         # MC DEBUG: Ultra-visible MeshCore packet detection
         if source == 'meshcore':
             info_print_mc("=" * 80)
@@ -662,9 +659,6 @@ class TrafficMonitor:
             info_print_mc(f"🏷️  _meshcore_dm flag: {is_meshcore_dm}")
             
             info_print_mc("=" * 80)
-        else:
-            # DEBUG: Log non-meshcore packets too for comparison
-            debug_print(f"🔍 [PACKET-SOURCE] Non-MeshCore packet: source='{source}'")
         
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):

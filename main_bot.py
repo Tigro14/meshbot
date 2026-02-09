@@ -155,7 +155,7 @@ class MeshBot:
         # === STARTUP DIAGNOSTIC LOGS ===
         # These logs appear IMMEDIATELY on bot startup, confirming new code is deployed
         info_print("=" * 80)
-        info_print("🚀 MESHBOT STARTUP - SOURCE-DEBUG DIAGNOSTICS ENABLED")
+        info_print("🚀 MESHBOT STARTUP")
         info_print("=" * 80)
         info_print(f"📅 Startup time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
         
@@ -172,13 +172,7 @@ class MeshBot:
         debug_mode_status = "ENABLED ✅" if DEBUG_MODE else "DISABLED ❌"
         info_print(f"🔍 DEBUG_MODE: {debug_mode_status}")
         
-        # Log SOURCE-DEBUG availability
-        if DEBUG_MODE:
-            info_print("✅ SOURCE-DEBUG logging: ACTIVE (will log on packet reception)")
-            debug_print("🔍 [SOURCE-DEBUG] Diagnostic logging initialized")
-            debug_print("🔍 [SOURCE-DEBUG] Waiting for packets to trace source determination...")
-        else:
-            info_print("⚠️  SOURCE-DEBUG logging: INACTIVE (DEBUG_MODE is False)")
+        # Removed SOURCE-DEBUG logging as requested
         
         info_print("=" * 80)
         # === END STARTUP DIAGNOSTIC LOGS ===
@@ -629,16 +623,8 @@ class MeshBot:
             # Déterminer la source pour les logs et stats
             # IMPORTANT: Vérifier le mode dual EN PREMIER
             
-            # DEBUG: Always log source determination for diagnostics
-            debug_print(f"🔍 [SOURCE-DEBUG] Determining packet source:")
-            debug_print(f"🔍 [SOURCE-DEBUG] → _dual_mode_active={self._dual_mode_active}")
-            debug_print(f"🔍 [SOURCE-DEBUG] → network_source={network_source} (type={type(network_source).__name__})")
-            debug_print(f"🔍 [SOURCE-DEBUG] → MESHCORE_ENABLED={globals().get('MESHCORE_ENABLED', False)}")
-            debug_print(f"🔍 [SOURCE-DEBUG] → is_from_our_interface={is_from_our_interface}")
-            
             if self._dual_mode_active and network_source:
                 # Mode dual: utiliser le network_source fourni
-                debug_print(f"🔍 [SOURCE-DEBUG] In dual mode, checking network_source")
                 if network_source == NetworkSource.MESHTASTIC:
                     source = 'meshtastic'
                     debug_print("🔍 Source détectée: Meshtastic (dual mode)")
@@ -651,8 +637,6 @@ class MeshBot:
                 else:
                     source = 'unknown'
                     debug_print(f"🔍 Source détectée: Unknown ({network_source})")
-                    debug_print(f"🔍 [SOURCE-DEBUG] → NetworkSource.MESHCORE = {NetworkSource.MESHCORE}")
-                    debug_print(f"🔍 [SOURCE-DEBUG] → network_source == NetworkSource.MESHCORE: {network_source == NetworkSource.MESHCORE}")
             elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
@@ -671,8 +655,7 @@ class MeshBot:
                 source = 'local' if is_from_our_interface else 'tigrog2'
                 debug_print(f"🔍 Source détectée: Legacy mode ({'local' if is_from_our_interface else 'tigrog2'})")
             
-            # Final source determination log
-            debug_print(f"🔍 [SOURCE-DEBUG] Final source = '{source}'")
+            # Log final source determination
 
             # Obtenir l'ID du nœud local pour filtrage
             my_id = None
@@ -1982,6 +1965,22 @@ class MeshBot:
                                 continue
                             
                             info_print(f"✅ Meshtastic Serial: {serial_port}")
+                            
+                            # Display node name for wiring verification
+                            if hasattr(meshtastic_interface, 'localNode') and meshtastic_interface.localNode:
+                                try:
+                                    node_info = meshtastic_interface.localNode
+                                    if hasattr(node_info, 'user') and node_info.user:
+                                        long_name = getattr(node_info.user, 'longName', None)
+                                        if long_name:
+                                            info_print_mt(f"📡 Node Name: {long_name}")
+                                        else:
+                                            debug_print("⚠️ localNode.user exists but no longName")
+                                    else:
+                                        debug_print("⚠️ localNode exists but no user info")
+                                except Exception as e:
+                                    debug_print(f"⚠️ Error getting node name: {e}")
+                            
                             break
                         except serial.serialutil.SerialException as e:
                             last_error = e
@@ -2053,6 +2052,24 @@ class MeshBot:
                         error_print("⚠️ Interface doesn't support set_message_callback")
                 else:
                     info_print("✅ MeshCore connection successful")
+                    
+                    # Display node info for wiring verification
+                    if hasattr(meshcore_interface, 'meshcore') and meshcore_interface.meshcore:
+                        try:
+                            if hasattr(meshcore_interface.meshcore, 'node_id'):
+                                node_id = meshcore_interface.meshcore.node_id
+                                info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
+                            else:
+                                debug_print_mc("⚠️ MeshCore object exists but no node_id available")
+                        except Exception as e:
+                            debug_print_mc(f"⚠️ Error getting MeshCore node info: {e}")
+                    elif hasattr(meshcore_interface, 'localNode') and meshcore_interface.localNode:
+                        try:
+                            node_id = meshcore_interface.localNode.nodeNum
+                            if node_id and node_id != 0xFFFFFFFE:  # Don't show unknown node ID
+                                info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
+                        except Exception as e:
+                            debug_print_mc(f"⚠️ Error getting localNode info: {e}")
                     
                     # Configure node_manager for pubkey lookups
                     if hasattr(meshcore_interface, 'set_node_manager'):
@@ -2246,6 +2263,22 @@ class MeshBot:
                         
                         serial_opened = True
                         info_print("✅ Interface série créée")
+                        
+                        # Display node name for wiring verification
+                        if hasattr(self.interface, 'localNode') and self.interface.localNode:
+                            try:
+                                node_info = self.interface.localNode
+                                if hasattr(node_info, 'user') and node_info.user:
+                                    long_name = getattr(node_info.user, 'longName', None)
+                                    if long_name:
+                                        info_print_mt(f"📡 Node Name: {long_name}")
+                                    else:
+                                        debug_print("⚠️ localNode.user exists but no longName")
+                                else:
+                                    debug_print("⚠️ localNode exists but no user info")
+                            except Exception as e:
+                                debug_print(f"⚠️ Error getting node name: {e}")
+                        
                         break
                     except serial.serialutil.SerialException as e:
                         last_error = e
@@ -2338,6 +2371,26 @@ class MeshBot:
                 if not self.interface.connect():
                     error_print("❌ Échec connexion série MeshCore")
                     return False
+                
+                info_print_mc("✅ MeshCore standalone connection successful")
+                
+                # Display node info for wiring verification
+                if hasattr(self.interface, 'meshcore') and self.interface.meshcore:
+                    try:
+                        if hasattr(self.interface.meshcore, 'node_id'):
+                            node_id = self.interface.meshcore.node_id
+                            info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
+                        else:
+                            debug_print_mc("⚠️ MeshCore object exists but no node_id available")
+                    except Exception as e:
+                        debug_print_mc(f"⚠️ Error getting MeshCore node info: {e}")
+                elif hasattr(self.interface, 'localNode') and self.interface.localNode:
+                    try:
+                        node_id = self.interface.localNode.nodeNum
+                        if node_id and node_id != 0xFFFFFFFE:  # Don't show unknown node ID
+                            info_print_mc(f"📡 Node ID: 0x{node_id:08x}")
+                    except Exception as e:
+                        debug_print_mc(f"⚠️ Error getting localNode info: {e}")
                 
                 # Configure node_manager for pubkey lookups
                 if hasattr(self.interface, 'set_node_manager'):
@@ -2886,7 +2939,6 @@ class MeshBot:
                         
                         if self._packets_this_session == 0:
                             info_print("⚠️  WARNING: No packets received yet!")
-                            info_print("   → SOURCE-DEBUG logs will only appear when packets arrive")
                             info_print("   → Check Meshtastic connection if packets expected")
                         else:
                             info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
