@@ -556,13 +556,19 @@ class MeshBot:
             network_source: NetworkSource enum (Meshtastic/MeshCore) si en mode dual
         """
         # === ULTRA-VISIBLE DIAGNOSTIC: on_message called ===
+        # CRITICAL: These logs MUST appear when packets arrive
+        # If not appearing, callback not being invoked
+        info_print("🔔🔔🔔 ========== on_message() CALLED ==========")
+        info_print(f"🔔 Packet: {packet is not None}")
+        info_print(f"🔔 Interface: {type(interface).__name__ if interface else 'None'}")
+        info_print(f"🔔 network_source: {network_source}")
+        
         try:
             from_id = packet.get('from', 0) if packet else None
             network_tag = f"[{network_source}]" if network_source else ""
             
-            # Log with BOTH methods for maximum visibility (dual logging)
-            #info_print(f"🔔🔔🔔 on_message CALLED (info1) {network_tag} | from=0x{from_id:08x if from_id else 0:08x}")
-            #info_print(f"🔔🔔🔔 on_message CALLED (info2) {network_tag} | from=0x{from_id:08x if from_id else 0:08x} | interface={type(interface).__name__ if interface else 'None'}")
+            # Log packet info
+            info_print(f"🔔 From ID: 0x{from_id:08x if from_id else 0:08x}")
             
             # MC DEBUG: Ultra-visible MeshCore packet detection
             if network_source and str(network_source).upper() == 'MESHCORE':
@@ -574,9 +580,10 @@ class MeshBot:
                 info_print_mc(f"🔗 Network source: {network_source}")
                 info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
                 info_print_mc("=" * 80)
-        except:
-            info_print(f"🔔🔔🔔 on_message CALLED (info1-fallback) | packet={packet is not None} | interface={interface is not None}")
-            info_print(f"🔔🔔🔔 on_message CALLED (info2-fallback) | packet={packet is not None} | interface={interface is not None}")
+        except Exception as e:
+            info_print(f"🔔 Error getting packet details: {e}")
+        
+        info_print("🔔🔔🔔 ==========================================")
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
