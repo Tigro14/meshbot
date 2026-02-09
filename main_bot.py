@@ -685,6 +685,7 @@ class MeshBot:
             if self._dual_mode_active:
                 # MODE DUAL: Tous les paquets des deux interfaces sont traités
                 # Continuer le traitement normalement
+                pass  # Empty block needs pass statement
             elif connection_mode in ['serial', 'tcp']:
                 # MODE SINGLE-NODE: Traiter tous les messages de notre interface unique
                 if not is_from_our_interface:
