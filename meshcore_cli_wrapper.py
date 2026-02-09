@@ -1732,15 +1732,27 @@ class MeshCoreCLIWrapper:
         
         Args:
             text: Texte à envoyer
-            destinationId: ID du destinataire (node_id)
+            destinationId: ID du destinataire (node_id) or 0xFFFFFFFF for broadcast
             wantAck: Demander un accusé de réception (ignoré en mode companion)
-            channelIndex: Canal (ignoré en mode companion)
+            channelIndex: Canal (utilisé pour broadcasts, ignoré pour DMs)
         
         Returns:
             bool: True si envoyé avec succès
         """
         if not self.meshcore:
             error_print("❌ [MESHCORE-CLI] Non connecté")
+            return False
+        
+        # Detect if this is a broadcast/channel message
+        is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
+        
+        if is_broadcast:
+            # MeshCore CLI doesn't support channel broadcasts via send_msg API
+            # The send_msg API only supports direct messages to specific contacts
+            error_print("❌ [MESHCORE] Broadcast messages not supported via meshcore-cli")
+            error_print("   → MeshCore CLI library only supports DM (Direct Messages)")
+            error_print("   → Use meshcore_serial_interface.py for channel broadcast support")
+            info_print_mc(f"⚠️  [MESHCORE] Tentative d'envoi broadcast ignorée (canal {channelIndex})")
             return False
         
         try:
