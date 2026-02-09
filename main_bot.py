@@ -557,46 +557,7 @@ class MeshBot:
             interface: Interface source (peut être None pour messages publiés à meshtastic.receive.text)
             network_source: NetworkSource enum (Meshtastic/MeshCore) si en mode dual
         """
-        # === ULTRA-VISIBLE DIAGNOSTIC: on_message called ===
-        # CRITICAL: These logs MUST appear when packets arrive
-        # If not appearing, callback not being invoked
-        
-        # Determine which log function to use based on network_source
-        try:
-            # Determine logging function based on network source
-            if network_source and str(network_source).upper() == 'MESHCORE':
-                log_func = info_print_mc
-                source_tag = "[MC]"
-            else:
-                log_func = info_print_mt
-                source_tag = "[MT]"
-            
-            log_func("🔔🔔🔔 ========== on_message() CALLED ==========")
-            log_func(f"🔔 Packet: {packet is not None}")
-            log_func(f"🔔 Interface: {type(interface).__name__ if interface else 'None'}")
-            log_func(f"🔔 network_source: {network_source}")
-            
-            from_id = packet.get('from', 0) if packet else None
-            network_tag = f"[{network_source}]" if network_source else ""
-            
-            # Log packet info
-            log_func(f"🔔 From ID: 0x{from_id:08x if from_id else 0:08x}")
-            
-            # MC DEBUG: Ultra-visible MeshCore packet detection
-            if network_source and str(network_source).upper() == 'MESHCORE':
-                info_print_mc("=" * 80)
-                info_print_mc("🔗🔗🔗 MC DEBUG: MESHCORE PACKET RECEIVED IN on_message()")
-                info_print_mc("=" * 80)
-                info_print_mc(f"📍 Entry point: main_bot.py::on_message()")
-                info_print_mc(f"📦 From: 0x{from_id:08x if from_id else 0:08x}")
-                info_print_mc(f"🔗 Network source: {network_source}")
-                info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
-                info_print_mc("=" * 80)
-            
-            log_func("🔔🔔🔔 ==========================================")
-        except Exception as e:
-            # Fallback to generic if we can't determine source
-            info_print(f"🔔 Error in on_message entry logging: {e}")
+        # Removed noisy diagnostic logging per user request
         
         # ✅ CRITICAL: Update packet timestamp FIRST, before any early returns
         # This prevents false "silence" detections when packets arrive during reconnection
@@ -621,43 +582,11 @@ class MeshBot:
                 debug_print(f"🔍 Interface était None, utilisation de self.interface")
                 
             # ========== VALIDATION BASIQUE ==========
-            # DIAGNOSTIC: Log packet structure BEFORE validation
-            info_print("=" * 80)
-            info_print("🔍 [PACKET-STRUCTURE] Analyzing packet structure")
-            info_print("=" * 80)
-            if packet:
-                info_print(f"✅ [PACKET-STRUCTURE] Packet exists, type: {type(packet)}")
-                if isinstance(packet, dict):
-                    info_print(f"📋 [PACKET-STRUCTURE] Keys: {list(packet.keys())}")
-                    info_print(f"   → 'from': {packet.get('from', 'MISSING')}")
-                    info_print(f"   → 'to': {packet.get('to', 'MISSING')}")
-                    info_print(f"   → 'id': {packet.get('id', 'MISSING')}")
-                    info_print(f"   → 'decoded': {bool(packet.get('decoded'))}")
-                    
-                    decoded_field = packet.get('decoded')
-                    if decoded_field:
-                        info_print(f"✅ [PACKET-STRUCTURE] Decoded exists")
-                        if isinstance(decoded_field, dict):
-                            info_print(f"📋 [PACKET-STRUCTURE] Decoded keys: {list(decoded_field.keys())}")
-                            info_print(f"   → 'portnum': {decoded_field.get('portnum', 'MISSING')}")
-                            info_print(f"   → 'payload': {bool(decoded_field.get('payload'))}")
-                    else:
-                        error_print("❌ [PACKET-STRUCTURE] NO DECODED FIELD!")
-                        error_print("   → This is likely why packet not being processed")
-            else:
-                error_print("❌ [PACKET-STRUCTURE] Packet is None or empty!")
-            info_print("=" * 80)
-            
             if not packet or 'from' not in packet:
-                error_print(f"❌ [VALIDATION] Packet validation failed - EARLY RETURN")
-                error_print(f"   → packet exists: {packet is not None}")
-                error_print(f"   → has 'from': {'from' in packet if packet else False}")
                 return
 
             from_id = packet.get('from', 0)
             to_id = packet.get('to', 0)
-            
-            info_print(f"✅ [VALIDATION] Basic validation passed")
             info_print(f"   → from_id: 0x{from_id:08x}")
             info_print(f"   → to_id: 0x{to_id:08x}")
 
@@ -2955,87 +2884,10 @@ class MeshBot:
                         info_print(f"📦 Packets this session: {self._packets_this_session}")
                         info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
                         
-                        # CRITICAL: Check interface health
-                        # Determine which interface type for appropriate logging prefix
-                        interface_type = None
-                        if hasattr(self, 'interface') and self.interface:
-                            interface_name = type(self.interface).__name__
-                            if 'MeshCore' in interface_name:
-                                interface_type = 'MC'
-                                log_func = info_print_mc
-                            else:
-                                interface_type = 'MT'
-                                log_func = info_print_mt
-                        else:
-                            log_func = info_print  # Fallback to generic
-                        
-                        info_print("")
-                        log_func("🔍 [INTERFACE-HEALTH] Checking interface status:")
-                        
-                        # Check primary interface
-                        if hasattr(self, 'interface') and self.interface:
-                            log_func(f"   ✅ Primary interface exists: {type(self.interface).__name__}")
-                            
-                            # Check if interface has localNode (indicates connected)
-                            if hasattr(self.interface, 'localNode') and self.interface.localNode:
-                                log_func(f"   ✅ Interface connected (localNode exists)")
-                                if hasattr(self.interface.localNode, 'nodeNum'):
-                                    log_func(f"      Node: 0x{self.interface.localNode.nodeNum:08x}")
-                            else:
-                                error_print("   ❌ Interface NOT connected (no localNode)")
-                                error_print("      → This explains why no packets are arriving!")
-                            
-                            # Check callback registration
-                            if hasattr(self.interface, '_messageCallback'):
-                                if self.interface._messageCallback:
-                                    log_func(f"   ✅ Callback registered")
-                                else:
-                                    error_print("   ❌ Callback is None!")
-                                    error_print("      → This explains why no packets are arriving!")
-                            else:
-                                log_func("   ⚠️  Cannot check callback (no _messageCallback attr)")
-                            
-                            # Check serial port (if SerialInterface)
-                            if hasattr(self.interface, 'devPath'):
-                                log_func(f"   📡 Serial port: {self.interface.devPath}")
-                                
-                            # Check if stream exists and is open
-                            if hasattr(self.interface, 'stream'):
-                                if self.interface.stream:
-                                    log_func(f"   ✅ Serial stream exists")
-                                    if hasattr(self.interface.stream, 'isOpen'):
-                                        if self.interface.stream.isOpen():
-                                            log_func(f"   ✅ Serial port is OPEN")
-                                        else:
-                                            error_print("   ❌ Serial port is CLOSED!")
-                                            error_print("      → This explains why no packets are arriving!")
-                                else:
-                                    error_print("   ❌ Serial stream is None!")
-                        else:
-                            error_print("   ❌ NO PRIMARY INTERFACE!")
-                            error_print("      → This explains why no packets are arriving!")
-                        
-                        # Check dual mode interface
-                        if hasattr(self, 'dual_interface') and self.dual_interface:
-                            info_print(f"   ℹ️  Dual interface manager exists")
-                        
-                        # Track if packets stopped arriving
-                        if hasattr(self, '_last_packet_count'):
-                            if self._packets_this_session == self._last_packet_count:
-                                time_since_last = time.time() - getattr(self, '_last_packet_time', time.time())
-                                if time_since_last > 120:  # More than 2 minutes
-                                    error_print(f"   ⚠️  NO NEW PACKETS for {int(time_since_last/60)} minutes!")
-                                    error_print("      → Interface may have disconnected")
-                            else:
-                                self._last_packet_time = time.time()
-                        
-                        self._last_packet_count = self._packets_this_session
-                        info_print("")
-                        
                         if self._packets_this_session == 0:
                             info_print("⚠️  WARNING: No packets received yet!")
                             info_print("   → SOURCE-DEBUG logs will only appear when packets arrive")
-                            info_print("   → Check interface health above")
+                            info_print("   → Check Meshtastic connection if packets expected")
                         else:
                             info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
                         
