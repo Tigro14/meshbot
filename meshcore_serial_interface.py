@@ -516,9 +516,32 @@ class MeshCoreSerialInterface:
                 # Construct packet with framing
                 packet = bytes([0x3C]) + struct.pack('<H', length) + payload
                 
-                self.serial.write(packet)
-                self.serial.flush()  # Force immediate transmission to hardware
+                # DIAGNOSTIC: Log packet details before sending
+                debug_print(f"🔍 [MESHCORE-DEBUG] Port state: open={self.serial.is_open}, writable={self.serial.writable()}")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Packet size: {len(packet)} bytes")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Packet hex: {packet.hex()}")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Command: CMD_SEND_CHANNEL_TXT_MSG ({CMD_SEND_CHANNEL_TXT_MSG})")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Channel: {channelIndex}")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Message: {repr(message)}")
+                
+                # Write packet to serial port
+                bytes_written = self.serial.write(packet)
+                debug_print(f"🔍 [MESHCORE-DEBUG] Bytes written: {bytes_written}/{len(packet)}")
+                
+                # Force immediate transmission
+                self.serial.flush()
+                debug_print(f"🔍 [MESHCORE-DEBUG] Flush completed")
+                
                 info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé sur canal {channelIndex} ({len(message_bytes)} octets)")
+                
+                # Wait briefly for any response/error from device
+                time.sleep(0.1)
+                if self.serial.in_waiting > 0:
+                    response_bytes = self.serial.read(self.serial.in_waiting)
+                    debug_print(f"🔍 [MESHCORE-DEBUG] Device response: {response_bytes.hex()}")
+                else:
+                    debug_print(f"🔍 [MESHCORE-DEBUG] No immediate response from device")
+                
                 return True
                 
             except Exception as e:
