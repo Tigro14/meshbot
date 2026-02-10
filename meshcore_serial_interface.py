@@ -517,6 +517,7 @@ class MeshCoreSerialInterface:
                 packet = bytes([0x3C]) + struct.pack('<H', length) + payload
                 
                 self.serial.write(packet)
+                self.serial.flush()  # Force immediate transmission to hardware
                 info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé sur canal {channelIndex} ({len(message_bytes)} octets)")
                 return True
                 
@@ -531,6 +532,7 @@ class MeshCoreSerialInterface:
                 # TODO: Implémenter protocole binaire complet avec CMD_SEND_TXT_MSG
                 cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
                 self.serial.write(cmd.encode('utf-8'))
+                self.serial.flush()  # Force immediate transmission to hardware
                 debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
                 return True
             
