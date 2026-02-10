@@ -53,33 +53,160 @@ from dual_interface_manager import DualInterfaceManager, NetworkSource
 from usb_port_detector import USBPortDetector
 
 # Import de l'interface MeshCore (mode companion)
-# Tente d'utiliser meshcore-cli library si disponible, sinon fallback vers impl basique
+# Import both interfaces with distinct names (no aliasing)
+from meshcore_serial_interface import MeshCoreSerialInterface as MeshCoreSerialBase
+from meshcore_serial_interface import MeshCoreStandaloneInterface
+
+# Try to import meshcore-cli wrapper for enhanced DM support
 try:
-    from meshcore_cli_wrapper import MeshCoreCLIWrapper as MeshCoreSerialInterface
-    from meshcore_serial_interface import MeshCoreStandaloneInterface
+    from meshcore_cli_wrapper import MeshCoreCLIWrapper
+    MESHCORE_CLI_AVAILABLE = True
     info_print_mc("=" * 80)
-    info_print_mc("✅ MESHCORE: Using meshcore-cli library (FULL SUPPORT)")
+    info_print_mc("✅ MESHCORE: Using HYBRID mode (BEST OF BOTH)")
     info_print_mc("=" * 80)
-    info_print_mc("   ✅ Binary protocol supported")
-    info_print_mc("   ✅ DM messages will be logged with [DEBUG][MC]")
-    info_print_mc("   ✅ Complete MeshCore API available")
+    info_print_mc("   ✅ MeshCoreSerialInterface for broadcasts (binary protocol)")
+    info_print_mc("   ✅ MeshCoreCLIWrapper for DM messages (meshcore-cli API)")
+    info_print_mc("   ✅ Full channel broadcast support")
+    info_print_mc("   ✅ DM messages logged with [DEBUG][MC]")
     info_print_mc("=" * 80)
     MESHCORE_FULL_SUPPORT = True
 except ImportError:
-    from meshcore_serial_interface import MeshCoreSerialInterface, MeshCoreStandaloneInterface
+    MeshCoreCLIWrapper = None
+    MESHCORE_CLI_AVAILABLE = False
     info_print_mc("=" * 80)
-    info_print_mc("⚠️  MESHCORE: Using BASIC implementation (LIMITED)")
+    info_print_mc("✅ MESHCORE: Using MeshCoreSerialInterface (BROADCAST SUPPORT)")
     info_print_mc("=" * 80)
-    info_print_mc("   ❌ Binary protocol NOT supported")
-    info_print_mc("   ❌ DM messages will NOT be logged or processed")
-    info_print_mc("   ❌ Only text format DM:<sender_id>:<message> supported")
+    info_print_mc("   ✅ Binary protocol supported")
+    info_print_mc("   ✅ Channel broadcasts supported")
+    info_print_mc("   ⚠️  DM message decoding limited (no meshcore-cli)")
     info_print_mc("")
-    info_print_mc("   📋 SYMPTOM: No logs when sending DM to MeshCore")
-    info_print_mc("   🔧 SOLUTION: Install meshcore-cli library")
+    info_print_mc("   💡 TIP: Install meshcore-cli for enhanced DM support")
     info_print_mc("      $ pip install meshcore meshcoredecoder")
-    info_print_mc("      $ sudo systemctl restart meshtastic-bot")
     info_print_mc("=" * 80)
     MESHCORE_FULL_SUPPORT = False
+
+
+class MeshCoreHybridInterface:
+    """
+    Hybrid MeshCore interface that combines the best of both implementations:
+    - Uses MeshCoreSerialInterface (binary protocol) for broadcasts
+    - Uses MeshCoreCLIWrapper (meshcore-cli API) for DM messages when available
+    
+    This solves the problem where MeshCoreCLIWrapper doesn't support broadcasts
+    but has better DM message handling.
+    """
+    
+    def __init__(self, port, baudrate=115200):
+        """
+        Initialize hybrid interface
+        
+        Args:
+            port: Serial port
+            baudrate: Baud rate (default 115200)
+        """
+        self.port = port
+        self.baudrate = baudrate
+        
+        # Primary interface for broadcasts (always available)
+        self.serial_interface = MeshCoreSerialBase(port, baudrate)
+        
+        # Secondary interface for DM messages (optional, if meshcore-cli available)
+        self.cli_wrapper = None
+        if MESHCORE_CLI_AVAILABLE and MeshCoreCLIWrapper:
+            try:
+                self.cli_wrapper = MeshCoreCLIWrapper(port, baudrate)
+                debug_print("✅ Hybrid interface: Both serial and CLI wrappers initialized")
+            except Exception as e:
+                debug_print(f"⚠️  Hybrid interface: CLI wrapper init failed: {e}")
+                self.cli_wrapper = None
+        
+        # Expose common attributes from serial interface
+        self.localNode = None
+        self.serial = None
+    
+    def connect(self):
+        """Connect both interfaces"""
+        # Always connect serial interface (needed for broadcasts)
+        result = self.serial_interface.connect()
+        
+        # Expose serial interface attributes
+        self.localNode = self.serial_interface.localNode
+        self.serial = self.serial_interface.serial
+        
+        # Connect CLI wrapper if available
+        if self.cli_wrapper:
+            try:
+                self.cli_wrapper.connect()
+                debug_print("✅ Hybrid interface: CLI wrapper connected")
+            except Exception as e:
+                debug_print(f"⚠️  Hybrid interface: CLI wrapper connect failed: {e}")
+                self.cli_wrapper = None
+        
+        return result
+    
+    def disconnect(self):
+        """Disconnect both interfaces"""
+        if self.cli_wrapper:
+            try:
+                self.cli_wrapper.disconnect()
+            except Exception as e:
+                debug_print(f"⚠️  Hybrid disconnect CLI: {e}")
+        
+        return self.serial_interface.disconnect()
+    
+    def sendText(self, message, destinationId=None, channelIndex=0):
+        """
+        Send text message intelligently:
+        - Broadcasts: Use serial interface (supports binary protocol)
+        - DM messages: Use CLI wrapper if available, otherwise serial interface
+        
+        Args:
+            message: Text to send
+            destinationId: Target node ID (None or 0xFFFFFFFF = broadcast)
+            channelIndex: Channel index (0 = public)
+        
+        Returns:
+            bool: True if sent successfully
+        """
+        # Detect if this is a broadcast
+        is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
+        
+        if is_broadcast:
+            # Always use serial interface for broadcasts (binary protocol support)
+            debug_print(f"📢 [HYBRID] Using serial interface for broadcast on channel {channelIndex}")
+            return self.serial_interface.sendText(message, destinationId, channelIndex)
+        else:
+            # For DM: Use CLI wrapper if available, otherwise serial interface
+            if self.cli_wrapper:
+                debug_print(f"📤 [HYBRID] Using CLI wrapper for DM to 0x{destinationId:08x}")
+                return self.cli_wrapper.sendText(message, destinationId, channelIndex)
+            else:
+                debug_print(f"📤 [HYBRID] Using serial interface for DM to 0x{destinationId:08x}")
+                return self.serial_interface.sendText(message, destinationId, channelIndex)
+    
+    def set_node_manager(self, node_manager):
+        """Set node manager for both interfaces"""
+        self.serial_interface.set_node_manager(node_manager)
+        if self.cli_wrapper:
+            self.cli_wrapper.set_node_manager(node_manager)
+    
+    def set_message_callback(self, callback):
+        """Set message callback - prefer CLI wrapper if available"""
+        if self.cli_wrapper:
+            self.cli_wrapper.set_message_callback(callback)
+        else:
+            self.serial_interface.set_message_callback(callback)
+    
+    def __getattr__(self, name):
+        """
+        Forward any other attribute access to serial interface
+        This ensures compatibility with existing code
+        """
+        return getattr(self.serial_interface, name)
+
+
+# Use the hybrid interface when available
+MeshCoreSerialInterface = MeshCoreHybridInterface
 
 def _create_serial_interface_with_timeout(serial_port, timeout=10):
     """
