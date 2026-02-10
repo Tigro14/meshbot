@@ -503,44 +503,37 @@ class MeshCoreSerialInterface:
         is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
         
         if is_broadcast:
-            # Send as channel message (broadcast on specified channel)
+            # Send as channel message (broadcast)
+            # NOTE: Binary CMD_SEND_CHANNEL_TXT_MSG is NOT supported by MeshCore devices
+            # Device returns error 0x02 when using binary protocol for broadcasts
+            # Solution: Use text protocol with broadcast address 0xFFFFFFFF
             try:
                 info_print(f"📢 [MESHCORE] Envoi broadcast sur canal {channelIndex}: {message[:50]}{'...' if len(message) > 50 else ''}")
                 
-                # Build binary packet for CMD_SEND_CHANNEL_TXT_MSG
-                # Protocol: 0x3C ('<') + length (2 bytes LE) + command (1 byte) + channel (1 byte) + message (UTF-8)
-                message_bytes = message.encode('utf-8')
-                payload = bytes([CMD_SEND_CHANNEL_TXT_MSG, channelIndex]) + message_bytes
-                length = len(payload)
+                # Use text protocol: SEND_DM:ffffffff:message
+                # The broadcast address 0xFFFFFFFF causes the device to broadcast on public channel
+                cmd = f"SEND_DM:ffffffff:{message}\n"
                 
-                # Construct packet with framing
-                packet = bytes([0x3C]) + struct.pack('<H', length) + payload
-                
-                # DIAGNOSTIC: Log packet details before sending
-                debug_print(f"🔍 [MESHCORE-DEBUG] Port state: open={self.serial.is_open}, writable={self.serial.writable()}")
-                debug_print(f"🔍 [MESHCORE-DEBUG] Packet size: {len(packet)} bytes")
-                debug_print(f"🔍 [MESHCORE-DEBUG] Packet hex: {packet.hex()}")
-                debug_print(f"🔍 [MESHCORE-DEBUG] Command: CMD_SEND_CHANNEL_TXT_MSG ({CMD_SEND_CHANNEL_TXT_MSG})")
-                debug_print(f"🔍 [MESHCORE-DEBUG] Channel: {channelIndex}")
+                # DIAGNOSTIC: Log command details
+                debug_print(f"🔍 [MESHCORE-DEBUG] Using text protocol for broadcast")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Command: {repr(cmd)}")
                 debug_print(f"🔍 [MESHCORE-DEBUG] Message: {repr(message)}")
                 
-                # Write packet to serial port
-                bytes_written = self.serial.write(packet)
-                debug_print(f"🔍 [MESHCORE-DEBUG] Bytes written: {bytes_written}/{len(packet)}")
+                # Write command to serial port
+                bytes_written = self.serial.write(cmd.encode('utf-8'))
+                debug_print(f"🔍 [MESHCORE-DEBUG] Bytes written: {bytes_written}/{len(cmd)}")
                 
                 # Force immediate transmission
                 self.serial.flush()
                 debug_print(f"🔍 [MESHCORE-DEBUG] Flush completed")
                 
-                info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé sur canal {channelIndex} ({len(message_bytes)} octets)")
+                info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé via text protocol ({len(message)} chars)")
                 
-                # Wait briefly for any response/error from device
+                # Wait briefly for any response from device
                 time.sleep(0.1)
                 if self.serial.in_waiting > 0:
                     response_bytes = self.serial.read(self.serial.in_waiting)
                     debug_print(f"🔍 [MESHCORE-DEBUG] Device response: {response_bytes.hex()}")
-                else:
-                    debug_print(f"🔍 [MESHCORE-DEBUG] No immediate response from device")
                 
                 return True
                 
