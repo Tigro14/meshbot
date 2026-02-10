@@ -1,0 +1,139 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    MeshCore Interface Comparison
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       MeshCoreSerialInterface                               │
+│                    ✅ RECOMMENDED FOR BROADCASTS                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ✅ Supports: Public Channel Broadcasts                                     │
+│  ✅ Supports: Direct Messages (DM)                                          │
+│  ✅ Protocol: Binary (CMD_SEND_CHANNEL_TXT_MSG)                             │
+│  ✅ Status: Fully implemented and tested                                    │
+│                                                                             │
+│  Code Example:                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ from meshcore_serial_interface import MeshCoreSerialInterface      │   │
+│  │                                                                     │   │
+│  │ interface = MeshCoreSerialInterface('/dev/ttyUSB0', 115200)        │   │
+│  │ interface.connect()                                                │   │
+│  │                                                                     │   │
+│  │ # Broadcast on public channel                                      │   │
+│  │ interface.sendText(                                                │   │
+│  │     message="Hello mesh!",                                         │   │
+│  │     destinationId=0xFFFFFFFF,  # Broadcast                         │   │
+│  │     channelIndex=0             # Public channel                    │   │
+│  │ )                                                                  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                     VS
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        MeshCoreCLIWrapper                                   │
+│                    ❌ NO BROADCAST SUPPORT                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ❌ Supports: Public Channel Broadcasts - NO                                │
+│  ✅ Supports: Direct Messages (DM) - YES                                    │
+│  ⚠️  Protocol: Text-based via meshcore-cli library                          │
+│  ⚠️  Limitation: send_msg() API only supports DM                            │
+│                                                                             │
+│  Error when trying to broadcast:                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │ ❌ [MESHCORE] Broadcast messages not supported via meshcore-cli    │   │
+│  │    → MeshCore CLI library only supports DM (Direct Messages)       │   │
+│  │    → Use meshcore_serial_interface.py for channel broadcast        │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            Message Flow Diagram
+═══════════════════════════════════════════════════════════════════════════════
+
+Using MeshCoreSerialInterface:
+┌────────────┐    sendText()      ┌──────────────────────┐    Binary      ┌──────┐
+│   Your     │  destinationId=    │  MeshCoreSerial      │   Protocol     │ Mesh │
+│   Code     │──0xFFFFFFFF────────│  Interface           │───────────────►│ Core │
+│            │  channelIndex=0    │                      │   (0x3C...)    │ Radio│
+└────────────┘                    └──────────────────────┘                └──────┘
+                                          │
+                                          │ Detects broadcast
+                                          ▼
+                                  ┌───────────────────┐
+                                  │ Build binary      │
+                                  │ packet with       │
+                                  │ CMD_SEND_CHANNEL  │
+                                  │ _TXT_MSG (0x03)   │
+                                  └───────────────────┘
+
+Using MeshCoreCLIWrapper:
+┌────────────┐    sendText()      ┌──────────────────────┐    
+│   Your     │  destinationId=    │  MeshCoreCLI         │    ❌ FAILS
+│   Code     │──0xFFFFFFFF────────│  Wrapper             │───────────►
+│            │  channelIndex=0    │                      │   
+└────────────┘                    └──────────────────────┘
+                                          │
+                                          │ Detects broadcast
+                                          ▼
+                                  ┌───────────────────┐
+                                  │ Return False      │
+                                  │ Print error       │
+                                  │ message           │
+                                  └───────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                          Binary Packet Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+MeshCoreSerialInterface creates this packet for broadcasts:
+
+    ┌─────┬──────────┬─────────┬─────────┬──────────────────┐
+    │ 0x3C│ Length   │ Command │ Channel │ Message (UTF-8)  │
+    │     │ (2B LE)  │ (1B)    │ (1B)    │                  │
+    └─────┴──────────┴─────────┴─────────┴──────────────────┘
+      '<'   Payload    0x03      0=public  Your text
+            size
+
+Example for "Hello mesh!" on channel 0:
+    3c 0d 00 03 00 48 65 6c 6c 6f 20 6d 65 73 68 21
+    │  │     │  │  └────────────┬───────────────┘
+    │  │     │  │               └─ "Hello mesh!" (UTF-8)
+    │  │     │  └─ Channel 0 (public)
+    │  │     └─ CMD_SEND_CHANNEL_TXT_MSG (3)
+    │  └─ Length: 13 bytes (0x000D little-endian)
+    └─ Start marker '<' (0x3C)
+
+═══════════════════════════════════════════════════════════════════════════════
+                          Quick Decision Guide
+═══════════════════════════════════════════════════════════════════════════════
+
+    Need to send broadcasts on public channel?
+                    │
+                    ▼
+            ┌───────────────┐
+            │ Which library │
+            │ do you have?  │
+            └───────┬───────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+        ▼                       ▼
+  meshcore-cli          No meshcore-cli
+   installed              installed
+        │                       │
+        │                       │
+        ▼                       ▼
+  ❌ Won't work!        ✅ Already works!
+  Uninstall it:         You have:
+  $ pip uninstall       MeshCoreSerialInterface
+    meshcore            
+                        Just use:
+  Then restart          sendText(..., 
+  the bot               destinationId=0xFFFFFFFF,
+                        channelIndex=0)
+
+═══════════════════════════════════════════════════════════════════════════════
