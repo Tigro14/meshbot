@@ -64,7 +64,7 @@ DUAL_NETWORK_MODE=True
 # Activer/désactiver la connexion Meshtastic
 # Si False, le bot peut fonctionner en mode "companion" pour MeshCore
 # sans aucune connexion Meshtastic active
-MESHTASTIC_ENABLED = False  # True = Connexion Meshtastic active, False = Mode standalone
+MESHTASTIC_ENABLED = True  # True = Connexion Meshtastic active, False = Mode standalone
 BOT_POSITION = (48.8252, 2.3622)
 
 # Mode de connexion au réseau Meshtastic (utilisé si MESHTASTIC_ENABLED=True)
