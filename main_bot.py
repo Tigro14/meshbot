@@ -216,6 +216,44 @@ class MeshCoreHybridInterface:
         elif hasattr(self.serial_interface, 'set_message_callback'):
             self.serial_interface.set_message_callback(callback)
     
+    def start_reading(self):
+        """
+        Start reading from appropriate interface
+        
+        When CLI wrapper is available:
+        - CLI wrapper handles ALL incoming data (DMs, broadcasts, telemetry)
+        - Serial interface's read loop is disabled (to avoid conflicts)
+        
+        When CLI wrapper is NOT available:
+        - Serial interface handles incoming data
+        - Read loop was enabled during init as fallback
+        
+        Returns:
+            bool: True if reading started successfully, False otherwise
+        """
+        if self.cli_wrapper:
+            # CLI wrapper handles all incoming data
+            info_print_mc("🔍 [HYBRID] Starting CLI wrapper reading thread...")
+            result = self.cli_wrapper.start_reading()
+            if result:
+                info_print_mc("✅ [HYBRID] CLI wrapper reading thread started")
+                info_print_mc("   → All incoming packets handled by CLI wrapper")
+                info_print_mc("   → DM decryption active")
+                info_print_mc("   → RX_LOG monitoring active")
+            else:
+                error_print("❌ [HYBRID] CLI wrapper start_reading failed")
+            return result
+        else:
+            # Fallback to serial interface
+            info_print_mc("🔍 [HYBRID] Starting serial interface reading thread...")
+            result = self.serial_interface.start_reading()
+            if result:
+                info_print_mc("✅ [HYBRID] Serial interface reading thread started")
+                info_print_mc("   → Text-based packets only (no binary protocol decoding)")
+            else:
+                error_print("❌ [HYBRID] Serial interface start_reading failed")
+            return result
+    
     def __getattr__(self, name):
         """
         Forward any other attribute access to serial interface
