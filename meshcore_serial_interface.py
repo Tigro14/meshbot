@@ -76,16 +76,18 @@ class MeshCoreSerialInterface:
     - Inbound (app -> radio): 0x3C ('<') + 2 bytes length (little-endian) + payload
     """
     
-    def __init__(self, port, baudrate=115200):
+    def __init__(self, port, baudrate=115200, enable_read_loop=True):
         """
         Initialise la connexion série MeshCore
         
         Args:
             port: Port série (ex: /dev/ttyUSB0)
             baudrate: Vitesse de communication (défaut: 115200)
+            enable_read_loop: Si False, ne démarre pas le read loop (utile en mode hybride)
         """
         self.port = port
         self.baudrate = baudrate
+        self.enable_read_loop = enable_read_loop
         self.serial = None
         self.running = False
         self.read_thread = None
@@ -156,6 +158,17 @@ class MeshCoreSerialInterface:
         if not self.serial or not self.serial.is_open:
             error_print("❌ [MESHCORE] Port série non ouvert, impossible de démarrer la lecture")
             return False
+        
+        # Check if read loop is disabled (hybrid mode with CLI wrapper)
+        if not self.enable_read_loop:
+            info_print("=" * 80)
+            info_print("🔧 [MESHCORE-SERIAL] Read loop disabled (hybrid mode)")
+            info_print("=" * 80)
+            info_print(f"   Port série: {self.port}")
+            info_print(f"   Usage: SEND ONLY (broadcasts via binary protocol)")
+            info_print(f"   Receiving: Handled by MeshCoreCLIWrapper")
+            info_print("=" * 80)
+            return True
         
         self.running = True
         

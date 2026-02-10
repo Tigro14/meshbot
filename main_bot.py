@@ -107,18 +107,31 @@ class MeshCoreHybridInterface:
         self.port = port
         self.baudrate = baudrate
         
-        # Primary interface for broadcasts (always available)
-        self.serial_interface = MeshCoreSerialBase(port, baudrate)
+        # Check if CLI wrapper will be available
+        will_use_cli_wrapper = MESHCORE_CLI_AVAILABLE and MeshCoreCLIWrapper
+        
+        # Primary interface for broadcasts
+        # Disable read loop if CLI wrapper available (avoids conflicts)
+        self.serial_interface = MeshCoreSerialBase(
+            port, 
+            baudrate, 
+            enable_read_loop=not will_use_cli_wrapper
+        )
         
         # Secondary interface for DM messages (optional, if meshcore-cli available)
         self.cli_wrapper = None
-        if MESHCORE_CLI_AVAILABLE and MeshCoreCLIWrapper:
+        if will_use_cli_wrapper:
             try:
                 self.cli_wrapper = MeshCoreCLIWrapper(port, baudrate)
                 debug_print("✅ Hybrid interface: Both serial and CLI wrappers initialized")
+                debug_print("   Serial interface: SEND ONLY (read loop disabled)")
+                debug_print("   CLI wrapper: RECEIVE + DM handling")
             except Exception as e:
                 debug_print(f"⚠️  Hybrid interface: CLI wrapper init failed: {e}")
+                debug_print(f"   Enabling serial read loop as fallback")
                 self.cli_wrapper = None
+                # Re-enable read loop since CLI wrapper failed
+                self.serial_interface.enable_read_loop = True
         
         # Expose common attributes from serial interface
         self.localNode = None
