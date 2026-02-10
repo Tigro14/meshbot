@@ -1606,68 +1606,80 @@ class MeshCoreCLIWrapper:
                 else:
                     debug_print_mc(f"📊 [RX_LOG] RF monitoring only (no hex data)")
             
-            # CRITICAL FIX: Forward decoded packet to bot for processing
-            # This allows the bot to receive and process ALL MeshCore packets (not just DMs)
-            # Previously, only CONTACT_MSG_RECV (DMs) were forwarded
+            # CRITICAL FIX: Forward ALL packets to bot for statistics
+            # This allows the bot to count ALL MeshCore packets (not just text messages)
+            # The bot's traffic_monitor will handle packet type filtering and counting
             if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback:
                 try:
                     # Decode packet again (we already did above, but need clean decode for forwarding)
                     decoded_packet = MeshCoreDecoder.decode(raw_hex)
                     
-                    # Only forward valid packets with text messages or telemetry
-                    # Filter out routing packets, adverts, etc. that don't need bot processing
-                    should_forward = False
+                    # Extract packet information for all packet types
                     packet_text = None
+                    sender_id = None
+                    portnum = 'UNKNOWN_APP'  # Default
+                    payload_bytes = b''
                     
                     if decoded_packet.payload and isinstance(decoded_packet.payload, dict):
                         decoded_payload = decoded_packet.payload.get('decoded')
                         
-                        # Check if it's a text message (public or DM)
-                        if decoded_payload and hasattr(decoded_payload, 'text'):
-                            should_forward = True
-                            packet_text = decoded_payload.text
-                            debug_print_mc(f"📨 [RX_LOG] Text message detected, forwarding to bot")
+                        if decoded_payload:
+                            # Extract sender ID from public key (first 4 bytes)
+                            if hasattr(decoded_payload, 'public_key'):
+                                pubkey_hex = decoded_payload.public_key
+                                if pubkey_hex and len(pubkey_hex) >= 8:
+                                    sender_id = int(pubkey_hex[:8], 16)
+                            
+                            # Determine packet type and extract payload
+                            if hasattr(decoded_payload, 'text'):
+                                # Text message
+                                portnum = 'TEXT_MESSAGE_APP'
+                                packet_text = decoded_payload.text
+                                payload_bytes = packet_text.encode('utf-8')
+                            elif hasattr(decoded_payload, 'app_data'):
+                                # Node info advert
+                                portnum = 'NODEINFO_APP'
+                                # Store app_data as payload (will be handled by traffic_monitor)
+                                payload_bytes = str(decoded_payload.app_data).encode('utf-8')
+                            elif decoded_packet.payload_type.name in ['Position', 'PositionApp']:
+                                portnum = 'POSITION_APP'
+                                payload_bytes = b''  # Position data is in decoded_payload attributes
+                            elif decoded_packet.payload_type.name in ['Telemetry', 'TelemetryApp']:
+                                portnum = 'TELEMETRY_APP'
+                                payload_bytes = b''  # Telemetry data is in decoded_payload attributes
+                            else:
+                                # Other packet types - use payload type name
+                                portnum = decoded_packet.payload_type.name.upper() + '_APP'
+                                payload_bytes = b''
                     
-                    if should_forward and packet_text:
-                        # Extract sender node ID from packet
-                        # In MeshCore, the public key is in the packet, node_id is first 4 bytes
-                        sender_id = None
-                        
-                        if decoded_payload and hasattr(decoded_payload, 'public_key'):
-                            pubkey_hex = decoded_payload.public_key
-                            if pubkey_hex and len(pubkey_hex) >= 8:
-                                # First 4 bytes (8 hex chars) = node_id
-                                sender_id = int(pubkey_hex[:8], 16)
-                                debug_print_mc(f"📋 [RX_LOG] Sender derived from pubkey: 0x{sender_id:08x}")
-                        
-                        # Determine if broadcast or DM based on route type
-                        from meshcoredecoder.types import RouteType as RT
-                        is_broadcast = decoded_packet.route_type in [RT.Flood, RT.TransportFlood]
-                        
-                        # Create bot-compatible packet
-                        import random
-                        bot_packet = {
-                            'from': sender_id if sender_id else 0xFFFFFFFF,
-                            'to': 0xFFFFFFFF if is_broadcast else self.localNode.nodeNum,
-                            'id': random.randint(100000, 999999),
-                            'rxTime': int(time.time()),
-                            'rssi': rssi,
-                            'snr': snr,
-                            'hopLimit': 0,
-                            'hopStart': 0,
-                            'channel': 0,
-                            'decoded': {
-                                'portnum': 'TEXT_MESSAGE_APP',
-                                'payload': packet_text.encode('utf-8')
-                            },
-                            '_meshcore_rx_log': True,  # Mark as RX_LOG packet
-                            '_meshcore_broadcast': is_broadcast
-                        }
-                        
-                        # Forward to bot
-                        debug_print_mc(f"➡️  [RX_LOG] Forwarding packet to bot callback")
-                        self.message_callback(bot_packet, None)
-                        debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
+                    # Determine if broadcast or DM based on route type
+                    from meshcoredecoder.types import RouteType as RT
+                    is_broadcast = decoded_packet.route_type in [RT.Flood, RT.TransportFlood]
+                    
+                    # Create bot-compatible packet for ALL packet types
+                    import random
+                    bot_packet = {
+                        'from': sender_id if sender_id else 0xFFFFFFFF,
+                        'to': 0xFFFFFFFF if is_broadcast else self.localNode.nodeNum,
+                        'id': random.randint(100000, 999999),
+                        'rxTime': int(time.time()),
+                        'rssi': rssi,
+                        'snr': snr,
+                        'hopLimit': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'channel': 0,
+                        'decoded': {
+                            'portnum': portnum,
+                            'payload': payload_bytes
+                        },
+                        '_meshcore_rx_log': True,  # Mark as RX_LOG packet
+                        '_meshcore_broadcast': is_broadcast
+                    }
+                    
+                    # Forward ALL packets to bot (not just text messages)
+                    debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
+                    self.message_callback(bot_packet, None)
+                    debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
                 except Exception as forward_error:
                     debug_print_mc(f"⚠️ [RX_LOG] Error forwarding packet: {forward_error}")
