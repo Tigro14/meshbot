@@ -185,16 +185,22 @@ class MeshCoreHybridInterface:
                 return self.serial_interface.sendText(message, destinationId, channelIndex)
     
     def set_node_manager(self, node_manager):
-        """Set node manager for both interfaces"""
-        self.serial_interface.set_node_manager(node_manager)
-        if self.cli_wrapper:
+        """Set node manager for both interfaces (if they support it)"""
+        # Check if serial interface has the method before calling
+        if hasattr(self.serial_interface, 'set_node_manager'):
+            self.serial_interface.set_node_manager(node_manager)
+        
+        # Check if CLI wrapper exists and has the method
+        if self.cli_wrapper and hasattr(self.cli_wrapper, 'set_node_manager'):
             self.cli_wrapper.set_node_manager(node_manager)
     
     def set_message_callback(self, callback):
         """Set message callback - prefer CLI wrapper if available"""
-        if self.cli_wrapper:
+        # Prefer CLI wrapper if available and it has the method
+        if self.cli_wrapper and hasattr(self.cli_wrapper, 'set_message_callback'):
             self.cli_wrapper.set_message_callback(callback)
-        else:
+        # Otherwise use serial interface if it has the method
+        elif hasattr(self.serial_interface, 'set_message_callback'):
             self.serial_interface.set_message_callback(callback)
     
     def __getattr__(self, name):
