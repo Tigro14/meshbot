@@ -1783,6 +1783,12 @@ class MeshCoreCLIWrapper:
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
                     
+                    # Debug: Log payload structure for troubleshooting
+                    if self.debug and decoded_packet.payload:
+                        debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
+                        if isinstance(decoded_packet.payload, dict):
+                            debug_print_mc(f"🔍 [RX_LOG] Payload keys: {list(decoded_packet.payload.keys())}")
+                    
                     if decoded_packet.payload and isinstance(decoded_packet.payload, dict):
                         decoded_payload = decoded_packet.payload.get('decoded')
                         
@@ -1841,6 +1847,47 @@ class MeshCoreCLIWrapper:
                                             portnum = 'UNKNOWN_APP'
                                     except:
                                         portnum = 'UNKNOWN_APP'
+                    elif decoded_packet.payload:
+                        # Payload exists but is not a dict
+                        # Try to use it directly as bytes
+                        debug_print_mc(f"⚠️ [RX_LOG] Payload is not a dict: {type(decoded_packet.payload).__name__}")
+                        if isinstance(decoded_packet.payload, (bytes, bytearray)):
+                            payload_bytes = bytes(decoded_packet.payload)
+                            debug_print_mc(f"✅ [RX_LOG] Using payload directly as bytes: {len(payload_bytes)}B")
+                        elif isinstance(decoded_packet.payload, str):
+                            # Try to decode as hex
+                            try:
+                                payload_bytes = bytes.fromhex(decoded_packet.payload)
+                                debug_print_mc(f"✅ [RX_LOG] Converted hex string to bytes: {len(payload_bytes)}B")
+                            except ValueError:
+                                payload_bytes = decoded_packet.payload.encode('utf-8')
+                                debug_print_mc(f"✅ [RX_LOG] Encoded string to bytes: {len(payload_bytes)}B")
+                        
+                        # Try to determine portnum from payload_type
+                        if hasattr(decoded_packet, 'payload_type') and decoded_packet.payload_type:
+                            try:
+                                payload_type_value = decoded_packet.payload_type.value if hasattr(decoded_packet.payload_type, 'value') else None
+                                if payload_type_value == 1:
+                                    portnum = 'TEXT_MESSAGE_APP'
+                                elif payload_type_value == 3:
+                                    portnum = 'POSITION_APP'
+                                elif payload_type_value == 4:
+                                    portnum = 'NODEINFO_APP'
+                                elif payload_type_value == 7:
+                                    portnum = 'TELEMETRY_APP'
+                                debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
+                            except:
+                                pass
+                    else:
+                        # No payload at all - check if raw data is in the packet object itself
+                        debug_print_mc(f"⚠️ [RX_LOG] No payload found in decoded_packet")
+                        # Check if there's raw data elsewhere
+                        if hasattr(decoded_packet, 'raw_data') and decoded_packet.raw_data:
+                            payload_bytes = decoded_packet.raw_data
+                            debug_print_mc(f"✅ [RX_LOG] Found raw_data in packet: {len(payload_bytes)}B")
+                        elif hasattr(decoded_packet, 'data') and decoded_packet.data:
+                            payload_bytes = decoded_packet.data
+                            debug_print_mc(f"✅ [RX_LOG] Found data in packet: {len(payload_bytes)}B")
                     
                     # Determine if broadcast based on receiver address (not route type)
                     # Route type can be Flood even for DMs (flood routing)
