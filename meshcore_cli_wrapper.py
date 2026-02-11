@@ -1759,13 +1759,46 @@ class MeshCoreCLIWrapper:
         is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
         
         if is_broadcast:
-            # MeshCore CLI doesn't support channel broadcasts via send_msg API
-            # The send_msg API only supports direct messages to specific contacts
-            error_print("❌ [MESHCORE] Broadcast messages not supported via meshcore-cli")
-            error_print("   → MeshCore CLI library only supports DM (Direct Messages)")
-            error_print("   → Use meshcore_serial_interface.py for channel broadcast support")
-            info_print_mc(f"⚠️  [MESHCORE] Tentative d'envoi broadcast ignorée (canal {channelIndex})")
-            return False
+            # Use send_chan_msg() for channel/broadcast messages
+            # API: send_chan_msg(chan, msg, timestamp=None)
+            # Channel 0 = public/default channel
+            try:
+                debug_print_mc(f"📢 [MESHCORE-CHANNEL] Envoi broadcast sur canal {channelIndex}: {text[:50]}{'...' if len(text) > 50 else ''}")
+                
+                if not hasattr(self.meshcore, 'commands'):
+                    error_print(f"❌ [MESHCORE-CHANNEL] MeshCore n'a pas d'attribut 'commands'")
+                    return False
+                
+                # Send via commands.send_chan_msg()
+                # Channel 0 = public channel
+                debug_print_mc(f"🔍 [MESHCORE-CHANNEL] Appel de commands.send_chan_msg(chan={channelIndex}, msg=...)")
+                debug_print_mc(f"🔄 [MESHCORE-CHANNEL] Event loop running: {self._loop.is_running()}")
+                
+                future = asyncio.run_coroutine_threadsafe(
+                    self.meshcore.commands.send_chan_msg(channelIndex, text),
+                    self._loop
+                )
+                
+                # Fire-and-forget approach (same as DMs)
+                def _log_channel_result(fut):
+                    try:
+                        if fut.exception():
+                            error_print(f"❌ [MESHCORE-CHANNEL] Async send error: {fut.exception()}")
+                        else:
+                            debug_print_mc(f"✅ [CHANNEL] Async send completed successfully")
+                    except Exception as e:
+                        debug_print_mc(f"⚠️ [CHANNEL] Future check error: {e}")
+                
+                future.add_done_callback(_log_channel_result)
+                
+                debug_print_mc("✅ [MESHCORE-CHANNEL] Broadcast envoyé via send_chan_msg (fire-and-forget)")
+                info_print_mc(f"📢 [MESHCORE] Broadcast envoyé sur canal {channelIndex}")
+                return True
+                
+            except Exception as e:
+                error_print(f"❌ [MESHCORE-CHANNEL] Erreur envoi broadcast: {e}")
+                error_print(traceback.format_exc())
+                return False
         
         try:
             debug_print_mc(f"📤 [MESHCORE-DM] Envoi à 0x{destinationId:08x}: {text[:50]}{'...' if len(text) > 50 else ''}")
