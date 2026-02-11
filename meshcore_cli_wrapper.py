@@ -1452,17 +1452,17 @@ class MeshCoreCLIWrapper:
             
             decoded = packet['decoded']
             
-            # Forward to bot's on_receive callback if registered
-            if self.on_receive:
+            # Forward to bot's message_callback if registered
+            if self.message_callback:
                 debug_print_mc(f"📤 [CHANNEL] Forwarding to bot callback: {message_text[:30]}...")
                 try:
-                    self.on_receive(packet, self)
+                    self.message_callback(packet, self)
                     info_print_mc(f"✅ [CHANNEL] Message transmis au bot pour traitement")
                 except Exception as fwd_err:
                     error_print(f"❌ [CHANNEL] Erreur transmission au bot: {fwd_err}")
                     error_print(traceback.format_exc())
             else:
-                debug_print_mc("⚠️ [CHANNEL] Pas de callback on_receive enregistré")
+                debug_print_mc("⚠️ [CHANNEL] Pas de callback message_callback enregistré")
         
         except Exception as e:
             error_print(f"❌ [MESHCORE-CHANNEL] Erreur traitement message de canal: {e}")
