@@ -1849,10 +1849,6 @@ class MeshCoreCLIWrapper:
                                         # Use the numeric payload type value
                                         payload_type_value = decoded_packet.payload_type.value if hasattr(decoded_packet.payload_type, 'value') else None
                                         
-                                        # Check if this is a broadcast (public channel message)
-                                        # Broadcasts have to_id = 0xFFFFFFFF or similar
-                                        is_broadcast = (receiver_id == 0xFFFFFFFF or receiver_id == 0xffffffff)
-                                        
                                         if payload_type_value == 1:
                                             portnum = 'TEXT_MESSAGE_APP'
                                         elif payload_type_value == 3:
@@ -1861,16 +1857,17 @@ class MeshCoreCLIWrapper:
                                             portnum = 'NODEINFO_APP'
                                         elif payload_type_value == 7:
                                             portnum = 'TELEMETRY_APP'
-                                        elif payload_type_value in [13, 15] and is_broadcast:
-                                            # Types 13 and 15 are encrypted message wrappers
-                                            # For broadcasts (public channel), assume encrypted = text message
-                                            # This allows the bot's decryption logic to process them
+                                        elif payload_type_value in [12, 13, 15]:
+                                            # Types 12, 13, 15 are encrypted message wrappers
+                                            # Map to TEXT_MESSAGE_APP and let bot's decryption handle it
+                                            # Bot has PSK for channels → will decrypt channel messages
+                                            # Bot lacks PKI for DMs → will ignore what it can't decrypt
                                             portnum = 'TEXT_MESSAGE_APP'
-                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted broadcast (type {payload_type_value}) → TEXT_MESSAGE_APP")
+                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP")
                                         else:
-                                            # Unknown or encrypted DM - keep as UNKNOWN_APP
+                                            # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
-                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum} (broadcast={is_broadcast})")
+                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                                     except:
                                         portnum = 'UNKNOWN_APP'
                     elif decoded_packet.payload:
