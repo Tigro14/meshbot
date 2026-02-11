@@ -1783,8 +1783,11 @@ class MeshCoreCLIWrapper:
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
                     
-                    # Debug: Log payload structure for troubleshooting
-                    if self.debug and decoded_packet.payload:
+                    # Debug: Log payload structure ALWAYS for troubleshooting
+                    debug_print_mc(f"🔍 [RX_LOG] Checking decoded_packet for payload...")
+                    debug_print_mc(f"🔍 [RX_LOG] Has payload attribute: {hasattr(decoded_packet, 'payload')}")
+                    if hasattr(decoded_packet, 'payload'):
+                        debug_print_mc(f"🔍 [RX_LOG] Payload value: {decoded_packet.payload}")
                         debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
                         if isinstance(decoded_packet.payload, dict):
                             debug_print_mc(f"🔍 [RX_LOG] Payload keys: {list(decoded_packet.payload.keys())}")
