@@ -1819,18 +1819,29 @@ class MeshCoreCLIWrapper:
                                 payload_bytes = b''
                         else:
                             # Payload not decoded (encrypted or unknown type)
-                            # Check if there's raw payload data
+                            # Check if there's raw payload data in decoded_packet
                             raw_payload = decoded_packet.payload.get('raw', b'')
+                            
+                            # CRITICAL FIX: If decoded raw is empty, use original raw_hex from event
+                            # The decoder can't decrypt encrypted packets, so payload['raw'] is empty
+                            # But the original hex data is available in the event payload
+                            if not raw_payload and raw_hex:
+                                debug_print_mc(f"🔧 [RX_LOG] Decoded raw empty, using original raw_hex: {len(raw_hex)//2}B")
+                                raw_payload = raw_hex
+                            
                             if raw_payload:
                                 # Have raw payload - use it
                                 if isinstance(raw_payload, str):
                                     # Convert hex string to bytes
                                     try:
                                         payload_bytes = bytes.fromhex(raw_payload)
+                                        debug_print_mc(f"✅ [RX_LOG] Converted hex to bytes: {len(payload_bytes)}B")
                                     except ValueError:
                                         payload_bytes = raw_payload.encode('utf-8')
+                                        debug_print_mc(f"✅ [RX_LOG] Encoded string to bytes: {len(payload_bytes)}B")
                                 else:
                                     payload_bytes = raw_payload
+                                    debug_print_mc(f"✅ [RX_LOG] Using raw bytes directly: {len(payload_bytes)}B")
                                 
                                 # Try to determine portnum from payload_type
                                 if hasattr(decoded_packet, 'payload_type') and decoded_packet.payload_type:
@@ -1848,6 +1859,7 @@ class MeshCoreCLIWrapper:
                                         else:
                                             # Unknown or encrypted - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
+                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                                     except:
                                         portnum = 'UNKNOWN_APP'
                     elif decoded_packet.payload:
