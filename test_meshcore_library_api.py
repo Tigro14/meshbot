@@ -46,6 +46,29 @@ def test_meshcore_library():
                         doc_lines = obj.__doc__.strip().split('\n')
                         print(f"      {doc_lines[0]}")
         print()
+        
+        # Explore MessagingCommands class in detail
+        if hasattr(meshcore.commands, 'MessagingCommands'):
+            print("=" * 60)
+            print("MessagingCommands class methods:")
+            print("=" * 60)
+            try:
+                msg_cmd = meshcore.commands.MessagingCommands
+                for attr in dir(msg_cmd):
+                    if not attr.startswith('_'):
+                        obj = getattr(msg_cmd, attr)
+                        if callable(obj):
+                            print(f"  - {attr}()")
+                            # Try to get signature
+                            try:
+                                import inspect
+                                sig = inspect.signature(obj)
+                                print(f"      Signature: {sig}")
+                            except:
+                                pass
+            except Exception as e:
+                print(f"  Error exploring MessagingCommands: {e}")
+            print()
     
     # Check for broadcast-related methods
     print("=" * 60)
@@ -71,6 +94,20 @@ def test_meshcore_library():
     else:
         print("  ℹ️  No obvious broadcast methods found")
     print()
+    
+    # Explore EventType enum
+    if hasattr(meshcore, 'EventType'):
+        print("=" * 60)
+        print("EventType enum values:")
+        print("=" * 60)
+        try:
+            for event in meshcore.EventType:
+                print(f"  - {event.name}: {event.value}")
+                if 'CHANNEL' in event.name:
+                    print(f"      ⭐ CHANNEL-RELATED EVENT!")
+        except Exception as e:
+            print(f"  Error exploring EventType: {e}")
+        print()
     
     # Check send_msg signature
     if hasattr(meshcore, 'commands') and hasattr(meshcore.commands, 'send_msg'):
@@ -116,7 +153,7 @@ def test_meshcore_instance(port='/dev/ttyACM2'):
         
         # Try to create a connection
         print("Creating connection...")
-        conn = meshcore.SerialConnection(port)
+        conn = meshcore.SerialConnection(port, baudrate=115200)
         print("✅ Connection created")
         
         # Check available methods on the instance
