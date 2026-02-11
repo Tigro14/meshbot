@@ -1,4 +1,4 @@
-# Final Update: MeshCore Public Channel Support (6 Phases)
+# Final Update: MeshCore Public Channel Support (7 Phases - Diagnostic)
 
 ## Latest Fix: Phase 6 - Comprehensive Payload Extraction
 
@@ -172,7 +172,10 @@ Fires EventType.RX_LOG_DATA
 _on_rx_log_data() callback
     ├─ Parse packet header (sender, receiver)
     ├─ Decode packet with MeshCoreDecoder
-    ├─ 🔍 Debug: Log payload type
+    ├─ 🔍 Debug: Log payload structure ALWAYS (Phase 7) **NEW**
+    │   ├─ Check if payload attribute exists
+    │   ├─ Log payload value and type
+    │   └─ Identify which extraction path taken
     ├─ Extract payload (THREE-TIER):
     │   ├─ Tier 1: Dict payload
     │   │   ├─ Try decoded object ✅
@@ -193,29 +196,102 @@ Forward to bot.on_message()
 handle_echo() processes and responds ✅
 ```
 
+## Phase 7: Diagnostic Logging (Current - Awaiting Test Results)
+
+### New Issue Discovered
+Despite Phases 5 & 6 fixes, payload still 0 bytes and debug logs NOT appearing:
+```
+Type: Unknown(12) | Size: 56B
+Payload:0B  # ❌ Still empty!
+
+# Expected debug logs NOT in user's output:
+# (missing) 🔍 [RX_LOG] Payload type: ...
+# (missing) ⚠️ [RX_LOG] Payload is not a dict: ...
+```
+
+### Problem
+Phase 6 debug logging was conditional:
+```python
+if self.debug and decoded_packet.payload:  # ❌ Silent if payload is None/False!
+    debug_print_mc(f"🔍 Payload type: ...")
+```
+
+If `decoded_packet.payload` doesn't exist or is None, we get **NO diagnostic info** about WHY extraction is failing!
+
+### The Fix: Unconditional Diagnostic Logging
+
+Added **always-on** logging to reveal actual state:
+```python
+# Debug: Log payload structure ALWAYS for troubleshooting
+debug_print_mc(f"🔍 [RX_LOG] Checking decoded_packet for payload...")
+debug_print_mc(f"🔍 [RX_LOG] Has payload attribute: {hasattr(decoded_packet, 'payload')}")
+if hasattr(decoded_packet, 'payload'):
+    debug_print_mc(f"🔍 [RX_LOG] Payload value: {decoded_packet.payload}")
+    debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
+```
+
+### Expected Diagnostic Output
+
+Will reveal one of these scenarios:
+
+**A) Payload Attribute Missing:**
+```
+🔍 [RX_LOG] Has payload attribute: False
+→ Need to check alternate packet attributes
+```
+
+**B) Payload is None:**
+```
+🔍 [RX_LOG] Has payload attribute: True
+🔍 [RX_LOG] Payload value: None
+→ Check packet.raw_data or packet.data
+```
+
+**C) Payload is Empty Dict:**
+```
+🔍 [RX_LOG] Payload value: {}
+🔍 [RX_LOG] Payload keys: []
+→ No data available
+```
+
+**D) Payload Has Data (Should Work):**
+```
+🔍 [RX_LOG] Payload value: {'raw': '1a05...'}
+→ Phase 5/6 should extract this!
+```
+
+### Status
+🔄 **Awaiting user test results** 
+
+See `TESTING_INSTRUCTIONS.md` for deployment and testing guide.
+
+Once we see the diagnostic output, we can identify the actual packet structure and implement the appropriate fix.
+
 ## Statistics
 
-### Issues Resolved: 6
+### Issues Resolved: 7
 1. ✅ Original: No public channel listening
 2. ✅ Regression 1: Sender ID missing (multi-source)
 3. ✅ Regression 2: Interface deaf (early return)
 4. ✅ Architectural: CHANNEL_MSG_RECV lacks sender_id
 5. ✅ Encrypted: UNKNOWN_APP with 0 bytes (dict payloads)
 6. ✅ Comprehensive: Type Unknown(12) (non-dict payloads)
+7. 🔄 **Diagnostic: Phase 6 not working - need payload structure investigation**
 
-### Commits: 19
+### Commits: 22
 - Original feature implementation
 - Sender extraction fixes
 - Deaf interface fix
 - Architectural fix (RX_LOG priority)
 - Encrypted payload handling (dict with raw)
 - Comprehensive payload extraction (bytes/string/missing)
+- **Diagnostic logging (unconditional) - Phase 7**
 - Multiple documentation updates
 
 ### Files Modified: 1
 - `meshcore_cli_wrapper.py`
 
-### Documentation: 8 Files
+### Documentation: 10 Files
 1. `ECHO_PUBLIC_CHANNEL_IMPLEMENTATION.md` - Original feature
 2. `CHANNEL_SENDER_EXTRACTION_FIX.md` - Multi-source extraction
 3. `MESHCORE_DEAF_ISSUE_FIX.md` - Early return bug
@@ -223,7 +299,9 @@ handle_echo() processes and responds ✅
 5. `COMPLETE_RESOLUTION.md` - Phases 1-4 summary
 6. `UNKNOWN_APP_ENCRYPTED_PAYLOAD_FIX.md` - Phase 5 (dict encrypted)
 7. `COMPREHENSIVE_PAYLOAD_EXTRACTION_FIX.md` - Phase 6 (all structures)
-8. `FINAL_UPDATE.md` - This file (all 6 phases)
+8. `DIAGNOSTIC_PAYLOAD_LOGGING.md` - **Phase 7 (diagnostic) - NEW**
+9. `TESTING_INSTRUCTIONS.md` - **User testing guide - NEW**
+10. `FINAL_UPDATE.md` - This file (all 7 phases)
 
 ### Tests: 3 Files
 - `test_channel_msg_recv_subscription.py`
