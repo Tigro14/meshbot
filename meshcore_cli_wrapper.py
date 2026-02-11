@@ -1611,12 +1611,19 @@ class MeshCoreCLIWrapper:
             # The bot's traffic_monitor will handle packet type filtering and counting
             if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback:
                 try:
+                    # IMPORTANT: Parse header FIRST to get correct sender/receiver addresses
+                    # The header_info is already parsed above, but we need it here too
+                    packet_header = self._parse_meshcore_header(raw_hex)
+                    
+                    # Extract sender and receiver from packet header (CORRECT SOURCE!)
+                    sender_id = packet_header['sender_id'] if packet_header else 0xFFFFFFFF
+                    receiver_id = packet_header['receiver_id'] if packet_header else 0xFFFFFFFF
+                    
                     # Decode packet again (we already did above, but need clean decode for forwarding)
                     decoded_packet = MeshCoreDecoder.decode(raw_hex)
                     
                     # Extract packet information for all packet types
                     packet_text = None
-                    sender_id = None
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
                     
@@ -1624,12 +1631,6 @@ class MeshCoreCLIWrapper:
                         decoded_payload = decoded_packet.payload.get('decoded')
                         
                         if decoded_payload:
-                            # Extract sender ID from public key (first 4 bytes)
-                            if hasattr(decoded_payload, 'public_key'):
-                                pubkey_hex = decoded_payload.public_key
-                                if pubkey_hex and len(pubkey_hex) >= 8:
-                                    sender_id = int(pubkey_hex[:8], 16)
-                            
                             # Determine packet type and extract payload
                             if hasattr(decoded_payload, 'text'):
                                 # Text message
@@ -1652,15 +1653,15 @@ class MeshCoreCLIWrapper:
                                 portnum = decoded_packet.payload_type.name.upper() + '_APP'
                                 payload_bytes = b''
                     
-                    # Determine if broadcast or DM based on route type
-                    from meshcoredecoder.types import RouteType as RT
-                    is_broadcast = decoded_packet.route_type in [RT.Flood, RT.TransportFlood]
+                    # Determine if broadcast based on receiver address (not route type)
+                    # Route type can be Flood even for DMs (flood routing)
+                    is_broadcast = (receiver_id == 0xFFFFFFFF)
                     
                     # Create bot-compatible packet for ALL packet types
                     import random
                     bot_packet = {
-                        'from': sender_id if sender_id else 0xFFFFFFFF,
-                        'to': 0xFFFFFFFF if is_broadcast else self.localNode.nodeNum,
+                        'from': sender_id,  # Use header sender (CORRECT!)
+                        'to': receiver_id,  # Use header receiver (CORRECT!)
                         'id': random.randint(100000, 999999),
                         'rxTime': int(time.time()),
                         'rssi': rssi,
@@ -1678,6 +1679,7 @@ class MeshCoreCLIWrapper:
                     
                     # Forward ALL packets to bot (not just text messages)
                     debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
+                    debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
                     self.message_callback(bot_packet, None)
                     debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
