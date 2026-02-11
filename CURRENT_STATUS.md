@@ -1,49 +1,48 @@
-# Current Status: Phase 9 - Encrypted Broadcast Message Handling
+# Current Status: Phase 10 - Encrypted Types Without Broadcast Detection
 
 ## Summary
 
-**Status**: ✅ Phase 9 Complete - Ready for User Testing
+**Status**: ✅ Phase 10 Complete - Ready for User Testing
 
-After 9 phases of development, the bot now fully supports encrypted `/echo` commands on MeshCore public channel!
+After 10 phases of development, the bot now fully supports encrypted `/echo` commands on MeshCore public channel!
 
-## What We Fixed (Phase 9)
+## What We Fixed (Phase 10)
 
 ### Problem
-After Phase 8 successfully extracted encrypted payload bytes, the bot still didn't process commands:
+Phase 9 added broadcast detection, but public channels don't use 0xFFFFFFFF!
 ```
-✅ [RX_LOG] Converted hex to bytes: 39B
-📋 [RX_LOG] Determined portnum from type 15: UNKNOWN_APP  ← Problem!
-➡️  [RX_LOG] Forwarding UNKNOWN_APP packet
+From: 0x3431d211 → To: 0x7afed221  ← Channel hash, not 0xFFFFFFFF!
+📋 [RX_LOG] Determined portnum: UNKNOWN_APP (broadcast=False)  ❌
 ```
 
-Payload extracted ✅, but portnum wrong (UNKNOWN_APP instead of TEXT_MESSAGE_APP) ❌
+### Root Cause Discovery
+**Public channels use channel hash as receiver_id, NOT 0xFFFFFFFF!**
 
-### Root Cause
-**Packet type 15 not mapped:**
-- Type 1 = TEXT_MESSAGE_APP ✅
-- Type 3, 4, 7 = Other apps ✅
-- **Type 13, 15 = Encrypted wrappers** ❌ Not in mapping!
+Meshtastic addressing:
+- True broadcast: 0xFFFFFFFF (rare)
+- **Public channel: channel hash** (e.g., 0x7afed221) ← User's case!
+- Direct message: node ID
 
-When user sends encrypted `/echo`:
-- Outer type = 15 (encrypted wrapper)
-- Inner type = 1 (TEXT_MESSAGE_APP) - hidden until decrypted
-- Our code saw type 15 → UNKNOWN_APP → bot ignored it
+Phase 9 required `receiver_id == 0xFFFFFFFF` → failed for channel hashes!
 
-### Solution (Phase 9)
-**Detect broadcasts and map encrypted types:**
-1. Check if packet is broadcast (receiver_id = 0xFFFFFFFF)
-2. Map types 13, 15 → TEXT_MESSAGE_APP for broadcasts
-3. Bot decrypts and processes command
+### Solution (Phase 10)
+**Map ALL encrypted types without broadcast check:**
 
 ```python
-is_broadcast = (receiver_id == 0xFFFFFFFF)
-if type in [13, 15] and is_broadcast:
-    portnum = 'TEXT_MESSAGE_APP'  # Bot will decrypt!
+# No broadcast detection needed!
+if type in [12, 13, 15]:
+    portnum = 'TEXT_MESSAGE_APP'  # Bot will decrypt with PSK
 ```
+
+**Why this works:**
+1. Bot has PSK for subscribed channels
+2. Bot decrypts channel messages ✅
+3. Bot ignores DMs it can't decrypt ℹ️
+4. Simpler, more robust!
 
 ## What You Need to Do
 
-### 1. Deploy Phase 9
+### 1. Deploy Phase 10
 ```bash
 cd /home/user/meshbot
 git pull origin copilot/add-echo-command-listener

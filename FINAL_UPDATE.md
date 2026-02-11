@@ -1,6 +1,6 @@
-# Final Update: MeshCore Public Channel Support (9 Phases Complete)
+# Final Update: MeshCore Public Channel Support (10 Phases Complete)
 
-## Latest Fix: Phase 9 - Encrypted Broadcast Message Handling
+## Latest Fix: Phase 10 - Encrypted Types Without Broadcast Detection
 
 ### Issue Discovered
 After Phase 5 fix for encrypted payloads, Type Unknown(12) packets still showing 0 bytes:
