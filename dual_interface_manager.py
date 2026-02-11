@@ -169,27 +169,14 @@ class DualInterfaceManager:
             
             debug_print(f"📡 [MESHCORE] Packet #{self._meshcore_packet_count} received")
             
-            # MC DEBUG: Ultra-visible packet reception
-            from utils import info_print_mc
-            info_print_mc("=" * 80)
-            info_print_mc(f"🔗 MC DEBUG: MESHCORE PACKET IN on_meshcore_message()")
-            info_print_mc("=" * 80)
-            info_print_mc(f"📍 Entry point: dual_interface_manager.py::on_meshcore_message()")
-            info_print_mc(f"📦 Packet count: #{self._meshcore_packet_count}")
-            info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
-            
-            # Log packet details
+            # MC DEBUG: Detailed packet reception logging (DEBUG level)
+            from utils import debug_print_mc
             if packet:
                 from_id = packet.get('from', 0)
                 to_id = packet.get('to', 0)
                 decoded = packet.get('decoded', {})
                 portnum = decoded.get('portnum', 'UNKNOWN')
-                info_print_mc(f"📦 From: 0x{from_id:08x}")
-                info_print_mc(f"📬 To: 0x{to_id:08x}")
-                info_print_mc(f"📨 PortNum: {portnum}")
-            
-            info_print_mc(f"➡️  Forwarding to main callback with NetworkSource.MESHCORE")
-            info_print_mc("=" * 80)
+                debug_print_mc(f"📡 Packet #{self._meshcore_packet_count}: {portnum} from 0x{from_id:08x} → 0x{to_id:08x}")
             
             # Forward to main callback with network source tag
             if self.message_callback:

@@ -76,16 +76,18 @@ class MeshCoreSerialInterface:
     - Inbound (app -> radio): 0x3C ('<') + 2 bytes length (little-endian) + payload
     """
     
-    def __init__(self, port, baudrate=115200):
+    def __init__(self, port, baudrate=115200, enable_read_loop=True):
         """
         Initialise la connexion série MeshCore
         
         Args:
             port: Port série (ex: /dev/ttyUSB0)
             baudrate: Vitesse de communication (défaut: 115200)
+            enable_read_loop: Si False, ne démarre pas le read loop (utile en mode hybride)
         """
         self.port = port
         self.baudrate = baudrate
+        self.enable_read_loop = enable_read_loop
         self.serial = None
         self.running = False
         self.read_thread = None
@@ -156,6 +158,17 @@ class MeshCoreSerialInterface:
         if not self.serial or not self.serial.is_open:
             error_print("❌ [MESHCORE] Port série non ouvert, impossible de démarrer la lecture")
             return False
+        
+        # Check if read loop is disabled (hybrid mode with CLI wrapper)
+        if not self.enable_read_loop:
+            info_print("=" * 80)
+            info_print("🔧 [MESHCORE-SERIAL] Read loop disabled (hybrid mode)")
+            info_print("=" * 80)
+            info_print(f"   Port série: {self.port}")
+            info_print(f"   Usage: SEND ONLY (broadcasts via binary protocol)")
+            info_print(f"   Receiving: Handled by MeshCoreCLIWrapper")
+            info_print("=" * 80)
+            return True
         
         self.running = True
         
@@ -473,34 +486,75 @@ class MeshCoreSerialInterface:
             error_print(f"❌ [MESHCORE] Erreur traitement données binaires: {e}")
             error_print(traceback.format_exc())
     
-    def sendText(self, message, destinationId=None):
+    def sendText(self, message, destinationId=None, channelIndex=0):
         """
         Envoie un message texte via MeshCore
         
         Args:
             message: Texte à envoyer
-            destinationId: ID du destinataire (None = broadcast, mais désactivé en mode companion)
+            destinationId: ID du destinataire (None or 0xFFFFFFFF = broadcast sur canal)
+            channelIndex: Index du canal (0 = public, ignoré pour DM directs)
         """
         if not self.serial or not self.serial.is_open:
             error_print("❌ [MESHCORE] Port série non ouvert, impossible d'envoyer")
             return False
         
-        # En mode companion, on envoie uniquement des DM (pas de broadcast)
-        if destinationId is None:
-            debug_print("⚠️ [MESHCORE] Broadcast désactivé en mode companion")
-            return False
+        # Detect if this is a broadcast/channel message
+        is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
         
-        try:
-            # Format simple pour envoi DM via MeshCore
-            # TODO: Adapter selon le protocole binaire MeshCore réel
-            cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
-            self.serial.write(cmd.encode('utf-8'))
-            debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
-            return True
-        
-        except Exception as e:
-            error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
-            return False
+        if is_broadcast:
+            # Send as channel message (broadcast)
+            # NOTE: Binary CMD_SEND_CHANNEL_TXT_MSG is NOT supported by MeshCore devices
+            # Device returns error 0x02 when using binary protocol for broadcasts
+            # Solution: Use text protocol with broadcast address 0xFFFFFFFF
+            try:
+                info_print(f"📢 [MESHCORE] Envoi broadcast sur canal {channelIndex}: {message[:50]}{'...' if len(message) > 50 else ''}")
+                
+                # Use text protocol: SEND_DM:ffffffff:message
+                # The broadcast address 0xFFFFFFFF causes the device to broadcast on public channel
+                cmd = f"SEND_DM:ffffffff:{message}\n"
+                
+                # DIAGNOSTIC: Log command details
+                debug_print(f"🔍 [MESHCORE-DEBUG] Using text protocol for broadcast")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Command: {repr(cmd)}")
+                debug_print(f"🔍 [MESHCORE-DEBUG] Message: {repr(message)}")
+                
+                # Write command to serial port
+                bytes_written = self.serial.write(cmd.encode('utf-8'))
+                debug_print(f"🔍 [MESHCORE-DEBUG] Bytes written: {bytes_written}/{len(cmd)}")
+                
+                # Force immediate transmission
+                self.serial.flush()
+                debug_print(f"🔍 [MESHCORE-DEBUG] Flush completed")
+                
+                info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé via text protocol ({len(message)} chars)")
+                
+                # Wait briefly for any response from device
+                time.sleep(0.1)
+                if self.serial.in_waiting > 0:
+                    response_bytes = self.serial.read(self.serial.in_waiting)
+                    debug_print(f"🔍 [MESHCORE-DEBUG] Device response: {response_bytes.hex()}")
+                
+                return True
+                
+            except Exception as e:
+                error_print(f"❌ [MESHCORE] Erreur envoi broadcast: {e}")
+                error_print(traceback.format_exc())
+                return False
+        else:
+            # Send as direct message (DM) to specific node
+            try:
+                # Format simple pour envoi DM via MeshCore
+                # TODO: Implémenter protocole binaire complet avec CMD_SEND_TXT_MSG
+                cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
+                self.serial.write(cmd.encode('utf-8'))
+                self.serial.flush()  # Force immediate transmission to hardware
+                debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
+                return True
+            
+            except Exception as e:
+                error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
+                return False
     
     def set_message_callback(self, callback):
         """Définit le callback pour les messages reçus"""
