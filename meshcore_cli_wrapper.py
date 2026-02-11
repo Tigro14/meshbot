@@ -1407,6 +1407,17 @@ class MeshCoreCLIWrapper:
             self.last_message_time = time.time()
             self.connection_healthy = True
             
+            # Log event structure for debugging
+            try:
+                debug_print_mc(f"📦 [CHANNEL] Event type: {type(event).__name__}")
+                if hasattr(event, 'type'):
+                    debug_print_mc(f"   Event.type: {event.type}")
+                # Log event attributes if available
+                if hasattr(event, '__dict__'):
+                    debug_print_mc(f"   Event attributes: {list(event.__dict__.keys())}")
+            except Exception as log_err:
+                debug_print_mc(f"📦 [CHANNEL] Event (erreur log: {log_err})")
+            
             # Extract event payload
             payload = event.payload if hasattr(event, 'payload') else event
             
@@ -1417,11 +1428,35 @@ class MeshCoreCLIWrapper:
             # Log payload structure for debugging
             debug_print_mc(f"📦 [CHANNEL] Payload keys: {list(payload.keys())}")
             
-            # Extract sender_id (from_id)
-            sender_id = payload.get('sender_id') or payload.get('contact_id') or payload.get('from')
+            # Extract sender_id using multiple fallback methods (like _on_contact_message)
+            sender_id = None
+            
+            # Méthode 1: Chercher dans payload (dict)
+            if isinstance(payload, dict):
+                sender_id = payload.get('sender_id') or payload.get('contact_id') or payload.get('from')
+                debug_print_mc(f"📋 [CHANNEL] Payload dict - sender_id: {sender_id}")
+            
+            # Méthode 2: Chercher dans les attributs de l'event
+            if sender_id is None and hasattr(event, 'attributes'):
+                attributes = event.attributes
+                debug_print_mc(f"📋 [CHANNEL] Event attributes: {attributes}")
+                if isinstance(attributes, dict):
+                    sender_id = attributes.get('sender_id') or attributes.get('contact_id') or attributes.get('from')
+            
+            # Méthode 3: Chercher directement sur l'event
+            if sender_id is None:
+                for attr_name in ['sender_id', 'contact_id', 'from']:
+                    if hasattr(event, attr_name):
+                        attr_value = getattr(event, attr_name)
+                        # Only use if it's actually a valid value (not None)
+                        if attr_value is not None and isinstance(attr_value, int):
+                            sender_id = attr_value
+                            debug_print_mc(f"📋 [CHANNEL] Event direct {attr_name}: {sender_id}")
+                            break
             
             # Extract channel index (default to 0 for public channel)
-            channel_index = payload.get('channel') or payload.get('chan') or 0
+            # Try multiple field names for channel
+            channel_index = payload.get('channel') or payload.get('chan') or payload.get('channel_idx') or 0
             
             # Extract message text
             message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
@@ -1431,7 +1466,7 @@ class MeshCoreCLIWrapper:
                 return
             
             if sender_id is None:
-                debug_print_mc("⚠️ [CHANNEL] Sender ID manquant, ignoré")
+                debug_print_mc("⚠️ [CHANNEL] Sender ID manquant après toutes les tentatives, ignoré")
                 return
             
             # Log the channel message
