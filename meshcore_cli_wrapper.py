@@ -818,16 +818,6 @@ class MeshCoreCLIWrapper:
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
-                # Subscribe to CHANNEL_MSG_RECV to process public channel messages (e.g., /echo commands)
-                # This allows the bot to respond to commands sent on the public channel
-                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                    self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                    info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
-                    info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
-                
                 # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
                 # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
                 rx_log_enabled = False
@@ -841,23 +831,34 @@ class MeshCoreCLIWrapper:
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
                     info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
                     info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
+                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
                 elif not rx_log_enabled:
                     info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
                     info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
+                    
+                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
+                    # This allows the bot to respond to commands sent on the public channel
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
+                        info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
                 elif not hasattr(EventType, 'RX_LOG_DATA'):
                     debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
+                    
+                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
-                
-                # Subscribe to CHANNEL_MSG_RECV for public channel messages
-                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                    self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                    info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
                 # Also subscribe to RX_LOG_DATA
                 rx_log_enabled = False
@@ -871,8 +872,25 @@ class MeshCoreCLIWrapper:
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
                     info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
                     info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
+                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
                 elif not rx_log_enabled:
                     info_print_mc("ℹ️  RX_LOG_DATA désactivé")
+                    
+                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                elif not hasattr(EventType, 'RX_LOG_DATA'):
+                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
