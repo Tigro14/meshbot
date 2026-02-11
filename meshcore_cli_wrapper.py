@@ -818,6 +818,16 @@ class MeshCoreCLIWrapper:
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
+                # Subscribe to CHANNEL_MSG_RECV to process public channel messages (e.g., /echo commands)
+                # This allows the bot to respond to commands sent on the public channel
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
+                    info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
+                
                 # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
                 # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
                 rx_log_enabled = False
@@ -840,6 +850,14 @@ class MeshCoreCLIWrapper:
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
+                
+                # Subscribe to CHANNEL_MSG_RECV for public channel messages
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
                 # Also subscribe to RX_LOG_DATA
                 rx_log_enabled = False
@@ -1374,6 +1392,81 @@ class MeshCoreCLIWrapper:
             return f"0x{node_id:08x}"
         except Exception:
             return f"0x{node_id:08x}"
+    
+    def _on_channel_message(self, event):
+        """
+        Callback pour les messages de canal public (CHANNEL_MSG_RECV)
+        Permet au bot de traiter les commandes envoyées sur le canal public (ex: /echo)
+        
+        Args:
+            event: Event object from meshcore dispatcher
+        """
+        info_print_mc("📢 [MESHCORE-CHANNEL] Canal public message reçu!")
+        try:
+            # Update last message time for healthcheck
+            self.last_message_time = time.time()
+            self.connection_healthy = True
+            
+            # Extract event payload
+            payload = event.payload if hasattr(event, 'payload') else event
+            
+            if not isinstance(payload, dict):
+                debug_print_mc(f"⚠️ [CHANNEL] Payload non-dict: {type(payload).__name__}")
+                return
+            
+            # Log payload structure for debugging
+            debug_print_mc(f"📦 [CHANNEL] Payload keys: {list(payload.keys())}")
+            
+            # Extract sender_id (from_id)
+            sender_id = payload.get('sender_id') or payload.get('contact_id') or payload.get('from')
+            
+            # Extract channel index (default to 0 for public channel)
+            channel_index = payload.get('channel') or payload.get('chan') or 0
+            
+            # Extract message text
+            message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
+            
+            if not message_text:
+                debug_print_mc("⚠️ [CHANNEL] Message vide, ignoré")
+                return
+            
+            if sender_id is None:
+                debug_print_mc("⚠️ [CHANNEL] Sender ID manquant, ignoré")
+                return
+            
+            # Log the channel message
+            info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
+            
+            # Convert to bot-compatible packet format
+            # CRITICAL: Set to_id=0xFFFFFFFF so message is recognized as broadcast by message_router.py
+            packet = {
+                'from': sender_id,
+                'to': 0xFFFFFFFF,  # Broadcast address - critical for routing
+                'decoded': {
+                    'portnum': 'TEXT_MESSAGE_APP',
+                    'payload': message_text.encode('utf-8')
+                },
+                'channel': channel_index,
+                '_meshcore_dm': False  # NOT a DM - this is a public channel message
+            }
+            
+            decoded = packet['decoded']
+            
+            # Forward to bot's on_receive callback if registered
+            if self.on_receive:
+                debug_print_mc(f"📤 [CHANNEL] Forwarding to bot callback: {message_text[:30]}...")
+                try:
+                    self.on_receive(packet, self)
+                    info_print_mc(f"✅ [CHANNEL] Message transmis au bot pour traitement")
+                except Exception as fwd_err:
+                    error_print(f"❌ [CHANNEL] Erreur transmission au bot: {fwd_err}")
+                    error_print(traceback.format_exc())
+            else:
+                debug_print_mc("⚠️ [CHANNEL] Pas de callback on_receive enregistré")
+        
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-CHANNEL] Erreur traitement message de canal: {e}")
+            error_print(traceback.format_exc())
     
     def _on_rx_log_data(self, event):
         """
