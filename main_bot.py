@@ -823,6 +823,7 @@ class MeshBot:
                 debug_print_mc("🔗 MeshCore packet (single mode)")
             elif self._is_tcp_mode():
                 source = 'tcp'
+                # Removed excessive debug log: Source détectée TCP mode
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
                 # Removed excessive debug log: Source détectée Serial/local mode
@@ -1013,6 +1014,10 @@ class MeshBot:
                     debug_print_mc(f"📞 Processing message from 0x{from_id:08x}")
                     
                     self.message_handler.process_text_message(packet, decoded, message)
+                    
+                    # MC DEBUG: Log command processing completion
+                    if source == 'meshcore':
+                        info_print_mc("✅ MC DEBUG: process_text_message() returned")
         
         except Exception as e:
             error_print(f"Erreur on_message: {e}")

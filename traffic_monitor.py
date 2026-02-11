@@ -913,6 +913,10 @@ class TrafficMonitor:
                     # Paquet MeshCore → table meshcore_packets
                     self.persistence.save_meshcore_packet(packet_entry)
                     logger.debug(f"📦 Paquet MeshCore sauvegardé: {packet_type} de {sender_name}")
+                    # MC DEBUG: Ultra-visible save confirmation
+                    info_print_mc(f"💾 MC DEBUG: Packet sauvegardé dans table meshcore_packets")
+                    info_print_mc(f"   → Type: {packet_type}")
+                    info_print_mc(f"   → From: {sender_name} (0x{packet_entry['from_id']:08x})")
                 else:
                     # Paquet Meshtastic (local, tcp, tigrog2) → table packets
                     self.persistence.save_packet(packet_entry)
