@@ -567,7 +567,7 @@ class TrafficPersistence:
             from_id = packet.get('from_id', 0)
             packet_type = packet.get('packet_type', 'UNKNOWN')
             sender_name = packet.get('sender_name', 'Unknown')
-            info_print(f"💾 [SAVE-MESHCORE] Tentative sauvegarde: {packet_type} de {sender_name} (0x{from_id:08x})")
+            debug_print(f"💾 [MESHCORE] Saving: {packet_type} from {sender_name}")
             
             # Vérifier que la connexion est active
             if self.conn is None:
@@ -618,15 +618,12 @@ class TrafficPersistence:
 
             self.conn.commit()
             
-            # DIAGNOSTIC: Log successful save
-            info_print(f"✅ [SAVE-MESHCORE] Paquet sauvegardé avec succès dans meshcore_packets")
-
-            # Log périodique pour suivre l'activité (tous les 10 paquets pour debug)
+            # Log périodique (tous les 10 paquets)
             if not hasattr(self, '_meshcore_packet_count'):
                 self._meshcore_packet_count = 0
             self._meshcore_packet_count += 1
             if self._meshcore_packet_count % 10 == 0:
-                info_print(f"📦 [SAVE-MESHCORE] Total: {self._meshcore_packet_count} paquets MeshCore sauvegardés dans SQLite")
+                info_print(f"📦 [MESHCORE] {self._meshcore_packet_count} packets saved to DB")
 
         except Exception as e:
             error_print(f"❌ [SAVE-MESHCORE] Erreur lors de la sauvegarde du paquet MeshCore : {e}")

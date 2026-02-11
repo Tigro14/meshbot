@@ -632,31 +632,15 @@ class TrafficMonitor:
         
         # Removed excessive debug logs: add_packet ENTRY (both logger and info_print)
         
-        # MC DEBUG: Ultra-visible MeshCore packet detection
+        # MC DEBUG: Detailed MeshCore packet logging (DEBUG level)
         if source == 'meshcore':
-            info_print_mc("=" * 80)
-            info_print_mc("🔗 MC DEBUG: MESHCORE PACKET IN add_packet()")
-            info_print_mc("=" * 80)
-            info_print_mc(f"📍 Entry point: traffic_monitor.py::add_packet()")
-            info_print_mc(f"📦 From: 0x{from_id:08x}")
-            info_print_mc(f"🔗 Source: {source}")
-            info_print_mc(f"🔌 Interface: {type(interface).__name__ if interface else 'None'}")
-            
-            # Log packet structure for debugging
             decoded = packet.get('decoded', {})
             portnum = decoded.get('portnum', 'UNKNOWN')
-            info_print_mc(f"📨 PortNum: {portnum}")
-            
-            # Check if it's a DM
             to_id = packet.get('to', 0)
             is_dm = to_id != 0xFFFFFFFF and to_id != 0
-            info_print_mc(f"💌 Is DM: {is_dm} (to=0x{to_id:08x})")
-            
-            # Check for _meshcore_dm flag
             is_meshcore_dm = packet.get('_meshcore_dm', False)
-            info_print_mc(f"🏷️  _meshcore_dm flag: {is_meshcore_dm}")
             
-            info_print_mc("=" * 80)
+            debug_print_mc(f"📦 MeshCore packet: {portnum} from 0x{from_id:08x}, DM={is_dm}, _meshcore_dm={is_meshcore_dm}")
         
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):
@@ -929,10 +913,6 @@ class TrafficMonitor:
                     # Paquet MeshCore → table meshcore_packets
                     self.persistence.save_meshcore_packet(packet_entry)
                     logger.debug(f"📦 Paquet MeshCore sauvegardé: {packet_type} de {sender_name}")
-                    # MC DEBUG: Ultra-visible save confirmation
-                    info_print_mc(f"💾 MC DEBUG: Packet sauvegardé dans table meshcore_packets")
-                    info_print_mc(f"   → Type: {packet_type}")
-                    info_print_mc(f"   → From: {sender_name} (0x{packet_entry['from_id']:08x})")
                 else:
                     # Paquet Meshtastic (local, tcp, tigrog2) → table packets
                     self.persistence.save_packet(packet_entry)

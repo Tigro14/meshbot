@@ -814,23 +814,15 @@ class MeshBot:
                     # Removed excessive debug log: Source détectée Meshtastic
                 elif network_source == NetworkSource.MESHCORE:
                     source = 'meshcore'
-                    # Removed excessive debug logs: Source détectée MeshCore
-                    # MC DEBUG: Ultra-visible source detection
-                    info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (dual mode)")
-                    info_print_mc(f"🔗 MC DEBUG: → Packet sera traité avec source='meshcore'")
+                    debug_print_mc("🔗 MeshCore packet (dual mode)")
                 else:
                     source = 'unknown'
-                    # Removed excessive debug log: Source détectée Unknown
             elif globals().get('MESHCORE_ENABLED', False) and not self._dual_mode_active:
                 # Mode MeshCore companion (sans dual mode) - tous les paquets viennent de MeshCore
                 source = 'meshcore'
-                # Removed excessive debug logs: Source détectée MeshCore single mode
-                # MC DEBUG: Ultra-visible source detection
-                info_print_mc("🔗 MC DEBUG: Source détectée comme MeshCore (single mode)")
-                info_print_mc(f"🔗 MC DEBUG: → MESHCORE_ENABLED=True, dual_mode=False")
+                debug_print_mc("🔗 MeshCore packet (single mode)")
             elif self._is_tcp_mode():
                 source = 'tcp'
-                # Removed excessive debug log: Source détectée TCP mode
             elif globals().get('CONNECTION_MODE', 'serial').lower() == 'serial':
                 source = 'local'
                 # Removed excessive debug log: Source détectée Serial/local mode
@@ -913,16 +905,7 @@ class MeshBot:
             
             # DEBUG: Log MeshCore DM flag
             if is_meshcore_dm:
-                info_print_mc(f"🔍 [DEBUG] _meshcore_dm flag présent dans packet | from=0x{from_id:08x} | to=0x{to_id:08x}")
-                # MC DEBUG: Ultra-visible DM detection
-                info_print_mc("=" * 80)
-                info_print_mc("💌 MC DEBUG: MESHCORE DM DETECTED")
-                info_print_mc("=" * 80)
-                info_print_mc(f"📍 Location: main_bot.py::on_message() - DM detection")
-                info_print_mc(f"📦 From: 0x{from_id:08x}")
-                info_print_mc(f"📬 To: 0x{to_id:08x}")
-                info_print_mc(f"🏷️  _meshcore_dm flag: True")
-                info_print_mc("=" * 80)
+                debug_print_mc(f"💌 MeshCore DM from 0x{from_id:08x} to 0x{to_id:08x}")
             
             # Broadcast can be to 0xFFFFFFFF or to 0 (both are broadcast addresses)
             # BUT: MeshCore DMs are NOT broadcasts even if to_id looks like broadcast
@@ -976,20 +959,9 @@ class MeshBot:
                 if not message:
                     return
                 
-                # MC DEBUG: Log TEXT_MESSAGE_APP from MeshCore
+                # Log TEXT_MESSAGE_APP from MeshCore at DEBUG level
                 if source == 'meshcore':
-                    info_print_mc("=" * 80)
-                    info_print_mc("📨 MC DEBUG: TEXT_MESSAGE_APP FROM MESHCORE")
-                    info_print_mc("=" * 80)
-                    info_print_mc(f"📍 Location: main_bot.py::on_message() - TEXT_MESSAGE_APP processing")
-                    info_print_mc(f"📦 From: 0x{from_id:08x}")
-                    info_print_mc(f"📬 To: 0x{to_id:08x}")
-                    info_print_mc(f"💬 Message: {message[:80]}{'...' if len(message) > 80 else ''}")
-                    info_print_mc(f"📢 Is broadcast: {is_broadcast}")
-                    info_print_mc(f"💌 Is DM: {not is_broadcast}")
-                    info_print_mc(f"🏷️  _meshcore_dm flag: {is_meshcore_dm}")
-                    info_print_mc(f"➡️  Continuing with message processing")
-                    info_print_mc("=" * 80)
+                    debug_print_mc(f"📨 TEXT_MESSAGE from 0x{from_id:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
                 
                 # ========================================
                 # DÉDUPLICATION BROADCASTS - Prévenir boucles infinies
@@ -1038,25 +1010,9 @@ class MeshBot:
 
                 # Traiter les commandes
                 if message and self.message_handler:
-                    # DEBUG: Log avant appel process_text_message
-                    info_print_mc(f"📞 [DEBUG] Appel process_text_message | message='{message}' | _meshcore_dm={packet.get('_meshcore_dm', False)}")
-                    
-                    # MC DEBUG: Log command processing call
-                    if source == 'meshcore':
-                        info_print_mc("=" * 80)
-                        info_print_mc("🎯 MC DEBUG: CALLING process_text_message() FOR MESHCORE")
-                        info_print_mc("=" * 80)
-                        info_print_mc(f"📍 Location: main_bot.py::on_message() - before process_text_message()")
-                        info_print_mc(f"💬 Message: {message[:80]}{'...' if len(message) > 80 else ''}")
-                        info_print_mc(f"📦 From: 0x{from_id:08x}")
-                        info_print_mc(f"➡️  Calling: self.message_handler.process_text_message()")
-                        info_print_mc("=" * 80)
+                    debug_print_mc(f"📞 Processing message from 0x{from_id:08x}")
                     
                     self.message_handler.process_text_message(packet, decoded, message)
-                    
-                    # MC DEBUG: Log command processing completion
-                    if source == 'meshcore':
-                        info_print_mc("✅ MC DEBUG: process_text_message() returned")
         
         except Exception as e:
             error_print(f"Erreur on_message: {e}")
