@@ -1421,12 +1421,15 @@ class MeshCoreCLIWrapper:
             # Extract event payload
             payload = event.payload if hasattr(event, 'payload') else event
             
-            if not isinstance(payload, dict):
-                debug_print_mc(f"⚠️ [CHANNEL] Payload non-dict: {type(payload).__name__}")
-                return
-            
             # Log payload structure for debugging
-            debug_print_mc(f"📦 [CHANNEL] Payload keys: {list(payload.keys())}")
+            try:
+                debug_print_mc(f"📦 [CHANNEL] Payload type: {type(payload).__name__}")
+                if isinstance(payload, dict):
+                    debug_print_mc(f"📦 [CHANNEL] Payload keys: {list(payload.keys())}")
+                else:
+                    debug_print_mc(f"📦 [CHANNEL] Payload: {str(payload)[:200]}")
+            except Exception as log_err:
+                debug_print_mc(f"📦 [CHANNEL] Payload (erreur log: {log_err})")
             
             # Extract sender_id using multiple fallback methods (like _on_contact_message)
             sender_id = None
@@ -1456,10 +1459,17 @@ class MeshCoreCLIWrapper:
             
             # Extract channel index (default to 0 for public channel)
             # Try multiple field names for channel
-            channel_index = payload.get('channel') or payload.get('chan') or payload.get('channel_idx') or 0
+            if isinstance(payload, dict):
+                channel_index = payload.get('channel') or payload.get('chan') or payload.get('channel_idx') or 0
+            else:
+                channel_index = 0
             
             # Extract message text
-            message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
+            if isinstance(payload, dict):
+                message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
+            else:
+                # Try to get text from event directly if payload is not dict
+                message_text = getattr(event, 'text', '') or getattr(payload, 'text', '') if hasattr(payload, 'text') else ''
             
             if not message_text:
                 debug_print_mc("⚠️ [CHANNEL] Message vide, ignoré")
