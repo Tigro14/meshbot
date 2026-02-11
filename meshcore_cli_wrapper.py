@@ -1808,6 +1808,39 @@ class MeshCoreCLIWrapper:
                                 # Other packet types - use payload type name
                                 portnum = decoded_packet.payload_type.name.upper() + '_APP'
                                 payload_bytes = b''
+                        else:
+                            # Payload not decoded (encrypted or unknown type)
+                            # Check if there's raw payload data
+                            raw_payload = decoded_packet.payload.get('raw', b'')
+                            if raw_payload:
+                                # Have raw payload - use it
+                                if isinstance(raw_payload, str):
+                                    # Convert hex string to bytes
+                                    try:
+                                        payload_bytes = bytes.fromhex(raw_payload)
+                                    except ValueError:
+                                        payload_bytes = raw_payload.encode('utf-8')
+                                else:
+                                    payload_bytes = raw_payload
+                                
+                                # Try to determine portnum from payload_type
+                                if hasattr(decoded_packet, 'payload_type') and decoded_packet.payload_type:
+                                    try:
+                                        # Use the numeric payload type value
+                                        payload_type_value = decoded_packet.payload_type.value if hasattr(decoded_packet.payload_type, 'value') else None
+                                        if payload_type_value == 1:
+                                            portnum = 'TEXT_MESSAGE_APP'
+                                        elif payload_type_value == 3:
+                                            portnum = 'POSITION_APP'
+                                        elif payload_type_value == 4:
+                                            portnum = 'NODEINFO_APP'
+                                        elif payload_type_value == 7:
+                                            portnum = 'TELEMETRY_APP'
+                                        else:
+                                            # Unknown or encrypted - keep as UNKNOWN_APP
+                                            portnum = 'UNKNOWN_APP'
+                                    except:
+                                        portnum = 'UNKNOWN_APP'
                     
                     # Determine if broadcast based on receiver address (not route type)
                     # Route type can be Flood even for DMs (flood routing)
