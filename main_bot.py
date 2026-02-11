@@ -170,7 +170,7 @@ class MeshCoreHybridInterface:
     def sendText(self, message, destinationId=None, channelIndex=0):
         """
         Send text message intelligently:
-        - Broadcasts: Use serial interface (supports binary protocol)
+        - Broadcasts: Use CLI wrapper (supports send_chan_msg API) if available
         - DM messages: Use CLI wrapper if available, otherwise serial interface
         
         Args:
@@ -185,9 +185,14 @@ class MeshCoreHybridInterface:
         is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
         
         if is_broadcast:
-            # Always use serial interface for broadcasts (binary protocol support)
-            debug_print(f"📢 [HYBRID] Using serial interface for broadcast on channel {channelIndex}")
-            return self.serial_interface.sendText(message, destinationId, channelIndex)
+            # Prefer CLI wrapper for broadcasts (has send_chan_msg API)
+            if self.cli_wrapper:
+                debug_print(f"📢 [HYBRID] Using CLI wrapper for broadcast on channel {channelIndex} (send_chan_msg API)")
+                return self.cli_wrapper.sendText(message, destinationId, channelIndex)
+            else:
+                # Fallback to serial interface if CLI wrapper not available
+                debug_print(f"📢 [HYBRID] Using serial interface for broadcast on channel {channelIndex} (fallback)")
+                return self.serial_interface.sendText(message, destinationId, channelIndex)
         else:
             # For DM: Use CLI wrapper if available, otherwise serial interface
             if self.cli_wrapper:
