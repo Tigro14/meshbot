@@ -738,6 +738,9 @@ class TrafficMonitor:
                                         decrypted_decoded = decrypted_payload.decoded
                                         if hasattr(decrypted_decoded, 'text'):
                                             message_text = decrypted_decoded.text
+                                            # CRITICAL: Store decrypted text back in decoded dict
+                                            # so display code can find it
+                                            decoded['text'] = message_text
                                             debug_print(f"✅ Decrypted TEXT_MESSAGE_APP: {message_text[:50]}...")
                                         else:
                                             debug_print(f"⚠️ Decrypted but no text field")
@@ -748,6 +751,7 @@ class TrafficMonitor:
                             else:
                                 debug_print(f"❌ Failed to decrypt TEXT_MESSAGE_APP")
                                 message_text = "[ENCRYPTED]"
+                                decoded['text'] = message_text
             elif 'encrypted' in packet:
                 # Paquet chiffré
                 is_encrypted = True
