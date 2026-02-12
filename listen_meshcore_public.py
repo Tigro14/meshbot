@@ -126,10 +126,7 @@ def main():
     try:
         # Connect to Meshtastic device
         print(f"[{format_timestamp()}] 🔌 Connecting to /dev/ttyACM2...")
-        interface = meshtastic.serial_interface.SerialInterface(
-            devPath="/dev/ttyACM2",
-            baudRate=115200
-        )
+        interface = meshtastic.serial_interface.SerialInterface("/dev/ttyACM2")
         print(f"[{format_timestamp()}] ✅ Connected successfully")
         
         # Get node info
