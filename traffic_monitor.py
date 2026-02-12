@@ -724,15 +724,44 @@ class TrafficMonitor:
                             # Encrypted channel message - check source before decrypting
                             debug_print(f"🔐 Encrypted TEXT_MESSAGE_APP detected ({len(payload)}B), source={source}")
                             
-                            # IMPORTANT: MeshCore uses its own encryption system, not Meshtastic's
-                            # Don't attempt Meshtastic decryption on MeshCore packets
+                            # IMPORTANT: MeshCore has TWO encryption types:
+                            # 1. Public channel messages: Use Meshtastic PSK (AES-CTR) - SAME as Meshtastic!
+                            # 2. DMs (Direct Messages): Use PyNaCl (Curve25519) - DIFFERENT system
+                            # 
+                            # We should:
+                            # - Decrypt public channel messages with Meshtastic PSK (they work!)
+                            # - Skip DMs (different encryption system)
+                            
                             if source == 'meshcore':
-                                debug_print(f"ℹ️  MeshCore packet - skipping Meshtastic decryption (MeshCore handles its own encryption)")
-                                message_text = "[ENCRYPTED]"
-                                decoded['text'] = message_text
-                                packet['decoded']['text'] = message_text
-                                # Don't attempt Meshtastic decryption
-                                decrypted_data = None
+                                # Check if this is a DM to us or a public channel message
+                                to_id = packet.get('to', 0xFFFFFFFF)
+                                is_dm_to_us = (my_node_id and to_id == my_node_id)
+                                
+                                if is_dm_to_us:
+                                    # MeshCore DM - uses PyNaCl encryption, not Meshtastic PSK
+                                    debug_print(f"ℹ️  MeshCore DM - skipping Meshtastic decryption (uses PyNaCl, not PSK)")
+                                    message_text = "[ENCRYPTED]"
+                                    decoded['text'] = message_text
+                                    packet['decoded']['text'] = message_text
+                                    # Don't attempt Meshtastic decryption
+                                    decrypted_data = None
+                                else:
+                                    # MeshCore PUBLIC CHANNEL - uses Meshtastic PSK encryption!
+                                    # Proceed with normal Meshtastic decryption
+                                    debug_print(f"🔐 MeshCore public channel - attempting Meshtastic PSK decryption...")
+                                    
+                                    # Get packet info for decryption
+                                    packet_id = packet.get('id', 0)
+                                    channel_index = packet.get('channel', 0)
+                                    
+                                    # Try to decrypt with channel PSK
+                                    decrypted_data = self._decrypt_packet(
+                                        encrypted_data=payload,
+                                        packet_id=packet_id,
+                                        from_id=from_id,
+                                        channel_index=channel_index,
+                                        interface=interface
+                                    )
                             else:
                                 # Meshtastic packet - try Meshtastic decryption
                                 debug_print(f"🔐 Attempting Meshtastic decryption...")
