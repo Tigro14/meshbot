@@ -704,6 +704,45 @@ class TrafficMonitor:
 
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
+                    
+                    # Check if message is encrypted (has payload bytes but no text)
+                    if not message_text and 'payload' in decoded:
+                        payload = decoded.get('payload')
+                        if isinstance(payload, (bytes, bytearray)) and len(payload) > 0:
+                            # Encrypted channel message - try to decrypt
+                            debug_print(f"🔐 Encrypted TEXT_MESSAGE_APP detected ({len(payload)}B), attempting decryption...")
+                            
+                            # Get packet info for decryption
+                            packet_id = packet.get('id', 0)
+                            channel_index = packet.get('channel', 0)
+                            
+                            # Try to decrypt with channel PSK
+                            decrypted_data = self._decrypt_packet(
+                                encrypted_data=payload,
+                                packet_id=packet_id,
+                                from_id=from_id,
+                                channel_index=channel_index,
+                                interface=interface
+                            )
+                            
+                            if decrypted_data:
+                                # Successfully decrypted - extract text
+                                if hasattr(decrypted_data, 'payload'):
+                                    decrypted_payload = decrypted_data.payload
+                                    if hasattr(decrypted_payload, 'decoded'):
+                                        decrypted_decoded = decrypted_payload.decoded
+                                        if hasattr(decrypted_decoded, 'text'):
+                                            message_text = decrypted_decoded.text
+                                            debug_print(f"✅ Decrypted TEXT_MESSAGE_APP: {message_text[:50]}...")
+                                        else:
+                                            debug_print(f"⚠️ Decrypted but no text field")
+                                    else:
+                                        debug_print(f"⚠️ Decrypted but no decoded field")
+                                else:
+                                    debug_print(f"⚠️ Decrypted but no payload field")
+                            else:
+                                debug_print(f"❌ Failed to decrypt TEXT_MESSAGE_APP")
+                                message_text = "[ENCRYPTED]"
             elif 'encrypted' in packet:
                 # Paquet chiffré
                 is_encrypted = True
