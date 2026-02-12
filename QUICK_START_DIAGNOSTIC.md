@@ -8,16 +8,37 @@ The diagnostic script has been fixed and is ready to use.
 
 ```bash
 cd /home/dietpi/bot
+
+# Default port (/dev/ttyACM2)
 python3 listen_meshcore_public.py
+
+# Or specify your USB port
+python3 listen_meshcore_public.py /dev/ttyACM1
+```
+
+## Port Configuration
+
+**Check your device:**
+```bash
+ls /dev/ttyACM*
+```
+
+**Use the correct port:**
+```bash
+# Show help
+python3 listen_meshcore_public.py --help
+
+# Specify port
+python3 listen_meshcore_public.py /dev/ttyACM1
 ```
 
 ## What You'll See
 
 ```
 🎯 MeshCore Public Channel Listener
-Device: /dev/ttyACM2 @ 115200 baud
+Device: /dev/ttyACM1 @ 115200 baud
 
-🔌 Connecting to /dev/ttyACM2...
+🔌 Connecting to /dev/ttyACM1...
 ✅ Connected successfully
 📡 My node ID: 0x12345678
 🎧 Listening for messages...

@@ -14,7 +14,28 @@ pip install meshcore meshcoredecoder
 
 ```bash
 cd /home/dietpi/bot
+
+# Default port (/dev/ttyACM2)
 python3 listen_meshcore_channel.py
+
+# Or specify your USB port
+python3 listen_meshcore_channel.py /dev/ttyACM1
+```
+
+## Port Configuration
+
+**Check your device:**
+```bash
+ls /dev/ttyACM*
+```
+
+**Use the correct port:**
+```bash
+# Show help
+python3 listen_meshcore_channel.py --help
+
+# Specify port
+python3 listen_meshcore_channel.py /dev/ttyACM1
 ```
 
 ## Test
