@@ -53,7 +53,7 @@ def on_message(event):  # ✅ Single parameter
     """
     # Extract event type and payload from event object
     event_type = event.type if hasattr(event, 'type') else 'Unknown'
-    payload = event.data if hasattr(event, 'data') else event
+    payload = event.payload if hasattr(event, 'payload') else event  # ✅ Use .payload not .data
     
     # Rest of processing...
 ```
