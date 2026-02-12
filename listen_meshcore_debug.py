@@ -56,17 +56,27 @@ def format_hex(data):
         return str(data)
 
 
-def on_message(event_type, payload):
-    """Callback for MeshCore events"""
+def on_message(event):
+    """Callback for MeshCore events
+    
+    Args:
+        event: Event object from MeshCore (single parameter)
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    
+    # Extract event type and payload from event object
+    event_type = event.type if hasattr(event, 'type') else 'Unknown'
+    payload = event.data if hasattr(event, 'data') else event
     
     print("\n" + "="*80)
     print(f"[{timestamp}] 📡 MESHCORE EVENT RECEIVED")
     print("="*80)
     print(f"Event Type: {event_type}")
     
-    if event_type == EventType.CHANNEL_MSG_RECV:
+    if hasattr(EventType, 'CHANNEL_MSG_RECV') and event_type == EventType.CHANNEL_MSG_RECV:
         print("✅ This is a CHANNEL_MSG_RECV (Public channel message)")
+    elif hasattr(EventType, 'RX_LOG_DATA') and event_type == EventType.RX_LOG_DATA:
+        print("✅ This is RX_LOG_DATA (ALL RF packets)")
     else:
         print(f"ℹ️  This is a different event type: {event_type}")
     
