@@ -1,6 +1,6 @@
-# Final Update: MeshCore Public Channel Support (11 Phases Complete)
+# Final Update: MeshCore Public Channel Support (13 Phases Complete)
 
-## Latest Fix: Phase 11 - TEXT_MESSAGE_APP Decryption
+## Latest Fix: Phase 13 - Store Decrypted Text in decoded Dict
 
 ### Issue Discovered
 After Phase 5 fix for encrypted payloads, Type Unknown(12) packets still showing 0 bytes:
