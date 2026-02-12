@@ -208,8 +208,9 @@ def main():
         print(f"✅ Connected to MeshCore on {port}")
         
         # Subscribe to CHANNEL_MSG_RECV events
+        # CRITICAL: Use .events.subscribe() for CHANNEL_MSG_RECV (not .dispatcher!)
         print("🎧 Subscribing to CHANNEL_MSG_RECV events...")
-        meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+        meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
         
         print("✅ Subscribed successfully")
         print("\n🎧 Listening for messages...")
