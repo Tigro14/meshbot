@@ -215,9 +215,10 @@ def main():
         print("\n🎧 Listening for messages...")
         print("   Send '/echo test' on MeshCore Public channel to see output!\n")
         
-        # Keep running
-        while True:
-            time.sleep(1)
+        # Keep event loop running to process callbacks
+        # CRITICAL: Must use loop.run_forever() to process async events
+        # Without this, callbacks are never invoked!
+        loop.run_forever()
             
     except KeyboardInterrupt:
         print("\n\n⏹️  Stopped by user (Ctrl+C)")
