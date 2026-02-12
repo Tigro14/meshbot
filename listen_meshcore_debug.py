@@ -207,25 +207,48 @@ def main():
         
         print(f"✅ Connected to MeshCore on {port}")
         
-        # Subscribe to CHANNEL_MSG_RECV events
+        # Subscribe to events
         # MeshCore API has two variants - check which one exists
-        print("🎧 Subscribing to CHANNEL_MSG_RECV events...")
+        # Priority: RX_LOG_DATA (all RF packets) > CHANNEL_MSG_RECV (channel only)
+        print("🎧 Subscribing to MeshCore events...")
+        
+        subscribed = False
         
         if hasattr(meshcore, 'events'):
             # Newer MeshCore API
-            meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
-            print("   Using events.subscribe() (newer API)")
+            # Try RX_LOG_DATA first (receives ALL RF packets - broadcasts, DMs, telemetry)
+            if hasattr(EventType, 'RX_LOG_DATA'):
+                meshcore.events.subscribe(EventType.RX_LOG_DATA, on_message)
+                print("   ✅ Subscribed to RX_LOG_DATA via events.subscribe()")
+                print("   → Will receive ALL RF packets (broadcasts, channel, DMs, telemetry)")
+                subscribed = True
+            elif hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+                print("   ✅ Subscribed to CHANNEL_MSG_RECV via events.subscribe()")
+                print("   → Will receive channel messages only")
+                subscribed = True
         elif hasattr(meshcore, 'dispatcher'):
             # Older MeshCore API
-            meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
-            print("   Using dispatcher.subscribe() (older API)")
-        else:
+            # Try RX_LOG_DATA first (receives ALL RF packets)
+            if hasattr(EventType, 'RX_LOG_DATA'):
+                meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, on_message)
+                print("   ✅ Subscribed to RX_LOG_DATA via dispatcher.subscribe()")
+                print("   → Will receive ALL RF packets (broadcasts, channel, DMs, telemetry)")
+                subscribed = True
+            elif hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+                print("   ✅ Subscribed to CHANNEL_MSG_RECV via dispatcher.subscribe()")
+                print("   → Will receive channel messages only")
+                subscribed = True
+        
+        if not subscribed:
             print("❌ ERROR: No subscription method available")
             print("   MeshCore object has neither 'events' nor 'dispatcher' attribute")
+            print("   Or EventType has neither 'RX_LOG_DATA' nor 'CHANNEL_MSG_RECV'")
             print("   Check MeshCore library version")
             sys.exit(1)
         
-        print("✅ Subscribed successfully")
+        print("✅ Subscription successful")
         print("\n🎧 Listening for messages...")
         print("   Send '/echo test' on MeshCore Public channel to see output!\n")
         
