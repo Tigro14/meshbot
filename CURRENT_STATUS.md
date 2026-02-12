@@ -1,53 +1,85 @@
-# Current Status: Phase 10 - Encrypted Types Without Broadcast Detection
+# Current Status: Phase 11 - TEXT_MESSAGE_APP Decryption
 
 ## Summary
 
-**Status**: ✅ Phase 10 Complete - Ready for User Testing
+**Status**: ✅ Phase 11 Complete - Ready for User Testing
 
-After 10 phases of development, the bot now fully supports encrypted `/echo` commands on MeshCore public channel!
+After 11 phases of development, the bot now fully decrypts and processes encrypted `/echo` commands on MeshCore public channel!
 
-## What We Fixed (Phase 10)
+## What We Fixed (Phase 11)
 
 ### Problem
-Phase 9 added broadcast detection, but public channels don't use 0xFFFFFFFF!
+Phase 10 successfully forwarded TEXT_MESSAGE_APP, but message showed empty:
 ```
-From: 0x3431d211 → To: 0x7afed221  ← Channel hash, not 0xFFFFFFFF!
-📋 [RX_LOG] Determined portnum: UNKNOWN_APP (broadcast=False)  ❌
+📦 TEXT_MESSAGE_APP from 0xbafd11bf (40B)
+└─ Msg:"  ← Empty!
 ```
 
 ### Root Cause Discovery
-**Public channels use channel hash as receiver_id, NOT 0xFFFFFFFF!**
+**Encrypted payload was forwarded but never decrypted!**
 
-Meshtastic addressing:
-- True broadcast: 0xFFFFFFFF (rare)
-- **Public channel: channel hash** (e.g., 0x7afed221) ← User's case!
-- Direct message: node ID
+Message flow:
+1. Phase 10 maps encrypted type → TEXT_MESSAGE_APP ✅
+2. Forwards with `decoded['payload']` = 40B encrypted bytes ✅
+3. Bot tries to extract text from `decoded['text']` ❌
+4. But `decoded['payload']` has encrypted bytes, not text!
+5. `_decrypt_packet()` exists but only called for PKI DMs
+6. **Channel messages never decrypted!**
 
-Phase 9 required `receiver_id == 0xFFFFFFFF` → failed for channel hashes!
-
-### Solution (Phase 10)
-**Map ALL encrypted types without broadcast check:**
+### Solution (Phase 11)
+**Added decryption for TEXT_MESSAGE_APP packets:**
 
 ```python
-# No broadcast detection needed!
-if type in [12, 13, 15]:
-    portnum = 'TEXT_MESSAGE_APP'  # Bot will decrypt with PSK
+if packet_type == 'TEXT_MESSAGE_APP':
+    message_text = self._extract_message_text(decoded)
+    
+    # NEW: Check if encrypted (has bytes but no text)
+    if not message_text and 'payload' in decoded:
+        # Decrypt with channel PSK
+        decrypted_data = self._decrypt_packet(...)
+        message_text = decrypted_data.payload.decoded.text
 ```
 
 **Why this works:**
-1. Bot has PSK for subscribed channels
-2. Bot decrypts channel messages ✅
-3. Bot ignores DMs it can't decrypt ℹ️
-4. Simpler, more robust!
+1. Detects encrypted payload (bytes but no text)
+2. Decrypts with channel PSK ✅
+3. Extracts text from decrypted protobuf ✅
+4. Bot can now see and process commands ✅
 
 ## What You Need to Do
 
-### 1. Deploy Phase 10
+### 1. Deploy Phase 11
 ```bash
 cd /home/user/meshbot
 git pull origin copilot/add-echo-command-listener
 sudo systemctl restart meshbot
 ```
+
+### 2. Monitor Logs
+```bash
+journalctl -u meshbot -f | grep -E "(TEXT_MESSAGE|🔐|Decrypted|Msg:)"
+```
+
+### 3. Test Command
+Send `/echo test` on MeshCore public channel
+
+### 4. Expected Logs
+```
+[DEBUG][MC] 📦 [RX_LOG] Type: Unknown(13)
+[DEBUG][MC] 🔐 [RX_LOG] Encrypted packet (type 15) → TEXT_MESSAGE_APP
+[DEBUG][MC] ➡️  [RX_LOG] Forwarding TEXT_MESSAGE_APP packet
+[DEBUG] 🔐 Encrypted TEXT_MESSAGE_APP detected (40B), attempting decryption...
+[DEBUG] ✅ Decrypted TEXT_MESSAGE_APP: /echo test...
+[DEBUG][MC] 📦 TEXT_MESSAGE_APP from Node-xxxxx
+[DEBUG][MC]   └─ Msg:"/echo test"  ← Should show decrypted text! ✅
+[INFO] Processing command: /echo test
+[INFO] Sending response: test
+```
+
+### 5. Verify
+- ✅ Msg:" shows the actual command text (not empty)
+- ✅ Bot processes and responds to `/echo`
+- ✅ Response appears on public channel
 
 ### 2. Monitor Logs
 ```bash
