@@ -705,6 +705,11 @@ class TrafficMonitor:
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
                     
+                    # DEBUG: Log decoded structure for troubleshooting
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] message_text: {repr(message_text)}")
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded keys: {list(decoded.keys())}")
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded: {decoded}")
+                    
                     # Check if message is encrypted (has payload bytes but no text)
                     if not message_text and 'payload' in decoded:
                         payload = decoded.get('payload')
