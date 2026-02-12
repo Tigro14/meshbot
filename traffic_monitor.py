@@ -770,7 +770,10 @@ class TrafficMonitor:
                                 else:
                                     debug_print(f"⚠️ Decrypted but no payload field")
                             else:
-                                debug_print(f"❌ Failed to decrypt TEXT_MESSAGE_APP")
+                                # Only log error for non-MeshCore packets
+                                # (MeshCore packets skip decryption intentionally)
+                                if source != 'meshcore':
+                                    debug_print(f"❌ Failed to decrypt TEXT_MESSAGE_APP")
                                 message_text = "[ENCRYPTED]"
                                 decoded['text'] = message_text
                                 packet['decoded']['text'] = message_text  # Update packet dict too
