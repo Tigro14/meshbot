@@ -208,9 +208,22 @@ def main():
         print(f"✅ Connected to MeshCore on {port}")
         
         # Subscribe to CHANNEL_MSG_RECV events
-        # CRITICAL: Use .events.subscribe() for CHANNEL_MSG_RECV (not .dispatcher!)
+        # MeshCore API has two variants - check which one exists
         print("🎧 Subscribing to CHANNEL_MSG_RECV events...")
-        meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+        
+        if hasattr(meshcore, 'events'):
+            # Newer MeshCore API
+            meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+            print("   Using events.subscribe() (newer API)")
+        elif hasattr(meshcore, 'dispatcher'):
+            # Older MeshCore API
+            meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+            print("   Using dispatcher.subscribe() (older API)")
+        else:
+            print("❌ ERROR: No subscription method available")
+            print("   MeshCore object has neither 'events' nor 'dispatcher' attribute")
+            print("   Check MeshCore library version")
+            sys.exit(1)
         
         print("✅ Subscribed successfully")
         print("\n🎧 Listening for messages...")
