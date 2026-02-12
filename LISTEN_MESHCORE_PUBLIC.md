@@ -126,6 +126,23 @@ Channel: 0
 
 ## Troubleshooting
 
+### SerialInterface Error
+
+**Error: TypeError: SerialInterface.__init__() got an unexpected keyword argument 'baudRate'**
+
+**Solution:**
+The `baudRate` parameter doesn't exist in Meshtastic's SerialInterface. Use simple port string:
+
+```python
+# ❌ Wrong:
+interface = meshtastic.serial_interface.SerialInterface(devPath="/dev/ttyACM2", baudRate=115200)
+
+# ✅ Correct:
+interface = meshtastic.serial_interface.SerialInterface("/dev/ttyACM2")
+```
+
+Meshtastic automatically uses 115200 baud - no need to specify.
+
 ### Connection Issues
 
 **Error: Cannot connect to /dev/ttyACM2**
