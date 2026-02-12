@@ -710,8 +710,15 @@ class TrafficMonitor:
                     debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded keys: {list(decoded.keys())}")
                     debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded: {decoded}")
                     
-                    # Check if message is encrypted (has payload bytes but no text)
-                    if not message_text and 'payload' in decoded:
+                    # Check if message is encrypted (bytes or non-printable characters)
+                    is_encrypted = (
+                        isinstance(message_text, bytes) or
+                        (message_text and not message_text.isprintable())
+                    )
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] is_encrypted: {is_encrypted}")
+                    
+                    # Check if message is encrypted (has payload bytes but no text, or text is encrypted)
+                    if (not message_text or is_encrypted) and 'payload' in decoded:
                         payload = decoded.get('payload')
                         if isinstance(payload, (bytes, bytearray)) and len(payload) > 0:
                             # Encrypted channel message - try to decrypt
