@@ -209,7 +209,7 @@ def main():
         
         # Subscribe to CHANNEL_MSG_RECV events
         print("🎧 Subscribing to CHANNEL_MSG_RECV events...")
-        meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
+        meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
         
         print("✅ Subscribed successfully")
         print("\n🎧 Listening for messages...")
