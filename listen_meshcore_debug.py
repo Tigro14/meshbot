@@ -17,6 +17,7 @@ Examples:
 
 import sys
 import time
+import asyncio
 from datetime import datetime
 
 # Import ONLY MeshCore libraries (NO meshtastic!)
@@ -196,8 +197,13 @@ def main():
     try:
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] 🔌 Connecting to MeshCore...")
         
-        # Create MeshCore instance
-        meshcore = MeshCore(port, 115200)
+        # Create MeshCore instance using async factory method
+        # Must use MeshCore.create_serial() - NOT direct instantiation!
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        meshcore = loop.run_until_complete(
+            MeshCore.create_serial(port, baudrate=115200)
+        )
         
         print(f"✅ Connected to MeshCore on {port}")
         
