@@ -2,6 +2,16 @@
 """
 MeshCore Public Channel Listener
 Diagnostic tool to listen to MeshCore public channel messages and log details
+
+Usage:
+    python listen_meshcore_channel.py [PORT]
+    
+    PORT: Serial port (default: /dev/ttyACM2)
+    
+Examples:
+    python listen_meshcore_channel.py
+    python listen_meshcore_channel.py /dev/ttyACM1
+    python listen_meshcore_channel.py /dev/ttyACM0
 """
 
 import time
@@ -109,10 +119,29 @@ def on_message(event_type, data):
 
 def main():
     """Main function"""
+    # Parse command-line arguments
+    port = "/dev/ttyACM2"  # Default port
+    baudrate = 115200
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ['-h', '--help', 'help']:
+            print("Usage: python listen_meshcore_channel.py [PORT]")
+            print()
+            print("Arguments:")
+            print("  PORT    Serial port (default: /dev/ttyACM2)")
+            print()
+            print("Examples:")
+            print("  python listen_meshcore_channel.py")
+            print("  python listen_meshcore_channel.py /dev/ttyACM1")
+            print("  python listen_meshcore_channel.py /dev/ttyACM0")
+            return 0
+        else:
+            port = sys.argv[1]
+    
     print("="*80)
     print("🎯 MeshCore Public Channel Listener")
     print("="*80)
-    print("Device: /dev/ttyACM2 @ 115200 baud")
+    print(f"Device: {port} @ {baudrate} baud")
     print(f"Started: {format_timestamp()}")
     print("Purpose: Listen to MeshCore public channel messages")
     print()
@@ -122,8 +151,8 @@ def main():
     
     try:
         # Connect to MeshCore
-        print(f"[{format_timestamp()}] 🔌 Connecting to MeshCore on /dev/ttyACM2...")
-        meshcore = MeshCore('/dev/ttyACM2', 115200)
+        print(f"[{format_timestamp()}] 🔌 Connecting to MeshCore on {port}...")
+        meshcore = MeshCore(port, baudrate)
         print(f"[{format_timestamp()}] ✅ Connected to MeshCore")
         
         # Subscribe to CHANNEL_MSG_RECV events

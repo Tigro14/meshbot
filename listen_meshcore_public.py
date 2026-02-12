@@ -11,9 +11,16 @@ Purpose:
 - Debug the /echo command encryption issue
 
 Usage:
+    python listen_meshcore_public.py [PORT]
+    
+    PORT: Serial port (default: /dev/ttyACM2)
+    
+Examples:
     python listen_meshcore_public.py
+    python listen_meshcore_public.py /dev/ttyACM1
+    python listen_meshcore_public.py /dev/ttyACM0
 
-Device: /dev/ttyACM2 @ 115200 baud
+Device: Configurable @ 115200 baud
 """
 
 import sys
@@ -112,10 +119,28 @@ def on_receive(packet, interface):
 
 def main():
     """Main function"""
+    # Parse command-line arguments
+    port = "/dev/ttyACM2"  # Default port
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ['-h', '--help', 'help']:
+            print("Usage: python listen_meshcore_public.py [PORT]")
+            print()
+            print("Arguments:")
+            print("  PORT    Serial port (default: /dev/ttyACM2)")
+            print()
+            print("Examples:")
+            print("  python listen_meshcore_public.py")
+            print("  python listen_meshcore_public.py /dev/ttyACM1")
+            print("  python listen_meshcore_public.py /dev/ttyACM0")
+            return 0
+        else:
+            port = sys.argv[1]
+    
     print_separator()
     print("🎯 MeshCore Public Channel Listener")
     print_separator()
-    print(f"Device: /dev/ttyACM2 @ 115200 baud")
+    print(f"Device: {port} @ 115200 baud")
     print(f"Started: {format_timestamp()}")
     print(f"Purpose: Listen to Public channel messages and log details")
     print()
@@ -125,8 +150,8 @@ def main():
     
     try:
         # Connect to Meshtastic device
-        print(f"[{format_timestamp()}] 🔌 Connecting to /dev/ttyACM2...")
-        interface = meshtastic.serial_interface.SerialInterface("/dev/ttyACM2")
+        print(f"[{format_timestamp()}] 🔌 Connecting to {port}...")
+        interface = meshtastic.serial_interface.SerialInterface(port)
         print(f"[{format_timestamp()}] ✅ Connected successfully")
         
         # Get node info
