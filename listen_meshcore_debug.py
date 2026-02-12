@@ -66,7 +66,7 @@ def on_message(event):
     
     # Extract event type and payload from event object
     event_type = event.type if hasattr(event, 'type') else 'Unknown'
-    payload = event.data if hasattr(event, 'data') else event
+    payload = event.payload if hasattr(event, 'payload') else event
     
     print("\n" + "="*80)
     print(f"[{timestamp}] 📡 MESHCORE EVENT RECEIVED")
