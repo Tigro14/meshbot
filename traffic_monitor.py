@@ -721,21 +721,34 @@ class TrafficMonitor:
                     if (not message_text or is_encrypted) and 'payload' in decoded:
                         payload = decoded.get('payload')
                         if isinstance(payload, (bytes, bytearray)) and len(payload) > 0:
-                            # Encrypted channel message - try to decrypt
-                            debug_print(f"🔐 Encrypted TEXT_MESSAGE_APP detected ({len(payload)}B), attempting decryption...")
+                            # Encrypted channel message - check source before decrypting
+                            debug_print(f"🔐 Encrypted TEXT_MESSAGE_APP detected ({len(payload)}B), source={source}")
                             
-                            # Get packet info for decryption
-                            packet_id = packet.get('id', 0)
-                            channel_index = packet.get('channel', 0)
-                            
-                            # Try to decrypt with channel PSK
-                            decrypted_data = self._decrypt_packet(
-                                encrypted_data=payload,
-                                packet_id=packet_id,
-                                from_id=from_id,
-                                channel_index=channel_index,
-                                interface=interface
-                            )
+                            # IMPORTANT: MeshCore uses its own encryption system, not Meshtastic's
+                            # Don't attempt Meshtastic decryption on MeshCore packets
+                            if source == 'meshcore':
+                                debug_print(f"ℹ️  MeshCore packet - skipping Meshtastic decryption (MeshCore handles its own encryption)")
+                                message_text = "[ENCRYPTED]"
+                                decoded['text'] = message_text
+                                packet['decoded']['text'] = message_text
+                                # Don't attempt Meshtastic decryption
+                                decrypted_data = None
+                            else:
+                                # Meshtastic packet - try Meshtastic decryption
+                                debug_print(f"🔐 Attempting Meshtastic decryption...")
+                                
+                                # Get packet info for decryption
+                                packet_id = packet.get('id', 0)
+                                channel_index = packet.get('channel', 0)
+                                
+                                # Try to decrypt with channel PSK
+                                decrypted_data = self._decrypt_packet(
+                                    encrypted_data=payload,
+                                    packet_id=packet_id,
+                                    from_id=from_id,
+                                    channel_index=channel_index,
+                                    interface=interface
+                                )
                             
                             if decrypted_data:
                                 # Successfully decrypted - extract text
