@@ -252,6 +252,26 @@ MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port fixe OU auto-détection (ex: "auto
 #   - Disable if you only care about DMs (less log spam)
 MESHCORE_RX_LOG_ENABLED = True  # True = Monitor RF activity (debug), False = DMs only
 
+# ========================================
+# DÉCHIFFREMENT CANAL PUBLIC MESHCORE
+# ========================================
+# PSK par défaut du canal Public MeshCore (Channel 0)
+# Utilisée pour déchiffrer les messages sur le canal Public MeshCore
+#
+# IMPORTANT: Cette PSK est DIFFÉRENTE de la PSK Meshtastic par défaut (AQ==)
+# 
+# PSK MeshCore Public Channel (base64): izOH6cXN6mrJ5e26oRXNcg==
+# PSK MeshCore Public Channel (hex):    8b3387e9c5cdea6ac9e5edbaa115cd72
+#
+# Usage:
+#   - Messages broadcastés sur le canal Public MeshCore
+#   - Messages de type TextMessage (type 15) chiffrés
+#   - Déchiffrement avec AES-128-CTR
+#
+# Note: Si votre réseau MeshCore utilise une PSK personnalisée,
+#       remplacer la valeur ci-dessous par votre PSK (encodée en base64)
+MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="  # PSK par défaut MeshCore Public channel
+
 # Auto-reboot du nœud distant en cas d'échec de connexion TCP initial
 # Si True, le bot tentera automatiquement de rebooter le nœud distant
 # via 'meshtastic --host <IP> --reboot' en cas d'erreur de connexion

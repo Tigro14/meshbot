@@ -45,6 +45,80 @@ except ImportError as e:
     get_route_type_name = None
     get_payload_type_name = None
 
+# Import cryptography for MeshCore Public channel decryption
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import base64
+    print("✅ cryptography library available (decryption enabled)")
+    CRYPTO_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  WARNING: cryptography library not found")
+    print(f"   Install with: pip install cryptography")
+    print(f"   MeshCore Public channel decryption disabled")
+    CRYPTO_AVAILABLE = False
+
+# Import config for MESHCORE_PUBLIC_PSK
+try:
+    from config import MESHCORE_PUBLIC_PSK
+    print(f"✅ MESHCORE_PUBLIC_PSK loaded from config")
+except ImportError:
+    print(f"⚠️  WARNING: Could not load MESHCORE_PUBLIC_PSK from config")
+    print(f"   Using default MeshCore Public PSK")
+    MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="  # Default MeshCore Public channel PSK
+
+
+def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id):
+    """
+    Decrypt MeshCore Public channel encrypted message using AES-128-CTR.
+    
+    Args:
+        encrypted_bytes: Encrypted payload data (bytes)
+        packet_id: Packet ID from decoded packet
+        from_id: Sender node ID from decoded packet
+        
+    Returns:
+        Decrypted text string or None if decryption fails
+    """
+    if not CRYPTO_AVAILABLE:
+        return None
+        
+    try:
+        # Convert PSK from base64 to bytes
+        if isinstance(MESHCORE_PUBLIC_PSK, str):
+            psk = base64.b64decode(MESHCORE_PUBLIC_PSK)
+        else:
+            psk = MESHCORE_PUBLIC_PSK
+            
+        # Ensure PSK is 16 bytes for AES-128
+        if len(psk) != 16:
+            print(f"⚠️  PSK length is {len(psk)} bytes, expected 16 bytes")
+            return None
+        
+        # Construct nonce for AES-CTR (16 bytes)
+        # MeshCore uses: packet_id (8 bytes LE) + from_id (4 bytes LE) + padding (4 zeros)
+        nonce = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 4
+        
+        # Create AES-128-CTR cipher
+        cipher = Cipher(
+            algorithms.AES(psk),
+            modes.CTR(nonce),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        
+        # Decrypt
+        decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
+        
+        # Try to decode as UTF-8 text
+        decrypted_text = decrypted_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
+        
+        return decrypted_text
+        
+    except Exception as e:
+        print(f"⚠️  Decryption failed: {e}")
+        return None
+
 
 def format_hex(data):
     """Format bytes as hex string"""
@@ -270,34 +344,76 @@ def on_message(event):
                                     hex_str = format_hex(raw_data)
                                     print(f"    Hex: {hex_str[:80]}{'...' if len(hex_str) > 80 else ''}")
                             
-                            # Analyze encryption status
+                            # Analyze encryption status and try decryption
                             if not has_text and raw_data:
-                                print(f"\n  🔒 ENCRYPTED PAYLOAD")
+                                # Try to decrypt TextMessage on Public channel
+                                decrypted_text = None
+                                if (ptype_name == 'TextMessage' or ptype_value == 15) and CRYPTO_AVAILABLE:
+                                    # Get packet_id and sender_id for decryption
+                                    packet_id = None
+                                    sender_id = None
+                                    
+                                    # Try to extract packet_id from decoded packet
+                                    if hasattr(decoded, 'packet_id'):
+                                        packet_id = decoded.packet_id
+                                    elif hasattr(decoded, 'id'):
+                                        packet_id = decoded.id
+                                        
+                                    # Try to extract sender_id
+                                    if hasattr(decoded, 'sender_id'):
+                                        sender_id = decoded.sender_id
+                                    elif hasattr(decoded, 'from_id'):
+                                        sender_id = decoded.from_id
+                                    
+                                    # Try decryption if we have necessary info
+                                    if packet_id is not None and sender_id is not None:
+                                        print(f"\n  🔓 ATTEMPTING DECRYPTION...")
+                                        print(f"     Packet ID: {packet_id}")
+                                        print(f"     From: 0x{sender_id:08x}")
+                                        
+                                        # Convert raw_data to bytes if needed
+                                        if isinstance(raw_data, str):
+                                            raw_bytes = bytes.fromhex(raw_data)
+                                        else:
+                                            raw_bytes = raw_data
+                                        
+                                        decrypted_text = decrypt_meshcore_public(raw_bytes, packet_id, sender_id)
+                                        
+                                        if decrypted_text:
+                                            msg_type = "📢 Public" if is_public else "📨 Direct"
+                                            print(f"\n  ✅ DECRYPTED TEXT ({msg_type}):")
+                                            print(f"     \"{decrypted_text}\"")
+                                            print(f"     → Message successfully decrypted with MeshCore Public PSK")
+                                            has_text = True
+                                        else:
+                                            print(f"     ❌ Decryption failed (wrong PSK or not a text message)")
                                 
-                                # Provide context based on payload type
-                                if ptype_value == 1:  # Response
-                                    print(f"     ℹ️  This is an encrypted response packet (type 1)")
-                                    print(f"     → ResponsePayloads are typically encrypted responses to requests")
-                                    print(f"     → To decrypt, you need the channel PSK")
-                                elif ptype_name == 'TextMessage' or ptype_value == 15:
-                                    print(f"     ℹ️  This text message is encrypted on MeshCore Public channel")
-                                    print(f"")
-                                    print(f"     📋 MeshCore Public Channel Default PSK:")
-                                    print(f"        Base64: izOH6cXN6mrJ5e26oRXNcg==")
-                                    print(f"        Hex: 8b3387e9c5cdea6ac9e5edbaa115cd72")
-                                    print(f"")
-                                    print(f"     → This is the REAL MeshCore Public channel PSK")
-                                    print(f"     → NOT the Meshtastic default (AQ==)")
-                                    print(f"     → Use this PSK to decrypt MeshCore Public channel messages")
-                                    print(f"     → Configure your bot with PSK: izOH6cXN6mrJ5e26oRXNcg== (base64)")
-                                    print(f"")
-                                    print(f"     Context:")
-                                    print(f"     → If broadcast on Public: use PSK above")
-                                    print(f"     → If channel message: use channel-specific PSK")
-                                    print(f"     → If DM: use default PSK (MeshCore firmware)")
-                                else:
-                                    print(f"     ℹ️  Payload type {ptype_value} ({ptype_name}) is encrypted")
-                                    print(f"     → Check channel configuration for correct PSK")
+                                # If still encrypted, show info
+                                if not has_text:
+                                    print(f"\n  🔒 ENCRYPTED PAYLOAD")
+                                    
+                                    # Provide context based on payload type
+                                    if ptype_value == 1:  # Response
+                                        print(f"     ℹ️  This is an encrypted response packet (type 1)")
+                                        print(f"     → ResponsePayloads are typically encrypted responses to requests")
+                                        print(f"     → To decrypt, you need the channel PSK")
+                                    elif ptype_name == 'TextMessage' or ptype_value == 15:
+                                        print(f"     ℹ️  This text message is encrypted on MeshCore Public channel")
+                                        print(f"")
+                                        print(f"     📋 MeshCore Public Channel Default PSK:")
+                                        print(f"        Base64: {MESHCORE_PUBLIC_PSK}")
+                                        print(f"        Hex: 8b3387e9c5cdea6ac9e5edbaa115cd72")
+                                        print(f"")
+                                        print(f"     → This is the REAL MeshCore Public channel PSK")
+                                        print(f"     → NOT the Meshtastic default (AQ==)")
+                                        if not CRYPTO_AVAILABLE:
+                                            print(f"     ⚠️  Cryptography library not available - cannot decrypt")
+                                            print(f"     → Install with: pip install cryptography")
+                                        elif packet_id is None or sender_id is None:
+                                            print(f"     ⚠️  Missing packet_id or sender_id - cannot decrypt")
+                                    else:
+                                        print(f"     ℹ️  Payload type {ptype_value} ({ptype_name}) is encrypted")
+                                        print(f"     → Check channel configuration for correct PSK")
                         else:
                             print(f"  Type: {type(payload_data).__name__}")
                             if isinstance(payload_data, (bytes, bytearray)):
