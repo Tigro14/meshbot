@@ -1205,7 +1205,13 @@ class TrafficMonitor:
                     if not text:
                         try:
                             payload = decoded.get('payload', b'')
-                            text = payload.decode('utf-8') if payload else ''
+                            if payload:
+                                text = payload.decode('utf-8')
+                                # Check if decoded text is printable
+                                if not text.isprintable():
+                                    text = '[ENCRYPTED]'
+                            else:
+                                text = ''
                         except:
                             text = '<decode error>'
                     # Truncate long messages
