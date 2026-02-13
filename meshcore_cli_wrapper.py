@@ -2038,6 +2038,8 @@ class MeshCoreCLIWrapper:
                                                     else:
                                                         # Non-printable result = ECDH-encrypted DM
                                                         debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
+                                                        # Mark as encrypted for display
+                                                        packet_text = '[ENCRYPTED]'
                                                 else:
                                                     debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
                                             else:
@@ -2104,6 +2106,17 @@ class MeshCoreCLIWrapper:
                     
                     # Create bot-compatible packet for ALL packet types
                     import random
+                    
+                    # Build decoded dict with text field for TEXT_MESSAGE_APP
+                    decoded_dict = {
+                        'portnum': portnum,
+                        'payload': payload_bytes
+                    }
+                    
+                    # Add text field if we have packet_text (decrypted or [ENCRYPTED])
+                    if portnum == 'TEXT_MESSAGE_APP' and packet_text is not None:
+                        decoded_dict['text'] = packet_text
+                    
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
                         'to': receiver_id,  # Use header receiver (CORRECT!)
@@ -2114,10 +2127,7 @@ class MeshCoreCLIWrapper:
                         'hopLimit': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'channel': 0,
-                        'decoded': {
-                            'portnum': portnum,
-                            'payload': payload_bytes
-                        },
+                        'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
                         '_meshcore_broadcast': is_broadcast
                     }
