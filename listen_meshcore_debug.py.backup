@@ -104,64 +104,27 @@ def on_message(event):
                 try:
                     decoded = MeshCoreDecoder.decode(raw_hex)
                     
-                    # Get human-readable names for types
-                    route_name = get_route_type_name(decoded.route_type) if get_route_type_name else str(decoded.route_type)
-                    payload_name = get_payload_type_name(decoded.payload_type) if get_payload_type_name else str(decoded.payload_type)
-                    
-                    # Show packet structure with enhanced information
+                    # Show packet structure
                     if hasattr(decoded, 'sender_id'):
                         print(f"  From: 0x{decoded.sender_id:08x}")
                     if hasattr(decoded, 'receiver_id'):
-                        recv_id = decoded.receiver_id
-                        if recv_id == 0xFFFFFFFF:
-                            print(f"  To: Broadcast (0xFFFFFFFF)")
-                        else:
-                            print(f"  To: 0x{recv_id:08x}")
-                    
-                    # Show payload type
+                        print(f"  To: 0x{decoded.receiver_id:08x}")
                     if hasattr(decoded, 'payload_type'):
                         ptype = decoded.payload_type
                         if hasattr(ptype, 'value'):
                             print(f"  Payload Type: {ptype.value} ({ptype.name})")
                         else:
                             print(f"  Payload Type: {ptype}")
-                    else:
-                        print(f"  Payload Type: {payload_name}")
-                    
-                    # Show route type
-                    print(f"  Route: {route_name}")
-                    
-                    # Show hop count and path information
-                    if hasattr(decoded, 'path_length'):
-                        print(f"  Hops: {decoded.path_length}")
-                    elif hasattr(decoded, 'hop_count'):
+                    if hasattr(decoded, 'route_type'):
+                        rtype = decoded.route_type
+                        if hasattr(rtype, 'name'):
+                            print(f"  Route: {rtype.name}")
+                        else:
+                            print(f"  Route: {rtype}")
+                    if hasattr(decoded, 'hop_count'):
                         print(f"  Hops: {decoded.hop_count}")
                     
-                    # Show routing path if available
-                    if hasattr(decoded, 'path') and decoded.path:
-                        path_str = ' → '.join([f"0x{node:08x}" if isinstance(node, int) else str(node) for node in decoded.path])
-                        print(f"  Path: {path_str}")
-                    
-                    # Show message hash
-                    if hasattr(decoded, 'message_hash') and decoded.message_hash:
-                        print(f"  Message Hash: {decoded.message_hash[:16]}...")
-                    
-                    # Show packet size
-                    if hasattr(decoded, 'total_bytes') and decoded.total_bytes > 0:
-                        print(f"  Packet Size: {decoded.total_bytes} bytes")
-                    
-                    # Show validity status
-                    if hasattr(decoded, 'is_valid'):
-                        status = "✅ Valid" if decoded.is_valid else "⚠️ Invalid"
-                        print(f"  Status: {status}")
-                    
-                    # Show any errors
-                    if hasattr(decoded, 'errors') and decoded.errors:
-                        print(f"  ⚠️ Errors:")
-                        for error in decoded.errors[:3]:  # Show first 3 errors
-                            print(f"     - {error}")
-                    
-                    # Show payload details with comprehensive analysis
+                    # Show payload details
                     if hasattr(decoded, 'payload'):
                         print("\n📦 PAYLOAD:")
                         payload_data = decoded.payload
@@ -177,87 +140,25 @@ def on_message(event):
                             else:
                                 ptype_value = ptype
                         
-                        # Determine if this is a public/broadcast message
-                        is_public = route_name in ['Flood', 'TransportFlood']
-                        
                         if isinstance(payload_data, dict):
                             print(f"  Type: dict")
                             print(f"  Keys: {list(payload_data.keys())}")
                             
-                            # Check for decoded payload
+                            # Check for decoded text
                             decoded_payload = payload_data.get('decoded')
                             has_text = False
-                            
                             if decoded_payload:
-                                decoded_type = type(decoded_payload).__name__
-                                print(f"  Decoded Type: {decoded_type}")
-                                
-                                # Handle TextMessage - show with public/DM context
                                 if hasattr(decoded_payload, 'text'):
-                                    msg_type = "📢 Public" if is_public else "📨 Direct"
-                                    print(f"\n  ✅ DECRYPTED TEXT ({msg_type}):")
-                                    print(f"     \"{decoded_payload.text}\"")
+                                    print(f"\n  ✅ DECRYPTED TEXT: \"{decoded_payload.text}\"")
                                     print(f"     → Message successfully decrypted and decoded")
                                     has_text = True
-                                
-                                # Handle Advert with app_data
-                                elif hasattr(decoded_payload, 'app_data'):
-                                    app_data = decoded_payload.app_data
-                                    print(f"\n  📣 ADVERT (Device Advertisement):")
-                                    if isinstance(app_data, dict):
-                                        name = app_data.get('name', 'Unknown')
-                                        print(f"     Device: {name}")
-                                        if 'role' in app_data:
-                                            print(f"     Role: {app_data.get('role')}")
-                                        if 'hw_model' in app_data:
-                                            print(f"     Hardware: {app_data.get('hw_model')}")
+                                else:
+                                    decoded_type = type(decoded_payload).__name__
+                                    print(f"  Decoded payload type: {decoded_type}")
                                     
-                                    # Show public key if available
-                                    if hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
-                                        pubkey_prefix = decoded_payload.public_key[:12]
-                                        node_id_hex = decoded_payload.public_key[:8]
-                                        try:
-                                            node_id = int(node_id_hex, 16)
-                                            print(f"     Node ID: 0x{node_id:08x}")
-                                        except:
-                                            print(f"     Public Key: {pubkey_prefix}...")
-                                
-                                # Handle NodeInfo
-                                elif hasattr(decoded_payload, 'long_name'):
-                                    print(f"\n  📋 NODE INFO:")
-                                    print(f"     Long Name: {decoded_payload.long_name}")
-                                    if hasattr(decoded_payload, 'short_name'):
-                                        print(f"     Short Name: {decoded_payload.short_name}")
-                                    if hasattr(decoded_payload, 'hw_model'):
-                                        print(f"     Hardware: {decoded_payload.hw_model}")
-                                    if hasattr(decoded_payload, 'role'):
-                                        print(f"     Role: {decoded_payload.role}")
-                                
-                                # Handle Position
-                                elif hasattr(decoded_payload, 'latitude') or hasattr(decoded_payload, 'longitude'):
-                                    print(f"\n  📍 POSITION:")
-                                    if hasattr(decoded_payload, 'latitude'):
-                                        print(f"     Latitude: {decoded_payload.latitude}")
-                                    if hasattr(decoded_payload, 'longitude'):
-                                        print(f"     Longitude: {decoded_payload.longitude}")
-                                    if hasattr(decoded_payload, 'altitude'):
-                                        print(f"     Altitude: {decoded_payload.altitude}m")
-                                
-                                # Handle Telemetry
-                                elif hasattr(decoded_payload, 'battery_level') or hasattr(decoded_payload, 'temperature'):
-                                    print(f"\n  📊 TELEMETRY:")
-                                    if hasattr(decoded_payload, 'battery_level'):
-                                        print(f"     Battery: {decoded_payload.battery_level}%")
-                                    if hasattr(decoded_payload, 'voltage'):
-                                        print(f"     Voltage: {decoded_payload.voltage}V")
-                                    if hasattr(decoded_payload, 'temperature'):
-                                        print(f"     Temperature: {decoded_payload.temperature}°C")
-                                    if hasattr(decoded_payload, 'humidity'):
-                                        print(f"     Humidity: {decoded_payload.humidity}%")
-                                
-                                # Handle ResponsePayload (usually encrypted)
-                                elif decoded_type == 'ResponsePayload':
-                                    print(f"\n  🔒 ENCRYPTED ResponsePayload (type {ptype_value})")
+                                    # Special handling for ResponsePayload
+                                    if decoded_type == 'ResponsePayload':
+                                        print(f"\n  🔒 ENCRYPTED ResponsePayload (type {ptype_value})")
                             
                             # Check for raw data
                             raw_data = payload_data.get('raw')
