@@ -1948,18 +1948,18 @@ class MeshCoreCLIWrapper:
                                             decrypted_text = None
                                             if CRYPTO_AVAILABLE and payload_bytes:
                                                 # Get packet_id for decryption nonce
+                                                # Extract from message_hash (available in decoded_packet)
                                                 packet_id = None
-                                                if hasattr(decoded_packet, 'packet_id'):
-                                                    packet_id = decoded_packet.packet_id
-                                                    debug_print_mc(f"   packet_id from decoded_packet.packet_id: {packet_id}")
-                                                elif hasattr(decoded_packet, 'id'):
-                                                    packet_id = decoded_packet.id
-                                                    debug_print_mc(f"   packet_id from decoded_packet.id: {packet_id}")
+                                                if hasattr(decoded_packet, 'message_hash') and decoded_packet.message_hash:
+                                                    # message_hash is hex string, convert first 8 chars (4 bytes) to int
+                                                    packet_id = int(decoded_packet.message_hash[:8], 16)
+                                                    debug_print_mc(f"   ✅ packet_id from message_hash: {packet_id} (0x{packet_id:08x})")
+                                                elif packet_header and 'msg_hash' in packet_header:
+                                                    # Fall back to packet header
+                                                    packet_id = int(packet_header['msg_hash'][:8], 16)
+                                                    debug_print_mc(f"   ✅ packet_id from packet_header: {packet_id} (0x{packet_id:08x})")
                                                 else:
-                                                    debug_print_mc(f"   ❌ packet_id not found in decoded_packet")
-                                                    # List available attributes for debugging
-                                                    attrs = [attr for attr in dir(decoded_packet) if not attr.startswith('_')]
-                                                    debug_print_mc(f"   Available attributes: {', '.join(attrs[:10])}")
+                                                    debug_print_mc(f"   ❌ packet_id not found (no message_hash)")
                                                 
                                                 debug_print_mc(f"   packet_id: {packet_id}")
                                                 debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
