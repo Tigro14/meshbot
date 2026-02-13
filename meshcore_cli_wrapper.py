@@ -86,9 +86,18 @@ def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
             debug_print_mc(f"⚠️  [DECRYPT] PSK length is {len(psk_bytes)} bytes, expected 16 bytes")
             return None
         
+        # Debug: Show PSK length
+        debug_print_mc(f"🔍 [DECRYPT] PSK: {len(psk_bytes)} bytes")
+        
         # Construct nonce for AES-CTR (16 bytes)
         # MeshCore uses: packet_id (8 bytes LE) + from_id (4 bytes LE) + padding (4 zeros)
         nonce = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 4
+        
+        # Debug: Show nonce
+        debug_print_mc(f"🔍 [DECRYPT] Nonce: {nonce.hex()}")
+        
+        # Debug: Show encrypted payload (first 32 bytes)
+        debug_print_mc(f"🔍 [DECRYPT] Encrypted (first 32B): {encrypted_bytes[:32].hex()}")
         
         # Create AES-128-CTR cipher
         cipher = Cipher(
@@ -101,8 +110,14 @@ def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
         # Decrypt
         decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
         
+        # Debug: Show decrypted bytes (first 32 bytes)
+        debug_print_mc(f"🔍 [DECRYPT] Decrypted (first 32B): {decrypted_bytes[:32].hex()}")
+        
         # Try to decode as UTF-8 text
         decrypted_text = decrypted_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
+        
+        # Debug: Show UTF-8 decoded text
+        debug_print_mc(f"🔍 [DECRYPT] Decrypted as UTF-8: \"{decrypted_text}\"")
         
         debug_print_mc(f"✅ [DECRYPT] Successfully decrypted {len(encrypted_bytes)}B → \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
         return decrypted_text
