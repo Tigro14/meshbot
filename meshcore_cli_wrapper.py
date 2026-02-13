@@ -45,6 +45,72 @@ except ImportError:
     NACL_AVAILABLE = False
     debug_print_mc("ℹ️  [MESHCORE] PyNaCl non disponible (validation clés désactivée)")
 
+# Try to import cryptography for MeshCore Public channel decryption
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import base64
+    CRYPTO_AVAILABLE = True
+    info_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    info_print_mc("⚠️ [MESHCORE] cryptography non disponible (pip install cryptography)")
+    info_print_mc("   → Déchiffrement canal Public MeshCore désactivé")
+
+
+def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
+    """
+    Decrypt MeshCore Public channel encrypted message using AES-128-CTR.
+    
+    Args:
+        encrypted_bytes: Encrypted payload data (bytes)
+        packet_id: Packet ID from decoded packet
+        from_id: Sender node ID from decoded packet
+        psk: Pre-Shared Key as base64 string or bytes (16 bytes for AES-128)
+        
+    Returns:
+        Decrypted text string or None if decryption fails
+    """
+    if not CRYPTO_AVAILABLE:
+        return None
+        
+    try:
+        # Convert PSK from base64 to bytes if needed
+        if isinstance(psk, str):
+            psk_bytes = base64.b64decode(psk)
+        else:
+            psk_bytes = psk
+            
+        # Ensure PSK is 16 bytes for AES-128
+        if len(psk_bytes) != 16:
+            debug_print_mc(f"⚠️  [DECRYPT] PSK length is {len(psk_bytes)} bytes, expected 16 bytes")
+            return None
+        
+        # Construct nonce for AES-CTR (16 bytes)
+        # MeshCore uses: packet_id (8 bytes LE) + from_id (4 bytes LE) + padding (4 zeros)
+        nonce = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 4
+        
+        # Create AES-128-CTR cipher
+        cipher = Cipher(
+            algorithms.AES(psk_bytes),
+            modes.CTR(nonce),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        
+        # Decrypt
+        decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
+        
+        # Try to decode as UTF-8 text
+        decrypted_text = decrypted_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
+        
+        debug_print_mc(f"✅ [DECRYPT] Successfully decrypted {len(encrypted_bytes)}B → \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
+        return decrypted_text
+        
+    except Exception as e:
+        debug_print_mc(f"❌ [DECRYPT] Decryption failed: {e}")
+        return None
+
 
 class MeshCoreCLIWrapper:
     """
@@ -87,6 +153,16 @@ class MeshCoreCLIWrapper:
                 self.debug = False
         else:
             self.debug = debug
+        
+        # Load MeshCore Public channel PSK from config
+        try:
+            import config
+            self.meshcore_public_psk = getattr(config, 'MESHCORE_PUBLIC_PSK', "izOH6cXN6mrJ5e26oRXNcg==")
+            debug_print_mc(f"✅ [MESHCORE] PSK chargée depuis config")
+        except ImportError:
+            # Use default MeshCore Public channel PSK
+            self.meshcore_public_psk = "izOH6cXN6mrJ5e26oRXNcg=="
+            debug_print_mc(f"ℹ️  [MESHCORE] PSK par défaut utilisée")
         
         # Simulation d'un localNode pour compatibilité
         # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
@@ -1859,11 +1935,42 @@ class MeshCoreCLIWrapper:
                                             portnum = 'TELEMETRY_APP'
                                         elif payload_type_value in [12, 13, 15]:
                                             # Types 12, 13, 15 are encrypted message wrappers
-                                            # Map to TEXT_MESSAGE_APP and let bot's decryption handle it
-                                            # Bot has PSK for channels → will decrypt channel messages
-                                            # Bot lacks PKI for DMs → will ignore what it can't decrypt
+                                            # Try to decrypt with MeshCore Public channel PSK
+                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) detected")
+                                            
+                                            # Try decryption if crypto is available
+                                            decrypted_text = None
+                                            if CRYPTO_AVAILABLE and payload_bytes:
+                                                # Get packet_id for decryption nonce
+                                                packet_id = None
+                                                if hasattr(decoded_packet, 'packet_id'):
+                                                    packet_id = decoded_packet.packet_id
+                                                elif hasattr(decoded_packet, 'id'):
+                                                    packet_id = decoded_packet.id
+                                                
+                                                if packet_id is not None and sender_id != 0xFFFFFFFF:
+                                                    debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
+                                                    debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
+                                                    
+                                                    decrypted_text = decrypt_meshcore_public(
+                                                        payload_bytes, 
+                                                        packet_id, 
+                                                        sender_id, 
+                                                        self.meshcore_public_psk
+                                                    )
+                                                    
+                                                    if decrypted_text:
+                                                        debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
+                                                        # Update payload with decrypted text
+                                                        packet_text = decrypted_text
+                                                        payload_bytes = decrypted_text.encode('utf-8')
+                                                    else:
+                                                        debug_print_mc(f"❌ [DECRYPT] Decryption failed (wrong PSK or not text)")
+                                            
+                                            # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
                                             portnum = 'TEXT_MESSAGE_APP'
-                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP")
+                                            if not decrypted_text:
+                                                debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP (not decrypted)")
                                         else:
                                             # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
