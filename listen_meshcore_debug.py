@@ -259,6 +259,22 @@ def main():
             sys.exit(1)
         
         print("✅ Subscription successful")
+        
+        # CRITICAL: Start auto message fetching to receive events
+        # Without this, MeshCore won't read from serial port!
+        async def start_fetching():
+            try:
+                if hasattr(meshcore, 'start_auto_message_fetching'):
+                    await meshcore.start_auto_message_fetching()
+                    print("✅ Auto message fetching started")
+                else:
+                    print("⚠️  WARNING: start_auto_message_fetching() not available")
+                    print("   Messages may not be received automatically")
+            except Exception as e:
+                print(f"❌ ERROR starting auto message fetching: {e}")
+        
+        loop.run_until_complete(start_fetching())
+        
         print("\n🎧 Listening for messages...")
         print("   Send '/echo test' on MeshCore Public channel to see output!\n")
         
