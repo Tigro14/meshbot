@@ -1983,8 +1983,14 @@ class MeshCoreCLIWrapper:
                                                     debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
                                                     debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
                                                     
+                                                    # Skip 16-byte MeshCore header before decryption
+                                                    # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
+                                                    # Only payload after byte 16 is encrypted
+                                                    encrypted_payload = payload_bytes[16:]
+                                                    debug_print_mc(f"🔍 [DECRYPT] Skipped 16-byte header, decrypting {len(encrypted_payload)}B payload")
+                                                    
                                                     decrypted_text = decrypt_meshcore_public(
-                                                        payload_bytes, 
+                                                        encrypted_payload, 
                                                         packet_id, 
                                                         sender_id, 
                                                         self.meshcore_public_psk
