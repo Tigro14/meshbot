@@ -1938,6 +1938,12 @@ class MeshCoreCLIWrapper:
                                             # Try to decrypt with MeshCore Public channel PSK
                                             debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) detected")
                                             
+                                            # Debug logging for decryption troubleshooting
+                                            debug_print_mc(f"🔍 [DECRYPT] Debug info:")
+                                            debug_print_mc(f"   CRYPTO_AVAILABLE: {CRYPTO_AVAILABLE}")
+                                            debug_print_mc(f"   payload_bytes: {len(payload_bytes) if payload_bytes else 0}B")
+                                            debug_print_mc(f"   sender_id: 0x{sender_id:08x}")
+                                            
                                             # Try decryption if crypto is available
                                             decrypted_text = None
                                             if CRYPTO_AVAILABLE and payload_bytes:
@@ -1945,8 +1951,18 @@ class MeshCoreCLIWrapper:
                                                 packet_id = None
                                                 if hasattr(decoded_packet, 'packet_id'):
                                                     packet_id = decoded_packet.packet_id
+                                                    debug_print_mc(f"   packet_id from decoded_packet.packet_id: {packet_id}")
                                                 elif hasattr(decoded_packet, 'id'):
                                                     packet_id = decoded_packet.id
+                                                    debug_print_mc(f"   packet_id from decoded_packet.id: {packet_id}")
+                                                else:
+                                                    debug_print_mc(f"   ❌ packet_id not found in decoded_packet")
+                                                    # List available attributes for debugging
+                                                    attrs = [attr for attr in dir(decoded_packet) if not attr.startswith('_')]
+                                                    debug_print_mc(f"   Available attributes: {', '.join(attrs[:10])}")
+                                                
+                                                debug_print_mc(f"   packet_id: {packet_id}")
+                                                debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
                                                 
                                                 if packet_id is not None and sender_id != 0xFFFFFFFF:
                                                     debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
@@ -1966,6 +1982,13 @@ class MeshCoreCLIWrapper:
                                                         payload_bytes = decrypted_text.encode('utf-8')
                                                     else:
                                                         debug_print_mc(f"❌ [DECRYPT] Decryption failed (wrong PSK or not text)")
+                                                else:
+                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
+                                            else:
+                                                if not CRYPTO_AVAILABLE:
+                                                    debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
+                                                if not payload_bytes:
+                                                    debug_print_mc(f"❌ [DECRYPT] No payload bytes to decrypt")
                                             
                                             # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
                                             portnum = 'TEXT_MESSAGE_APP'
