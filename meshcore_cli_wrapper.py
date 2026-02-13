@@ -1986,6 +1986,30 @@ class MeshCoreCLIWrapper:
                                                     encrypted_payload = payload_bytes[16:]
                                                     payload_bytes = encrypted_payload  # Update payload_bytes to strip header
                                                     debug_print_mc(f"🔍 [DECRYPT] Stripped 16-byte header, payload now {len(payload_bytes)}B")
+                                                    
+                                                    # Skip protobuf varint length prefix before decryption
+                                                    # After MeshCore header, there's a protobuf varint that encodes the payload length
+                                                    # We need to skip this varint before decrypting
+                                                    def decode_varint(data):
+                                                        """Decode protobuf varint from bytes."""
+                                                        result = 0
+                                                        shift = 0
+                                                        index = 0
+                                                        while index < len(data):
+                                                            byte = data[index]
+                                                            result |= (byte & 0x7F) << shift
+                                                            index += 1
+                                                            if (byte & 0x80) == 0:
+                                                                break
+                                                            shift += 7
+                                                        return result, index
+                                                    
+                                                    # Decode and skip varint
+                                                    if len(encrypted_payload) > 0:
+                                                        length, varint_size = decode_varint(encrypted_payload)
+                                                        encrypted_payload = encrypted_payload[varint_size:]
+                                                        payload_bytes = encrypted_payload  # Update again after varint skip
+                                                        debug_print_mc(f"🔍 [DECRYPT] Skipped varint ({varint_size} bytes, length={length}), encrypted payload now {len(encrypted_payload)}B")
                                                 else:
                                                     debug_print_mc(f"⚠️  [DECRYPT] Payload too short ({len(payload_bytes)}B), cannot strip header")
                                                     encrypted_payload = payload_bytes
