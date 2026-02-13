@@ -5,6 +5,10 @@ MeshCore Diagnostic Tool - Pure MeshCore Decoder (NO Meshtastic!)
 This tool listens to MeshCore Public channel messages and logs all details.
 Uses ONLY meshcore and meshcoredecoder libraries - no meshtastic imports.
 
+IMPORTANT: This tool now uses CHANNEL_MSG_RECV by default (like meshcore-cli).
+The MeshCore library decrypts messages internally using the device's configured PSK.
+No manual PSK decryption needed!
+
 Usage:
     python3 listen_meshcore_debug.py [port]
     
@@ -13,6 +17,9 @@ Usage:
 Examples:
     python3 listen_meshcore_debug.py /dev/ttyACM1
     python3 listen_meshcore_debug.py --help
+
+Note: Subscribes to CHANNEL_MSG_RECV (pre-decrypted by library) not RX_LOG_DATA (raw RF).
+This matches how meshcore-cli works - no PSK needed!
 """
 
 import sys
@@ -71,6 +78,15 @@ except ImportError:
 def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id):
     """
     Decrypt MeshCore Public channel encrypted message using AES-128-CTR.
+    
+    IMPORTANT: This function is for EDUCATIONAL purposes only!
+    
+    In practice, you should use CHANNEL_MSG_RECV events which provide
+    pre-decrypted text from the MeshCore library. The library uses the
+    device's configured PSK - not from our Python config!
+    
+    This is how meshcore-cli works - it doesn't decrypt manually,
+    it just reads pre-decrypted text from library events.
     
     Args:
         encrypted_bytes: Encrypted payload data (bytes)
@@ -477,36 +493,59 @@ def main():
         
         # Subscribe to events
         # MeshCore API has two variants - check which one exists
-        # Priority: RX_LOG_DATA (all RF packets) > CHANNEL_MSG_RECV (channel only)
+        # 
+        # IMPORTANT: Priority changed based on user insight!
+        # User correctly pointed out: "when I use the CLI i do not need to provide any key"
+        # This is because MeshCore library decrypts internally using device's configured PSK.
+        # 
+        # Priority: CHANNEL_MSG_RECV (pre-decrypted by library) > RX_LOG_DATA (raw RF)
+        # 
+        # CHANNEL_MSG_RECV: Pre-decrypted Public channel messages from library
+        #   - Library uses device's configured PSK (not from our config!)
+        #   - Provides decoded.text directly
+        #   - No manual decryption needed
+        #   - Works like meshcore-cli!
+        # 
+        # RX_LOG_DATA: Raw RF packets (all types - broadcasts, DMs, telemetry)
+        #   - Gives encrypted payloads
+        #   - Requires manual decryption with PSK
+        #   - Wrong approach for Public channel messages
+        #   - Only useful for RF monitoring/statistics
         print("🎧 Subscribing to MeshCore events...")
         
         subscribed = False
         
         if hasattr(meshcore, 'events'):
             # Newer MeshCore API
-            # Try RX_LOG_DATA first (receives ALL RF packets - broadcasts, DMs, telemetry)
-            if hasattr(EventType, 'RX_LOG_DATA'):
-                meshcore.events.subscribe(EventType.RX_LOG_DATA, on_message)
-                print("   ✅ Subscribed to RX_LOG_DATA via events.subscribe()")
-                print("   → Will receive ALL RF packets (broadcasts, channel, DMs, telemetry)")
-                subscribed = True
-            elif hasattr(EventType, 'CHANNEL_MSG_RECV'):
+            # Try CHANNEL_MSG_RECV first (pre-decrypted by library, like meshcore-cli!)
+            if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                 meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
                 print("   ✅ Subscribed to CHANNEL_MSG_RECV via events.subscribe()")
-                print("   → Will receive channel messages only")
+                print("   → Will receive pre-decrypted Public channel messages")
+                print("   → Library handles decryption using device's configured PSK")
+                print("   → Works like meshcore-cli - no manual PSK needed!")
+                subscribed = True
+            elif hasattr(EventType, 'RX_LOG_DATA'):
+                meshcore.events.subscribe(EventType.RX_LOG_DATA, on_message)
+                print("   ✅ Subscribed to RX_LOG_DATA via events.subscribe()")
+                print("   → Will receive raw RF packets (requires manual decryption)")
+                print("   ⚠️  WARNING: Manual decryption may not work (wrong PSK)")
                 subscribed = True
         elif hasattr(meshcore, 'dispatcher'):
             # Older MeshCore API
-            # Try RX_LOG_DATA first (receives ALL RF packets)
-            if hasattr(EventType, 'RX_LOG_DATA'):
-                meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, on_message)
-                print("   ✅ Subscribed to RX_LOG_DATA via dispatcher.subscribe()")
-                print("   → Will receive ALL RF packets (broadcasts, channel, DMs, telemetry)")
-                subscribed = True
-            elif hasattr(EventType, 'CHANNEL_MSG_RECV'):
+            # Try CHANNEL_MSG_RECV first (pre-decrypted by library, like meshcore-cli!)
+            if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                 meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, on_message)
                 print("   ✅ Subscribed to CHANNEL_MSG_RECV via dispatcher.subscribe()")
-                print("   → Will receive channel messages only")
+                print("   → Will receive pre-decrypted Public channel messages")
+                print("   → Library handles decryption using device's configured PSK")
+                print("   → Works like meshcore-cli - no manual PSK needed!")
+                subscribed = True
+            elif hasattr(EventType, 'RX_LOG_DATA'):
+                meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, on_message)
+                print("   ✅ Subscribed to RX_LOG_DATA via dispatcher.subscribe()")
+                print("   → Will receive raw RF packets (requires manual decryption)")
+                print("   ⚠️  WARNING: Manual decryption may not work (wrong PSK)")
                 subscribed = True
         
         if not subscribed:
