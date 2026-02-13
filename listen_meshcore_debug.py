@@ -165,6 +165,17 @@ def on_message(event):
     
     if hasattr(EventType, 'CHANNEL_MSG_RECV') and event_type == EventType.CHANNEL_MSG_RECV:
         print("✅ This is a CHANNEL_MSG_RECV (Public channel message)")
+        
+        # Extract and display the pre-decrypted text from library
+        if isinstance(payload, dict) and 'text' in payload:
+            text_content = payload.get('text', '')
+            sender = payload.get('sender', 'Unknown')
+            channel = payload.get('channel_idx', 0)
+            print(f"\n📢 DECRYPTED TEXT (Channel {channel}):")
+            print(f"   From: {sender}")
+            print(f"   Message: \"{text_content}\"")
+            print(f"   → Pre-decrypted by MeshCore library (no manual PSK needed!)")
+        
     elif hasattr(EventType, 'RX_LOG_DATA') and event_type == EventType.RX_LOG_DATA:
         print("✅ This is RX_LOG_DATA (ALL RF packets)")
     else:
