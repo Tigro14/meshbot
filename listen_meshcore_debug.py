@@ -129,17 +129,36 @@ def on_message(event):
                         print("\n📦 PAYLOAD:")
                         payload_data = decoded.payload
                         
+                        # Get payload type for context
+                        ptype_name = "Unknown"
+                        ptype_value = None
+                        if hasattr(decoded, 'payload_type'):
+                            ptype = decoded.payload_type
+                            if hasattr(ptype, 'value'):
+                                ptype_value = ptype.value
+                                ptype_name = ptype.name
+                            else:
+                                ptype_value = ptype
+                        
                         if isinstance(payload_data, dict):
                             print(f"  Type: dict")
                             print(f"  Keys: {list(payload_data.keys())}")
                             
                             # Check for decoded text
                             decoded_payload = payload_data.get('decoded')
+                            has_text = False
                             if decoded_payload:
                                 if hasattr(decoded_payload, 'text'):
-                                    print(f"  ✅ TEXT: \"{decoded_payload.text}\"")
+                                    print(f"\n  ✅ DECRYPTED TEXT: \"{decoded_payload.text}\"")
+                                    print(f"     → Message successfully decrypted and decoded")
+                                    has_text = True
                                 else:
-                                    print(f"  Decoded payload type: {type(decoded_payload).__name__}")
+                                    decoded_type = type(decoded_payload).__name__
+                                    print(f"  Decoded payload type: {decoded_type}")
+                                    
+                                    # Special handling for ResponsePayload
+                                    if decoded_type == 'ResponsePayload':
+                                        print(f"\n  🔒 ENCRYPTED ResponsePayload (type {ptype_value})")
                             
                             # Check for raw data
                             raw_data = payload_data.get('raw')
@@ -152,10 +171,23 @@ def on_message(event):
                                     hex_str = format_hex(raw_data)
                                     print(f"    Hex: {hex_str[:80]}{'...' if len(hex_str) > 80 else ''}")
                             
-                            # If no text and has raw, likely encrypted
-                            if not decoded_payload and raw_data:
-                                print(f"  ⚠️  ENCRYPTED: Has raw payload but no decoded text")
-                                print(f"     Payload may be encrypted with PSK")
+                            # Analyze encryption status
+                            if not has_text and raw_data:
+                                print(f"\n  🔒 ENCRYPTED PAYLOAD")
+                                
+                                # Provide context based on payload type
+                                if ptype_value == 1:  # Response
+                                    print(f"     ℹ️  This is an encrypted response packet (type 1)")
+                                    print(f"     → ResponsePayloads are typically encrypted responses to requests")
+                                    print(f"     → To decrypt, you need the channel PSK")
+                                elif ptype_name == 'TextMessage' or ptype_value == 15:
+                                    print(f"     ℹ️  This text message is encrypted")
+                                    print(f"     → If broadcast: needs default PSK")
+                                    print(f"     → If channel: needs channel PSK")
+                                    print(f"     → If DM: needs default PSK (Meshtastic 2.7.15+)")
+                                else:
+                                    print(f"     ℹ️  Payload type {ptype_value} ({ptype_name}) is encrypted")
+                                    print(f"     → Check channel configuration for correct PSK")
                         else:
                             print(f"  Type: {type(payload_data).__name__}")
                             if isinstance(payload_data, (bytes, bytearray)):
