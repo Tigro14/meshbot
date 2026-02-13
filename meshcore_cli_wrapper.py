@@ -1979,15 +1979,20 @@ class MeshCoreCLIWrapper:
                                                 debug_print_mc(f"   packet_id: {packet_id}")
                                                 debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
                                                 
+                                                # Always strip 16-byte MeshCore header from payload
+                                                # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
+                                                # Only payload after byte 16 is encrypted
+                                                if len(payload_bytes) > 16:
+                                                    encrypted_payload = payload_bytes[16:]
+                                                    payload_bytes = encrypted_payload  # Update payload_bytes to strip header
+                                                    debug_print_mc(f"🔍 [DECRYPT] Stripped 16-byte header, payload now {len(payload_bytes)}B")
+                                                else:
+                                                    debug_print_mc(f"⚠️  [DECRYPT] Payload too short ({len(payload_bytes)}B), cannot strip header")
+                                                    encrypted_payload = payload_bytes
+                                                
                                                 if packet_id is not None and sender_id != 0xFFFFFFFF:
                                                     debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
                                                     debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
-                                                    
-                                                    # Skip 16-byte MeshCore header before decryption
-                                                    # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
-                                                    # Only payload after byte 16 is encrypted
-                                                    encrypted_payload = payload_bytes[16:]
-                                                    debug_print_mc(f"🔍 [DECRYPT] Skipped 16-byte header, decrypting {len(encrypted_payload)}B payload")
                                                     
                                                     decrypted_text = decrypt_meshcore_public(
                                                         encrypted_payload, 
@@ -2002,9 +2007,9 @@ class MeshCoreCLIWrapper:
                                                         packet_text = decrypted_text
                                                         payload_bytes = decrypted_text.encode('utf-8')
                                                     else:
-                                                        debug_print_mc(f"❌ [DECRYPT] Decryption failed (wrong PSK or not text)")
+                                                        debug_print_mc(f"❌ [DECRYPT] Decryption failed - keeping encrypted payload without header")
                                                 else:
-                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
+                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed - keeping encrypted payload without header")
                                             else:
                                                 if not CRYPTO_AVAILABLE:
                                                     debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
