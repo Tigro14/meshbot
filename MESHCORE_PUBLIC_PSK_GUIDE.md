@@ -14,11 +14,13 @@
 The default Pre-Shared Key (PSK) for the MeshCore Public channel (Channel 0):
 
 ```
-Base64: AQ==
-Hex: 01
-Decimal: 1
-Bytes: [1]
+Base64: izOH6cXN6mrJ5e26oRXNcg==
+Hex: 8b3387e9c5cdea6ac9e5edbaa115cd72
+Decimal: 139, 51, 135, 233, 197, 205, 234, 106, 201, 229, 237, 186, 161, 21, 205, 114
+Bytes: [139, 51, 135, 233, 197, 205, 234, 106, 201, 229, 237, 186, 161, 21, 205, 114]
 ```
+
+**IMPORTANT:** This is the REAL MeshCore Public channel PSK, NOT the Meshtastic default (AQ==)!
 
 **This is what you need to decrypt messages on the MeshCore Public channel!** 🔑
 
@@ -28,7 +30,7 @@ Bytes: [1]
 
 ### Base64 Format
 ```
-AQ==
+izOH6cXN6mrJ5e26oRXNcg==
 ```
 - Most common format in configuration files
 - Used in Meshtastic/MeshCore JSON configs
@@ -36,18 +38,18 @@ AQ==
 
 ### Hex Format
 ```
-01
+8b3387e9c5cdea6ac9e5edbaa115cd72
 ```
 - Hexadecimal representation
 - Used in binary/low-level operations
-- One byte: 0x01
+- 16 bytes total
 
 ### Decimal Format
 ```
-1
+139, 51, 135, 233, 197, 205, 234, 106, 201, 229, 237, 186, 161, 21, 205, 114
 ```
 - Decimal representation
-- Simple integer value
+- Array of byte values
 - Single byte value
 
 ### Bytes Format
@@ -68,7 +70,7 @@ AQ==
 import base64
 
 # Option 1: Use base64 string
-MESHCORE_PUBLIC_PSK_BASE64 = "AQ=="
+MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="
 psk_bytes = base64.b64decode(MESHCORE_PUBLIC_PSK_BASE64)
 
 # Option 2: Use hex string
@@ -87,7 +89,7 @@ MESHCORE_PUBLIC_PSK_BYTES = bytes([1])
 # config.py
 
 # MeshCore Public channel PSK
-MESHCORE_PUBLIC_CHANNEL_PSK = "AQ=="  # Base64 format
+MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="  # Base64 format
 
 # Or use hex format
 MESHCORE_PUBLIC_CHANNEL_PSK_HEX = "01"
@@ -104,7 +106,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
 # Get PSK
-psk = base64.b64decode("AQ==")  # Results in b'\x01'
+psk = base64.b64decode("izOH6cXN6mrJ5e26oRXNcg==")  # Results in b'\x01'
 
 # Use PSK for decryption (example)
 # Note: MeshCore uses AES-128-CTR encryption
@@ -115,7 +117,7 @@ psk = base64.b64decode("AQ==")  # Results in b'\x01'
 
 ## When to Use This PSK
 
-Use the MeshCore Public channel PSK (AQ==) when:
+Use the MeshCore Public channel PSK (izOH6cXN6mrJ5e26oRXNcg==) when:
 
 1. **Public Channel Messages**
    - Messages sent on the default Public channel (Channel 0)
@@ -140,7 +142,7 @@ Use the MeshCore Public channel PSK (AQ==) when:
 Edit your `config.py`:
 ```python
 # MeshCore Public channel configuration
-MESHCORE_PUBLIC_PSK = "AQ=="  # Base64 format
+MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="  # Base64 format
 ```
 
 ### Step 2: Configure Decryption
@@ -178,7 +180,7 @@ Send a message on Public channel and verify it decrypts.
 import base64
 
 # Verify PSK decodes correctly
-psk = base64.b64decode("AQ==")
+psk = base64.b64decode("izOH6cXN6mrJ5e26oRXNcg==")
 print(f"PSK bytes: {psk}")  # Should print: b'\x01'
 print(f"PSK hex: {psk.hex()}")  # Should print: 01
 ```
@@ -195,7 +197,7 @@ print(f"PSK hex: {psk.hex()}")  # Should print: 01
 
 ### Still Can't Decrypt?
 
-1. **Verify PSK is correct**: Should be exactly `AQ==` in base64
+1. **Verify PSK is correct**: Should be exactly `izOH6cXN6mrJ5e26oRXNcg==` in base64
 2. **Check channel number**: Public = 0
 3. **Confirm message type**: TextMessage on Public channel
 4. **Review encryption status**: Script shows if encrypted
@@ -204,7 +206,7 @@ print(f"PSK hex: {psk.hex()}")  # Should print: 01
 ### Mixed Results?
 
 Some messages decrypt, others don't:
-- **Public messages**: Use PSK AQ==
+- **Public messages**: Use PSK izOH6cXN6mrJ5e26oRXNcg==
 - **Channel messages**: Use channel-specific PSK
 - **DM messages**: Use node-specific encryption (different key)
 
@@ -236,15 +238,15 @@ All references in the diagnostic script now correctly say:
 ### MeshCore Public Channel PSK
 
 ```
-Base64: AQ==
-Hex: 01
+Base64: izOH6cXN6mrJ5e26oRXNcg==
+Hex: 8b3387e9c5cdea6ac9e5edbaa115cd72
 ```
 
 ### Quick Reference
 
 - **What**: Default PSK for MeshCore Public channel
 - **When**: Public channel (Channel 0) messages
-- **Format**: AQ== (base64) or 0x01 (hex)
+- **Format**: izOH6cXN6mrJ5e26oRXNcg== (base64) or 0x8b3387e9c5cdea6ac9e5edbaa115cd72 (hex)
 - **Use**: Configure bot for decryption
 
 ### Next Steps
@@ -270,6 +272,6 @@ Hex: 01
 
 ---
 
-**MeshCore Public Channel PSK: AQ== (Base64) or 0x01 (Hex)**
+**MeshCore Public Channel PSK: izOH6cXN6mrJ5e26oRXNcg== (Base64) or 0x8b3387e9c5cdea6ac9e5edbaa115cd72 (Hex)**
 
 **Ready for decryption!** 🔑
