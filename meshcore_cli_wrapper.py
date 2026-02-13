@@ -2015,43 +2015,37 @@ class MeshCoreCLIWrapper:
                                                     encrypted_payload = payload_bytes
                                                 
                                                 # Check if this is a broadcast message before attempting PSK decryption
-                                                # Extract recipient ID from original payload (bytes 8-12 before header strip)
-                                                original_payload = bytes.fromhex(raw_hex)
-                                                if len(original_payload) >= 12:
-                                                    import struct
-                                                    to_id = struct.unpack('<I', original_payload[8:12])[0]
-                                                    is_broadcast = (to_id == 0xFFFFFFFF)
-                                                    
-                                                    if not is_broadcast:
-                                                        # This is a DM packet, skip PSK-based decryption
-                                                        # DMs use NaCl ECDH encryption (Curve25519 + XSalsa20), not AES-CTR with PSK
-                                                        debug_print_mc(f"⏭️  [DECRYPT] Skipping decryption for DM (to=0x{to_id:08x})")
-                                                        debug_print_mc(f"   DMs use ECDH encryption, not PSK - cannot decrypt with AES-CTR")
-                                                        # Keep encrypted payload as-is, bot will show as [ENCRYPTED]
-                                                    else:
-                                                        # This is a broadcast, proceed with PSK decryption
-                                                        if packet_id is not None and sender_id != 0xFFFFFFFF:
-                                                            debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
-                                                            debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
-                                                            
-                                                            decrypted_text = decrypt_meshcore_public(
-                                                                encrypted_payload, 
-                                                                packet_id, 
-                                                                sender_id, 
-                                                                self.meshcore_public_psk
-                                                            )
-                                                            
-                                                            if decrypted_text:
-                                                                debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
-                                                                # Update payload with decrypted text
-                                                                packet_text = decrypted_text
-                                                                payload_bytes = decrypted_text.encode('utf-8')
-                                                            else:
-                                                                debug_print_mc(f"❌ [DECRYPT] Decryption failed - keeping encrypted payload without header")
-                                                        else:
-                                                            debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed - keeping encrypted payload without header")
+                                                # Use already-extracted receiver_id instead of trying to parse raw bytes
+                                                is_broadcast_msg = (receiver_id == 0xFFFFFFFF)
+                                                
+                                                if not is_broadcast_msg:
+                                                    # This is a DM packet, skip PSK-based decryption
+                                                    # DMs use NaCl ECDH encryption (Curve25519 + XSalsa20), not AES-CTR with PSK
+                                                    debug_print_mc(f"⏭️  [DECRYPT] Skipping decryption for DM (to=0x{receiver_id:08x})")
+                                                    debug_print_mc(f"   DMs use ECDH encryption, not PSK - cannot decrypt with AES-CTR")
+                                                    # Keep encrypted payload as-is, bot will show as [ENCRYPTED]
                                                 else:
-                                                    debug_print_mc(f"⚠️  [DECRYPT] Could not extract recipient ID from packet")
+                                                    # This is a broadcast, proceed with PSK decryption
+                                                    if packet_id is not None and sender_id != 0xFFFFFFFF:
+                                                        debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
+                                                        debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
+                                                        
+                                                        decrypted_text = decrypt_meshcore_public(
+                                                            encrypted_payload, 
+                                                            packet_id, 
+                                                            sender_id, 
+                                                            self.meshcore_public_psk
+                                                        )
+                                                        
+                                                        if decrypted_text:
+                                                            debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
+                                                            # Update payload with decrypted text
+                                                            packet_text = decrypted_text
+                                                            payload_bytes = decrypted_text.encode('utf-8')
+                                                        else:
+                                                            debug_print_mc(f"❌ [DECRYPT] Decryption failed - keeping encrypted payload without header")
+                                                    else:
+                                                        debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed - keeping encrypted payload without header")
                                             else:
                                                 if not CRYPTO_AVAILABLE:
                                                     debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
