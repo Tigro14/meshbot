@@ -1,0 +1,189 @@
+# Visual Guide: Echo Sender ID Fix
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                  MESHCORE BROADCAST ECHO SENDER ID FIX                       ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PROBLEM: /echo shows "ffff:" instead of real user ID                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────── BEFORE FIX ─────────────────────────────────────────────┐
+│                                                                              │
+│  User sends:                                                                 │
+│    /echo Hello mesh!                                                         │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌────────────────┐                                                         │
+│  │ utility_commands │                                                        │
+│  │ handle_echo()    │                                                        │
+│  └────────┬─────────┘                                                        │
+│           │                                                                  │
+│           │ interface.sendText("TestUser: Hello mesh!",                     │
+│           │                     destinationId=0xFFFFFFFF)                   │
+│           ▼                                                                  │
+│  ┌───────────────────┐                                                      │
+│  │ meshcore_serial    │                                                      │
+│  │ interface.sendText│                                                       │
+│  └────────┬──────────┘                                                       │
+│           │                                                                  │
+│           │ Sends: SEND_DM:ffffffff:TestUser: Hello mesh!\n                │
+│           ▼                                                                  │
+│  ╔═══════════════════╗                                                      │
+│  ║ MeshCore Device   ║                                                      │
+│  ║ (ESP32 firmware)  ║                                                      │
+│  ╚════════┬══════════╝                                                      │
+│           │                                                                  │
+│           │ Echoes back: DM:ffffffff:TestUser: Hello mesh!                 │
+│           ▼                                                                  │
+│  ┌───────────────────────────┐                                              │
+│  │ meshcore_serial_interface │                                              │
+│  │ _process_meshcore_line()  │                                              │
+│  └────────┬──────────────────┘                                              │
+│           │                                                                  │
+│           │ parser extracts:                                                │
+│           │   sender_id = int("ffffffff", 16) = 0xFFFFFFFF  ❌             │
+│           │   message = "TestUser: Hello mesh!"                            │
+│           ▼                                                                  │
+│  ┌──────────────────┐                                                       │
+│  │ traffic_monitor   │                                                       │
+│  │ add_public_message│                                                       │
+│  └────────┬──────────┘                                                       │
+│           │                                                                  │
+│           │ get_node_name(0xFFFFFFFF) → "Node-ffffffff"                    │
+│           ▼                                                                  │
+│  ┌──────────────────┐                                                       │
+│  │ /trafic display  │                                                       │
+│  └──────────────────┘                                                       │
+│                                                                              │
+│  Output:                                                                     │
+│    14:23 ffff: TestUser: Hello mesh!  ❌                                    │
+│          ^^^^                                                                │
+│          Wrong! Shows last 4 digits of broadcast address                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────── AFTER FIX ──────────────────────────────────────────────┐
+│                                                                              │
+│  User sends:                                                                 │
+│    /echo Hello mesh!                                                         │
+│       │                                                                      │
+│       ▼                                                                      │
+│  [Same as before...]                                                         │
+│       │                                                                      │
+│       │ Sends: SEND_DM:ffffffff:TestUser: Hello mesh!\n                    │
+│       ▼                                                                      │
+│  ╔═══════════════════╗                                                      │
+│  ║ MeshCore Device   ║                                                      │
+│  ║ (ESP32 firmware)  ║                                                      │
+│  ╚════════┬══════════╝                                                      │
+│           │                                                                  │
+│           │ Echoes back: DM:ffffffff:TestUser: Hello mesh!                 │
+│           ▼                                                                  │
+│  ┌───────────────────────────┐                                              │
+│  │ meshcore_serial_interface │                                              │
+│  │ _process_meshcore_line()  │                                              │
+│  └────────┬──────────────────┘                                              │
+│           │                                                                  │
+│           │ parser extracts:                                                │
+│           │   sender_id = int("ffffffff", 16) = 0xFFFFFFFF                │
+│           │                                                                  │
+│           │ ✨ FIX APPLIED:                                                 │
+│           │   if sender_id == 0xFFFFFFFF:                                  │
+│           │       sender_id = self.localNode.nodeNum  # 0x12345678  ✅     │
+│           │                                                                  │
+│           │   message = "TestUser: Hello mesh!"                            │
+│           ▼                                                                  │
+│  ┌──────────────────┐                                                       │
+│  │ traffic_monitor   │                                                       │
+│  │ add_public_message│                                                       │
+│  └────────┬──────────┘                                                       │
+│           │                                                                  │
+│           │ get_node_name(0x12345678) → "TestUser" (bot's name)            │
+│           ▼                                                                  │
+│  ┌──────────────────┐                                                       │
+│  │ /trafic display  │                                                       │
+│  └──────────────────┘                                                       │
+│                                                                              │
+│  Output:                                                                     │
+│    14:23 5678: TestUser: Hello mesh!  ✅                                    │
+│          ^^^^                                                                │
+│          Correct! Shows last 4 digits of bot's node ID (0x12345678)        │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌────────────── KEY CHANGES ────────────────────────────────────────────────┐
+│                                                                              │
+│  1. meshcore_serial_interface.py::_process_meshcore_line()                  │
+│     ─────────────────────────────────────────────────────                   │
+│     + if sender_id == 0xFFFFFFFF:                                          │
+│     +     sender_id = self.localNode.nodeNum                               │
+│                                                                              │
+│  2. meshcore_cli_wrapper.py::_on_channel_message()                          │
+│     ────────────────────────────────────────────────                        │
+│     + if sender_id == 0xFFFFFFFF:                                          │
+│     +     sender_id = self.localNode.nodeNum                               │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌────────────── IMPACT ─────────────────────────────────────────────────────┐
+│                                                                              │
+│  Before:                      After:                                         │
+│  ────────                     ──────                                        │
+│  14:23 ffff: Hello!   ❌     14:23 5678: Hello!    ✅                      │
+│  14:24 ffff: Test      ❌     14:24 5678: Test      ✅                      │
+│  14:25 abcd: Response  ✅     14:25 abcd: Response  ✅ (DM unchanged)      │
+│                                                                              │
+│  ✅ Broadcast echoes show correct bot ID                                   │
+│  ✅ Direct messages preserve original sender ID                            │
+│  ✅ Traffic history displays correct attribution                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌────────────── TESTING ────────────────────────────────────────────────────┐
+│                                                                              │
+│  Test Suite: test_echo_sender_id_fix.py                                     │
+│  ─────────────────────────────────────                                      │
+│  ✅ test_meshcore_serial_replaces_broadcast_sender_id                      │
+│      → Broadcast echo: 0xFFFFFFFF → 0x12345678 (bot ID)                   │
+│                                                                              │
+│  ✅ test_direct_message_sender_id_unchanged                                │
+│      → Direct message: 0xabcdef01 → 0xabcdef01 (unchanged)                │
+│                                                                              │
+│  ⚠️  test_meshcore_cli_replaces_broadcast_sender_id                        │
+│      → Skipped (meshcore-cli not installed)                                │
+│                                                                              │
+│  Demo: demo_echo_sender_id_fix.py                                           │
+│  ───────────────────────────────                                            │
+│  Interactive demonstration showing:                                          │
+│    • Behavior before fix (ffff: prefix)                                    │
+│    • Behavior after fix (correct bot ID)                                   │
+│    • Direct messages unaffected                                             │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+┌────────────── SUMMARY ────────────────────────────────────────────────────┐
+│                                                                              │
+│  Problem:  /echo broadcast shows "ffff:" instead of real user ID           │
+│  Solution: Replace 0xFFFFFFFF with bot's node ID when parsing echoes       │
+│  Impact:   ✅ Correct sender attribution in all message displays           │
+│                                                                              │
+│  Files changed:                                                              │
+│    • meshcore_serial_interface.py    (added 6 lines)                       │
+│    • meshcore_cli_wrapper.py         (added 5 lines)                       │
+│    • test_echo_sender_id_fix.py      (new, 173 lines)                     │
+│    • demo_echo_sender_id_fix.py      (new, 194 lines)                     │
+│    • FIX_ECHO_SENDER_ID.md           (new, documentation)                  │
+│                                                                              │
+│  Total: 549 lines added, 1 line removed                                     │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
