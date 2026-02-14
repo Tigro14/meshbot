@@ -45,6 +45,87 @@ except ImportError:
     NACL_AVAILABLE = False
     debug_print_mc("ℹ️  [MESHCORE] PyNaCl non disponible (validation clés désactivée)")
 
+# Try to import cryptography for MeshCore Public channel decryption
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    import base64
+    CRYPTO_AVAILABLE = True
+    info_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    info_print_mc("⚠️ [MESHCORE] cryptography non disponible (pip install cryptography)")
+    info_print_mc("   → Déchiffrement canal Public MeshCore désactivé")
+
+
+def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
+    """
+    Decrypt MeshCore Public channel encrypted message using AES-128-CTR.
+    
+    Args:
+        encrypted_bytes: Encrypted payload data (bytes)
+        packet_id: Packet ID from decoded packet
+        from_id: Sender node ID from decoded packet
+        psk: Pre-Shared Key as base64 string or bytes (16 bytes for AES-128)
+        
+    Returns:
+        Decrypted text string or None if decryption fails
+    """
+    if not CRYPTO_AVAILABLE:
+        return None
+        
+    try:
+        # Convert PSK from base64 to bytes if needed
+        if isinstance(psk, str):
+            psk_bytes = base64.b64decode(psk)
+        else:
+            psk_bytes = psk
+            
+        # Ensure PSK is 16 bytes for AES-128
+        if len(psk_bytes) != 16:
+            debug_print_mc(f"⚠️  [DECRYPT] PSK length is {len(psk_bytes)} bytes, expected 16 bytes")
+            return None
+        
+        # Debug: Show PSK length
+        debug_print_mc(f"🔍 [DECRYPT] PSK: {len(psk_bytes)} bytes")
+        
+        # Construct nonce for AES-CTR (16 bytes)
+        # MeshCore uses: packet_id (8 bytes LE) + from_id (4 bytes LE) + padding (4 zeros)
+        nonce = packet_id.to_bytes(8, 'little') + from_id.to_bytes(4, 'little') + b'\x00' * 4
+        
+        # Debug: Show nonce
+        debug_print_mc(f"🔍 [DECRYPT] Nonce: {nonce.hex()}")
+        
+        # Debug: Show encrypted payload (first 32 bytes)
+        debug_print_mc(f"🔍 [DECRYPT] Encrypted (first 32B): {encrypted_bytes[:32].hex()}")
+        
+        # Create AES-128-CTR cipher
+        cipher = Cipher(
+            algorithms.AES(psk_bytes),
+            modes.CTR(nonce),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        
+        # Decrypt
+        decrypted_bytes = decryptor.update(encrypted_bytes) + decryptor.finalize()
+        
+        # Debug: Show decrypted bytes (first 32 bytes)
+        debug_print_mc(f"🔍 [DECRYPT] Decrypted (first 32B): {decrypted_bytes[:32].hex()}")
+        
+        # Try to decode as UTF-8 text
+        decrypted_text = decrypted_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
+        
+        # Debug: Show UTF-8 decoded text
+        debug_print_mc(f"🔍 [DECRYPT] Decrypted as UTF-8: \"{decrypted_text}\"")
+        
+        debug_print_mc(f"✅ [DECRYPT] Successfully decrypted {len(encrypted_bytes)}B → \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
+        return decrypted_text
+        
+    except Exception as e:
+        debug_print_mc(f"❌ [DECRYPT] Decryption failed: {e}")
+        return None
+
 
 class MeshCoreCLIWrapper:
     """
@@ -87,6 +168,16 @@ class MeshCoreCLIWrapper:
                 self.debug = False
         else:
             self.debug = debug
+        
+        # Load MeshCore Public channel PSK from config
+        try:
+            import config
+            self.meshcore_public_psk = getattr(config, 'MESHCORE_PUBLIC_PSK', "izOH6cXN6mrJ5e26oRXNcg==")
+            debug_print_mc(f"✅ [MESHCORE] PSK chargée depuis config")
+        except ImportError:
+            # Use default MeshCore Public channel PSK
+            self.meshcore_public_psk = "izOH6cXN6mrJ5e26oRXNcg=="
+            debug_print_mc(f"ℹ️  [MESHCORE] PSK par défaut utilisée")
         
         # Simulation d'un localNode pour compatibilité
         # Note: 0xFFFFFFFE = unknown local node (NOT broadcast 0xFFFFFFFF)
@@ -831,11 +922,30 @@ class MeshCoreCLIWrapper:
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
                     info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
                     info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
+                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
                 elif not rx_log_enabled:
                     info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
                     info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
+                    
+                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
+                    # This allows the bot to respond to commands sent on the public channel
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
+                        info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
                 elif not hasattr(EventType, 'RX_LOG_DATA'):
                     debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
+                    
+                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
@@ -853,8 +963,25 @@ class MeshCoreCLIWrapper:
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
                     info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
                     info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
+                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
                 elif not rx_log_enabled:
                     info_print_mc("ℹ️  RX_LOG_DATA désactivé")
+                    
+                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                elif not hasattr(EventType, 'RX_LOG_DATA'):
+                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
+                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
+                    else:
+                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -1375,6 +1502,132 @@ class MeshCoreCLIWrapper:
         except Exception:
             return f"0x{node_id:08x}"
     
+    def _on_channel_message(self, event):
+        """
+        Callback pour les messages de canal public (CHANNEL_MSG_RECV)
+        Permet au bot de traiter les commandes envoyées sur le canal public (ex: /echo)
+        
+        Args:
+            event: Event object from meshcore dispatcher
+        """
+        info_print_mc("📢 [MESHCORE-CHANNEL] Canal public message reçu!")
+        try:
+            # Update last message time for healthcheck
+            self.last_message_time = time.time()
+            self.connection_healthy = True
+            
+            # Log event structure for debugging
+            try:
+                debug_print_mc(f"📦 [CHANNEL] Event type: {type(event).__name__}")
+                if hasattr(event, 'type'):
+                    debug_print_mc(f"   Event.type: {event.type}")
+                # Log event attributes if available
+                if hasattr(event, '__dict__'):
+                    debug_print_mc(f"   Event attributes: {list(event.__dict__.keys())}")
+                    # COMPREHENSIVE DEBUG: Log ALL event fields with values
+                    for key in event.__dict__.keys():
+                        value = getattr(event, key, None)
+                        debug_print_mc(f"      event.{key} = {value}")
+            except Exception as log_err:
+                debug_print_mc(f"📦 [CHANNEL] Event (erreur log: {log_err})")
+            
+            # Extract event payload
+            payload = event.payload if hasattr(event, 'payload') else event
+            
+            # Log payload structure for debugging
+            try:
+                debug_print_mc(f"📦 [CHANNEL] Payload type: {type(payload).__name__}")
+                if isinstance(payload, dict):
+                    debug_print_mc(f"📦 [CHANNEL] Payload keys: {list(payload.keys())}")
+                else:
+                    debug_print_mc(f"📦 [CHANNEL] Payload: {str(payload)[:200]}")
+            except Exception as log_err:
+                debug_print_mc(f"📦 [CHANNEL] Payload (erreur log: {log_err})")
+            
+            # Extract sender_id using multiple fallback methods (like _on_contact_message)
+            sender_id = None
+            
+            # Méthode 1: Chercher dans payload (dict)
+            if isinstance(payload, dict):
+                sender_id = payload.get('sender_id') or payload.get('contact_id') or payload.get('from')
+                debug_print_mc(f"📋 [CHANNEL] Payload dict - sender_id: {sender_id}")
+            
+            # Méthode 2: Chercher dans les attributs de l'event
+            if sender_id is None and hasattr(event, 'attributes'):
+                attributes = event.attributes
+                debug_print_mc(f"📋 [CHANNEL] Event attributes: {attributes}")
+                if isinstance(attributes, dict):
+                    sender_id = attributes.get('sender_id') or attributes.get('contact_id') or attributes.get('from')
+            
+            # Méthode 3: Chercher directement sur l'event
+            if sender_id is None:
+                for attr_name in ['sender_id', 'contact_id', 'from']:
+                    if hasattr(event, attr_name):
+                        attr_value = getattr(event, attr_name)
+                        # Only use if it's actually a valid value (not None)
+                        if attr_value is not None and isinstance(attr_value, int):
+                            sender_id = attr_value
+                            debug_print_mc(f"📋 [CHANNEL] Event direct {attr_name}: {sender_id}")
+                            break
+            
+            # Extract channel index (default to 0 for public channel)
+            # Try multiple field names for channel
+            if isinstance(payload, dict):
+                channel_index = payload.get('channel') or payload.get('chan') or payload.get('channel_idx') or 0
+            else:
+                channel_index = 0
+            
+            # Extract message text
+            if isinstance(payload, dict):
+                message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
+            else:
+                # Try to get text from event directly if payload is not dict
+                message_text = getattr(event, 'text', '') or getattr(payload, 'text', '') if hasattr(payload, 'text') else ''
+            
+            if not message_text:
+                debug_print_mc("⚠️ [CHANNEL] Message vide, ignoré")
+                return
+            
+            # For Public channel messages, sender_id may not be available in CHANNEL_MSG_RECV
+            # Use broadcast ID (0xFFFFFFFF) since Public channel is broadcast to all nodes
+            if sender_id is None:
+                sender_id = 0xFFFFFFFF  # Broadcast sender ID
+                debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) for Public channel")
+            
+            # Log the channel message
+            info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
+            
+            # Convert to bot-compatible packet format
+            # CRITICAL: Set to_id=0xFFFFFFFF so message is recognized as broadcast by message_router.py
+            packet = {
+                'from': sender_id,
+                'to': 0xFFFFFFFF,  # Broadcast address - critical for routing
+                'decoded': {
+                    'portnum': 'TEXT_MESSAGE_APP',
+                    'payload': message_text.encode('utf-8')
+                },
+                'channel': channel_index,
+                '_meshcore_dm': False  # NOT a DM - this is a public channel message
+            }
+            
+            decoded = packet['decoded']
+            
+            # Forward to bot's message_callback if registered
+            if self.message_callback:
+                debug_print_mc(f"📤 [CHANNEL] Forwarding to bot callback: {message_text[:30]}...")
+                try:
+                    self.message_callback(packet, self)
+                    info_print_mc(f"✅ [CHANNEL] Message transmis au bot pour traitement")
+                except Exception as fwd_err:
+                    error_print(f"❌ [CHANNEL] Erreur transmission au bot: {fwd_err}")
+                    error_print(traceback.format_exc())
+            else:
+                debug_print_mc("⚠️ [CHANNEL] Pas de callback message_callback enregistré")
+        
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-CHANNEL] Erreur traitement message de canal: {e}")
+            error_print(traceback.format_exc())
+    
     def _on_rx_log_data(self, event):
         """
         Callback pour les événements RX_LOG_DATA (données RF brutes)
@@ -1627,6 +1880,15 @@ class MeshCoreCLIWrapper:
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
                     
+                    # Debug: Log payload structure ALWAYS for troubleshooting
+                    debug_print_mc(f"🔍 [RX_LOG] Checking decoded_packet for payload...")
+                    debug_print_mc(f"🔍 [RX_LOG] Has payload attribute: {hasattr(decoded_packet, 'payload')}")
+                    if hasattr(decoded_packet, 'payload'):
+                        debug_print_mc(f"🔍 [RX_LOG] Payload value: {decoded_packet.payload}")
+                        debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
+                        if isinstance(decoded_packet.payload, dict):
+                            debug_print_mc(f"🔍 [RX_LOG] Payload keys: {list(decoded_packet.payload.keys())}")
+                    
                     if decoded_packet.payload and isinstance(decoded_packet.payload, dict):
                         decoded_payload = decoded_packet.payload.get('decoded')
                         
@@ -1652,6 +1914,197 @@ class MeshCoreCLIWrapper:
                                 # Other packet types - use payload type name
                                 portnum = decoded_packet.payload_type.name.upper() + '_APP'
                                 payload_bytes = b''
+                        else:
+                            # Payload not decoded (encrypted or unknown type)
+                            # Check if there's raw payload data in decoded_packet
+                            raw_payload = decoded_packet.payload.get('raw', b'')
+                            
+                            # CRITICAL FIX: If decoded raw is empty, use original raw_hex from event
+                            # The decoder can't decrypt encrypted packets, so payload['raw'] is empty
+                            # But the original hex data is available in the event payload
+                            if not raw_payload and raw_hex:
+                                debug_print_mc(f"🔧 [RX_LOG] Decoded raw empty, using original raw_hex: {len(raw_hex)//2}B")
+                                raw_payload = raw_hex
+                            
+                            if raw_payload:
+                                # Have raw payload - use it
+                                if isinstance(raw_payload, str):
+                                    # Convert hex string to bytes
+                                    try:
+                                        payload_bytes = bytes.fromhex(raw_payload)
+                                        debug_print_mc(f"✅ [RX_LOG] Converted hex to bytes: {len(payload_bytes)}B")
+                                    except ValueError:
+                                        payload_bytes = raw_payload.encode('utf-8')
+                                        debug_print_mc(f"✅ [RX_LOG] Encoded string to bytes: {len(payload_bytes)}B")
+                                else:
+                                    payload_bytes = raw_payload
+                                    debug_print_mc(f"✅ [RX_LOG] Using raw bytes directly: {len(payload_bytes)}B")
+                                
+                                # Try to determine portnum from payload_type
+                                if hasattr(decoded_packet, 'payload_type') and decoded_packet.payload_type:
+                                    try:
+                                        # Use the numeric payload type value
+                                        payload_type_value = decoded_packet.payload_type.value if hasattr(decoded_packet.payload_type, 'value') else None
+                                        
+                                        if payload_type_value == 1:
+                                            portnum = 'TEXT_MESSAGE_APP'
+                                        elif payload_type_value == 3:
+                                            portnum = 'POSITION_APP'
+                                        elif payload_type_value == 4:
+                                            portnum = 'NODEINFO_APP'
+                                        elif payload_type_value == 7:
+                                            portnum = 'TELEMETRY_APP'
+                                        elif payload_type_value in [12, 13, 15]:
+                                            # Types 12, 13, 15 are encrypted message wrappers
+                                            # Try to decrypt with MeshCore Public channel PSK
+                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) detected")
+                                            
+                                            # Debug logging for decryption troubleshooting
+                                            debug_print_mc(f"🔍 [DECRYPT] Debug info:")
+                                            debug_print_mc(f"   CRYPTO_AVAILABLE: {CRYPTO_AVAILABLE}")
+                                            debug_print_mc(f"   payload_bytes: {len(payload_bytes) if payload_bytes else 0}B")
+                                            debug_print_mc(f"   sender_id: 0x{sender_id:08x}")
+                                            
+                                            # Try decryption if crypto is available
+                                            decrypted_text = None
+                                            if CRYPTO_AVAILABLE and payload_bytes:
+                                                # Get packet_id for decryption nonce
+                                                # Extract from message_hash (available in decoded_packet)
+                                                packet_id = None
+                                                if hasattr(decoded_packet, 'message_hash') and decoded_packet.message_hash:
+                                                    # message_hash is hex string, convert first 8 chars (4 bytes) to int
+                                                    packet_id = int(decoded_packet.message_hash[:8], 16)
+                                                    debug_print_mc(f"   ✅ packet_id from message_hash: {packet_id} (0x{packet_id:08x})")
+                                                elif packet_header and 'msg_hash' in packet_header:
+                                                    # Fall back to packet header
+                                                    packet_id = int(packet_header['msg_hash'][:8], 16)
+                                                    debug_print_mc(f"   ✅ packet_id from packet_header: {packet_id} (0x{packet_id:08x})")
+                                                else:
+                                                    debug_print_mc(f"   ❌ packet_id not found (no message_hash)")
+                                                
+                                                debug_print_mc(f"   packet_id: {packet_id}")
+                                                debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
+                                                
+                                                # Always strip 16-byte MeshCore header from payload
+                                                # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
+                                                # Only payload after byte 16 is encrypted
+                                                if len(payload_bytes) > 16:
+                                                    encrypted_payload = payload_bytes[16:]
+                                                    payload_bytes = encrypted_payload  # Update payload_bytes to strip header
+                                                    debug_print_mc(f"🔍 [DECRYPT] Stripped 16-byte header, payload now {len(payload_bytes)}B")
+                                                    
+                                                    # Skip protobuf varint length prefix before decryption
+                                                    # After MeshCore header, there's a protobuf varint that encodes the payload length
+                                                    # We need to skip this varint before decrypting
+                                                    def decode_varint(data):
+                                                        """Decode protobuf varint from bytes."""
+                                                        result = 0
+                                                        shift = 0
+                                                        index = 0
+                                                        while index < len(data):
+                                                            byte = data[index]
+                                                            result |= (byte & 0x7F) << shift
+                                                            index += 1
+                                                            if (byte & 0x80) == 0:
+                                                                break
+                                                            shift += 7
+                                                        return result, index
+                                                    
+                                                    # Decode and skip varint
+                                                    if len(encrypted_payload) > 0:
+                                                        length, varint_size = decode_varint(encrypted_payload)
+                                                        encrypted_payload = encrypted_payload[varint_size:]
+                                                        payload_bytes = encrypted_payload  # Update again after varint skip
+                                                        debug_print_mc(f"🔍 [DECRYPT] Skipped varint ({varint_size} bytes, length={length}), encrypted payload now {len(encrypted_payload)}B")
+                                                else:
+                                                    debug_print_mc(f"⚠️  [DECRYPT] Payload too short ({len(payload_bytes)}B), cannot strip header")
+                                                    encrypted_payload = payload_bytes
+                                                
+                                                # Always attempt PSK decryption (Public channel uses PSK even for messages to specific users)
+                                                # Public channel messages decrypt to readable text, DMs produce garbage (detected by readability check)
+                                                if packet_id is not None and sender_id != 0xFFFFFFFF:
+                                                    debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
+                                                    debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
+                                                    
+                                                    decrypted_text = decrypt_meshcore_public(
+                                                        encrypted_payload, 
+                                                        packet_id, 
+                                                        sender_id, 
+                                                        self.meshcore_public_psk
+                                                    )
+                                                    
+                                                    # Validate decryption result is readable text
+                                                    # Public channel: PSK decryption produces readable UTF-8
+                                                    # DMs: PSK decryption produces garbage (ECDH-encrypted)
+                                                    if decrypted_text and all(c.isprintable() or c in '\n\r\t' for c in decrypted_text):
+                                                        debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
+                                                        # Update payload with decrypted text
+                                                        packet_text = decrypted_text
+                                                        payload_bytes = decrypted_text.encode('utf-8')
+                                                    else:
+                                                        # Non-printable result = ECDH-encrypted DM
+                                                        debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
+                                                        # Mark as encrypted for display
+                                                        packet_text = '[ENCRYPTED]'
+                                                else:
+                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
+                                            else:
+                                                if not CRYPTO_AVAILABLE:
+                                                    debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
+                                                if not payload_bytes:
+                                                    debug_print_mc(f"❌ [DECRYPT] No payload bytes to decrypt")
+                                            
+                                            # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
+                                            portnum = 'TEXT_MESSAGE_APP'
+                                            if not decrypted_text:
+                                                debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP (not decrypted)")
+                                        else:
+                                            # Unknown type - keep as UNKNOWN_APP
+                                            portnum = 'UNKNOWN_APP'
+                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
+                                    except:
+                                        portnum = 'UNKNOWN_APP'
+                    elif decoded_packet.payload:
+                        # Payload exists but is not a dict
+                        # Try to use it directly as bytes
+                        debug_print_mc(f"⚠️ [RX_LOG] Payload is not a dict: {type(decoded_packet.payload).__name__}")
+                        if isinstance(decoded_packet.payload, (bytes, bytearray)):
+                            payload_bytes = bytes(decoded_packet.payload)
+                            debug_print_mc(f"✅ [RX_LOG] Using payload directly as bytes: {len(payload_bytes)}B")
+                        elif isinstance(decoded_packet.payload, str):
+                            # Try to decode as hex
+                            try:
+                                payload_bytes = bytes.fromhex(decoded_packet.payload)
+                                debug_print_mc(f"✅ [RX_LOG] Converted hex string to bytes: {len(payload_bytes)}B")
+                            except ValueError:
+                                payload_bytes = decoded_packet.payload.encode('utf-8')
+                                debug_print_mc(f"✅ [RX_LOG] Encoded string to bytes: {len(payload_bytes)}B")
+                        
+                        # Try to determine portnum from payload_type
+                        if hasattr(decoded_packet, 'payload_type') and decoded_packet.payload_type:
+                            try:
+                                payload_type_value = decoded_packet.payload_type.value if hasattr(decoded_packet.payload_type, 'value') else None
+                                if payload_type_value == 1:
+                                    portnum = 'TEXT_MESSAGE_APP'
+                                elif payload_type_value == 3:
+                                    portnum = 'POSITION_APP'
+                                elif payload_type_value == 4:
+                                    portnum = 'NODEINFO_APP'
+                                elif payload_type_value == 7:
+                                    portnum = 'TELEMETRY_APP'
+                                debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
+                            except:
+                                pass
+                    else:
+                        # No payload at all - check if raw data is in the packet object itself
+                        debug_print_mc(f"⚠️ [RX_LOG] No payload found in decoded_packet")
+                        # Check if there's raw data elsewhere
+                        if hasattr(decoded_packet, 'raw_data') and decoded_packet.raw_data:
+                            payload_bytes = decoded_packet.raw_data
+                            debug_print_mc(f"✅ [RX_LOG] Found raw_data in packet: {len(payload_bytes)}B")
+                        elif hasattr(decoded_packet, 'data') and decoded_packet.data:
+                            payload_bytes = decoded_packet.data
+                            debug_print_mc(f"✅ [RX_LOG] Found data in packet: {len(payload_bytes)}B")
                     
                     # Determine if broadcast based on receiver address (not route type)
                     # Route type can be Flood even for DMs (flood routing)
@@ -1659,6 +2112,17 @@ class MeshCoreCLIWrapper:
                     
                     # Create bot-compatible packet for ALL packet types
                     import random
+                    
+                    # Build decoded dict with text field for TEXT_MESSAGE_APP
+                    decoded_dict = {
+                        'portnum': portnum,
+                        'payload': payload_bytes
+                    }
+                    
+                    # Add text field if we have packet_text (decrypted or [ENCRYPTED])
+                    if portnum == 'TEXT_MESSAGE_APP' and packet_text is not None:
+                        decoded_dict['text'] = packet_text
+                    
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
                         'to': receiver_id,  # Use header receiver (CORRECT!)
@@ -1669,10 +2133,7 @@ class MeshCoreCLIWrapper:
                         'hopLimit': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'channel': 0,
-                        'decoded': {
-                            'portnum': portnum,
-                            'payload': payload_bytes
-                        },
+                        'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
                         '_meshcore_broadcast': is_broadcast
                     }

@@ -704,6 +704,79 @@ class TrafficMonitor:
 
                 if packet_type == 'TEXT_MESSAGE_APP':
                     message_text = self._extract_message_text(decoded)
+                    
+                    # DEBUG: Log decoded structure for troubleshooting
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] message_text: {repr(message_text)}")
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded keys: {list(decoded.keys())}")
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] decoded: {decoded}")
+                    
+                    # Check if message is encrypted (bytes or non-printable characters)
+                    is_encrypted = (
+                        isinstance(message_text, bytes) or
+                        (message_text and not message_text.isprintable())
+                    )
+                    debug_print(f"🔍 [TEXT_MESSAGE_APP] is_encrypted: {is_encrypted}")
+                    
+                    # Check if message is encrypted (has payload bytes but no text, or text is encrypted)
+                    if (not message_text or is_encrypted) and 'payload' in decoded:
+                        payload = decoded.get('payload')
+                        if isinstance(payload, (bytes, bytearray)) and len(payload) > 0:
+                            # Encrypted channel message - check source before decrypting
+                            debug_print(f"🔐 Encrypted TEXT_MESSAGE_APP detected ({len(payload)}B), source={source}")
+                            
+                            if source == 'meshcore':
+                                # MeshCore uses its own encryption system (different from Meshtastic)
+                                # Do NOT attempt Meshtastic decryption methods on MeshCore packets
+                                debug_print(f"ℹ️  MeshCore packet - skipping Meshtastic decryption (MeshCore handles its own encryption)")
+                                message_text = "[ENCRYPTED]"
+                                decoded['text'] = message_text
+                                packet['decoded']['text'] = message_text
+                                # Skip Meshtastic decryption
+                                decrypted_data = None
+                            else:
+                                # Meshtastic packet - try Meshtastic decryption
+                                debug_print(f"🔐 Attempting Meshtastic decryption...")
+                                
+                                # Get packet info for decryption
+                                packet_id = packet.get('id', 0)
+                                channel_index = packet.get('channel', 0)
+                                
+                                # Try to decrypt with channel PSK
+                                decrypted_data = self._decrypt_packet(
+                                    encrypted_data=payload,
+                                    packet_id=packet_id,
+                                    from_id=from_id,
+                                    channel_index=channel_index,
+                                    interface=interface
+                                )
+                            
+                            if decrypted_data:
+                                # Successfully decrypted - extract text
+                                if hasattr(decrypted_data, 'payload'):
+                                    decrypted_payload = decrypted_data.payload
+                                    if hasattr(decrypted_payload, 'decoded'):
+                                        decrypted_decoded = decrypted_payload.decoded
+                                        if hasattr(decrypted_decoded, 'text'):
+                                            message_text = decrypted_decoded.text
+                                            # CRITICAL: Store decrypted text back in decoded dict
+                                            # AND in packet dict so display code can find it
+                                            decoded['text'] = message_text
+                                            packet['decoded']['text'] = message_text  # Update packet dict too
+                                            debug_print(f"✅ Decrypted TEXT_MESSAGE_APP: {message_text[:50]}...")
+                                        else:
+                                            debug_print(f"⚠️ Decrypted but no text field")
+                                    else:
+                                        debug_print(f"⚠️ Decrypted but no decoded field")
+                                else:
+                                    debug_print(f"⚠️ Decrypted but no payload field")
+                            else:
+                                # Only log error for non-MeshCore packets
+                                # (MeshCore packets skip decryption intentionally)
+                                if source != 'meshcore':
+                                    debug_print(f"❌ Failed to decrypt TEXT_MESSAGE_APP")
+                                message_text = "[ENCRYPTED]"
+                                decoded['text'] = message_text
+                                packet['decoded']['text'] = message_text  # Update packet dict too
             elif 'encrypted' in packet:
                 # Paquet chiffré
                 is_encrypted = True
@@ -1132,7 +1205,13 @@ class TrafficMonitor:
                     if not text:
                         try:
                             payload = decoded.get('payload', b'')
-                            text = payload.decode('utf-8') if payload else ''
+                            if payload:
+                                text = payload.decode('utf-8')
+                                # Check if decoded text is printable
+                                if not text.isprintable():
+                                    text = '[ENCRYPTED]'
+                            else:
+                                text = ''
                         except:
                             text = '<decode error>'
                     # Truncate long messages

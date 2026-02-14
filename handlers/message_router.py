@@ -89,14 +89,29 @@ class MessageRouter:
         # DEBUG: Log message routing decision
         debug_print(f"🔍 [ROUTER-DEBUG] _meshcore_dm={is_meshcore_dm} | is_for_me={is_for_me} | is_broadcast={is_broadcast} | to=0x{to_id:08x}")
 
+        # For broadcast messages from MeshCore CHANNEL_MSG_RECV, strip "Sender: " prefix
+        # MeshCore includes sender name in text: "Tigro: /echo test"
+        # We need just the command: "/echo test"
+        if is_broadcast and sender_id == 0xFFFFFFFF and ': ' in message:
+            parts = message.split(': ', 1)
+            if len(parts) == 2 and parts[1].startswith('/'):
+                original_message = message
+                message = parts[1]  # Use only the command part
+                debug_print(f"🔧 [ROUTER] Stripped sender prefix from Public channel message")
+                debug_print(f"   Original: '{original_message}'")
+                debug_print(f"   Cleaned:  '{message}'")
+
         # Gérer commandes broadcast-friendly (echo, my, weather, rain, bot, ia, info, propag, hop)
         broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/ia', '/info', '/propag', '/hop']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
+            debug_print(f"🎯 [ROUTER] Broadcast command detected: is_broadcast={is_broadcast}, is_for_me={is_for_me}, is_from_me={is_from_me}")
             if message.startswith('/echo'):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
+                debug_print(f"📢 [ROUTER] Calling utility_handler.handle_echo() for Public channel")
                 self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
+                debug_print(f"✅ [ROUTER] handle_echo() returned")
             elif message.startswith('/my'):
                 info_print(f"MY PUBLIC de {sender_info}")
                 self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
