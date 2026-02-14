@@ -29,7 +29,7 @@ import serial
 import threading
 import time
 import struct
-from utils import info_print, debug_print, error_print
+from utils import info_print, debug_print, error_print, info_print_mc
 import traceback
 
 
@@ -352,6 +352,12 @@ class MeshCoreSerialInterface:
                 if len(parts) >= 2:
                     sender_id = int(parts[0], 16)  # ID en hexa
                     message = parts[1]
+                    
+                    # FIX: When bot sends broadcast (SEND_DM:ffffffff:msg), it echoes back as DM:ffffffff:msg
+                    # Replace broadcast address with bot's own node ID so traffic history shows correct sender
+                    if sender_id == 0xFFFFFFFF:
+                        sender_id = self.localNode.nodeNum
+                        debug_print(f"🔄 [MESHCORE-FIX] Broadcast echo detected, using bot's node ID: 0x{sender_id:08x}")
                     
                     info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {message[:50]}{'...' if len(message) > 50 else ''}")
                     

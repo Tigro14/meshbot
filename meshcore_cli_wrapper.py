@@ -1594,6 +1594,12 @@ class MeshCoreCLIWrapper:
                 sender_id = 0xFFFFFFFF  # Broadcast sender ID
                 debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) for Public channel")
             
+            # FIX: When bot sends broadcast, it echoes back with sender_id=0xFFFFFFFF
+            # Replace broadcast address with bot's own node ID so traffic history shows correct sender
+            if sender_id == 0xFFFFFFFF:
+                sender_id = self.localNode.nodeNum
+                debug_print_mc(f"🔄 [MESHCORE-FIX] Broadcast echo detected, using bot's node ID: 0x{sender_id:08x}")
+            
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
             
