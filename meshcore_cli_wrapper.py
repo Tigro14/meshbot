@@ -1524,6 +1524,10 @@ class MeshCoreCLIWrapper:
                 # Log event attributes if available
                 if hasattr(event, '__dict__'):
                     debug_print_mc(f"   Event attributes: {list(event.__dict__.keys())}")
+                    # COMPREHENSIVE DEBUG: Log ALL event fields with values
+                    for key in event.__dict__.keys():
+                        value = getattr(event, key, None)
+                        debug_print_mc(f"      event.{key} = {value}")
             except Exception as log_err:
                 debug_print_mc(f"📦 [CHANNEL] Event (erreur log: {log_err})")
             
