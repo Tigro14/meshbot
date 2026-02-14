@@ -353,11 +353,21 @@ class MeshCoreSerialInterface:
                     sender_id = int(parts[0], 16)  # ID en hexa
                     message = parts[1]
                     
-                    # FIX: When bot sends broadcast (SEND_DM:ffffffff:msg), it echoes back as DM:ffffffff:msg
-                    # Replace broadcast address with bot's own node ID so traffic history shows correct sender
+                    # FIX: When sender_id is broadcast address (0xFFFFFFFF), it could be:
+                    # 1. Bot's own broadcast echo - should use bot's node ID
+                    # 2. Another user's message with sender prefix - extract sender name
+                    # For now, only replace if message doesn't have "Name: " prefix pattern
                     if sender_id == 0xFFFFFFFF:
-                        sender_id = self.localNode.nodeNum
-                        debug_print(f"🔄 [MESHCORE-FIX] Broadcast echo detected, using bot's node ID: 0x{sender_id:08x}")
+                        # Check if message has sender prefix pattern
+                        if ': ' in message and not message.startswith('/'):
+                            # Message has sender prefix like "Tigro: /echo test"
+                            # This is from another user, keep as broadcast for now
+                            # The message_router will handle extracting the real sender
+                            debug_print(f"📢 [MESHCORE-SERIAL] Broadcast message with sender prefix: {message[:30]}")
+                        else:
+                            # No sender prefix, likely bot's own echo
+                            sender_id = self.localNode.nodeNum
+                            debug_print(f"🔄 [MESHCORE-FIX] Broadcast echo detected, using bot's node ID: 0x{sender_id:08x}")
                     
                     info_print(f"📬 [MESHCORE-DM] De: 0x{sender_id:08x} | Message: {message[:50]}{'...' if len(message) > 50 else ''}")
                     

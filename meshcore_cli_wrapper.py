@@ -1589,16 +1589,43 @@ class MeshCoreCLIWrapper:
                 return
             
             # For Public channel messages, sender_id may not be available in CHANNEL_MSG_RECV
-            # Use broadcast ID (0xFFFFFFFF) since Public channel is broadcast to all nodes
+            # Try to extract sender from message prefix "SenderName: message"
             if sender_id is None:
-                sender_id = 0xFFFFFFFF  # Broadcast sender ID
-                debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) for Public channel")
-            
-            # FIX: When bot sends broadcast, it echoes back with sender_id=0xFFFFFFFF
-            # Replace broadcast address with bot's own node ID so traffic history shows correct sender
-            if sender_id == 0xFFFFFFFF:
-                sender_id = self.localNode.nodeNum
-                debug_print_mc(f"🔄 [MESHCORE-FIX] Broadcast echo detected, using bot's node ID: 0x{sender_id:08x}")
+                # Try to extract sender name from message text prefix
+                if ': ' in message_text:
+                    sender_name = message_text.split(': ', 1)[0]
+                    debug_print_mc(f"📝 [CHANNEL] Extracted sender name from prefix: '{sender_name}'")
+                    
+                    # Look up sender's node ID by name if node_manager is available
+                    if self.node_manager:
+                        try:
+                            # Search for node by name (partial match)
+                            matching_nodes = []
+                            sender_name_lower = sender_name.lower()
+                            for node_id, name_info in self.node_manager.node_names.items():
+                                if isinstance(name_info, dict):
+                                    node_name = name_info.get('name', '').lower()
+                                else:
+                                    node_name = str(name_info).lower()
+                                
+                                if sender_name_lower in node_name or node_name in sender_name_lower:
+                                    matching_nodes.append((node_id, name_info))
+                            
+                            if len(matching_nodes) == 1:
+                                sender_id = matching_nodes[0][0]
+                                debug_print_mc(f"✅ [CHANNEL] Found sender ID by name: 0x{sender_id:08x}")
+                            elif len(matching_nodes) > 1:
+                                debug_print_mc(f"⚠️ [CHANNEL] Multiple nodes match '{sender_name}', using first")
+                                sender_id = matching_nodes[0][0]
+                            else:
+                                debug_print_mc(f"⚠️ [CHANNEL] No node found matching '{sender_name}'")
+                        except Exception as e:
+                            debug_print_mc(f"⚠️ [CHANNEL] Error looking up sender: {e}")
+                
+                # If still no sender_id, use broadcast address
+                if sender_id is None:
+                    sender_id = 0xFFFFFFFF
+                    debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) - sender unknown")
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
