@@ -912,8 +912,11 @@ class MeshBot:
             # BUT: MeshCore DMs are NOT broadcasts even if to_id looks like broadcast
             is_broadcast = (to_id in [0xFFFFFFFF, 0]) and not is_meshcore_dm
 
-            # Filtrer les messages auto-générés
-            if is_from_me:
+            # Filtrer les messages auto-générés (sauf broadcasts)
+            # Pour les broadcasts, la déduplication par contenu (_is_recent_broadcast) gère les doublons
+            # Cela permet de traiter les commandes publiques envoyées depuis le nœud du bot
+            if is_from_me and not is_broadcast:
+                debug_print(f"📤 Message DM de nous-même ignoré: 0x{from_id:08x}")
                 return
             
             decoded = packet.get('decoded', {})
