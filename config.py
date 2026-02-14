@@ -99,7 +99,6 @@ MESHCORE_ENABLED = True  # True = Activer mode companion MeshCore
 #MESHCORE_SERIAL_PORT = "/dev/ttyACM2"  # Port série pour MeshCore
 MESHCORE_SERIAL_PORT = "auto:SERIAL=7CEF06581293BD9C"
 MESHCORE_PUBLIC_PSK = "izOH6cXN6mrJ5e26oRXNcg=="  # Base64 format
-MESHCORE_RX_LOG_ENABLED = False
 
 # MeshCore RX_LOG_DATA monitoring (only works when MESHCORE_ENABLED=True)
 # RX_LOG_DATA provides raw RF packet visibility of ALL mesh traffic (not just DMs)
@@ -118,7 +117,7 @@ MESHCORE_RX_LOG_ENABLED = False
 # Recommendations:
 #   - Enable if you want to see ALL RF activity in logs (debugging)
 #   - Disable if you only care about DMs (less log spam)
-MESHCORE_RX_LOG_ENABLED = True  # True = Monitor RF activity (debug), False = DMs only
+MESHCORE_RX_LOG_ENABLED = False  # Use library events (CHANNEL_MSG_RECV)
 
 # Auto-reboot du nœud distant en cas d'échec de connexion TCP initial
 # Si True, le bot tentera automatiquement de rebooter le nœud distant
