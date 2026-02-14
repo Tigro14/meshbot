@@ -106,9 +106,12 @@ class MessageRouter:
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
         if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
+            debug_print(f"🎯 [ROUTER] Broadcast command detected: is_broadcast={is_broadcast}, is_for_me={is_for_me}, is_from_me={is_from_me}")
             if message.startswith('/echo'):
                 info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
+                debug_print(f"📢 [ROUTER] Calling utility_handler.handle_echo() for Public channel")
                 self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
+                debug_print(f"✅ [ROUTER] handle_echo() returned")
             elif message.startswith('/my'):
                 info_print(f"MY PUBLIC de {sender_info}")
                 self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
