@@ -1588,9 +1588,11 @@ class MeshCoreCLIWrapper:
                 debug_print_mc("⚠️ [CHANNEL] Message vide, ignoré")
                 return
             
+            # For Public channel messages, sender_id may not be available in CHANNEL_MSG_RECV
+            # Use broadcast ID (0xFFFFFFFF) since Public channel is broadcast to all nodes
             if sender_id is None:
-                debug_print_mc("⚠️ [CHANNEL] Sender ID manquant après toutes les tentatives, ignoré")
-                return
+                sender_id = 0xFFFFFFFF  # Broadcast sender ID
+                debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) for Public channel")
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
