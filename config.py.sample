@@ -248,9 +248,13 @@ MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port fixe OU auto-détection (ex: "auto
 #   ❌ Parse packet details (use CONTACT_MSG_RECV for DMs only)
 #
 # Recommendations:
-#   - Enable if you want to see ALL RF activity in logs (debugging)
-#   - Disable if you only care about DMs (less log spam)
-MESHCORE_RX_LOG_ENABLED = True  # True = Monitor RF activity (debug), False = DMs only
+#   - Set to False (default) - Use CHANNEL_MSG_RECV for Public channel (library-decrypted)
+#   - Only enable True for RF debugging (manual decryption doesn't work correctly)
+#
+# NOTE: Manual PSK decryption from RX_LOG_DATA produces garbage output.
+#       MeshCore library handles decryption internally (like meshcore-cli).
+#       Use CHANNEL_MSG_RECV for Public channel messages (pre-decrypted by library).
+MESHCORE_RX_LOG_ENABLED = False  # False = Use library events (CHANNEL_MSG_RECV), True = RF debug only
 
 # ========================================
 # DÉCHIFFREMENT CANAL PUBLIC MESHCORE
