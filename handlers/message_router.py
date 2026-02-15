@@ -92,7 +92,8 @@ class MessageRouter:
         # For broadcast messages from MeshCore CHANNEL_MSG_RECV, strip "Sender: " prefix
         # MeshCore includes sender name in text: "Tigro: /echo test"
         # We need just the command: "/echo test"
-        if is_broadcast and sender_id == 0xFFFFFFFF and ': ' in message:
+        # Note: Now that we correctly identify sender_id, we check for any broadcast with prefix pattern
+        if is_broadcast and ': ' in message:
             parts = message.split(': ', 1)
             if len(parts) == 2 and parts[1].startswith('/'):
                 original_message = message
