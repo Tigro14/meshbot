@@ -145,13 +145,20 @@ class UtilityCommands:
         )
         self.sender.send_message(sender_id, help_text)
 
-    def handle_echo(self, message, sender_id, sender_info, packet):
+    def handle_echo(self, message, sender_id, sender_info, packet, original_message=None):
         """
         Gérer la commande /echo - Diffuser un message sur le réseau mesh
         
         IMPORTANT: Uses the shared bot interface to avoid disconnecting the main connection.
         ESP32 only supports ONE TCP connection at a time - creating a new connection
         would disconnect the bot and cause packet loss.
+        
+        Args:
+            message: Stripped command (e.g., "/echo test")
+            sender_id: Sender node ID (may be inaccurate for public channel)
+            sender_info: Sender node info
+            packet: Full packet data
+            original_message: Original message with sender prefix (e.g., "Tigro: /echo test")
         """
 
         # Capturer le sender actuel pour le thread (important pour CLI!)
@@ -161,6 +168,7 @@ class UtilityCommands:
         info_print("🔊 HANDLE_ECHO APPELÉ")
         info_print("=" * 60)
         info_print(f"Message brut: '{message}'")
+        info_print(f"Message original: '{original_message}'")
         info_print(f"Sender ID: 0x{sender_id:08x}")
         info_print(f"Sender info: {sender_info}")
 
@@ -177,6 +185,7 @@ class UtilityCommands:
         current_sender._last_echo_id = message_id
         info_print("✅ Anti-doublon OK")
 
+        # Extract text to echo
         echo_text = message[6:].strip()
         info_print(f"Texte extrait: '{echo_text}'")
         info_print(f"Longueur: {len(echo_text)} caractères")
@@ -200,11 +209,28 @@ class UtilityCommands:
         try:
             info_print("🔊 ECHO VIA INTERFACE PARTAGÉE")
             
-            author_short = current_sender.get_short_name(sender_id)
-            echo_response = f"{author_short}: {echo_text}"
+            # If we have the original message with sender prefix, extract it
+            # This ensures we use the actual sender name from the message, not a potentially wrong sender_id
+            if original_message and ': ' in original_message:
+                # Extract sender name from "Tigro: /echo test" format
+                parts = original_message.split(': ', 1)
+                if len(parts) == 2:
+                    sender_name = parts[0]
+                    # Format: "Tigro: test" (keep original sender name)
+                    echo_response = f"{sender_name}: {echo_text}"
+                    info_print(f"📝 Using original sender name from message: '{sender_name}'")
+                else:
+                    # Fallback if split failed
+                    author_short = current_sender.get_short_name(sender_id)
+                    echo_response = f"{author_short}: {echo_text}"
+                    info_print(f"⚠️ Could not extract sender name, using sender_id: '{author_short}'")
+            else:
+                # No original message, use sender_id (DM case or fallback)
+                author_short = current_sender.get_short_name(sender_id)
+                echo_response = f"{author_short}: {echo_text}"
+                info_print(f"📝 No original message, using sender_id: '{author_short}'")
             
             info_print(f"📝 Message final: '{echo_response}'")
-            info_print(f"   Auteur short: {author_short}")
             info_print(f"   Longueur finale: {len(echo_response)} caractères")
             
             info_print("")

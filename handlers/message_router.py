@@ -93,10 +93,10 @@ class MessageRouter:
         # MeshCore includes sender name in text: "Tigro: /echo test"
         # We need just the command: "/echo test"
         # Note: Now that we correctly identify sender_id, we check for any broadcast with prefix pattern
+        original_message = message  # Always preserve the original
         if is_broadcast and ': ' in message:
             parts = message.split(': ', 1)
             if len(parts) == 2 and parts[1].startswith('/'):
-                original_message = message
                 message = parts[1]  # Use only the command part
                 debug_print(f"🔧 [ROUTER] Stripped sender prefix from Public channel message")
                 debug_print(f"   Original: '{original_message}'")
@@ -116,7 +116,8 @@ class MessageRouter:
                 if message.startswith('/echo'):
                     info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
                     debug_print(f"📢 [ROUTER] Calling utility_handler.handle_echo() for Public channel")
-                    self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
+                    # Pass original_message to preserve sender name prefix for /echo
+                    self.utility_handler.handle_echo(message, sender_id, sender_info, packet, original_message)
                     debug_print(f"✅ [ROUTER] handle_echo() returned")
                 elif message.startswith('/my'):
                     info_print(f"MY PUBLIC de {sender_info}")
