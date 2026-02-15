@@ -106,38 +106,43 @@ class MessageRouter:
         broadcast_commands = ['/echo', '/my', '/weather', '/rain', '/bot', '/ia', '/info', '/propag', '/hop']
         is_broadcast_command = any(message.startswith(cmd) for cmd in broadcast_commands)
 
-        if is_broadcast_command and (is_broadcast or is_for_me) and not is_from_me:
-            debug_print(f"🎯 [ROUTER] Broadcast command detected: is_broadcast={is_broadcast}, is_for_me={is_for_me}, is_from_me={is_from_me}")
-            if message.startswith('/echo'):
-                info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
-                debug_print(f"📢 [ROUTER] Calling utility_handler.handle_echo() for Public channel")
-                self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
-                debug_print(f"✅ [ROUTER] handle_echo() returned")
-            elif message.startswith('/my'):
-                info_print(f"MY PUBLIC de {sender_info}")
-                self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/weather'):
-                info_print(f"WEATHER PUBLIC de {sender_info}: '{message}'")
-                self.utility_handler.handle_weather(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/rain'):
-                info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
-                self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/bot'):
-                info_print(f"BOT PUBLIC de {sender_info}: '{message}'")
-                self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/ia'):
-                info_print(f"IA PUBLIC de {sender_info}: '{message}'")
-                self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/info'):
-                info_print(f"INFO PUBLIC de {sender_info}: '{message}'")
-                self.network_handler.handle_info(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/propag'):
-                info_print(f"PROPAG PUBLIC de {sender_info}: '{message}'")
-                self.network_handler.handle_propag(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            elif message.startswith('/hop'):
-                info_print(f"HOP PUBLIC de {sender_info}: '{message}'")
-                self.utility_handler.handle_hop(message, sender_id, sender_info, is_broadcast=is_broadcast)
-            return
+        # For broadcast messages, allow commands from own node (user on bot's node sending commands)
+        # For DM messages, still filter is_from_me to prevent self-messaging
+        # Loop prevention for broadcasts is handled by _is_recent_broadcast() in main_bot.py
+        if is_broadcast_command and (is_broadcast or is_for_me):
+            # Allow if: (1) it's a broadcast (even from own node) OR (2) it's a DM not from self
+            if is_broadcast or not is_from_me:
+                debug_print(f"🎯 [ROUTER] Broadcast command detected: is_broadcast={is_broadcast}, is_for_me={is_for_me}, is_from_me={is_from_me}")
+                if message.startswith('/echo'):
+                    info_print(f"ECHO PUBLIC de {sender_info}: '{message}'")
+                    debug_print(f"📢 [ROUTER] Calling utility_handler.handle_echo() for Public channel")
+                    self.utility_handler.handle_echo(message, sender_id, sender_info, packet)
+                    debug_print(f"✅ [ROUTER] handle_echo() returned")
+                elif message.startswith('/my'):
+                    info_print(f"MY PUBLIC de {sender_info}")
+                    self.network_handler.handle_my(sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/weather'):
+                    info_print(f"WEATHER PUBLIC de {sender_info}: '{message}'")
+                    self.utility_handler.handle_weather(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/rain'):
+                    info_print(f"RAIN PUBLIC de {sender_info}: '{message}'")
+                    self.utility_handler.handle_rain(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/bot'):
+                    info_print(f"BOT PUBLIC de {sender_info}: '{message}'")
+                    self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/ia'):
+                    info_print(f"IA PUBLIC de {sender_info}: '{message}'")
+                    self.ai_handler.handle_bot(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/info'):
+                    info_print(f"INFO PUBLIC de {sender_info}: '{message}'")
+                    self.network_handler.handle_info(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/propag'):
+                    info_print(f"PROPAG PUBLIC de {sender_info}: '{message}'")
+                    self.network_handler.handle_propag(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                elif message.startswith('/hop'):
+                    info_print(f"HOP PUBLIC de {sender_info}: '{message}'")
+                    self.utility_handler.handle_hop(message, sender_id, sender_info, is_broadcast=is_broadcast)
+                return
 
         # Log messages pour nous
         if is_for_me or DEBUG_MODE:
