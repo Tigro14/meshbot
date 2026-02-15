@@ -2,9 +2,9 @@
 
 ## Overview
 
-This PR fixes a **critical chain of six issues** preventing the bot from responding to public channel commands when using MeshCore in companion mode. Six separate bugs were discovered and fixed in sequence.
+This PR fixes a **critical chain of seven issues** preventing the bot from responding to public channel commands when using MeshCore in companion mode. Seven separate bugs were discovered and fixed in sequence.
 
-## The Six Issues
+## The Seven Issues
 
 ### Issue 1: Broadcast Echo Sender ID
 **Problem:** Bot's own broadcast echoes showed "ffff:" prefix
@@ -31,10 +31,15 @@ This PR fixes a **critical chain of six issues** preventing the bot from respond
 **Impact:** Messages passed main_bot but blocked in router, no command processed
 **Fix:** Apply same logic as main_bot.py to message_router.py
 
-### Issue 6: Wrong Sender ID for Responses (NEW)
+### Issue 6: Wrong Sender ID for Responses
 **Problem:** Bot responds to wrong user when multiple nodes have similar names
 **Impact:** User 0x143bcd7f sends command, bot responds to 0x16fad3dc (bot's own node)
 **Fix:** Use pubkey_prefix resolution instead of unreliable name matching
+
+### Issue 7: Echo Shows Wrong Sender Name (NEW)
+**Problem:** Even with pubkey_prefix fix, echo still showed wrong sender name (bot's node ID)
+**Impact:** Echo response shows "ad3dc: test" instead of "Tigro: test"
+**Fix:** Extract sender name directly from original message text, bypass sender_id lookup
 
 ## Complete Message Flow
 
@@ -62,7 +67,7 @@ User "Tigro" (0x143bcd7f) sends: "/echo test"
                 ↓
 Received as: "Tigro: /echo test"
                 ↓
-✅ FIX 6: Extract pubkey_prefix '143bcd7f1b1f' from event
+✅ FIX 6: Extract pubkey_prefix '143bcd7f1b1f' from event (if available)
                 ↓
 ✅ FIX 6: Resolve pubkey_prefix → 0x143bcd7f (actual sender)
                 ↓
@@ -70,11 +75,13 @@ Received as: "Tigro: /echo test"
                 ↓
 ✅ FIX 1: Use correct node ID (not broadcast)
                 ↓
+✅ FIX 7: Preserve original message "Tigro: /echo test" for echo command
+                ↓
 main_bot.py:
   Check: is_from_me && !is_broadcast
 ✅ FIX 3: is_broadcast → don't filter
                 ↓
-✅ FIX 4: Strip prefix → "/echo test"
+✅ FIX 4: Strip prefix → "/echo test" (save original)
                 ↓
 message_router.py:
   Check: is_from_me for command routing
@@ -82,19 +89,24 @@ message_router.py:
                 ↓
 Check: message.startswith('/echo') → TRUE
                 ↓
-Process command ✅
+✅ FIX 7: Pass original_message to handle_echo()
+                ↓
+handle_echo():
+  Extract sender from original: "Tigro"
+  Extract text: "test"
+  Response: "Tigro: test" ✅ (correct sender name!)
                 ↓
 Send response to 0x143bcd7f ✅ (correct recipient!)
 ```
 
 ## Files Modified
 
-### Code (5 files, 134 lines total)
+### Code (5 files, 145 lines total)
 1. **meshcore_cli_wrapper.py** (+105 lines total)
    - Extract sender name from message prefix (+40 lines, Issue 2)
    - Look up in node_manager database
    - Case-insensitive partial matching
-   - **Add pubkey_prefix resolution (+65 lines, Issue 6)** (NEW)
+   - **Add pubkey_prefix resolution (+65 lines, Issue 6)**
    - Check payload/attributes/event for pubkey_prefix
    - Resolve via node_manager.find_meshcore_contact_by_pubkey_prefix
    - Load contact from DB and sync to meshcore.contacts
@@ -107,12 +119,19 @@ Send response to 0x143bcd7f ✅ (correct recipient!)
    - Modified is_from_me filtering logic
    - Only filter DMs, not broadcasts
 
-4. **handlers/message_router.py** (+10 lines)
+4. **handlers/message_router.py** (+13 lines, Issue 7)
+   - Preserve original_message before stripping (+3 lines)
    - Fixed prefix stripping condition (+1 line)
    - Removed sender_id == 0xFFFFFFFF check
    - Fixed is_from_me filtering for broadcasts (+9 lines)
+   - Pass original_message to handle_echo (+1 line)
 
-### Tests (6 test suites, 21 tests total)
+5. **handlers/command_handlers/utility_commands.py** (+8 lines, Issue 7)
+   - Add original_message parameter to handle_echo
+   - Extract sender name from original message text
+   - Fallback to sender_id when no original
+
+### Tests (7 test suites, 24 tests total)
 1. **test_echo_sender_id_fix.py** (173 lines)
    - Bot's own echo messages
    - Direct message preservation
@@ -138,29 +157,35 @@ Send response to 0x143bcd7f ✅ (correct recipient!)
    - Broadcasts from other nodes
    - DMs from other nodes
 
-6. **test_channel_pubkey_prefix.py** (231 lines, NEW)
+6. **test_channel_pubkey_prefix.py** (231 lines)
    - pubkey_prefix resolution for channel messages
    - Prevents wrong match with similar names
    - Fallback to name extraction still works
 
-### Documentation (12 files, ~80KB)
+7. **test_echo_original_message.py** (158 lines, NEW)
+   - Sender name extraction from message text
+   - Fallback to sender_id when no original
+   - Edge case handling (multiple colons, empty sender)
+
+### Documentation (13 files, ~87KB)
 - `FIX_ECHO_SENDER_ID.md` - Issue 1 documentation
 - `FIX_PUBLIC_CHANNEL_SENDER.md` - Issue 2 documentation
 - `FIX_OWN_NODE_FILTERING.md` - Issue 3 documentation
 - `FIX_PREFIX_STRIPPING_REGRESSION.md` - Issue 4 documentation
 - `FIX_MESSAGE_ROUTER_OWN_NODE.md` - Issue 5 documentation
-- `FIX_CHANNEL_PUBKEY_PREFIX.md` - Issue 6 documentation (NEW)
+- `FIX_CHANNEL_PUBKEY_PREFIX.md` - Issue 6 documentation
+- `FIX_ECHO_ORIGINAL_MESSAGE.md` - Issue 7 documentation (NEW)
 - `VISUAL_ECHO_SENDER_ID_FIX.txt` - Visual guide (Issue 1)
 - `VISUAL_PUBLIC_CHANNEL_SENDER_FIX.txt` - Visual guide (Issue 2)
 - `SUMMARY_PUBLIC_CHANNEL_FIX.md` - Summary (Issues 1-2)
 - `COMPLETE_FIX_CHAIN.md` - This file (complete summary)
 - Multiple demo and test files
 
-**Total:** ~2200+ lines of code, tests, and documentation
+**Total:** ~2400+ lines of code, tests, and documentation
 
 ## Test Results
 
-All 21 tests passing across 6 test suites:
+All 24 tests passing across 7 test suites:
 
 ### Suite 1: Echo Sender ID
 ```
@@ -192,6 +217,25 @@ All 21 tests passing across 6 test suites:
 ```
 
 ### Suite 5: Filtering Logic (message_router.py)
+```
+✅ test_router_allows_broadcast_from_own_node
+✅ test_router_still_filters_dm_from_self
+✅ test_router_allows_broadcast_from_other_node
+✅ test_router_allows_dm_from_other_node
+```
+
+### Suite 6: pubkey_prefix Resolution
+```
+✅ test_channel_resolves_pubkey_prefix
+✅ test_channel_fallback_to_prefix_extraction
+✅ test_pubkey_prefix_prevents_wrong_match
+```
+
+### Suite 7: Echo Original Message (NEW)
+```
+✅ test_sender_extraction_logic
+✅ test_fallback_logic
+✅ test_edge_cases
 ```
 ✅ test_router_allows_broadcast_from_own_node
 ✅ test_router_still_filters_dm_from_self
