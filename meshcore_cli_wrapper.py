@@ -1546,11 +1546,17 @@ class MeshCoreCLIWrapper:
             
             # Extract sender_id using multiple fallback methods (like _on_contact_message)
             sender_id = None
+            pubkey_prefix = None
             
             # Méthode 1: Chercher dans payload (dict)
             if isinstance(payload, dict):
                 sender_id = payload.get('sender_id') or payload.get('contact_id') or payload.get('from')
-                debug_print_mc(f"📋 [CHANNEL] Payload dict - sender_id: {sender_id}")
+                # Check for pubkey_prefix (multiple variants like in _on_contact_message)
+                pubkey_prefix = (payload.get('pubkey_prefix') or 
+                                payload.get('pubkeyPrefix') or 
+                                payload.get('public_key_prefix') or 
+                                payload.get('publicKeyPrefix'))
+                debug_print_mc(f"📋 [CHANNEL] Payload dict - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
             
             # Méthode 2: Chercher dans les attributs de l'event
             if sender_id is None and hasattr(event, 'attributes'):
@@ -1558,6 +1564,11 @@ class MeshCoreCLIWrapper:
                 debug_print_mc(f"📋 [CHANNEL] Event attributes: {attributes}")
                 if isinstance(attributes, dict):
                     sender_id = attributes.get('sender_id') or attributes.get('contact_id') or attributes.get('from')
+                    if pubkey_prefix is None:
+                        pubkey_prefix = (attributes.get('pubkey_prefix') or 
+                                       attributes.get('pubkeyPrefix') or 
+                                       attributes.get('public_key_prefix') or 
+                                       attributes.get('publicKeyPrefix'))
             
             # Méthode 3: Chercher directement sur l'event
             if sender_id is None:
@@ -1569,6 +1580,68 @@ class MeshCoreCLIWrapper:
                             sender_id = attr_value
                             debug_print_mc(f"📋 [CHANNEL] Event direct {attr_name}: {sender_id}")
                             break
+            
+            # Méthode 3b: Chercher pubkey_prefix directement sur l'event
+            if pubkey_prefix is None:
+                for attr_name in ['pubkey_prefix', 'pubkeyPrefix', 'public_key_prefix', 'publicKeyPrefix']:
+                    if hasattr(event, attr_name):
+                        attr_value = getattr(event, attr_name)
+                        # Only use if it's a non-empty string
+                        if attr_value and isinstance(attr_value, str):
+                            pubkey_prefix = attr_value
+                            debug_print_mc(f"📋 [CHANNEL] Event direct {attr_name}: {pubkey_prefix}")
+                            break
+            
+            debug_print_mc(f"🔍 [CHANNEL] Après extraction - sender_id: {sender_id}, pubkey_prefix: {pubkey_prefix}")
+            
+            # Méthode 4: Si sender_id est None mais qu'on a un pubkey_prefix, essayer de le résoudre
+            if sender_id is None and pubkey_prefix and self.node_manager:
+                debug_print_mc(f"🔍 [CHANNEL] Tentative résolution pubkey_prefix: {pubkey_prefix}")
+                
+                # Try to find in meshcore_contacts first (most reliable)
+                sender_id = self.node_manager.find_meshcore_contact_by_pubkey_prefix(pubkey_prefix)
+                if sender_id:
+                    info_print_mc(f"✅ [CHANNEL] Résolu pubkey_prefix {pubkey_prefix} → 0x{sender_id:08x} (meshcore cache)")
+                    
+                    # Load full contact data from DB and ensure it's in meshcore.contacts dict
+                    try:
+                        cursor = self.node_manager.persistence.conn.cursor()
+                        cursor.execute(
+                            "SELECT node_id, name, shortName, hwModel, publicKey, lat, lon, alt, source FROM meshcore_contacts WHERE node_id = ?",
+                            (str(sender_id),)
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            contact_data = {
+                                'node_id': sender_id,
+                                'name': row[1] if row[1] else f"Node-{sender_id:08x}",
+                                'shortName': row[2] if row[2] else '',
+                                'hwModel': row[3] if row[3] else 'UNKNOWN',
+                                'publicKey': row[4] if row[4] else '',
+                                'position': {
+                                    'latitude': float(row[5]) if row[5] else 0.0,
+                                    'longitude': float(row[6]) if row[6] else 0.0,
+                                    'altitude': int(row[7]) if row[7] else 0
+                                },
+                                'source': row[8] if row[8] else 'meshcore'
+                            }
+                            # Add to meshcore.contacts if meshcore instance exists
+                            if hasattr(self, 'meshcore') and self.meshcore and hasattr(self.meshcore, 'contacts'):
+                                pubkey_key = row[4][:12] if row[4] else pubkey_prefix
+                                self.meshcore.contacts[pubkey_key] = contact_data
+                                debug_print_mc(f"✅ [CHANNEL] Contact ajouté à meshcore.contacts: {pubkey_key}")
+                    except Exception as db_err:
+                        debug_print_mc(f"⚠️ [CHANNEL] Erreur lors du chargement contact DB: {db_err}")
+                else:
+                    # Fallback: try to derive node_id from pubkey_prefix (first 4 bytes as hex)
+                    try:
+                        if len(pubkey_prefix) >= 8:
+                            sender_id = int(pubkey_prefix[:8], 16)
+                            info_print_mc(f"⚡ [CHANNEL] Node_id dérivé de pubkey_prefix: {pubkey_prefix} → 0x{sender_id:08x}")
+                        else:
+                            debug_print_mc(f"⚠️ [CHANNEL] pubkey_prefix trop court pour dérivation: {pubkey_prefix}")
+                    except ValueError as e:
+                        debug_print_mc(f"⚠️ [CHANNEL] Erreur dérivation node_id: {e}")
             
             # Extract channel index (default to 0 for public channel)
             # Try multiple field names for channel
@@ -1588,11 +1661,45 @@ class MeshCoreCLIWrapper:
                 debug_print_mc("⚠️ [CHANNEL] Message vide, ignoré")
                 return
             
-            # For Public channel messages, sender_id may not be available in CHANNEL_MSG_RECV
-            # Use broadcast ID (0xFFFFFFFF) since Public channel is broadcast to all nodes
+            # Méthode 5: FALLBACK - For Public channel messages, if sender_id still None after pubkey_prefix,
+            # try to extract sender from message prefix "SenderName: message"
+            # NOTE: This is unreliable when multiple nodes have similar names, so pubkey_prefix is preferred
             if sender_id is None:
-                sender_id = 0xFFFFFFFF  # Broadcast sender ID
-                debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) for Public channel")
+                # Try to extract sender name from message text prefix
+                if ': ' in message_text:
+                    sender_name = message_text.split(': ', 1)[0]
+                    debug_print_mc(f"📝 [CHANNEL] Extracted sender name from prefix: '{sender_name}'")
+                    
+                    # Look up sender's node ID by name if node_manager is available
+                    if self.node_manager:
+                        try:
+                            # Search for node by name (partial match)
+                            matching_nodes = []
+                            sender_name_lower = sender_name.lower()
+                            for node_id, name_info in self.node_manager.node_names.items():
+                                if isinstance(name_info, dict):
+                                    node_name = name_info.get('name', '').lower()
+                                else:
+                                    node_name = str(name_info).lower()
+                                
+                                if sender_name_lower in node_name or node_name in sender_name_lower:
+                                    matching_nodes.append((node_id, name_info))
+                            
+                            if len(matching_nodes) == 1:
+                                sender_id = matching_nodes[0][0]
+                                debug_print_mc(f"✅ [CHANNEL] Found sender ID by name: 0x{sender_id:08x}")
+                            elif len(matching_nodes) > 1:
+                                debug_print_mc(f"⚠️ [CHANNEL] Multiple nodes match '{sender_name}', using first")
+                                sender_id = matching_nodes[0][0]
+                            else:
+                                debug_print_mc(f"⚠️ [CHANNEL] No node found matching '{sender_name}'")
+                        except Exception as e:
+                            debug_print_mc(f"⚠️ [CHANNEL] Error looking up sender: {e}")
+                
+                # If still no sender_id, use broadcast address
+                if sender_id is None:
+                    sender_id = 0xFFFFFFFF
+                    debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) - sender unknown")
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
