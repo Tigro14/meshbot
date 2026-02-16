@@ -36,17 +36,18 @@ packet_entry = {
 }
 
 sender_name = "TestNode"
-packet_type = "TEXT_MESSAGE_APP"
+packet_type = "TEXTMESSAGE"  # Short form (no _APP suffix)
 source = "local"
+node_id_short = "345678"
 
-# This is what should appear in logs
-source_tag = f"[{packet_entry.get('source', '?')}]"
-debug_print_mt(f"📊 Paquet enregistré ({source_tag}): {packet_type} de {sender_name}")
+# After fix: Only comprehensive 2-line format is logged
+# Line 1: Header with key metrics
+debug_print_mt(f"🌐 {source.upper()} {packet_type} from {sender_name} ({node_id_short}) | Hops:0/3 | SNR:12.0dB(🟢) | RSSI:-45dBm | Ch:0")
 
-node_id_short = "45678"
-route_info = " [direct] (SNR:12.0dB)"
-debug_print_mt(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
+# Line 2: Details
+debug_print_mt(f"  └─ Msg:\"Test message\" | Payload:42B | ID:123456 | RX:14:23:45")
 
 print("\n=== Test complete ===")
-print("If you see [DEBUG][MT] messages above, logging is working.")
+print("If you see 2 [DEBUG][MT] messages above (header + details), logging is working.")
+print("Previous behavior (4-5 lines with duplicates) has been removed.")
 print("If not, there's an issue with debug_print_mt or DEBUG_MODE.")
