@@ -37,6 +37,27 @@ class StatsCommands(TelegramCommandBase):
         )
         await update.effective_message.reply_text(response)
 
+    async def trafficmc_command(self, update: Update,
+                                 context: ContextTypes.DEFAULT_TYPE):
+        """Commande /trafficmc pour historique messages publics MeshCore"""
+        user = update.effective_user
+        hours = 8
+        if context.args and len(context.args) > 0:
+            try:
+                hours = int(context.args[0])
+                hours = max(1, min(24, hours))
+            except ValueError:
+                hours = 8
+
+        info_print(f"📱 Telegram /trafficmc {hours}h: {user.username}")
+
+        # Utiliser la logique métier partagée (business_stats)
+        response = await asyncio.to_thread(
+            self.telegram.business_stats.get_traffic_report_mc,
+            hours
+        )
+        await update.effective_message.reply_text(response)
+
     async def stats_command(self, update: Update,
                              context: ContextTypes.DEFAULT_TYPE):
         """

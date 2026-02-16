@@ -52,6 +52,7 @@ class BasicCommands(TelegramCommandBase):
             f"• /nodeinfo\n"
             f"• /fullnodes [jours] [recherche]\n"
             f"• /trafic [heures]\n"
+            f"• /trafficmc [heures]\n"
             f"• /histo [type] [h]\n"
             f"• /top [h] [n]\n"
             f"• /stats\n"
