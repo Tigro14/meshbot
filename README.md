@@ -344,63 +344,11 @@ La configuration est maintenant divisée en deux fichiers pour une meilleure sé
    python main_script.py
    ```
 
-   Ou en mode debug :
-   ```bash
-   python main_script.py --debug
-   ```
-
-### Choix du mode de connexion
-
-**Mode Serial Meshtastic (recommandé pour débutants)**
-- ✅ Connexion directe et stable
-- ✅ Pas de configuration réseau nécessaire
-- ✅ Latence minimale
-- ✅ Toutes les fonctionnalités disponibles
-- ❌ Nécessite un câble USB
-- ❌ Node doit être proche du Raspberry Pi
-
-**Mode TCP Meshtastic (pour déploiements avancés)**
-- ✅ Node peut être placé à distance (meilleure position pour antenne)
-- ✅ Pas de câble USB nécessaire
-- ✅ Permet l'utilisation d'un node ROUTER existant
-- ✅ Toutes les fonctionnalités disponibles
-- ❌ Nécessite configuration WiFi/Ethernet du node
-- ❌ Dépend de la stabilité du réseau local
-- ❌ Latence légèrement supérieure
-
-**Mode MeshCore Companion (sans Meshtastic)**
-- ✅ Fonctionne avec matériel MeshCore uniquement
-- ✅ Pas besoin de device Meshtastic
-- ✅ Support protocole officiel MeshCore
-- ✅ Commandes AI, météo, système disponibles
-- ❌ Fonctionnalités réseau limitées (pas de /nodes, /stats, etc.)
-- ❌ DMs uniquement (pas de messages publics)
-
-**Mode Dual-Network (AVANCÉ)**
-- ✅ Présence simultanée sur deux réseaux mesh distincts
-- ✅ Portée étendue (combine deux réseaux)
-- ✅ Toutes les fonctionnalités Meshtastic disponibles
-- ✅ DMs MeshCore en parallèle
-- ✅ Expérimentation sans perdre réseau principal
-- ❌ Configuration complexe
-- ❌ Nécessite deux radios physiques
-- ❌ Attention aux fréquences (risque d'interférences)
-- ❌ Consommation électrique plus élevée
-
-**Exemple de cas d'usage TCP :**
-```
-Raspberry Pi 5 (intérieur, serveur)
-        ↓ WiFi/Ethernet
-Node Meshtastic ROUTER (extérieur, antenne optimale)
-        ↓ LoRa
-Réseau mesh Meshtastic
-```
-
 **Exemple de cas d'usage Dual-Network :**
 ```
 Raspberry Pi 5 (serveur)
     ├─ USB (/dev/ttyACM0) → Meshtastic → Réseau communautaire principal
-    └─ USB (/dev/ttyUSB0) → MeshCore → Réseau expérimental secondaire
+    └─ USB (/dev/ttyACM1) → MeshCore → Réseau expérimental secondaire
 ```
 
 **Note pour utilisateurs avancés :**
@@ -762,28 +710,7 @@ Le fichier `config.py` contient tous les paramètres configurables :
 
 ### Quick Start
 - **This file (README.md)**: Setup and user guide
-- **[DOCS_INDEX.md](DOCS_INDEX.md)**: Complete documentation index
 - **[CLAUDE.md](CLAUDE.md)**: Comprehensive developer guide (for AI assistants and contributors)
-
-### User Guides
-- **[CLI_USAGE.md](CLI_USAGE.md)**: Command-line interface usage
-- **[ENCRYPTED_PACKETS_EXPLAINED.md](ENCRYPTED_PACKETS_EXPLAINED.md)**: Understanding DM encryption
-
-### Developer Guides
-- **[CLAUDE.md](CLAUDE.md)**: Primary development resource (2,968+ lines)
-- **[PLATFORMS.md](PLATFORMS.md)**: Multi-platform architecture
-- **[TCP_ARCHITECTURE.md](TCP_ARCHITECTURE.md)**: Network stack architecture
-- **[STATS_CONSOLIDATION_PLAN.md](STATS_CONSOLIDATION_PLAN.md)**: Statistics system design
-
-### Configuration & Migration
-- **[CONFIG_MIGRATION.md](CONFIG_MIGRATION.md)**: Configuration updates
-- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**: General migration guide
-- **[MESHCORE_COMPANION.md](MESHCORE_COMPANION.md)**: MeshCore mode documentation
-- **[REBOOT_SEMAPHORE.md](REBOOT_SEMAPHORE.md)**: Remote reboot mechanism
-
-### Database Tools
-- **[BROWSE_TRAFFIC_DB.md](BROWSE_TRAFFIC_DB.md)**: Web UI for traffic database
-- **[TRAFFIC_DB_VIEWER.md](TRAFFIC_DB_VIEWER.md)**: CLI database viewer
 
 ### Historical Documentation
 Over **412 archived documentation files** are available in `docs/archive/` for historical reference. See **[docs/archive/README.md](docs/archive/README.md)** for details.
@@ -792,5 +719,5 @@ Over **412 archived documentation files** are available in `docs/archive/` for h
 
 ## Crédits
 
-Bot créé par Tigro14. Intégration Llama, Telegram, ESPHome, statistiques avancées, et bien plus.
+Bot vibecodé par Tigro14. Intégration Llama, Telegram, ESPHome, statistiques avancées, et bien plus.
 
