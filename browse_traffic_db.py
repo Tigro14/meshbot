@@ -104,16 +104,25 @@ class TrafficDBBrowser:
         self.items = [dict(row) for row in cursor.fetchall()]
 
     def load_messages(self):
-        """Charge les messages publics depuis la DB"""
+        """Charge les messages publics depuis la DB (Meshtastic uniquement)"""
         cursor = self.conn.cursor()
 
         query = 'SELECT * FROM public_messages'
         params = []
+        conditions = []
+
+        # Filtrer par source pour exclure les messages MeshCore en mode Meshtastic
+        # En mode Meshtastic, on ne veut que les messages Meshtastic (source != 'meshcore')
+        conditions.append("(source IS NULL OR source != 'meshcore')")
 
         # Appliquer la recherche
         if self.search_term:
-            query += ' WHERE message LIKE ?'
+            conditions.append('message LIKE ?')
             params.append(f'%{self.search_term}%')
+
+        # Construire la clause WHERE
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
 
         # Appliquer l'ordre de tri
         order = 'DESC' if self.sort_order == 'desc' else 'ASC'
