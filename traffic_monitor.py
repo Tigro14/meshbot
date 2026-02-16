@@ -2389,13 +2389,23 @@ class TrafficMonitor:
     def add_public_message(self, packet, message_text, source='local'):
         """
         Enregistrer un message public avec collecte de statistiques avancées
+        
+        NOTE: Cette méthode est pour les messages Meshtastic UNIQUEMENT.
+        Les messages MeshCore sont gérés séparément via meshcore_packets.
 
         Args:
             packet: Packet Meshtastic
             message_text: Texte du message
-            source: 'local' (Serial), 'tcp' (TCP), ou 'tigrog2' (legacy)
+            source: 'local' (Serial), 'tcp' (TCP), 'tigrog2' (legacy), ou 'meshtastic'
+                   NOTE: 'meshcore' n'est PAS accepté ici
         """
         try:
+            # GUARD: Ne pas sauvegarder les messages MeshCore dans public_messages
+            # Les messages MeshCore vont dans meshcore_packets (gérés ailleurs)
+            if source == 'meshcore':
+                debug_print_mc(f"⚠️  Message MeshCore ignoré dans add_public_message (va dans meshcore_packets)")
+                return
+            
             from_id = packet.get('from', 0)
             timestamp = time.time()
 

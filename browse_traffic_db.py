@@ -14,7 +14,8 @@ Touches:
   s              : Inverser l'ordre de tri
   F              : Focus sur un nœud (depuis vue nodes)
   0              : Retirer le filtre de nœud
-  v              : Changer de vue (packets/messages/nodes_stats/meshtastic/meshcore)
+  m              : Basculer entre Meshtastic et MeshCore
+  v              : Changer de vue dans le mode actuel
   r              : Rafraîchir les données
   x              : Exporter vers texte (complet)
   c              : Exporter vers CSV (complet)
@@ -40,7 +41,8 @@ class TrafficDBBrowser:
     def __init__(self, db_path='traffic_history.db'):
         self.db_path = db_path
         self.conn = None
-        self.current_view = 'packets'  # packets, messages, nodes_stats, meshtastic_nodes, meshcore_contacts
+        self.current_mode = 'meshtastic'  # 'meshtastic' or 'meshcore'
+        self.current_view = 'packets'  # packets, messages, nodes_stats, meshtastic_nodes, meshcore_contacts, meshcore_packets, meshcore_messages
         self.current_row = 0
         self.scroll_offset = 0
         self.items = []
@@ -102,16 +104,25 @@ class TrafficDBBrowser:
         self.items = [dict(row) for row in cursor.fetchall()]
 
     def load_messages(self):
-        """Charge les messages publics depuis la DB"""
+        """Charge les messages publics depuis la DB (Meshtastic uniquement)"""
         cursor = self.conn.cursor()
 
         query = 'SELECT * FROM public_messages'
         params = []
+        conditions = []
+
+        # Filtrer par source pour exclure les messages MeshCore en mode Meshtastic
+        # En mode Meshtastic, on ne veut que les messages Meshtastic (source != 'meshcore')
+        conditions.append("(source IS NULL OR source != 'meshcore')")
 
         # Appliquer la recherche
         if self.search_term:
-            query += ' WHERE message LIKE ?'
+            conditions.append('message LIKE ?')
             params.append(f'%{self.search_term}%')
+
+        # Construire la clause WHERE
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
 
         # Appliquer l'ordre de tri
         order = 'DESC' if self.sort_order == 'desc' else 'ASC'
@@ -163,6 +174,73 @@ class TrafficDBBrowser:
             # Table n'existe pas encore
             self.items = []
 
+    def load_meshcore_packets(self):
+        """Charge les paquets MeshCore depuis la DB"""
+        cursor = self.conn.cursor()
+        
+        try:
+            query = 'SELECT * FROM meshcore_packets'
+            params = []
+            conditions = []
+            
+            # Appliquer le filtre de type
+            if self.filter_type:
+                conditions.append('packet_type = ?')
+                params.append(self.filter_type)
+            
+            # Appliquer le filtre de chiffrement
+            if self.filter_encrypted == 'only':
+                conditions.append('is_encrypted = 1')
+            elif self.filter_encrypted == 'exclude':
+                conditions.append('(is_encrypted = 0 OR is_encrypted IS NULL)')
+            
+            # Appliquer le filtre de nœud
+            if self.filter_node:
+                conditions.append('from_id = ?')
+                params.append(self.filter_node)
+            
+            # Appliquer la recherche
+            if self.search_term:
+                conditions.append('message LIKE ?')
+                params.append(f'%{self.search_term}%')
+            
+            # Construire la clause WHERE
+            if conditions:
+                query += ' WHERE ' + ' AND '.join(conditions)
+            
+            # Appliquer l'ordre de tri
+            order = 'DESC' if self.sort_order == 'desc' else 'ASC'
+            query += f' ORDER BY timestamp {order} LIMIT 1000'
+            
+            cursor.execute(query, params)
+            self.items = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            # Table n'existe pas encore
+            self.items = []
+
+    def load_meshcore_messages(self):
+        """Charge les messages MeshCore depuis la DB (TEXT_MESSAGE_APP uniquement)"""
+        cursor = self.conn.cursor()
+        
+        try:
+            query = "SELECT * FROM meshcore_packets WHERE packet_type = 'TEXT_MESSAGE_APP'"
+            params = []
+            
+            # Appliquer la recherche
+            if self.search_term:
+                query += ' AND message LIKE ?'
+                params.append(f'%{self.search_term}%')
+            
+            # Appliquer l'ordre de tri
+            order = 'DESC' if self.sort_order == 'desc' else 'ASC'
+            query += f' ORDER BY timestamp {order} LIMIT 1000'
+            
+            cursor.execute(query, params)
+            self.items = [dict(row) for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            # Table n'existe pas encore
+            self.items = []
+
     def load_data(self):
         """Charge les données selon la vue courante"""
         if self.current_view == 'packets':
@@ -175,6 +253,10 @@ class TrafficDBBrowser:
             self.load_meshtastic_nodes()
         elif self.current_view == 'meshcore_contacts':
             self.load_meshcore_contacts()
+        elif self.current_view == 'meshcore_packets':
+            self.load_meshcore_packets()
+        elif self.current_view == 'meshcore_messages':
+            self.load_meshcore_messages()
 
         # Reset position si on dépasse
         if self.current_row >= len(self.items):
@@ -214,12 +296,17 @@ class TrafficDBBrowser:
             'messages': ('💬', 'MESSAGES', 'Messages publics broadcast'),
             'nodes_stats': ('🌐', 'NODE STATS', 'Statistiques par nœud (agrégé)'),
             'meshtastic_nodes': ('📡', 'MESHTASTIC', 'Nœuds appris via radio'),
-            'meshcore_contacts': ('🔧', 'MESHCORE', 'Contacts via meshcore-cli')
+            'meshcore_contacts': ('🔧', 'MESHCORE', 'Contacts via meshcore-cli'),
+            'meshcore_packets': ('📦', 'MC PACKETS', 'Paquets MeshCore'),
+            'meshcore_messages': ('💬', 'MC MESSAGES', 'Messages MeshCore')
         }
 
         icon, view_name, view_desc = view_info.get(self.current_view, ('?', 'UNKNOWN', ''))
 
-        title = f"{icon} {view_name}"
+        # Ajouter l'indicateur de mode
+        mode_icon = '🔷' if self.current_mode == 'meshtastic' else '🔶'
+        mode_name = 'MESHTASTIC' if self.current_mode == 'meshtastic' else 'MESHCORE'
+        title = f"{mode_icon} {mode_name} | {icon} {view_name}"
         if self.filter_type:
             title += f" [Filter: {self.filter_type}]"
         if self.filter_encrypted == 'only':
@@ -231,7 +318,7 @@ class TrafficDBBrowser:
         if self.filter_node:
             title += f" [Node: !{self.format_node_id(self.filter_node)}]"
         # Indicateur d'ordre de tri (seulement pour packets et messages)
-        if self.current_view in ['packets', 'messages']:
+        if self.current_view in ['packets', 'messages', 'meshcore_packets', 'meshcore_messages']:
             sort_icon = '↓' if self.sort_order == 'desc' else '↑'
             title += f" [{sort_icon}]"
 
@@ -256,13 +343,19 @@ class TrafficDBBrowser:
     def draw_footer(self, stdscr, height, width):
         """Dessine le pied de page avec les raccourcis"""
         # Indiquer la prochaine vue dans le cycle
-        view_cycle = {
-            'packets': 'Msgs', 
-            'messages': 'NodeStats', 
-            'nodes_stats': 'Meshtastic',
-            'meshtastic_nodes': 'MeshCore',
-            'meshcore_contacts': 'Packets'
-        }
+        if self.current_mode == 'meshtastic':
+            view_cycle = {
+                'packets': 'Msgs', 
+                'messages': 'NodeStats', 
+                'nodes_stats': 'Nodes',
+                'meshtastic_nodes': 'Packets'
+            }
+        else:  # meshcore
+            view_cycle = {
+                'meshcore_packets': 'Msgs',
+                'meshcore_messages': 'Contacts',
+                'meshcore_contacts': 'Packets'
+            }
         next_view = view_cycle.get(self.current_view, 'View')
 
         # Indicateur du cycle de chiffrement
@@ -271,14 +364,18 @@ class TrafficDBBrowser:
         # Indicateur d'ordre de tri
         sort_icon = '↓' if self.sort_order == 'desc' else '↑'
 
+        # Mode indicator
+        mode_name = 'Meshtastic' if self.current_mode == 'meshtastic' else 'MeshCore'
+        other_mode = 'MeshCore' if self.current_mode == 'meshtastic' else 'Meshtastic'
+
         # Footer adapté selon la vue
         if self.current_view in ['nodes_stats', 'meshtastic_nodes', 'meshcore_contacts']:
-            footer = f"↑/↓:Nav ENTER:Details F:Focus v:→{next_view} x:TXT c:CSV S:Screen r:Refresh q:Quit"
-        elif self.current_view == 'packets':
+            footer = f"↑/↓:Nav ENTER:Details F:Focus m:→{other_mode} v:→{next_view} x:TXT c:CSV S:Screen r:Refresh q:Quit"
+        elif self.current_view in ['packets', 'meshcore_packets']:
             focus_hint = " 0:ClearNode" if self.filter_node else ""
-            footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Enc({enc_status}) s:Sort{sort_icon}{focus_hint} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
-        else:  # messages
-            footer = f"↑/↓:Nav ENTER:Details /:Search s:Sort{sort_icon} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
+            footer = f"↑/↓:Nav ENTER:Details /:Search f:Type e:Enc({enc_status}) s:Sort{sort_icon}{focus_hint} m:→{other_mode} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
+        else:  # messages, meshcore_messages
+            footer = f"↑/↓:Nav ENTER:Details /:Search s:Sort{sort_icon} m:→{other_mode} x:TXT c:CSV S:Screen v:→{next_view} r:Refresh q:Quit"
         stdscr.attron(curses.color_pair(2))
         # Ne pas remplir le dernier caractère pour éviter l'erreur curses
         try:
@@ -390,6 +487,10 @@ class TrafficDBBrowser:
                 header = "Name                 (Short)    !Node ID  Model        GPS Key"
             elif self.current_view == 'meshcore_contacts':
                 header = "Name                 (Short)    !Node ID  Model        GPS Key  Source"
+            elif self.current_view == 'meshcore_packets':
+                header = "Timestamp    Sender          Type                    Message"
+            elif self.current_view == 'meshcore_messages':
+                header = "Timestamp    Sender          Message"
             stdscr.addstr(2, 0, header[:width-1])
             stdscr.attroff(curses.A_BOLD)
         except curses.error:
@@ -420,6 +521,10 @@ class TrafficDBBrowser:
                 self.draw_meshtastic_node_line(stdscr, start_y + i, 0, width, item, is_selected)
             elif self.current_view == 'meshcore_contacts':
                 self.draw_meshcore_contact_line(stdscr, start_y + i, 0, width, item, is_selected)
+            elif self.current_view == 'meshcore_packets':
+                self.draw_packet_line(stdscr, start_y + i, 0, width, item, is_selected)
+            elif self.current_view == 'meshcore_messages':
+                self.draw_message_line(stdscr, start_y + i, 0, width, item, is_selected)
 
     def draw_detail_view(self, stdscr, height, width):
         """Dessine la vue détaillée d'un item"""
@@ -432,7 +537,7 @@ class TrafficDBBrowser:
 
         lines = []
 
-        if self.current_view == 'packets':
+        if self.current_view in ['packets', 'meshcore_packets']:
             lines.append("═" * width)
             lines.append(f"PACKET DETAILS")
             lines.append("═" * width)
@@ -469,7 +574,7 @@ class TrafficDBBrowser:
                     if v is not None:
                         lines.append(f"  {k:20s}: {v}")
 
-        elif self.current_view == 'messages':
+        elif self.current_view in ['messages', 'meshcore_messages']:
             lines.append("═" * width)
             lines.append(f"MESSAGE DETAILS")
             lines.append("═" * width)
@@ -638,8 +743,11 @@ class TrafficDBBrowser:
             "  F               - Focus on selected node (from nodes view)",
             "                    Switch to packets view filtered by this node",
             "  0               - Clear node filter (when active)",
-            "  v               - Switch view mode:",
-            "                    📦 Packets  → 💬 Messages → 🌐 Nodes → (cycle)",
+            "  m               - Toggle mode: Meshtastic ⟷ MeshCore",
+            "                    Switch between Meshtastic and MeshCore data",
+            "  v               - Switch view within current mode:",
+            "                    Meshtastic: 📦 Packets → 💬 Messages → 🌐 Nodes → 📡 Nodes",
+            "                    MeshCore:   📦 Packets → 💬 Messages → 🔧 Contacts",
             "  r               - Refresh data from database",
             "",
             "Export:",
@@ -650,11 +758,15 @@ class TrafficDBBrowser:
             "  S               - Export screen (visible lines only)",
             "                    Plain text export of currently visible items",
             "",
-            "Views explained:",
-            "  📦 PACKETS      - All received packets (any type)",
+            "Meshtastic Views:",
+            "  📦 PACKETS      - All received Meshtastic packets (any type)",
             "  💬 MESSAGES     - Public broadcast text messages only",
             "  🌐 NODE STATS   - Aggregated statistics per node",
             "  📡 MESHTASTIC   - Nodes learned via radio (NODEINFO_APP)",
+            "",
+            "MeshCore Views:",
+            "  📦 MC PACKETS   - All received MeshCore packets (any type)",
+            "  💬 MC MESSAGES  - MeshCore text messages only",
             "  🔧 MESHCORE     - Contacts learned via meshcore-cli",
             "",
             "In detail view:",
@@ -1036,9 +1148,12 @@ class TrafficDBBrowser:
 
     def filter_dialog(self, stdscr):
         """Dialogue pour filtrer par type de paquet"""
-        # Récupérer les types disponibles
+        # Récupérer les types disponibles (selon le mode)
         cursor = self.conn.cursor()
-        cursor.execute('SELECT DISTINCT packet_type FROM packets ORDER BY packet_type')
+        if self.current_mode == 'meshtastic':
+            cursor.execute('SELECT DISTINCT packet_type FROM packets ORDER BY packet_type')
+        else:
+            cursor.execute('SELECT DISTINCT packet_type FROM meshcore_packets ORDER BY packet_type')
         types = [row[0] for row in cursor.fetchall()]
 
         if not types:
@@ -1148,12 +1263,12 @@ class TrafficDBBrowser:
                         self.load_data()
                         self.current_row = 0
                 elif key == ord('f'):  # Filtrer par type
-                    if self.current_view == 'packets':
+                    if self.current_view in ['packets', 'meshcore_packets']:
                         self.filter_dialog(stdscr)
                         self.load_data()
                         self.current_row = 0
                 elif key == ord('e'):  # Filtrer chiffrement
-                    if self.current_view == 'packets':
+                    if self.current_view in ['packets', 'meshcore_packets']:
                         # Cycler entre all, only, exclude
                         if self.filter_encrypted == 'all':
                             self.filter_encrypted = 'only'
@@ -1164,17 +1279,38 @@ class TrafficDBBrowser:
                         self.load_data()
                         self.current_row = 0
                 elif key == ord('s'):  # Inverser l'ordre de tri
-                    if self.current_view in ['packets', 'messages']:
+                    if self.current_view in ['packets', 'messages', 'meshcore_packets', 'meshcore_messages']:
                         # Basculer entre desc et asc
                         self.sort_order = 'asc' if self.sort_order == 'desc' else 'desc'
                         self.load_data()
                         # Garder la position relative (inverser la sélection)
                         if self.items:
                             self.current_row = len(self.items) - 1 - self.current_row
+                elif key == ord('m'):  # Toggle mode (Meshtastic <-> MeshCore)
+                    if self.current_mode == 'meshtastic':
+                        self.current_mode = 'meshcore'
+                        self.current_view = 'meshcore_packets'
+                    else:
+                        self.current_mode = 'meshtastic'
+                        self.current_view = 'packets'
+                    self.filter_type = None
+                    self.filter_node = None
+                    self.search_term = None
+                    self.load_data()
+                    self.current_row = 0
                 elif key == ord('v'):  # Changer de vue
-                    views = ['packets', 'messages', 'nodes_stats', 'meshtastic_nodes', 'meshcore_contacts']
-                    current_idx = views.index(self.current_view)
-                    self.current_view = views[(current_idx + 1) % len(views)]
+                    if self.current_mode == 'meshtastic':
+                        views = ['packets', 'messages', 'nodes_stats', 'meshtastic_nodes']
+                    else:  # meshcore
+                        views = ['meshcore_packets', 'meshcore_messages', 'meshcore_contacts']
+                    
+                    try:
+                        current_idx = views.index(self.current_view)
+                        self.current_view = views[(current_idx + 1) % len(views)]
+                    except ValueError:
+                        # Current view not in list, start from beginning
+                        self.current_view = views[0]
+                    
                     self.filter_type = None
                     self.filter_node = None
                     self.search_term = None
@@ -1188,7 +1324,10 @@ class TrafficDBBrowser:
                         if node_id:
                             # Basculer vers la vue packets avec filtre sur ce nœud
                             self.filter_node = node_id
-                            self.current_view = 'packets'
+                            if self.current_mode == 'meshtastic':
+                                self.current_view = 'packets'
+                            else:
+                                self.current_view = 'meshcore_packets'
                             self.load_data()
                             self.current_row = 0
                 elif key == ord('0'):  # Retirer le filtre de nœud
