@@ -1009,21 +1009,11 @@ class TrafficMonitor:
             self._update_network_statistics(packet_entry)
             
             # === LOG UNIFIÉ POUR TOUS LES PAQUETS ===
-            source_tag = f"[{packet_entry.get('source', '?')}]"
-            
-            # ENHANCED DIAGNOSTIC: Use both logger and debug_print for redundancy
-            # FIX: Use debug_print_mc for MeshCore packets, debug_print_mt for Meshtastic
-            logger.debug(f"📊 Paquet enregistré (logger debug) ({source_tag}): {packet_type} de {sender_name}")
-            if source == 'meshcore':
-                debug_print_mc(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
-            else:
-                debug_print_mt(f"📊 Paquet enregistré (print) ({source_tag}): {packet_type} de {sender_name}")
-            
-            # Detailed debug logging (requires DEBUG_MODE)
-            logger.debug(f"🔍 Calling _log_packet_debug for {packet_type}")
+            # Removed redundant "📊 Paquet enregistré" line to reduce log verbosity
+            # Removed logger.debug redundant tracking lines
+            # Call comprehensive packet debug directly (provides all necessary info)
             self._log_packet_debug(
                 packet_type, source, sender_name, from_id, hops_taken, snr, packet)
-            logger.debug(f"✅ _log_packet_debug completed for {packet_type}")
             
         except Exception as e:
             import traceback
@@ -1061,15 +1051,10 @@ class TrafficMonitor:
             else:
                 route_info += " (SNR:n/a)"
 
-            # FIX: Use correct debug function based on source
-            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
-            debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
-
             # === DETAILED DEBUG (debug_print - DEBUG_MODE only) ===
+            # Removed duplicate "📦" debug lines to avoid log duplication
             # Info spécifique pour télémétrie
             if packet_type == 'TELEMETRY_APP':
-                telemetry_info = self._extract_telemetry_info(packet)
-
                 # DEBUG SPÉCIAL pour tigrobot G2 PV (!16fad3dc)
                 if node_id_full == "16fad3dc": 
                     if 'decoded' in packet and 'telemetry' in packet['decoded']:
@@ -1079,13 +1064,6 @@ class TrafficMonitor:
                         # C'est un dict, on peut l'afficher directement
                         import json
                         debug_print(f" {json.dumps(telemetry, indent=2, default=str)}")
-
-                if telemetry_info:
-                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}: {telemetry_info}")
-                else:
-                    debug_func(f"📦 TELEMETRY de {sender_name} {node_id_short}{route_info}")
-            else:
-                debug_func(f"📦 {packet_type} de {sender_name} {node_id_short}{route_info}")
             
             # === AFFICHAGE CONCIS (concise two-line debug with network source) ===
             self._log_comprehensive_packet_debug(packet, packet_type, sender_name, from_id, snr, hops_taken, source=source)

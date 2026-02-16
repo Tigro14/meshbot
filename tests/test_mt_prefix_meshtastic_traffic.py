@@ -4,8 +4,12 @@ Test to verify that Meshtastic traffic logs use [MT] prefix
 """
 
 import sys
+import os
 import io
 from contextlib import redirect_stderr
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import logging functions
 from utils import debug_print_mt, info_print_mt
@@ -24,10 +28,9 @@ def test_mt_prefix():
         debug_print_mt("🔍 Found node 0x16cd7380 in interface.nodes")
         debug_print_mt("📍 Position mise à jour pour 16cd7380: 48.83743, 2.38551")
         debug_print_mt("📍 Position capturée: 16cd7380 -> 48.83743, 2.38551")
-        debug_print_mt("📊 Paquet enregistré ([local]): POSITION_APP de Lorux G2🧊")
-        debug_print_mt("📦 POSITION_APP de Lorux G2🧊 d7380 [direct] (SNR:-4.2dB)")
-        debug_print_mt("🌐 LOCAL POSITION from Lorux G2🧊 (cd7380) | Hops:0/5 | SNR:-4.2dB(🔴)")
-        debug_print_mt("  └─ Lat:0.000005° | Lon:0.000000° | Alt:25m | Payload:27B")
+        # After fix: Only 2-line comprehensive format is logged (no duplicate "📊 Paquet enregistré" or "📦" lines)
+        debug_print_mt("🌐 LOCAL POSITION from Lorux G2🧊 (cd7380) | Hops:0/5 | SNR:-4.2dB(🔴) | RSSI:-95dBm | Ch:0")
+        debug_print_mt("  └─ Lat:0.000005° | Lon:0.000000° | Alt:25m | Payload:27B | ID:123456 | RX:14:23:45")
     
     # Test info_print_mt
     print()
