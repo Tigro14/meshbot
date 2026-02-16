@@ -12,6 +12,10 @@ Tests the improvements to display:
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_enhanced_display():
     """Test the enhanced RX_LOG display with various packet types"""

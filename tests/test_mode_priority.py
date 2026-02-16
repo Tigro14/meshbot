@@ -4,6 +4,10 @@ Test script to verify connection mode priority logic
 Tests all combinations of MESHTASTIC_ENABLED and MESHCORE_ENABLED
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_mode_priority():
     """Test the priority logic for connection modes"""
     

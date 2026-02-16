@@ -5,6 +5,10 @@ Tests the new command that shows all MeshCore contacts with full attributes
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 from datetime import datetime
 

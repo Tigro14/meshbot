@@ -5,6 +5,10 @@ Script de test pour valider la configuration single-node
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 
 def test_config_serial():
     """Tester la configuration mode Serial"""

@@ -5,6 +5,10 @@ Test complet de tous les fixes d'alias
 Vérifie que /bot, /echo, /info, /hop fonctionnent tous correctement
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_all_commands_in_broadcast_list():
     """Vérifier que tous les commands sont dans broadcast_commands"""
     print("🧪 Test: Tous les commands dans broadcast_commands\n")

@@ -4,6 +4,10 @@ Démonstration de la résilience du système de sémaphore
 Montre comment le système fonctionne même avec un filesystem read-only
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 import time

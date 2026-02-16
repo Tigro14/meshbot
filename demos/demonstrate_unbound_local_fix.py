@@ -15,6 +15,10 @@ AFTER (FIXED):
 - Result: Works correctly
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def demonstrate_bug():
     """Show what was causing the UnboundLocalError"""
     print("=" * 60)

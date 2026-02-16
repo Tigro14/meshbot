@@ -5,6 +5,10 @@ Test: TCP Silent Timeout Race Condition Fix (Standalone)
 This test verifies the TCP_SILENT_TIMEOUT fix by parsing main_bot.py directly.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import re
 import sys
 

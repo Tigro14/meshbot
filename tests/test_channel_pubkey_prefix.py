@@ -7,6 +7,10 @@ the bot correctly resolves it to the sender's node_id instead of falling
 back to unreliable message prefix extraction.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 from unittest.mock import MagicMock, patch
 import sys

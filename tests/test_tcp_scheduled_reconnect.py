@@ -4,6 +4,10 @@ Test script for TCP scheduled reconnection feature
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 # Mock config with scheduled reconnection

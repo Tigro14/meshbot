@@ -4,6 +4,10 @@ Test script for automatic node reboot on TCP connection failure
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import subprocess
 import time
 

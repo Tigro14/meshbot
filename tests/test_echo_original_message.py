@@ -11,6 +11,10 @@ extracts the sender name directly from the message text.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_sender_extraction_logic():
     """Test the sender name extraction logic directly"""

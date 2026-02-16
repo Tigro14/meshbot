@@ -6,6 +6,10 @@ Shows how the optimization reduces redundant sync operations while
 maintaining safety for startup and reconnection scenarios.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("="*80)
 print("DEMO: Intelligent Public Key Synchronization")
 print("="*80)

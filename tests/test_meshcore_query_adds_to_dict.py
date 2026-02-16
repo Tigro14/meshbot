@@ -6,6 +6,10 @@ This test validates that _add_contact_to_meshcore() is called alongside
 save_meshcore_contact() at all 3 locations in the code.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 import re
 

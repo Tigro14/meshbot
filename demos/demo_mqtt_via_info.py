@@ -5,6 +5,10 @@ Demonstration of MQTT "via" information in debug logs
 This script shows example debug log output before and after the changes.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("\n" + "="*70)
 print("MQTT 'via' Information Feature Demonstration")
 print("="*70)

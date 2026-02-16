@@ -6,6 +6,10 @@ Shows the improvements in packet debug information display
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def show_comparison():
     """Show before/after comparison for RX_LOG display"""

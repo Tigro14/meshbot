@@ -1,27 +1,31 @@
 # Test & Demo Files Cleanup Guide
 
-## ✅ COMPLETED: Files Reorganized (2026-02-03)
+## ✅ COMPLETED: Files Reorganized (2026-02-16)
 
 All test and demo files have been moved to dedicated subdirectories for better organization:
-- **160 test files** moved to `tests/` directory
-- **33 demo files** moved to `demos/` directory
+- **210 test files** moved to `tests/` directory (includes test_*.py, diagnose_*.py, verify_*.py)
+- **38 demo files** moved to `demos/` directory (includes demo_*.py, demonstrate_*.py)
+- All files updated with proper sys.path imports for root module access
 
 ## Current Structure
 
 ```
 meshbot/
-├── tests/                      # All test_*.py files
+├── tests/                      # All test/diagnose/verify files (210 total)
 │   ├── README.md              # Test documentation
 │   ├── archive/               # Archived tests
 │   │   └── fix-tests/        # Old bug fix tests
-│   └── test_*.py (160 files)
+│   ├── test_*.py              # Test files
+│   ├── diagnose_*.py          # Diagnostic files
+│   └── verify_*.py            # Verification files
 │
-├── demos/                      # All demo_*.py files
+├── demos/                      # All demo files (38 total)
 │   ├── README.md              # Demo documentation
 │   ├── archive/               # Archived demos
-│   └── demo_*.py (33 files)
+│   ├── demo_*.py              # Demo files
+│   └── demonstrate_*.py       # Demonstration files
 │
-└── [main project files]
+└── [main project files]       # Clean root directory
 ```
 
 ## Import Updates

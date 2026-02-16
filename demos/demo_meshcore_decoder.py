@@ -9,6 +9,10 @@ Run: python3 demo_meshcore_decoder.py
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 def simulate_rx_log_event(snr, rssi, hex_data, description):

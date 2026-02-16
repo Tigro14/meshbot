@@ -7,6 +7,10 @@ serial port conflicts when both Meshtastic and MeshCore try to
 use the same serial port.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 from unittest.mock import Mock, patch, MagicMock

@@ -6,6 +6,10 @@ This is a basic sanity check to ensure the code structure is correct
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import inspect
 
 def test_neighbors_command_exists():

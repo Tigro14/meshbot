@@ -8,6 +8,10 @@ Ce test vérifie que:
 2. La route retour utilise la flèche gauche (←)
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_traceroute_arrow_directions():
     """
     Simuler le formatage du traceroute avec les flèches directionnelles

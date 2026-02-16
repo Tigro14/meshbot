@@ -6,6 +6,10 @@ Tests the enhanced diagnostic capabilities added to investigate
 why the meshcore library might not be dispatching decoded CONTACT_MSG_RECV events.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock

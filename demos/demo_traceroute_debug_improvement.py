@@ -6,6 +6,10 @@ Démonstration visuelle de l'amélioration du debug logging pour traceroute
 Ce script montre ce que l'utilisateur voit maintenant quand une route ne peut pas être décodée.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def show_before_after():
     """Afficher le message avant et après l'amélioration"""
     

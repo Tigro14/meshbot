@@ -7,6 +7,10 @@ that occurred at line 461 when logger.info() was called without
 importing or defining logger.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import ast
 import sys
 

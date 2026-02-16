@@ -3,6 +3,10 @@
 Démonstration de la sortie attendue pour les logs MQTT avec longname
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def show_examples():
     """Afficher des exemples avant/après"""
     

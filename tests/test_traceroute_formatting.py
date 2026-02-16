@@ -8,6 +8,10 @@ Ce test vérifie que:
 2. Les noms de nœuds sont tronqués à 30 caractères au lieu de 8
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_traceroute_formatting():
     """
     Simuler le formatage du traceroute avec les nouvelles améliorations

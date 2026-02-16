@@ -4,6 +4,10 @@ Manual test output formatter for /info command
 This shows what the output should look like for different scenarios
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_compact_format():
     """Show example compact format output"""
     print("\n" + "="*60)

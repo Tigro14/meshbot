@@ -7,6 +7,10 @@ about missing character detection dependencies (chardet or charset_normalizer).
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import warnings
 
 def test_requests_import_no_warnings():

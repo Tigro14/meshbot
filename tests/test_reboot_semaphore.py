@@ -5,6 +5,10 @@ Test script for semaphore-based reboot signaling
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 import time
 from reboot_semaphore import RebootSemaphore, REBOOT_SEMAPHORE_FILE, REBOOT_INFO_FILE
 

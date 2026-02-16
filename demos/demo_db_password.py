@@ -4,6 +4,10 @@ Demonstration of /db clean and /db vacuum password protection
 Shows usage examples and error messages
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("=" * 70)
 print("DEMONSTRATION: /db clean and /db vacuum Password Protection")
 print("=" * 70)

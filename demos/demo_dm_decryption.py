@@ -26,6 +26,10 @@ that are encrypted in Meshtastic 2.7.15+.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 # Mock config
 class MockConfig:

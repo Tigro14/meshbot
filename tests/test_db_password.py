@@ -5,6 +5,10 @@ Simplified version that tests the logic directly
 """
 
 # Define the test password
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 REBOOT_PASSWORD = "test_password_123"
 
 def test_cleanup_password_logic():

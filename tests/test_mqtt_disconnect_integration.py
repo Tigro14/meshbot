@@ -4,6 +4,10 @@ Test d'intégration pour vérifier que les callbacks MQTT fonctionnent
 correctement avec paho-mqtt 2.x CallbackAPIVersion.VERSION2
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 import time
 from unittest.mock import Mock, patch

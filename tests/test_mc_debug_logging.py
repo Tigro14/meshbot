@@ -13,6 +13,10 @@ Run with: python3 test_mc_debug_logging.py
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 # Mock config before imports

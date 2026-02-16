@@ -4,6 +4,10 @@ Démonstration de l'utilité des champs hop_limit et hop_start
 Ces champs permettent une analyse plus fine du routage mesh.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import sqlite3
 import sys
 from datetime import datetime, timedelta

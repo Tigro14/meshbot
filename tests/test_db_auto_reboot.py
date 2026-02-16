@@ -5,6 +5,10 @@ Test du système de reboot automatique sur erreurs DB persistantes
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 import tempfile
 import os

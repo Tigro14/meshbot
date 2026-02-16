@@ -11,6 +11,10 @@ Ce test vérifie que:
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 
 # Simulation d'un cas où le parsing échoue
 def test_parse_error_logging():

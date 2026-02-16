@@ -3,6 +3,10 @@
 Demonstration of startup messages with different configurations
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def simulate_startup_messages(dual_mode, meshtastic_enabled, meshcore_enabled):
     """
     Simulate and display the startup messages that would appear

@@ -4,6 +4,10 @@ Test de déduplication bidirectionnelle des liaisons radio
 Vérifie que A→B et B→A sont considérés comme la même liaison
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_bidirectional_deduplication():
     """
     Teste que les liaisons bidirectionnelles sont correctement dédupliquées

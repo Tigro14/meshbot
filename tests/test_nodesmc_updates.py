@@ -5,6 +5,10 @@ Test script for updated /nodesmc command with verbose logging and full mode
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 from datetime import datetime
 
 

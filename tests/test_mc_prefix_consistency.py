@@ -8,6 +8,10 @@ info_print() without the MC prefix.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_mc_prefix_visibility():
     """Test that critical MeshCore messages use [MC] prefix"""

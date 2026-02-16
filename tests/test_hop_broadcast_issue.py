@@ -4,6 +4,10 @@
 Test pour démontrer le problème avec /hop en mode broadcast
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_hop_broadcast_filtering():
     """Tester que /hop est filtré en mode broadcast"""
     print("🧪 Test: /hop en mode broadcast\n")

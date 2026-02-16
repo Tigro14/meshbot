@@ -6,6 +6,10 @@ Shows how the improved handling reduces log noise for unknown packet types.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def show_before_after():
     """Demonstrate before and after log output"""

@@ -4,6 +4,10 @@ Integration test to simulate TCP connection failure and auto-reboot
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 import errno
 from unittest.mock import Mock, patch, MagicMock
