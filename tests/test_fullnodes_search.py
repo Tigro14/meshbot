@@ -4,6 +4,10 @@
 Test script for /fullnodes search functionality - Unit Test
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_search_logic():
     """
     Test the search logic used in get_all_nodes_alphabetical

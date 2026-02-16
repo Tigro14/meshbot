@@ -6,6 +6,10 @@ This script checks that interface-specific diagnostic logs use the correct
 prefixed logging functions (debug_print_mc, info_print_mc, debug_print_mt, info_print_mt).
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import re
 import sys
 

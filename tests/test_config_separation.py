@@ -4,6 +4,10 @@ Test script to verify config separation works correctly
 """
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 
 def test_config_import_without_priv():
     """Test that config.py.sample can be imported without config.priv.py"""

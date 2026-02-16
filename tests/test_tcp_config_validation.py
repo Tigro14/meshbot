@@ -8,6 +8,10 @@ caused by misconfigured timeout/interval relationships.
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 
 # Validation constants (must match main_bot.py)
 FRACTIONAL_RATIO_THRESHOLD = 0.3  # Threshold for "close to integer" detection

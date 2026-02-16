@@ -3,6 +3,10 @@
 Simple test: Verify broadcast logging fix by checking code directly
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def check_broadcast_methods():
     """Check that _send_broadcast_via_tigrog2 doesn't call log_conversation"""
     print("=" * 60)

@@ -5,6 +5,10 @@ Test: Contact dict uses 'public_key' field name (snake_case) as expected by mesh
 This test validates Fix #10 for MeshCore DM delivery.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 from unittest.mock import Mock, MagicMock
 import sys

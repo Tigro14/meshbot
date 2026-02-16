@@ -5,6 +5,10 @@ Demonstration of meshcore-serial-monitor debug mode improvements
 This script simulates the before/after behavior to show what changes were made.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import asyncio
 import sys
 from datetime import datetime

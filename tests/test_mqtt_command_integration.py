@@ -6,6 +6,10 @@ Simule un scénario réaliste avec formatage du message Telegram
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 

@@ -3,6 +3,10 @@
 Demonstrates the before/after behavior of /propag command fixes
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("\n" + "="*80)
 print("DEMONSTRATION: /propag Command Fixes")
 print("="*80)

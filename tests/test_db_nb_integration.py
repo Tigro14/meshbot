@@ -3,6 +3,10 @@
 Test d'intégration pour /db nb - vérifie que la commande est bien routée
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 

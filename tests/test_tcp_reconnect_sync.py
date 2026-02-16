@@ -6,6 +6,10 @@ This tests that after TCP reconnection creates a new interface object,
 the public keys are immediately re-synchronized from node_names.json.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 class MockInterface:
     """Mock Meshtastic interface"""
     def __init__(self):

@@ -6,6 +6,10 @@ Shows the before/after comparison of log output during TCP reconnections.
 This demonstrates the improvement in log verbosity.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("=" * 80)
 print("DEMONSTRATION: PKI Sync Logging Reduction")
 print("=" * 80)

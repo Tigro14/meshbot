@@ -5,6 +5,10 @@ Test d'intégration pour le fix du traceroute
 Simule le flux complet avec le payload réel
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from meshtastic import mesh_pb2
 import sys
 

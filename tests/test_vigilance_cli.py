@@ -26,6 +26,10 @@ NOTE: This test is kept for historical/diagnostic purposes only.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 import socket
 import http.client

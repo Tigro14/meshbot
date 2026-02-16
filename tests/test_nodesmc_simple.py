@@ -6,6 +6,10 @@ Tests only the core splitting functionality without full module imports
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import sqlite3
 from datetime import datetime
 

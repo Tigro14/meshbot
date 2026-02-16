@@ -4,6 +4,10 @@ Démonstration visuelle de l'impact du changement de rétention
 Compare 48h vs 30 jours sur un jeu de données réaliste
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def print_comparison():
     """Affiche une comparaison visuelle avant/après"""
     

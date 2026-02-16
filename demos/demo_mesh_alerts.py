@@ -5,6 +5,10 @@ Montre comment les alertes critiques sont envoyées aux nœuds abonnés
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 # Mock config pour démo

@@ -4,6 +4,10 @@ Démonstration du nouvel alias /hop
 Montre comment utiliser la commande /hop comme alias de /stats hop
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("=" * 70)
 print("DÉMONSTRATION: Nouvel alias /hop")
 print("=" * 70)

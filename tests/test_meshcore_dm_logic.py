@@ -5,6 +5,10 @@ Test: MeshCore DM Command Processing Logic
 Tests the core logic without importing full module dependencies.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 
 

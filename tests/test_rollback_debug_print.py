@@ -9,6 +9,10 @@ This test verifies the rollback is correct.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_rollback():
     """Test that rollback works correctly"""

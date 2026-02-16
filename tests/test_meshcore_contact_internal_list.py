@@ -6,6 +6,10 @@ Tests that contacts saved to database are also added to meshcore.contacts dict
 so that get_contact_by_key_prefix() can find them.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 from unittest.mock import Mock, MagicMock, patch
 import sys

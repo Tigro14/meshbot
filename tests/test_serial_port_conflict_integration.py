@@ -6,6 +6,10 @@ This test verifies that the port conflict detection doesn't break
 existing single-mode and TCP-mode configurations.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 from unittest.mock import Mock, patch

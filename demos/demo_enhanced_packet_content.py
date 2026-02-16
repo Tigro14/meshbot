@@ -5,6 +5,10 @@ Shows packet type/family/content for public, advertising, and routing packets
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def demo_enhanced_content():
     """Demonstrate enhanced packet content display"""

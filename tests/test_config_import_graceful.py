@@ -5,6 +5,10 @@ Test that the diagnostic script can import config variables gracefully.
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 
 # Create a minimal test config in memory
 test_config_content = """

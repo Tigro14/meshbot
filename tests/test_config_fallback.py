@@ -8,6 +8,10 @@ Vérifie le fix pour: ImportError: cannot import name 'REBOOT_PASSWORD' from 'co
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 import tempfile
 import shutil
 

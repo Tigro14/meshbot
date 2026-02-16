@@ -4,6 +4,10 @@ Test simple de la nouvelle sous-commande /db nb (neighbors stats)
 Test direct des méthodes sans dépendances complètes
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 import sqlite3

@@ -3,6 +3,10 @@
 Test de déduplication des liaisons radio dans /propag
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def test_link_deduplication():
     """
     Teste la logique de déduplication des liaisons radio

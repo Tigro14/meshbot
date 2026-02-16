@@ -10,6 +10,10 @@ This test ensures that:
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 import re
 
 def test_interface_close_in_stop():

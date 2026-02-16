@@ -7,6 +7,10 @@ are handled gracefully without noisy error messages.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_unknown_payload_type_handling():
     """Test that unknown payload types are displayed properly"""

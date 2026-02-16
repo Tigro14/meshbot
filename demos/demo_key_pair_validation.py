@@ -9,6 +9,10 @@ Issue: User suspects private key doesn't match public key
 Solution: Validate key pair and node_id derivation
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def print_section(title):
     """Print a section header"""
     print("\n" + "="*70)

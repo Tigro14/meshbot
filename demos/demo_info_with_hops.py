@@ -3,6 +3,10 @@
 Demonstration of /info command output with hop information
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def show_compact_examples():
     """Show compact format examples with hop information"""
     print("\n" + "="*70)

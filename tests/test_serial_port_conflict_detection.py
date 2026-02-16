@@ -7,6 +7,10 @@ when both MESHTASTIC_ENABLED and MESHCORE_ENABLED are True.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def test_port_conflict_detection():
     """Test the port conflict detection logic"""

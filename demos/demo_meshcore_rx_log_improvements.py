@@ -5,6 +5,10 @@ Demonstrates enhanced packet decoding display without needing full bot setup
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 
 def demo_improved_display():
     """Demonstrate the improved RX_LOG display"""

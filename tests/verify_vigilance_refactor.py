@@ -12,6 +12,10 @@ This script checks that:
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import os
 import subprocess
 
 def print_header(title):

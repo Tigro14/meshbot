@@ -8,6 +8,10 @@ Shows:
 3. How /keys command now shows keys immediately
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("="*70)
 print("DEMONSTRATION: PR 182 Cleanup - KeySyncManager Removal")
 print("="*70)

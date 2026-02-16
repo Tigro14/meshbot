@@ -4,6 +4,10 @@ Integration test to verify /db password protection works across all channels
 Tests both Mesh and Telegram command handlers
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 print("=" * 70)
 print("INTEGRATION TEST: /db Password Protection")
 print("=" * 70)

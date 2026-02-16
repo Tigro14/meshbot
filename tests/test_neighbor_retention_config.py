@@ -7,6 +7,10 @@ Vérifie que:
 3. L'export script utilise 720h (30 jours)
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 import re

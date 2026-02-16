@@ -9,6 +9,10 @@ L'erreur se produisait lorsque paho-mqtt appelait le callback avec les 5 paramè
 de la VERSION2 API, mais notre callback n'en attendait que 4.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 import sys

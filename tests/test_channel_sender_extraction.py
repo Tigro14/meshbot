@@ -7,6 +7,10 @@ sender_id from multiple sources in the event structure.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import unittest
 from unittest.mock import Mock, MagicMock
 

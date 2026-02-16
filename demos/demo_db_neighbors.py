@@ -4,6 +4,10 @@ Démonstration de la commande /db nb
 Affiche les résultats formatés pour mesh et telegram
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import os
 import sys
 import sqlite3

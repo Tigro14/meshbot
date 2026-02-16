@@ -9,6 +9,10 @@ This test verifies that:
 4. No impact on normal operations when disabled
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 import sys
 import io

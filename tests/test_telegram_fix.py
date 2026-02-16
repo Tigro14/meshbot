@@ -7,6 +7,10 @@ and that start_polling doesn't receive invalid parameters
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import traceback
 
 def test_application_builder_timeouts():

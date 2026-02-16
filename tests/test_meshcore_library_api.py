@@ -7,6 +7,10 @@ to send broadcasts on the public channel.
 """
 
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
 import time
 
 def test_meshcore_library():

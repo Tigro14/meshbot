@@ -6,6 +6,10 @@ This test validates the fix for the issue where contacts found in the database
 during DM reception were not being added to meshcore.contacts dict.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import unittest
 
 class TestFindFix(unittest.TestCase):
