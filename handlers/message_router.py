@@ -189,7 +189,8 @@ class MessageRouter:
         meshcore_only_commands = ['/nodesmc', '/trafficmc']
         
         # Meshtastic-only commands (cannot be used from MeshCore)
-        meshtastic_only_commands = ['/nodemt', '/trafficmt', '/nodes', '/neighbors', '/my', '/trace']
+        # Note: Order matters - check longer commands first to avoid false matches
+        meshtastic_only_commands = ['/nodemt', '/trafficmt', '/neighbors', '/nodes', '/my', '/trace']
         
         # Check if MeshCore command is being called from Meshtastic
         if is_from_meshtastic:
@@ -205,7 +206,8 @@ class MessageRouter:
         # Check if Meshtastic command is being called from MeshCore
         if is_from_meshcore:
             for mt_cmd in meshtastic_only_commands:
-                if message.startswith(mt_cmd):
+                # Use word boundary check to avoid false matches (e.g., /nodes matching /nodesmc)
+                if message == mt_cmd or message.startswith(mt_cmd + ' '):
                     info_print(f"🚫 Commande Meshtastic {mt_cmd} appelée depuis MeshCore - BLOQUÉE")
                     self.sender.send_single(
                         f"🚫 {mt_cmd} est réservé au réseau Meshtastic.\nUtilisez /nodesmc ou /trafficmc pour MeshCore.",
