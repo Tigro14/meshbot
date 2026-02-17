@@ -644,179 +644,79 @@ class UtilityCommands:
         self.sender.send_single(vigi_info, sender_id, sender_info)
 
     def _format_help(self):
-        """Formater l'aide des commandes"""
-        help_lines = [
-            "/bot IA",
-            "/ia IA",
-            "/power",
-            "/sys",
-            "/echo",
-            "/nodes",
-            "/meshcore",
-            "/nodesmc",
-            "/nodemt",
-            "/neighbors",
-            "/propag",
-            "/info",
-            "/keys",
-            "/mqtt",
-            "/stats [cmd]",
-            "/db [cmd]",
-            "/trace",
-            "/legend",
-            "/weather",
-            "/rain",
-            "/vigi",
-            "/help"
-        ]
-        return "\n".join(help_lines)
+        """Formater l'aide compacte pour mesh (contrainte <180 chars/msg)"""
+        help_text = (
+            "🤖 BOT MESH\n"
+            "IA: /bot /ia\n"
+            "Sys: /power /sys /weather\n"
+            "Net: /nodes /my /trace\n"
+            "Stats: /stats /top /trafic\n"
+            "DB: /db\n"
+            "Util: /echo /legend /help\n"
+            "Doc: README.md sur GitHub"
+        )
+        return help_text
 
     def _format_help_telegram(self):
-        """Format aide détaillée pour Telegram (sans contrainte de taille)"""
+        """Format aide concise pour Telegram"""
         import textwrap
         
         help_text = textwrap.dedent("""
-        📖 AIDE COMPLÈTE - BOT MESHTASTIC
+        📖 BOT MESHTASTIC - AIDE RAPIDE
 
-        🤖 CHAT IA
-        • /bot <question> → Conversation avec l'IA
-        • /ia <question> → Alias français de /bot
-        • Contexte conversationnel maintenu 30min
-        • Réponses plus détaillées possibles sur Telegram vs mesh
+        🤖 **CHAT IA**
+        /bot /ia <question> - Conversation avec l'IA (contexte 30min)
 
-        ⚡ SYSTÈME & MONITORING
-        • /power - Télémétrie complète
-          Batterie, solaire, température, pression, humidité
-        • /weather [rain|astro|blitz|vigi] [ville] - Météo & alertes
-          /weather → Géolocalisée
-          /weather Paris, /weather London, etc.
-          /weather rain → Graphe pluie local
-          /weather rain Paris → Graphe pluie Paris
-          /weather astro → Infos astronomiques
-          /weather blitz → Éclairs détectés
-          /weather vigi → Info VIGILANCE Météo-France
-        • /rain [ville] [days] - Graphe précipitations (alias)
-        • /vigi - État VIGILANCE (couleur + dernière sync)
-        • /graphs [heures] - Graphiques historiques
-          Défaut: 24h, max 48h
-        • /sys - Informations système Pi5
-          CPU, RAM, load average, uptime
+        ⚡ **SYSTÈME**
+        /power - Batterie, solaire, capteurs
+        /weather [ville] - Météo (rain/astro/blitz/vigi)
+        /sys - État système Pi5
+        /graphs [h] - Graphiques historiques
 
-        📡 RÉSEAU MESHTASTIC
-        • /nodes - Liste nœuds (auto-détection mode)
-        • /meshcore - Statut connexion MeshCore
-          Vérifier: port, threads, santé connexion
-          Aide: diagnostic "aucun paquet MeshCore"
-        • /nodesmc [page|full] - Liste contacts MeshCore
-          /nodesmc → Page 1 (7 contacts, 30j)
-          /nodesmc 2 → Page 2
-          /nodesmc full → Tous les contacts (tous)
-        • /nodemt - Liste nœuds directs Meshtastic
-        • /neighbors [node] - Voisins mesh (topology réseau)
-          /neighbors → Tous les voisins (format compact)
-          /neighbors tigro → Voisins d'un nœud spécifique
-        • /propag [heures] [top] - Plus longues liaisons radio
-          /propag → Top 5 liaisons (24h)
-          /propag 48 → Top 5 liaisons (48h)
-          /propag 24 10 → Top 10 liaisons (24h)
-          Rayon: 100km du bot
-        • /info <node> - Informations complètes sur un nœud
-          /info tigro → Infos détaillées du nœud "tigro"
-          /info F547F → Infos du nœud par ID
-          Affiche: nom, GPS, distance, signal, stats mesh
-          Support broadcast pour partage public
-        • /keys [node] - Diagnostiquer les clés publiques PKI
-          /keys → État global des clés (toutes les nodes)
-          /keys tigro → Vérifier si "tigro" a échangé sa clé
-          /keys F547F → Vérifier clé d'un nœud par ID
-          Aide à résoudre DM encryptés (Meshtastic 2.7.15+)
-          PKI: Chaque nœud a une clé publique/privée unique
-        • /mqtt [heures] - Nœuds MQTT entendus directement
-          Liste nœuds ayant envoyé NEIGHBORINFO via MQTT
-          /mqtt → Tous les nœuds MQTT (48h)
-          /mqtt 24 → Nœuds des 24 dernières heures
-          Affiche: LongName, ID court, temps écoulé
-          Icônes: 🟢 <1h, 🟡 <24h, 🟠 >24h
-        • /rx [node] - Voisins & stats MQTT collecteur
-          /rx → Statistiques collecteur MQTT
-          /rx tigro → Voisins du nœud (via MQTT/radio)
-          Collecte données réseau au-delà portée radio
-        • /fullnodes [jours] - Liste alphabétique complète
-          Défaut: 30j, max 365j, tri par longName
-          Exemples:
-            /fullnodes → Tous les nœuds (30j)
-            /fullnodes 7 → Tous les nœuds (7j)
-            /fullnodes tigro → Nœuds contenant "tigro" (30j)
-            /fullnodes 7 tigro → Nœuds contenant "tigro" (7j)
+        📡 **RÉSEAU**
+        /nodes - Liste nœuds (auto-détection)
+        /nodesmc [page|full] - Contacts MeshCore
+        /nodemt [page] - Nœuds Meshtastic
+        /neighbors [node] - Topologie voisins
+        /meshcore - Statut MeshCore
+        /info <node> - Infos complètes nœud
+        /keys [node] - Clés PKI (DM encryption)
+        /mqtt [h] - Nœuds MQTT
+        /rx [node] - Stats collecteur MQTT
+        /propag [h] [top] - Liaisons longue distance
+        /fullnodes [j] [search] - Liste alphabétique
 
-        📊 ANALYSE TRAFIC
-        • /stats [cmd] [params] - Système unifié de statistiques
-          Sous-commandes:
-             - global : Vue d'ensemble réseau (défaut)
-             - top [h] [n] : Top talkers
-             - packets [h] : Distribution types de paquets
-             - channel [h] : Utilisation du canal
-             - histo [type] [h] : Histogramme temporel
-             - traffic [h] : Historique messages publics
-             - hop [h] : Top 20 nœuds par hop_start (portée max)
-          Raccourcis: g, t, p, ch, h, tr, hop
-          Ex: /stats top 24 10, /stats hop 48
-        • /trafic [heures] - Historique messages publics
-          Défaut: 8h, max 24h, stats détaillées
-        • /trafficmc [heures] - Historique messages publics MeshCore
-          Défaut: 8h, max 24h, uniquement trafic MeshCore
-        • /top [heures] [nombre] - Top talkers (alias)
-          Défaut: 24h, top 10
-        • /packets [heures] - Distribution paquets (alias)
-        • /hop [heures] - Top 20 portée (alias /stats hop)
-          Défaut: 24h, max 7j
-        • /trace [short_id] - Traceroute mesh
-          Analyse chemin, identifie relays
-        • /histo [type] [h] - Histogramme (alias)
-          Types: all, messages, pos, info
+        📊 **TRAFIC**
+        /stats [cmd] - Stats unifiées (global/top/packets/channel/histo/traffic/hop)
+        /trafic [h] - Messages publics (all)
+        /trafficmt [h] - Messages Meshtastic
+        /trafficmc [h] - Messages MeshCore
+        /top [h] [n] - Top talkers
+        /trace [id] - Traceroute mesh
+        /hop [h] - Portée maximale
 
-        💾 BASE DE DONNÉES
-        • /db [cmd] [params] - Opérations base de données
-          Sous-commandes:
-             - stats : Statistiques DB (taille, nb entrées)
-             - info : Informations détaillées (tables, schema)
-             - clean [h] : Nettoyer données anciennes (défaut 48h)
-             - vacuum : Optimiser DB (VACUUM)
-          Raccourcis: s, i, v
-          Ex: /db stats, /db clean 72, /db vacuum
+        💾 **DATABASE**
+        /db [stats|info|clean|vacuum] - Gestion DB
 
-        📢 DIFFUSION
-        • /echo <message> - Diffuser sur le réseau
-          Préfixe auto, broadcast via votre node
-          Ex: /echo Bonjour à tous!
+        📢 **DIFFUSION**
+        /echo <msg> - Broadcast réseau actuel
+        /echomt <msg> - Broadcast Meshtastic
+        /echomc <msg> - Broadcast MeshCore
 
-        ℹ️ UTILITAIRES
-        • /legend - Légende indicateurs signal
-        • /help - Cette aide complète
+        ℹ️ **UTILITAIRES**
+        /legend - Légende signal
+        /help - Cette aide
 
-        🔧 ADMINISTRATION (si autorisé)
-        • /rebootpi [mdp] - Redémarrage Pi5
-        • /rebootnode [nom] [mdp] - Redémarrage nœud distant
-        • /cpu - Monitoring CPU temps réel (10s)
+        🔧 **ADMIN** (si autorisé)
+        /rebootpi [mdp] - Redémarrage Pi5
+        /rebootnode [nom] [mdp] - Redémarrage nœud
 
-        📋 LIMITES & INFORMATIONS
-        • Throttling: 5 commandes/5min par utilisateur
-        • Contexte IA: 6 messages max, timeout 30min
-        • Historique trafic mesh: 2000 messages, rétention 24h
-        • Nœuds distants: filtre 3j par défaut
+        📋 **INFOS**
+        • Throttling: 5 cmd/5min
+        • Contexte IA: 6 msgs max, 30min
+        • Voir README.md pour documentation complète
 
-        💡 ASTUCES
-        • Réponses Telegram plus longues que LoRa
-        • Contexte partagé entre Telegram et Mesh
-        • /trafic 2 pour activité récente
-        • /fullnodes 7 pour vue hebdomadaire
-
-        🔐 SÉCURITÉ
-        • Accès réservé utilisateurs autorisés
-        • Actions tracées dans les logs
-        • Redémarrages incluent identité demandeur
-
-        Votre ID Telegram: {user_id}
+        Votre ID: {user_id}
         """).strip()
     
         return help_text
