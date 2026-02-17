@@ -1507,7 +1507,7 @@ class TrafficPersistence:
             logger.error(traceback.format_exc())
             return []
 
-    def save_meshtastic_node(self, node_data: Dict[str, Any]):
+    def save_meshtastic_node(self, node_data: Dict[str, Any], source='meshtastic'):
         """
         Sauvegarde ou met à jour un nœud Meshtastic (appris via radio)
         
@@ -1521,10 +1521,14 @@ class TrafficPersistence:
                     'publicKey': bytes/str (optionnel),
                     'lat': float (optionnel),
                     'lon': float (optionnel),
-                    'alt': int (optionnel)
+                    'alt': int (optionnel),
+                    'source': str (optionnel)
                 }
+            source: Source du packet ('meshtastic', 'meshcore', etc.)
         """
         try:
+            from utils import debug_print_mc, debug_print_mt
+            
             cursor = self.conn.cursor()
             
             # Convert node_id to string
@@ -1539,6 +1543,9 @@ class TrafficPersistence:
                 except:
                     # If not base64, treat as hex
                     public_key = bytes.fromhex(public_key.replace(' ', ''))
+            
+            # Use source from node_data if provided, otherwise from parameter
+            actual_source = node_data.get('source', source)
             
             # Insert or replace
             cursor.execute('''
@@ -1555,11 +1562,14 @@ class TrafficPersistence:
                 node_data.get('lon'),
                 node_data.get('alt'),
                 time.time(),
-                'radio'
+                actual_source
             ))
             
             self.conn.commit()
-            debug_print(f"✅ Nœud Meshtastic sauvegardé: {node_data.get('name')} (0x{node_data['node_id']:08x})")
+            
+            # Use appropriate debug function based on source
+            debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
+            debug_func(f"💾 Node saved: {node_data.get('name')} (0x{node_data['node_id']:08x})")
             
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde du nœud Meshtastic : {e}")
