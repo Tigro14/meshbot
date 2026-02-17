@@ -16,6 +16,7 @@ USAGE:
 
 import time
 import threading
+import re
 from config import *
 from utils import (
     debug_print,
@@ -35,6 +36,21 @@ if 'REMOTE_NODE_NAME' not in globals():
     REMOTE_NODE_NAME = "RemoteNode"
 if 'COLLECT_SIGNAL_METRICS' not in globals():
     COLLECT_SIGNAL_METRICS = True  # Default: collect signal metrics
+
+def is_hex_node_id(value):
+    """
+    Check if a string is just a bare hex node ID (8 hex characters).
+    
+    Args:
+        value: String to check
+        
+    Returns:
+        bool: True if value is exactly 8 hex characters (a bare node ID)
+    """
+    if not value or not isinstance(value, str):
+        return False
+    # Pattern: exactly 8 hexadecimal characters
+    return bool(re.match(r'^[0-9a-fA-F]{8}$', value.strip()))
 
 class RemoteNodesClient:
     def __init__(self, interface=None, connection_mode=None, tcp_host=None, persistence=None):
@@ -781,14 +797,24 @@ class RemoteNodesClient:
                     node_id = int(row['node_id'])
                     
                     # Prefer shortName (real user name) over name field
-                    # Fallback chain: shortName -> name (if not Node-*) -> Node-{id}
+                    # Fallback chain: shortName -> name (if not Node-* or hex ID) -> Node-{id}
                     display_name = None
-                    if row['shortName'] and row['shortName'].strip():
-                        display_name = row['shortName'].strip()
-                    elif row['name'] and not row['name'].startswith('Node-'):
-                        # Only use name if it's not a generic Node-* fallback
-                        display_name = row['name']
                     
+                    # Check shortName first
+                    if row['shortName'] and row['shortName'].strip():
+                        short = row['shortName'].strip()
+                        # Reject if it's just a bare hex ID
+                        if not is_hex_node_id(short):
+                            display_name = short
+                    
+                    # Check name field if shortName didn't work
+                    if not display_name and row['name']:
+                        name = row['name'].strip()
+                        # Only use name if it's not a generic Node-* fallback or bare hex ID
+                        if not name.startswith('Node-') and not is_hex_node_id(name):
+                            display_name = name
+                    
+                    # Final fallback to Node-{hex_id} format
                     if not display_name:
                         display_name = f"Node-{node_id:08x}"
                     
