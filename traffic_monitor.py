@@ -962,8 +962,8 @@ class TrafficMonitor:
 
             self.all_packets.append(packet_entry)
             
-            # ENHANCED DIAGNOSTIC: Confirm packet was appended
-            logger.info(f"✅ Paquet ajouté à all_packets: {packet_type} de {sender_name} (total: {len(self.all_packets)})")
+            # DIAGNOSTIC: Confirm packet was appended (DEBUG only)
+            logger.debug(f"✅ Paquet ajouté à all_packets: {packet_type} de {sender_name} (total: {len(self.all_packets)})")
 
             # Log périodique des paquets enregistrés (tous les 25 paquets)
             if not hasattr(self, '_packet_saved_count'):
@@ -978,9 +978,10 @@ class TrafficMonitor:
             try:
                 packet_source = packet_entry.get('source', 'unknown')
                 
-                # ENHANCED DIAGNOSTIC: Use both logger and info_print
-                logger.info(f"💿 [ROUTE-SAVE] (logger) source={packet_source}, type={packet_type}, from={sender_name}")
-                info_print_mt(f"💿 [ROUTE-SAVE] (print) Routage paquet: source={packet_source}, type={packet_type}, from={sender_name}")
+                # Single route-save log at INFO level
+                # Choose appropriate log function based on source
+                log_func = info_print_mc if packet_source == 'meshcore' else info_print_mt
+                log_func(f"💿 Routage: source={packet_source}, type={packet_type}, from={sender_name}")
                 
                 if packet_source == 'meshcore':
                     # Paquet MeshCore → table meshcore_packets
