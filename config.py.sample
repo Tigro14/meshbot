@@ -430,6 +430,36 @@ NEIGHBOR_RETENTION_HOURS = 720  # 30 jours de rétention
 # Les statistiques de nœuds inactifs depuis plus de 7 jours seront supprimées
 NODE_STATS_RETENTION_HOURS = 168  # 7 jours de rétention
 
+# ========================================
+# I/O HEALTH MONITORING & WATCHDOG
+# ========================================
+# Surveillance santé I/O et watchdog automatique pour détecter les défaillances
+# du stockage NVMe et déclencher un reboot sécurisé via SysRq si nécessaire
+#
+# Cas d'usage:
+# - Stockage NVMe sur PCIe hat modifié (performance > fiabilité)
+# - Détection précoce d'erreurs I/O avant perte système complète
+# - Reboot automatique via SysRq pour meilleure disponibilité
+#
+# Fonctionnement:
+# - Après chaque cycle d'écriture SQLite (toutes les 5min via NODE_UPDATE_INTERVAL)
+# - Test d'écriture léger sur filesystem + vérification intégrité DB
+# - Seuil de défaillances consécutives avant déclenchement reboot
+# - Période de refroidissement entre vérifications (évite boucles reboot)
+
+# Activer/désactiver la surveillance I/O
+IO_HEALTH_CHECK_ENABLED = True
+
+# Nombre d'échecs consécutifs avant déclenchement reboot
+# Valeur recommandée: 3 (évite faux positifs, ~15min si checks toutes les 5min)
+IO_HEALTH_CHECK_FAILURE_THRESHOLD = 3
+
+# Période de refroidissement entre vérifications (secondes)
+# Valeur recommandée: 900s (15min) - évite spam checks et boucles reboot
+# Note: Les checks sont déjà limités par NODE_UPDATE_INTERVAL (5min)
+#       Cette valeur ajoute une protection supplémentaire
+IO_HEALTH_CHECK_COOLDOWN = 900  # 15 minutes
+
 # Configuration affichage des métriques de signal
 SHOW_RSSI = False  # Afficher les valeurs RSSI (-85dB)
 SHOW_SNR = False   # Afficher les valeurs SNR (SNR:8.5)
