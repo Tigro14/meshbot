@@ -779,9 +779,22 @@ class RemoteNodesClient:
             for idx, row in enumerate(rows):
                 try:
                     node_id = int(row['node_id'])
+                    
+                    # Prefer shortName (real user name) over name field
+                    # Fallback chain: shortName -> name (if not Node-*) -> Node-{id}
+                    display_name = None
+                    if row['shortName'] and row['shortName'].strip():
+                        display_name = row['shortName'].strip()
+                    elif row['name'] and not row['name'].startswith('Node-'):
+                        # Only use name if it's not a generic Node-* fallback
+                        display_name = row['name']
+                    
+                    if not display_name:
+                        display_name = f"Node-{node_id:08x}"
+                    
                     contact_dict = {
                         'id': node_id,
-                        'name': row['name'] or f"Node-{node_id:08x}",
+                        'name': display_name,
                         'shortName': row['shortName'] or '',
                         'hwModel': row['hwModel'] or '',
                         'last_heard': row['last_updated'],
