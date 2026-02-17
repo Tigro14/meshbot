@@ -267,6 +267,27 @@ class StatsCommands:
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:100]}"
 
+    def get_traffic_report_mt(self, hours=8):
+        """
+        Générer le rapport de trafic public Meshtastic
+
+        Args:
+            hours: Période d'analyse en heures
+
+        Returns:
+            str: Rapport formaté du trafic Meshtastic
+        """
+        try:
+            if not self.traffic_monitor:
+                return "❌ Traffic monitor non disponible"
+
+            return self.traffic_monitor.get_traffic_report_mt(hours)
+
+        except Exception as e:
+            error_print(f"Erreur get_traffic_report_mt: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:100]}"
+
     def clear_traffic_history(self):
         """
         Efface tout l'historique du trafic (mémoire et SQLite).
