@@ -39,6 +39,7 @@ from mesh_traceroute_manager import MeshTracerouteManager
 from db_error_monitor import DBErrorMonitor
 from reboot_semaphore import RebootSemaphore
 from mesh_alert_manager import MeshAlertManager
+from io_health_monitor import IOHealthMonitor
 
 # Import du nouveau gestionnaire multi-plateforme
 from platforms import PlatformManager
@@ -411,6 +412,28 @@ class MeshBot:
         if self.db_error_monitor and self.traffic_monitor.persistence:
             self.traffic_monitor.persistence.error_callback = self.db_error_monitor.record_error
             debug_print("✅ Callback d'erreur DB configuré")
+
+        # Moniteur de santé I/O (watchdog pour défaillances stockage)
+        self.io_health_monitor = None
+        io_health_enabled = globals().get('IO_HEALTH_CHECK_ENABLED', True)
+        if io_health_enabled:
+            try:
+                info_print("🔍 Initialisation du moniteur de santé I/O...")
+                db_path = self.traffic_monitor.persistence.db_path
+                failure_threshold = globals().get('IO_HEALTH_CHECK_FAILURE_THRESHOLD', 3)
+                cooldown = globals().get('IO_HEALTH_CHECK_COOLDOWN', 900)
+                
+                self.io_health_monitor = IOHealthMonitor(
+                    db_path=db_path,
+                    failure_threshold=failure_threshold,
+                    cooldown_seconds=cooldown,
+                    enabled=True
+                )
+                info_print(f"✅ Moniteur I/O activé: seuil={failure_threshold}, cooldown={cooldown}s")
+            except Exception as e:
+                error_print(f"⚠️ Erreur initialisation I/O health monitor: {e}")
+                error_print(traceback.format_exc())
+                self.io_health_monitor = None
 
         # Moniteur de vigilance météo (si activé)
         self.vigilance_monitor = None
@@ -1482,6 +1505,46 @@ class MeshBot:
                 # Utilise NEIGHBOR_RETENTION_HOURS pour les voisins (config.py)
                 retention_hours = globals().get('NEIGHBOR_RETENTION_HOURS', 48)
                 self.traffic_monitor.cleanup_old_persisted_data(hours=retention_hours)
+
+                # ========================================
+                # I/O HEALTH CHECK (Watchdog)
+                # ========================================
+                # Vérifier la santé du stockage après les opérations d'écriture
+                # Déclenche un reboot sécurisé via SysRq si défaillance détectée
+                if self.io_health_monitor:
+                    try:
+                        debug_print("🔍 Vérification santé I/O...")
+                        healthy, status = self.io_health_monitor.perform_health_check()
+                        
+                        if not healthy:
+                            error_print(f"⚠️ I/O Health: {status}")
+                            
+                            # Vérifier si le seuil de reboot est atteint
+                            should_reboot, reason = self.io_health_monitor.should_trigger_reboot()
+                            if should_reboot:
+                                error_print(f"🚨 WATCHDOG TRIGGER: {reason}")
+                                
+                                # Signaler le reboot via sémaphore
+                                requester_info = {
+                                    'name': 'IOHealthWatchdog',
+                                    'node_id': 'io_health_monitor',
+                                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                                    'reason': reason
+                                }
+                                
+                                if RebootSemaphore.signal_reboot(requester_info):
+                                    error_print("✅ Reboot signalé au watchdog (rebootpi-watcher)")
+                                    error_print(f"   Raison: {reason}")
+                                    # Le watcher détectera le signal et exécutera le reboot SysRq
+                                else:
+                                    error_print("❌ Échec signal reboot watchdog")
+                        else:
+                            debug_print(f"✅ I/O Health: {status}")
+                            
+                    except Exception as e:
+                        error_print(f"⚠️ Erreur I/O health check (non-bloquante): {e}")
+                        error_print(traceback.format_exc())
+                        # Continuer avec les autres tâches
 
                 # Vérification vigilance météo (si activée)
                 if self.vigilance_monitor:

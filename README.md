@@ -169,6 +169,7 @@ MESHCORE_SERIAL_PORT = "/dev/ttyUSB0"  # Port MeshCore
 - **Administration** : Commandes cachées pour gestion à distance
 - **Collecte MQTT** : Collection automatique de topologie réseau via MQTT (au-delà de la portée radio)
 - **Auto-récupération TCP** : Redémarrage automatique du node distant en cas d'échec de connexion (voir [TCP_AUTO_REBOOT.md](TCP_AUTO_REBOOT.md))
+- **⭐ NOUVEAU : Watchdog I/O** : Surveillance santé du stockage avec reboot automatique via SysRq en cas de défaillance (voir [IO_HEALTH_TESTING.md](IO_HEALTH_TESTING.md))
 
 - genère une carte HMTL/JS des nodes, et une pour les links neighbours (dossier /map, autonome du bot)
 
@@ -574,6 +575,85 @@ Le fichier `/var/log/bot-reboot.log` contient :
 - Horodatage de la demande
 - Identité du nœud Meshtastic demandeur
 - ID hexadécimal du nœud pour traçabilité complète
+
+## Watchdog I/O - Surveillance du stockage
+
+Le bot intègre un système de surveillance de la santé du stockage (I/O health monitoring) qui détecte automatiquement les défaillances du système de fichiers et déclenche un redémarrage sécurisé via SysRq si nécessaire.
+
+### Cas d'usage
+
+Idéal pour les configurations avec stockage NVMe sur PCIe hat (modifié pour performance plutôt que fiabilité) :
+- Détection précoce d'erreurs I/O avant perte système complète
+- Redémarrage automatique sécurisé via séquence SysRq REISUB
+- Amélioration de la disponibilité du service en environnement distant
+
+### Fonctionnement
+
+1. **Vérifications périodiques** : Après chaque cycle d'écriture SQLite (toutes les 5 minutes)
+   - Test d'écriture léger sur filesystem (<1KB)
+   - Vérification intégrité SQLite via PRAGMA
+   - Suivi des défaillances consécutives
+
+2. **Seuil de déclenchement** : 3 échecs consécutifs (~15 minutes)
+   - Évite les faux positifs
+   - Période de refroidissement de 15 minutes entre vérifications
+
+3. **Reboot sécurisé** : Séquence SysRq REISUB si défaillance détectée
+   - **R**eprendre contrôle clavier
+   - **E**nvoyer SIGTERM (shutdown gracieux)
+   - **I**nvoyer SIGKILL (forcer fermeture)
+   - **S**ynchroniser filesystems
+   - **U**nmount/remount lecture seule
+   - **B**oot (redémarrage)
+
+### Configuration
+
+Dans `config.py` :
+
+```python
+# Activer/désactiver la surveillance I/O
+IO_HEALTH_CHECK_ENABLED = True
+
+# Nombre d'échecs consécutifs avant reboot (recommandé: 3)
+IO_HEALTH_CHECK_FAILURE_THRESHOLD = 3
+
+# Période de refroidissement entre vérifications (secondes)
+IO_HEALTH_CHECK_COOLDOWN = 900  # 15 minutes
+```
+
+### Test et diagnostic
+
+Un outil de diagnostic est fourni pour valider le fonctionnement :
+
+```bash
+# Tester la surveillance I/O
+python3 diagnose_io_health.py
+
+# Guide de test complet
+cat IO_HEALTH_TESTING.md
+```
+
+### Logs et monitoring
+
+Les événements I/O health sont enregistrés dans :
+- **Bot logs** : `journalctl -u meshbot -f | grep "I/O Health"`
+- **Watcher logs** : `/var/log/bot-reboot.log`
+
+Exemple de log en cas de défaillance :
+```
+[ERROR] ⚠️ I/O Health: Health check failed (3/3)
+[ERROR] 🚨 WATCHDOG TRIGGER: I/O health check failed 3 consecutive times
+[ERROR] ✅ Reboot signalé au watchdog (rebootpi-watcher)
+```
+
+### Impact performance
+
+Impact minimal sur les performances :
+- **Fréquence** : 1 check toutes les 5-15 minutes
+- **Durée** : ~100ms par vérification complète
+- **Overhead** : <0.03% duty cycle
+
+Pour plus de détails, voir [IO_HEALTH_TESTING.md](IO_HEALTH_TESTING.md).
 
 ## Serveur CLI (Interface en ligne de commande)
 

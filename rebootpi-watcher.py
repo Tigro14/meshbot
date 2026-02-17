@@ -62,6 +62,22 @@ def execute_reboot():
     """
     log_message("Exécution du redémarrage Pi...")
     
+    # Lire les infos de reboot pour déterminer le type de reboot
+    info = RebootSemaphore.get_reboot_info()
+    is_io_health_failure = False
+    
+    if info and 'IOHealthWatchdog' in info:
+        is_io_health_failure = True
+        log_message("⚠️ REBOOT DÉCLENCHÉ PAR WATCHDOG I/O")
+        log_message("   Utilisation de la séquence SysRq REISUB pour reboot sûr")
+    
+    # Si c'est une défaillance I/O, utiliser directement SysRq
+    # car le filesystem peut être en lecture seule
+    if is_io_health_failure:
+        execute_sysrq_reboot()
+        return
+    
+    # Sinon, pour les reboots utilisateur, essayer les méthodes standards d'abord
     # Méthode 1: systemctl (recommandé pour systemd)
     try:
         subprocess.run(['systemctl', 'reboot'], check=True, timeout=5)
@@ -83,15 +99,85 @@ def execute_reboot():
     except Exception as e:
         log_message(f"reboot direct échoué: {e}")
     
-    # Méthode 4: sync + magic SysRq (dernière chance)
+    # Méthode 4: SysRq (dernière chance)
+    log_message("Toutes les méthodes standard ont échoué, utilisation de SysRq...")
+    execute_sysrq_reboot()
+
+def execute_sysrq_reboot():
+    """
+    Exécuter un reboot sécurisé via la séquence SysRq REISUB
+    
+    Séquence REISUB (Raising Elephants Is So Utterly Boring):
+    - R: unRaw      - Reprendre le contrôle du clavier
+    - E: tErminate  - Envoyer SIGTERM à tous les processus (shutdown gracieux)
+    - I: kIll       - Envoyer SIGKILL à tous les processus restants
+    - S: Sync       - Synchroniser tous les filesystems montés
+    - U: Unmount    - Remonter tous les filesystems en lecture seule
+    - B: reBoot     - Redémarrer immédiatement
+    
+    Cette séquence assure un reboot propre même si le filesystem est corrompu
+    ou en lecture seule, ce qui est critique pour les défaillances I/O.
+    """
+    log_message("═══════════════════════════════════════")
+    log_message("🔴 EXÉCUTION SÉQUENCE SYSRQ REISUB")
+    log_message("═══════════════════════════════════════")
+    
     try:
-        subprocess.run(['sync'], timeout=5)
+        # Activer SysRq
+        log_message("1. Activation SysRq...")
         with open('/proc/sys/kernel/sysrq', 'w') as f:
             f.write('1')
+        
+        # R: unRaw (reprendre contrôle clavier)
+        log_message("2. SysRq-R: unRaw (reprendre contrôle)")
+        with open('/proc/sysrq-trigger', 'w') as f:
+            f.write('r')
+        time.sleep(1)
+        
+        # E: tErminate (SIGTERM à tous les processus)
+        log_message("3. SysRq-E: tErminate (SIGTERM)")
+        with open('/proc/sysrq-trigger', 'w') as f:
+            f.write('e')
+        time.sleep(2)  # Laisser le temps aux processus de se terminer
+        
+        # I: kIll (SIGKILL aux processus restants)
+        log_message("4. SysRq-I: kIll (SIGKILL)")
+        with open('/proc/sysrq-trigger', 'w') as f:
+            f.write('i')
+        time.sleep(2)
+        
+        # S: Sync (synchroniser filesystems)
+        log_message("5. SysRq-S: Sync (synchronisation FS)")
+        with open('/proc/sysrq-trigger', 'w') as f:
+            f.write('s')
+        time.sleep(3)  # Important: laisser le temps pour sync
+        
+        # U: Unmount (remontage lecture seule)
+        log_message("6. SysRq-U: Unmount (remontage RO)")
+        with open('/proc/sysrq-trigger', 'w') as f:
+            f.write('u')
+        time.sleep(2)
+        
+        # B: reBoot (redémarrage immédiat)
+        log_message("7. SysRq-B: reBoot (REDÉMARRAGE)")
+        log_message("═══════════════════════════════════════")
         with open('/proc/sysrq-trigger', 'w') as f:
             f.write('b')
+        
+        # Si on arrive ici, le reboot n'a pas fonctionné
+        time.sleep(5)
+        log_message("❌ SysRq reboot n'a pas fonctionné!")
+        
     except Exception as e:
-        log_message(f"Reboot forcé échoué: {e}")
+        log_message(f"❌ Erreur lors de la séquence SysRq: {e}")
+        log_message("Tentative de sync + reboot direct...")
+        try:
+            # Dernier recours: sync + reboot immédiat
+            subprocess.run(['sync'], timeout=5)
+            with open('/proc/sysrq-trigger', 'w') as f:
+                f.write('b')
+        except Exception as e2:
+            log_message(f"❌ Échec total du reboot: {e2}")
 
 def main():
     """Boucle principale du watcher"""

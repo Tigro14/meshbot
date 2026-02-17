@@ -547,10 +547,13 @@ class MeshCoreCLIWrapper:
             
             # Save to SQLite meshcore_contacts table (separate from Meshtastic nodes)
             if hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                # Use the extracted name for both name and shortName
+                # This ensures the display logic can find the real name
+                best_name = name or f"Node-{contact_id:08x}"
                 contact_data = {
                     'node_id': contact_id,
-                    'name': name or f"Node-{contact_id:08x}",
-                    'shortName': contact.get('short_name', ''),
+                    'name': best_name,
+                    'shortName': name or '',  # Use extracted name, not short_name field
                     'hwModel': contact.get('hw_model', None),
                     'publicKey': public_key,
                     'lat': lat,
@@ -565,9 +568,10 @@ class MeshCoreCLIWrapper:
             else:
                 # Fallback to in-memory storage if SQLite not available
                 if contact_id not in self.node_manager.node_names:
+                    best_name = name or f"Node-{contact_id:08x}"
                     self.node_manager.node_names[contact_id] = {
-                        'name': name or f"Node-{contact_id:08x}",
-                        'shortName': contact.get('short_name', ''),
+                        'name': best_name,
+                        'shortName': name or '',  # Use extracted name, not short_name field
                         'hwModel': contact.get('hw_model', None),
                         'lat': None,
                         'lon': None,
@@ -1111,10 +1115,12 @@ class MeshCoreCLIWrapper:
                                                 except ValueError:
                                                     contact_id = int(contact_id)
                                         
+                                        # Use the extracted name for both name and shortName
+                                        best_name = name or f"Node-{contact_id:08x}"
                                         contact_data = {
                                             'node_id': contact_id,
-                                            'name': name or f"Node-{contact_id:08x}",
-                                            'shortName': contact.get('short_name', ''),
+                                            'name': best_name,
+                                            'shortName': name or '',  # Use extracted name, not short_name field
                                             'hwModel': contact.get('hw_model', None),
                                             'publicKey': public_key,
                                             'lat': contact.get('latitude', None),
@@ -1364,7 +1370,7 @@ class MeshCoreCLIWrapper:
                                 contact_data = {
                                     'node_id': sender_id,
                                     'name': f"Node-{sender_id:08x}",  # Default name
-                                    'shortName': f"{sender_id:08x}",
+                                    'shortName': '',  # Empty - let display logic use Node-{hex} fallback
                                     'hwModel': None,
                                     'publicKey': public_key_bytes,
                                     'lat': None,
