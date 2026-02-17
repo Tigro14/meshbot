@@ -2068,6 +2068,83 @@ class TrafficMonitor:
             error_print(f"Erreur génération historique compact: {e}")
             return f"Erreur: {str(e)[:30]}"
 
+    def get_traffic_report_mc(self, hours=8):
+        """
+        Afficher l'historique complet des messages publics MeshCore (VERSION TELEGRAM)
+        
+        Args:
+            hours: Période à afficher (défaut: 8h)
+        
+        Returns:
+            str: Liste complète des messages publics MeshCore formatée
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            # Filtrer les messages MeshCore de la période
+            recent_messages = [
+                msg for msg in self.public_messages
+                if msg['timestamp'] >= cutoff_time and msg.get('source') == 'meshcore'
+            ]
+            
+            if not recent_messages:
+                return f"📭 Aucun message public MeshCore dans les {hours}h"
+            
+            # Trier par timestamp (chronologique)
+            recent_messages.sort(key=lambda x: x['timestamp'])
+            
+            # Construire le rapport complet
+            lines = []
+            lines.append(f"🔗 **MESSAGES PUBLICS MESHCORE ({hours}h)**")
+            lines.append(f"{'='*40}")
+            lines.append(f"Total: {len(recent_messages)} messages")
+            lines.append("")
+            
+            # Afficher tous les messages (Telegram peut gérer de longs messages)
+            for msg in recent_messages:
+                # Formater le timestamp
+                msg_time = datetime.fromtimestamp(msg['timestamp'])
+                time_str = msg_time.strftime("%H:%M:%S")
+                
+                # Nom de l'expéditeur
+                sender = msg['sender_name']
+                
+                # Message complet
+                content = msg['message']
+                
+                # Format: [HH:MM:SS] [NodeName] message
+                lines.append(f"[{time_str}] [{sender}] {content}")
+            
+            result = "\n".join(lines)
+            
+            # Si vraiment trop long pour Telegram (>4000 chars), limiter
+            if len(result) > 3800:
+                lines = []
+                lines.append(f"🔗 **DERNIERS 20 MESSAGES MESHCORE ({hours}h)**")
+                lines.append(f"{'='*40}")
+                lines.append(f"(Total: {len(recent_messages)} messages - affichage limité)")
+                lines.append("")
+                
+                # Prendre les 20 plus récents
+                for msg in recent_messages[-20:]:
+                    msg_time = datetime.fromtimestamp(msg['timestamp'])
+                    time_str = msg_time.strftime("%H:%M:%S")
+                    sender = msg['sender_name']
+                    content = msg['message']
+                    
+                    # Format: [HH:MM:SS] [NodeName] message
+                    lines.append(f"[{time_str}] [{sender}] {content}")
+                
+                result = "\n".join(lines)
+            
+            return result
+            
+        except Exception as e:
+            error_print(f"Erreur génération historique MeshCore: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+
     def get_packet_histogram_overview(self, hours=24):
         """
         Vue d'ensemble compacte de tous les types de paquets (pour /histo).

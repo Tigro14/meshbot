@@ -270,6 +270,7 @@ class TelegramIntegration:
         self.application.add_handler(CommandHandler("histo", self.stats_commands.histo_command))
         self.application.add_handler(CommandHandler("hop", self.stats_commands.hop_command))
         self.application.add_handler(CommandHandler("trafic", self.stats_commands.trafic_command))
+        self.application.add_handler(CommandHandler("trafficmc", self.stats_commands.trafficmc_command))
 
         # Commandes utilitaires
         self.application.add_handler(CommandHandler("power", self.utility_commands.power_command))

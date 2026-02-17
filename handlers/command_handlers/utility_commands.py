@@ -763,6 +763,8 @@ class UtilityCommands:
           Ex: /stats top 24 10, /stats hop 48
         • /trafic [heures] - Historique messages publics
           Défaut: 8h, max 24h, stats détaillées
+        • /trafficmc [heures] - Historique messages publics MeshCore
+          Défaut: 8h, max 24h, uniquement trafic MeshCore
         • /top [heures] [nombre] - Top talkers (alias)
           Défaut: 24h, top 10
         • /packets [heures] - Distribution paquets (alias)
