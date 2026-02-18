@@ -7,9 +7,25 @@ Point d'entrée principal
 import argparse
 import sys
 import gc
+import logging
 from config import DEBUG_MODE
 from utils import info_print
 from main_bot import MeshBot
+
+def setup_logging():
+    """Configure Python logging pour supprimer les logs verbeux"""
+    # Supprimer les logs INFO de httpx (utilisé par python-telegram-bot)
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    
+    # Supprimer les logs INFO de telegram.ext (trop verbeux)
+    # On garde WARNING et ERROR seulement
+    logging.getLogger('telegram.ext').setLevel(logging.WARNING)
+    
+    # Configurer le format de base pour les autres logs
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
 def setup_quiet_mode():
     """Configure le mode silencieux"""
@@ -35,6 +51,9 @@ def main():
     import config
     config.DEBUG_MODE = args.debug
     DEBUG_MODE = args.debug
+    
+    # Configurer le logging Python (supprimer httpx/telegram verbeux)
+    setup_logging()
     
     if args.quiet:
         setup_quiet_mode()

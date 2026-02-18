@@ -328,18 +328,61 @@ class TelegramIntegration:
         info_print(f"✅ {len(self.application.handlers[0])} handlers enregistrés")
 
     async def _error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
-        """Gestionnaire d'erreurs global"""
+        """
+        Gestionnaire d'erreurs global avec gestion spéciale pour 409/429
+        
+        409 Conflict: Multiples instances du bot tentent de faire getUpdates
+        429 TooManyRequests: Rate limit atteint
+        """
         try:
-            error_print(f"❌ Erreur Telegram: {context.error}")
-            error_print(traceback.format_exc())
+            error = context.error
+            
+            # Import des exceptions Telegram spécifiques
+            try:
+                from telegram.error import Conflict, RetryAfter, TelegramError
+            except ImportError:
+                # Fallback si les exceptions ne sont pas disponibles
+                Conflict = type('Conflict', (Exception,), {})
+                RetryAfter = type('RetryAfter', (Exception,), {})
+                TelegramError = Exception
+            
+            # Gestion spéciale pour 409 Conflict (multiples instances)
+            if isinstance(error, Conflict) or (hasattr(error, '__class__') and error.__class__.__name__ == 'Conflict'):
+                error_print("⚠️ TELEGRAM 409 CONFLICT: Multiple bot instances detected")
+                error_print("   Solution: Ensure only ONE bot instance is running")
+                error_print("   Check with: ps aux | grep python | grep meshbot")
+                # Ne pas afficher le traceback complet pour ce cas connu
+                return
+            
+            # Gestion spéciale pour 429 Rate Limit (trop de requêtes)
+            if isinstance(error, RetryAfter) or (hasattr(error, '__class__') and error.__class__.__name__ == 'RetryAfter'):
+                retry_after = getattr(error, 'retry_after', 60)
+                error_print(f"⚠️ TELEGRAM 429 RATE LIMIT: Too many requests")
+                error_print(f"   Retry after: {retry_after} seconds")
+                error_print(f"   The bot will automatically retry after the delay")
+                # Ne pas afficher le traceback complet pour ce cas connu
+                return
+            
+            # Pour les autres erreurs Telegram, on log avec moins de détails
+            if isinstance(error, TelegramError):
+                error_print(f"⚠️ Telegram Error: {error.__class__.__name__}: {str(error)}")
+                # Log traceback seulement en mode debug
+                if DEBUG_MODE:
+                    error_print(traceback.format_exc())
+            else:
+                # Erreurs non-Telegram: log complet
+                error_print(f"❌ Erreur Telegram: {error}")
+                error_print(traceback.format_exc())
 
+            # Essayer d'envoyer un message d'erreur à l'utilisateur (sauf pour 409/429)
             if update and hasattr(update, 'effective_message'):
                 try:
                     await update.effective_message.reply_text(
                         "❌ Erreur lors de l'exécution de la commande"
                     )
                 except Exception as e:
-                    error_print(f"Impossible d'envoyer le message d'erreur: {e}")
+                    # Erreur lors de l'envoi du message d'erreur (ne pas logger)
+                    pass
         except Exception as e:
             error_print(f"Erreur dans error_handler: {e}")
 
