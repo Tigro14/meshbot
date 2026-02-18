@@ -1569,7 +1569,7 @@ class TrafficPersistence:
             
             # Use appropriate debug function based on source
             debug_func = debug_print_mc if source == 'meshcore' else debug_print_mt
-            debug_func(f"💾 Node saved: {node_data.get('name')} (0x{node_data['node_id']:08x})")
+            #debug_func(f"💾 Node saved: {node_data.get('name')} (0x{node_data['node_id']:08x})")
             
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde du nœud Meshtastic : {e}")
