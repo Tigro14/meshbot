@@ -40,6 +40,21 @@ class NodeManager:
             debug_print("⚠️ BOT_POSITION non défini dans config.py")
 
     
+    def _get_log_funcs(self, source):
+        """Get appropriate logging functions based on source
+        
+        Args:
+            source: 'meshtastic', 'meshcore', 'tcp', 'local', etc.
+            
+        Returns:
+            tuple: (debug_func, info_func)
+        """
+        if source == 'meshcore':
+            return debug_print_mc, info_print_mc
+        else:
+            # Default to MT for meshtastic, tcp, local, etc.
+            return debug_print_mt, info_print_mt
+    
     def set_interface(self, interface):
         """Définir l'interface Meshtastic"""
         self.interface = interface
@@ -534,8 +549,13 @@ class NodeManager:
             error_print(f"Erreur format RX: {e}")
             return f"Erreur génération rapport RX: {truncate_text(str(e), 30)}"
     
-    def update_node_from_packet(self, packet):
-        """Mettre à jour la base de nœuds depuis un packet reçu (NODEINFO_APP)"""
+    def update_node_from_packet(self, packet, source='meshtastic'):
+        """Mettre à jour la base de nœuds depuis un packet reçu (NODEINFO_APP)
+        
+        Args:
+            packet: Packet reçu
+            source: Source du packet ('meshtastic', 'meshcore', 'tcp', 'local')
+        """
         try:
             if 'decoded' in packet and packet['decoded'].get('portnum') == 'NODEINFO_APP':
                 node_id = packet.get('from')
@@ -555,30 +575,18 @@ class NodeManager:
                     # Try both field names: 'public_key' (protobuf) and 'publicKey' (dict)
                     public_key = user_info.get('public_key') or user_info.get('publicKey')
                     
-                    # Log detailed info about public key presence (DEBUG mode only for routine updates)
-                    #debug_print(f"📋 NODEINFO received from {name} (0x{node_id:08x}):")
-                    #debug_print(f"   Fields in packet: {list(user_info.keys())}")
-                    #debug_print(f"   Has 'public_key' field: {'public_key' in user_info}")
-                    #debug_print(f"   Has 'publicKey' field: {'publicKey' in user_info}")
-                    if 'public_key' in user_info:
-                        pk_value = user_info.get('public_key')
-                        pk_type = type(pk_value).__name__
-                        pk_len = len(pk_value) if pk_value else 0
-                        #debug_print(f"   public_key value type: {pk_type}, length: {pk_len}")
-                        if pk_value:
-                            debug_print(f"   public_key preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
-                    if 'publicKey' in user_info:
-                        pk_value = user_info.get('publicKey')
-                        pk_type = type(pk_value).__name__
-                        pk_len = len(pk_value) if pk_value else 0
-                        #debug_print(f"   publicKey value type: {pk_type}, length: {pk_len}")
-                        if pk_value:
-                            debug_print(f"   publicKey preview: {pk_value[:20] if len(pk_value) > 20 else pk_value}")
-                    #debug_print(f"   Extracted public_key: {'YES' if public_key else 'NO'}")
+                    # Get appropriate log functions based on source
+                    debug_func, info_func = self._get_log_funcs(source)
+                    
+                    # DEBUG: Log public key preview if present (consolidated)
+                    if public_key and DEBUG_MODE:
+                        pk_len = len(public_key)
+                        pk_preview = public_key[:20] if len(public_key) > 20 else public_key
+                        debug_func(f"🔑 Key preview: {name} (len={pk_len})")
                     
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
-                        info_print(f"⚠️ {name}: NODEINFO without public_key field (firmware < 2.5.0?)")
+                        info_func(f"⚠️ {name}: NODEINFO without public_key field (firmware < 2.5.0?)")
                     
                     if name and len(name) > 0:
                         # Initialiser l'entrée si elle n'existe pas
@@ -593,24 +601,18 @@ class NodeManager:
                                 'last_update': None,
                                 'publicKey': public_key  # Store public key for DM decryption
                             }
-                            info_print(f"📱 New node added: {name} (0x{node_id:08x})")
+                            info_func(f"📱 New node: {name} (0x{node_id:08x})")
                             if public_key:
-                                info_print(f"✅ Public key EXTRACTED and STORED for {name}")
-                                info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
-                                # Verify it's actually in the dict
-                                stored_key = self.node_names[node_id].get('publicKey')
-                                if stored_key == public_key:
-                                    info_print(f"   ✓ Verified: Key is in node_names[{node_id}]")
-                                else:
-                                    info_print(f"   ✗ ERROR: Key NOT in node_names[{node_id}]!")
+                                # Consolidated log: one line for new key
+                                info_func(f"✅ Key extracted: {name} (len={len(public_key)})")
                                 
                                 # Immediately sync to interface.nodes for DM decryption
-                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id], source)
                                 
                                 # Invalidate sync cache since we added a new key
                                 self._last_synced_keys_hash = None
                             else:
-                                info_print(f"❌ NO public key for {name} - DM decryption will NOT work")
+                                info_func(f"❌ NO public key for {name} - DM decryption will NOT work")
                             
                             # Save to SQLite meshtastic_nodes table
                             if hasattr(self, 'persistence') and self.persistence:
@@ -623,9 +625,9 @@ class NodeManager:
                                     'lat': None,
                                     'lon': None,
                                     'alt': None,
-                                    'source': 'radio'
+                                    'source': source
                                 }
-                                self.persistence.save_meshtastic_node(node_data)
+                                self.persistence.save_meshtastic_node(node_data, source)
                         else:
                             #Track whether any data actually changed
                             data_changed = False
@@ -633,7 +635,7 @@ class NodeManager:
                             old_name = self.node_names[node_id]['name']
                             if old_name != name:
                                 self.node_names[node_id]['name'] = name
-                                info_print(f"📱 Node renamed: {old_name} → {name} (0x{node_id:08x})")
+                                info_func(f"📱 Node renamed: {old_name} → {name} (0x{node_id:08x})")
                                 data_changed = True
                             # Always update shortName and hwModel even if name didn't change
                             old_short_name = self.node_names[node_id].get('shortName')
@@ -647,37 +649,25 @@ class NodeManager:
                             old_key = self.node_names[node_id].get('publicKey')
                             if public_key and public_key != old_key:
                                 self.node_names[node_id]['publicKey'] = public_key
-                                info_print(f"✅ Public key UPDATED for {name}")
-                                info_print(f"   Key type: {type(public_key).__name__}, length: {len(public_key) if public_key else 0}")
+                                # Consolidated log: one line for key update
+                                info_func(f"✅ Key updated: {name} (len={len(public_key)})")
                                 data_changed = True
                                 
                                 # Immediately sync to interface.nodes for DM decryption
-                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id], source)
                                 
                                 # Invalidate sync cache since we updated a key
                                 self._last_synced_keys_hash = None
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
-                                debug_print(f"ℹ️ Public key already stored for {name} (unchanged)")
+                                debug_func(f"ℹ️ Key unchanged: {name}")
                                 
                                 # CRITICAL: Still sync to interface.nodes even if unchanged
                                 # After bot restart, interface.nodes is empty but SQLite DB has keys
                                 # Without this sync, /keys will report nodes as "without keys"
-                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id])
+                                self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id], source)
                             elif not public_key and not old_key:
-                                info_print(f"⚠️ Still NO public key for {name} after NODEINFO update")
-                            
-                            # Log final status only in DEBUG mode when key is unchanged
-                            final_key = self.node_names[node_id].get('publicKey')
-                            if final_key:
-                                if data_changed or not old_key:
-                                    # Only log at INFO level if data changed or key is new
-                                    info_print(f"✓ Node {name} now has publicKey in DB (len={len(final_key)})")
-                                else:
-                                    # Routine update with no changes - debug only
-                                    debug_print(f"✓ Node {name} publicKey in DB (len={len(final_key)}, unchanged)")
-                            else:
-                                info_print(f"✗ Node {name} still MISSING publicKey in DB")
+                                info_func(f"⚠️ Still NO key for {name}")
                             
                             # Save to SQLite meshtastic_nodes table if data changed
                             if data_changed:
@@ -691,9 +681,9 @@ class NodeManager:
                                         'lat': self.node_names[node_id].get('lat'),
                                         'lon': self.node_names[node_id].get('lon'),
                                         'alt': self.node_names[node_id].get('alt'),
-                                        'source': 'radio'
+                                        'source': source
                                     }
-                                    self.persistence.save_meshtastic_node(node_data)
+                                    self.persistence.save_meshtastic_node(node_data, source)
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
 
@@ -941,7 +931,7 @@ class NodeManager:
         
         return injected_count
     
-    def _sync_single_pubkey_to_interface(self, node_id, node_data):
+    def _sync_single_pubkey_to_interface(self, node_id, node_data, source='meshtastic'):
         """
         Immediately sync a single public key to interface.nodes
         
@@ -951,6 +941,7 @@ class NodeManager:
         Args:
             node_id: Node ID (integer)
             node_data: Node data dict from node_names
+            source: Source of the packet ('meshtastic', 'meshcore', etc.)
         """
         if not self.interface or not hasattr(self.interface, 'nodes'):
             debug_print("⚠️ Interface not available for immediate key sync")
@@ -962,6 +953,9 @@ class NodeManager:
         
         node_name = node_data.get('name', f"Node-{node_id:08x}")
         nodes = getattr(self.interface, 'nodes', {})
+        
+        # Get appropriate log functions
+        debug_func, info_func = self._get_log_funcs(source)
         
         # Try to find node in interface.nodes with various key formats
         node_info = None
@@ -978,7 +972,7 @@ class NodeManager:
             if isinstance(user_info, dict):
                 user_info['public_key'] = public_key   # Protobuf style
                 user_info['publicKey'] = public_key    # Dict style
-                debug_print(f"   🔑 Immediately synced key to interface.nodes for {node_name}")
+                debug_func(f"🔑 Key synced: {node_name} → interface.nodes")
         else:
             # Create minimal entry
             short_name = node_data.get('shortName', '')
@@ -994,7 +988,7 @@ class NodeManager:
                     'publicKey': public_key    # Dict style
                 }
             }
-            debug_print(f"   🔑 Created interface.nodes entry with key for {node_name}")
+            debug_func(f"🔑 Created interface.nodes entry: {node_name}")
     
     def track_packet_type(self, packet):
         """Suivre les types de paquets par heure pour l'histogramme"""
