@@ -13,7 +13,7 @@ Copier ce fichier vers config.priv.py et remplir avec vos valeurs réelles
 
 # Token du bot Telegram
 # Obtenir via @BotFather sur Telegram
-TELEGRAM_BOT_TOKEN = "8370817963:AAGMr-Vgbsugn67zR4ihGTzBw564SKhpZzw"  # Token du bot Telegram
+TELEGRAM_BOT_TOKEN = "8370817963:AAERfhysJJ1drjRXQJeqlg1ZsfVVwFGRjd8" # Token du bot Telegram
 
 # Utilisateurs Telegram autorisés (liste vide = tous autorisés)
 # Format: [123456789, 987654321, ...]
