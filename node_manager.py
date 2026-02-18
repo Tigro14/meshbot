@@ -707,6 +707,13 @@ class NodeManager:
             if snr is None:
                 snr = 0.0
             
+            # ✅ FIX: Ne pas mettre à jour rx_history si SNR=0.0
+            # Les paquets DM (MeshCore/Telegram) ont snr=0.0 par défaut
+            # On veut seulement stocker les données réelles des paquets RF (RX_LOG)
+            if snr == 0.0:
+                debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (snr=0.0, no RF data)")
+                return
+            
             # Obtenir le nom
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
         
