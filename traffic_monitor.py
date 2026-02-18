@@ -1241,6 +1241,13 @@ class TrafficMonitor:
             line2_parts = []
             if content_info:
                 line2_parts.extend(content_info)
+            
+            # Add routing path if available (MeshCore packets)
+            if '_meshcore_path' in packet and packet['_meshcore_path']:
+                path = packet['_meshcore_path']
+                path_str = ' → '.join([f"0x{n:08x}" if isinstance(n, int) else str(n) for n in path])
+                line2_parts.append(f"Path:[{path_str}]")
+            
             line2_parts.append(f"Payload:{packet_size}B")
             line2_parts.append(f"ID:{packet_id}")
             line2_parts.append(f"RX:{rx_time_str}")

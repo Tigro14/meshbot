@@ -2243,13 +2243,18 @@ class MeshCoreCLIWrapper:
                         'rxTime': int(time.time()),
                         'rssi': rssi,
                         'snr': snr,
-                        'hopLimit': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'hopLimit': 0,  # Packet received with 0 hops remaining
                         'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'channel': 0,
                         'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
                         '_meshcore_broadcast': is_broadcast
                     }
+                    
+                    # Add routing path if available (for hop visualization)
+                    if hasattr(decoded_packet, 'path') and decoded_packet.path:
+                        bot_packet['_meshcore_path'] = decoded_packet.path
+                        debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
                     
                     # Forward ALL packets to bot (not just text messages)
                     debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
