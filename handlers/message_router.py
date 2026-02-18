@@ -86,8 +86,14 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
         
+        # Determine network source from packet
+        # In dual mode, packet has 'source' field: 'local', 'tcp', 'tigrog2' (Meshtastic) or 'meshcore'
+        packet_source = packet.get('source', 'local')
+        is_from_meshcore = (packet_source == 'meshcore')
+        is_from_meshtastic = (packet_source in ['local', 'tcp', 'tigrog2'])
+        
         # DEBUG: Log message routing decision
-        debug_print(f"🔍 [ROUTER-DEBUG] _meshcore_dm={is_meshcore_dm} | is_for_me={is_for_me} | is_broadcast={is_broadcast} | to=0x{to_id:08x}")
+        debug_print(f"🔍 [ROUTER-DEBUG] _meshcore_dm={is_meshcore_dm} | is_for_me={is_for_me} | is_broadcast={is_broadcast} | to=0x{to_id:08x} | source={packet_source}")
 
         # For broadcast messages from MeshCore CHANNEL_MSG_RECV, strip "Sender: " prefix
         # MeshCore includes sender name in text: "Tigro: /echo test"
@@ -153,10 +159,10 @@ class MessageRouter:
         if not is_for_me:
             return
 
-        # Router la commande
-        self._route_command(message, sender_id, sender_info, packet)
+        # Router la commande avec l'information sur le réseau source
+        self._route_command(message, sender_id, sender_info, packet, is_from_meshcore, is_from_meshtastic)
     
-    def _route_command(self, message, sender_id, sender_info, packet):
+    def _route_command(self, message, sender_id, sender_info, packet, is_from_meshcore=False, is_from_meshtastic=True):
         """Router une commande vers le bon gestionnaire"""
         from_id = packet.get('from', 0)
         text_parts = message.split()
@@ -175,6 +181,41 @@ class MessageRouter:
                     sender_id, sender_info
                 )
                 return
+        
+        # ===================================================================
+        # NETWORK ISOLATION: Block cross-network commands
+        # ===================================================================
+        # MeshCore-only commands (cannot be used from Meshtastic)
+        meshcore_only_commands = ['/nodesmc', '/trafficmc']
+        
+        # Meshtastic-only commands (cannot be used from MeshCore)
+        # Note: Order matters - check longer commands first to avoid false matches
+        meshtastic_only_commands = ['/nodemt', '/trafficmt', '/neighbors', '/nodes', '/my', '/trace']
+        
+        # Check if MeshCore command is being called from Meshtastic
+        if is_from_meshtastic:
+            for mc_cmd in meshcore_only_commands:
+                if message.startswith(mc_cmd):
+                    info_print(f"🚫 Commande MeshCore {mc_cmd} appelée depuis Meshtastic - BLOQUÉE")
+                    self.sender.send_single(
+                        f"🚫 {mc_cmd} est réservé au réseau MeshCore.\nUtilisez /nodemt ou /trafficmt pour Meshtastic.",
+                        sender_id, sender_info
+                    )
+                    return
+        
+        # Check if Meshtastic command is being called from MeshCore
+        if is_from_meshcore:
+            for mt_cmd in meshtastic_only_commands:
+                # Use word boundary check to avoid false matches (e.g., /nodes matching /nodesmc)
+                if message == mt_cmd or message.startswith(mt_cmd + ' '):
+                    info_print(f"🚫 Commande Meshtastic {mt_cmd} appelée depuis MeshCore - BLOQUÉE")
+                    self.sender.send_single(
+                        f"🚫 {mt_cmd} est réservé au réseau Meshtastic.\nUtilisez /nodesmc ou /trafficmc pour MeshCore.",
+                        sender_id, sender_info
+                    )
+                    return
+        
+        # ===================================================================
         
         # Commandes IA
         if message.startswith('/bot'):
@@ -264,13 +305,13 @@ class MessageRouter:
         elif message.startswith('/legend'):
             self.utility_handler.handle_legend(sender_id, sender_info)
         elif message.startswith('/help') or message.startswith('/?'):
-            self.utility_handler.handle_help(sender_id, sender_info)
+            self.utility_handler.handle_help(sender_id, sender_info, is_from_meshcore=is_from_meshcore)
         
         # Commande inconnue
         else:
             if message.startswith('/'):
                 info_print(f"Commande inconnue de {sender_info}: '{message}'")
-                self.utility_handler.handle_help(sender_id, sender_info)
+                self.utility_handler.handle_help(sender_id, sender_info, is_from_meshcore=is_from_meshcore)
             else:
                 if DEBUG_MODE:
                     debug_print(f"Message normal reçu: '{message}'")

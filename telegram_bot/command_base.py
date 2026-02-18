@@ -29,6 +29,8 @@ class TelegramCommandBase:
         self.traffic_monitor = telegram_integration.message_handler.traffic_monitor
         # Provide access to the bot's interface for commands that need to send messages
         self.interface = telegram_integration.message_handler.interface
+        # Provide access to dual interface manager for network-specific commands
+        self.dual_interface = getattr(telegram_integration.message_handler, 'dual_interface', None)
 
     def check_authorization(self, user_id):
         """

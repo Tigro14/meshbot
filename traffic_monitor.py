@@ -2146,6 +2146,100 @@ class TrafficMonitor:
             error_print(traceback.format_exc())
             return f"❌ Erreur: {str(e)[:50]}"
 
+    def get_traffic_report_mt(self, hours=8):
+        """
+        Afficher l'historique complet des messages publics Meshtastic (VERSION TELEGRAM)
+        
+        Args:
+            hours: Période à afficher (défaut: 8h)
+        
+        Returns:
+            str: Liste complète des messages publics Meshtastic formatée
+        """
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - (hours * 3600)
+            
+            # Filtrer les messages Meshtastic de la période
+            # Meshtastic sources: 'local', 'tcp', 'tigrog2'
+            meshtastic_sources = {'local', 'tcp', 'tigrog2'}
+            recent_messages = [
+                msg for msg in self.public_messages
+                if msg['timestamp'] >= cutoff_time and msg.get('source') in meshtastic_sources
+            ]
+            
+            if not recent_messages:
+                return f"📭 Aucun message public Meshtastic dans les {hours}h"
+            
+            # Trier par timestamp (chronologique)
+            recent_messages.sort(key=lambda x: x['timestamp'])
+            
+            # Construire le rapport complet
+            lines = []
+            lines.append(f"📡 **MESSAGES PUBLICS MESHTASTIC ({hours}h)**")
+            lines.append(f"{'='*40}")
+            lines.append(f"Total: {len(recent_messages)} messages")
+            
+            # Compter par source
+            source_counts = {}
+            for msg in recent_messages:
+                source = msg.get('source', 'unknown')
+                source_counts[source] = source_counts.get(source, 0) + 1
+            
+            # Afficher les compteurs par source
+            for source, count in sorted(source_counts.items()):
+                source_label = {'local': '📻 Serial', 'tcp': '📡 TCP', 'tigrog2': '📡 TCP (tigrog2)'}.get(source, source)
+                lines.append(f"  {source_label}: {count}")
+            lines.append("")
+            
+            # Afficher tous les messages (Telegram peut gérer de longs messages)
+            for msg in recent_messages:
+                # Formater le timestamp
+                msg_time = datetime.fromtimestamp(msg['timestamp'])
+                time_str = msg_time.strftime("%H:%M:%S")
+                
+                # Nom de l'expéditeur
+                sender = msg['sender_name']
+                
+                # Message complet
+                content = msg['message']
+                
+                # Source indicator (pour debug)
+                source_icon = {'local': '📻', 'tcp': '📡', 'tigrog2': '📡'}.get(msg.get('source'), '❓')
+                
+                # Format: [HH:MM:SS] [Icon] [NodeName] message
+                lines.append(f"[{time_str}] {source_icon} [{sender}] {content}")
+            
+            result = "\n".join(lines)
+            
+            # Si vraiment trop long pour Telegram (>4000 chars), limiter
+            if len(result) > 3800:
+                lines = []
+                lines.append(f"📡 **DERNIERS 20 MESSAGES MESHTASTIC ({hours}h)**")
+                lines.append(f"{'='*40}")
+                lines.append(f"(Total: {len(recent_messages)} messages - affichage limité)")
+                lines.append("")
+                
+                # Prendre les 20 plus récents
+                for msg in recent_messages[-20:]:
+                    msg_time = datetime.fromtimestamp(msg['timestamp'])
+                    time_str = msg_time.strftime("%H:%M:%S")
+                    sender = msg['sender_name']
+                    content = msg['message']
+                    source_icon = {'local': '📻', 'tcp': '📡', 'tigrog2': '📡'}.get(msg.get('source'), '❓')
+                    
+                    # Format: [HH:MM:SS] [Icon] [NodeName] message
+                    lines.append(f"[{time_str}] {source_icon} [{sender}] {content}")
+                
+                result = "\n".join(lines)
+            
+            return result
+            
+        except Exception as e:
+            error_print(f"Erreur génération historique Meshtastic: {e}")
+            error_print(traceback.format_exc())
+            return f"❌ Erreur: {str(e)[:50]}"
+
     def get_packet_histogram_overview(self, hours=24):
         """
         Vue d'ensemble compacte de tous les types de paquets (pour /histo).
