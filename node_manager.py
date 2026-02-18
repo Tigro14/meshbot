@@ -399,9 +399,10 @@ class NodeManager:
                     if isinstance(node_info, dict) and 'user' in node_info:
                         user_info = node_info['user']
                         if isinstance(user_info, dict):
-                            long_name = user_info.get('longName', '').strip()
-                            short_name_raw = user_info.get('shortName', '').strip()
-                            hw_model = user_info.get('hwModel', '').strip()
+                            # Handle None values before calling .strip()
+                            long_name = (user_info.get('longName') or '').strip()
+                            short_name_raw = (user_info.get('shortName') or '').strip()
+                            hw_model = (user_info.get('hwModel') or '').strip()
                             
                             # Sanitize names to prevent SQL injection and XSS
                             name = clean_node_name(long_name or short_name_raw)
