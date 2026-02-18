@@ -2368,7 +2368,9 @@ class MeshCoreCLIWrapper:
             # Warn if duplicate detected
             debug_print_mc(f"⚠️  [DEDUP] Message déjà envoyé il y a {time_since:.1f}s (x{count}) - SKIP")
             debug_print_mc(f"   Message: {text[:50]}{'...' if len(text) > 50 else ''}")
-            debug_print_mc(f"   Destination: 0x{destinationId:08x if isinstance(destinationId, int) else destinationId}")
+            # Format destination ID properly (can't use ternary in format specifier)
+            dest_str = f"0x{destinationId:08x}" if isinstance(destinationId, int) else str(destinationId)
+            debug_print_mc(f"   Destination: {dest_str}")
             
             # Update count but don't resend
             self._sent_messages[message_hash]['count'] += 1
