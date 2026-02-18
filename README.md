@@ -775,12 +775,14 @@ Cette section contient la documentation exhaustive de toutes les commandes dispo
 
 ### 🤖 Chat IA
 
-#### `/bot <question>` ou `/ia <question>`
+#### `/bot <question>`
 Conversation avec l'Intelligence Artificielle locale (Llama).
+
+**Alias:** `/ia` (fonctionne de manière identique)
 
 **Usage:**
 - `/bot Explique-moi le protocole LoRa`
-- `/ia Quelle est la météo actuelle?`
+- `/bot Quelle est la météo actuelle?`
 
 **Caractéristiques:**
 - Contexte conversationnel maintenu pendant 30 minutes

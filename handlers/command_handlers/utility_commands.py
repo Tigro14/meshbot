@@ -647,7 +647,7 @@ class UtilityCommands:
         """Formater l'aide compacte pour mesh (contrainte <180 chars/msg)"""
         help_text = (
             "🤖 BOT MESH\n"
-            "IA: /bot /ia\n"
+            "IA: /bot (alias: /ia)\n"
             "Sys: /power /sys /weather\n"
             "Net: /nodes /my /trace\n"
             "Stats: /stats /top /trafic\n"
@@ -665,7 +665,8 @@ class UtilityCommands:
         📖 BOT MESHTASTIC - AIDE RAPIDE
 
         🤖 **CHAT IA**
-        /bot /ia <question> - Conversation avec l'IA (contexte 30min)
+        /bot <question> - Conversation avec l'IA (contexte 30min)
+          Alias: /ia
 
         ⚡ **SYSTÈME**
         /power - Batterie, solaire, capteurs
