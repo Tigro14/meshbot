@@ -1776,6 +1776,9 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
+            # DEBUG: Log SNR/RSSI extraction
+            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
+            
             # Calculate hex data length for display
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
             

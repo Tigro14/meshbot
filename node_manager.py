@@ -713,6 +713,9 @@ class NodeManager:
             is_meshcore_dm = packet.get('_meshcore_dm', False)
             is_meshcore_rx_log = packet.get('_meshcore_rx_log', False)
             
+            # DEBUG: Log packet type and SNR value
+            debug_print(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            
             if snr == 0.0 and not is_meshcore_rx_log:
                 # Skip if SNR=0 unless it's an RX_LOG packet (which might have real SNR=0)
                 if is_meshcore_dm:
@@ -732,6 +735,7 @@ class NodeManager:
                     'last_seen': time.time(),
                     'count': 1
                 }
+                debug_print(f"✅ [RX_HISTORY] NEW entry for 0x{from_id:08x} ({name}) | snr={snr:.1f}dB")
             else:
                 # Moyenne mobile du SNR
                 old_snr = self.rx_history[from_id]['snr']
@@ -742,6 +746,7 @@ class NodeManager:
                 self.rx_history[from_id]['last_seen'] = time.time()
                 self.rx_history[from_id]['count'] += 1
                 self.rx_history[from_id]['name'] = name
+                debug_print(f"✅ [RX_HISTORY] UPDATED 0x{from_id:08x} ({name}) | old_snr={old_snr:.1f}→new_snr={new_snr:.1f}dB | count={count+1}")
             
             # Limiter la taille de l'historique
             if len(self.rx_history) > MAX_RX_HISTORY:
