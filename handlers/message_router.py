@@ -305,13 +305,13 @@ class MessageRouter:
         elif message.startswith('/legend'):
             self.utility_handler.handle_legend(sender_id, sender_info)
         elif message.startswith('/help') or message.startswith('/?'):
-            self.utility_handler.handle_help(sender_id, sender_info)
+            self.utility_handler.handle_help(sender_id, sender_info, is_from_meshcore=is_from_meshcore)
         
         # Commande inconnue
         else:
             if message.startswith('/'):
                 info_print(f"Commande inconnue de {sender_info}: '{message}'")
-                self.utility_handler.handle_help(sender_id, sender_info)
+                self.utility_handler.handle_help(sender_id, sender_info, is_from_meshcore=is_from_meshcore)
             else:
                 if DEBUG_MODE:
                     debug_print(f"Message normal reçu: '{message}'")

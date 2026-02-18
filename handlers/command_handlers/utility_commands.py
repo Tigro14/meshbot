@@ -43,12 +43,12 @@ class UtilityCommands:
         self.sender.log_conversation(sender_id, sender_info, "/legend", legend_text)
         self.sender.send_chunks(legend_text, sender_id, sender_info)
     
-    def handle_help(self, sender_id, sender_info):
+    def handle_help(self, sender_id, sender_info, is_from_meshcore=False):
         """Gérer la commande /help"""
-        info_print(f"Help: {sender_info}")
+        info_print(f"Help: {sender_info} (MeshCore={is_from_meshcore})")
         
         try:
-            help_text = self._format_help()
+            help_text = self._format_help(is_from_meshcore=is_from_meshcore)
             info_print(f"Help text généré: {len(help_text)} caractères")
             self.sender.log_conversation(sender_id, sender_info, "/help", help_text)
             self.sender.send_single(help_text, sender_id, sender_info)
@@ -643,18 +643,32 @@ class UtilityCommands:
         self.sender.log_conversation(sender_id, sender_info, "/vigi", vigi_info)
         self.sender.send_single(vigi_info, sender_id, sender_info)
 
-    def _format_help(self):
+    def _format_help(self, is_from_meshcore=False):
         """Formater l'aide compacte pour mesh (contrainte <180 chars/msg)"""
-        help_text = (
-            "🤖 BOT MESH\n"
-            "IA: /bot (alias: /ia)\n"
-            "Sys: /power /sys /weather\n"
-            "Net: /nodes /my /trace\n"
-            "Stats: /stats /top /trafic\n"
-            "DB: /db\n"
-            "Util: /echo /legend /help\n"
-            "Doc: README.md sur GitHub"
-        )
+        if is_from_meshcore:
+            # MeshCore: Remove unimplemented commands (/my, /trace, /stats, /top)
+            help_text = (
+                "🤖 BOT MESH\n"
+                "IA: /bot (alias: /ia)\n"
+                "Sys: /power /sys /weather\n"
+                "Net: /nodesmc\n"
+                "Stats: /trafic /trafficmc\n"
+                "DB: /db\n"
+                "Util: /echo /legend /help\n"
+                "Doc: README.md sur GitHub"
+            )
+        else:
+            # Meshtastic: All commands available
+            help_text = (
+                "🤖 BOT MESH\n"
+                "IA: /bot (alias: /ia)\n"
+                "Sys: /power /sys /weather\n"
+                "Net: /nodes /my /trace\n"
+                "Stats: /stats /top /trafic\n"
+                "DB: /db\n"
+                "Util: /echo /legend /help\n"
+                "Doc: README.md sur GitHub"
+            )
         return help_text
 
     def _format_help_telegram(self):
