@@ -315,7 +315,7 @@ class NetworkCommands:
                         'name': self.node_manager.get_node_name(sender_id_normalized),
                         'rssi': 0,  # rx_history doesn't store RSSI separately
                         'snr': rx_data.get('snr', 0.0),
-                        'last_heard': rx_data.get('last_time', 0)
+                        'last_heard': rx_data.get('last_seen', 0)  # FIX: Use correct field name
                     }
                     debug_print(f"✅ Found node data in local rx_history (no TCP)")
                 

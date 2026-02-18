@@ -707,11 +707,18 @@ class NodeManager:
             if snr is None:
                 snr = 0.0
             
-            # ✅ FIX: Ne pas mettre à jour rx_history si SNR=0.0
-            # Les paquets DM (MeshCore/Telegram) ont snr=0.0 par défaut
-            # On veut seulement stocker les données réelles des paquets RF (RX_LOG)
-            if snr == 0.0:
-                debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (snr=0.0, no RF data)")
+            # ✅ FIX: Skip rx_history update for DM packets (not RF data)
+            # DM packets (MeshCore/Telegram) have snr=0.0 by default
+            # RX_LOG packets have real RF data and should ALWAYS be recorded
+            is_meshcore_dm = packet.get('_meshcore_dm', False)
+            is_meshcore_rx_log = packet.get('_meshcore_rx_log', False)
+            
+            if snr == 0.0 and not is_meshcore_rx_log:
+                # Skip if SNR=0 unless it's an RX_LOG packet (which might have real SNR=0)
+                if is_meshcore_dm:
+                    debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (MeshCore DM, no RF data)")
+                else:
+                    debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (snr=0.0, no RF data)")
                 return
             
             # Obtenir le nom
