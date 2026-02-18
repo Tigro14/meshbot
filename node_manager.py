@@ -582,7 +582,7 @@ class NodeManager:
                     if public_key and DEBUG_MODE:
                         pk_len = len(public_key)
                         pk_preview = public_key[:20] if len(public_key) > 20 else public_key
-                        debug_func(f"🔑 Key preview: {name} (len={pk_len})")
+                        #debug_func(f"🔑 Key preview: {name} (len={pk_len})")
                     
                     # Log when public key field is completely absent (firmware < 2.5.0)
                     if not public_key and 'public_key' not in user_info and 'publicKey' not in user_info:
@@ -604,7 +604,7 @@ class NodeManager:
                             info_func(f"📱 New node: {name} (0x{node_id:08x})")
                             if public_key:
                                 # Consolidated log: one line for new key
-                                info_func(f"✅ Key extracted: {name} (len={len(public_key)})")
+                                #info_func(f"✅ Key extracted: {name} (len={len(public_key)})")
                                 
                                 # Immediately sync to interface.nodes for DM decryption
                                 self._sync_single_pubkey_to_interface(node_id, self.node_names[node_id], source)
@@ -650,7 +650,7 @@ class NodeManager:
                             if public_key and public_key != old_key:
                                 self.node_names[node_id]['publicKey'] = public_key
                                 # Consolidated log: one line for key update
-                                info_func(f"✅ Key updated: {name} (len={len(public_key)})")
+                                #info_func(f"✅ Key updated: {name} (len={len(public_key)})")
                                 data_changed = True
                                 
                                 # Immediately sync to interface.nodes for DM decryption
@@ -660,7 +660,7 @@ class NodeManager:
                                 self._last_synced_keys_hash = None
                             elif public_key and old_key:
                                 # Key already exists and matches - this is the common case
-                                debug_func(f"ℹ️ Key unchanged: {name}")
+                                #debug_func(f"ℹ️ Key unchanged: {name}")
                                 
                                 # CRITICAL: Still sync to interface.nodes even if unchanged
                                 # After bot restart, interface.nodes is empty but SQLite DB has keys
