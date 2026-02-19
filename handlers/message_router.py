@@ -190,7 +190,8 @@ class MessageRouter:
         
         # Meshtastic-only commands (cannot be used from MeshCore)
         # Note: Order matters - check longer commands first to avoid false matches
-        meshtastic_only_commands = ['/nodemt', '/trafficmt', '/neighbors', '/nodes', '/my', '/trace']
+        # /my REMOVED: Now works with both MT and MC (uses local rx_history, no TCP)
+        meshtastic_only_commands = ['/nodemt', '/trafficmt', '/neighbors', '/nodes', '/trace']
         
         # Check if MeshCore command is being called from Meshtastic
         if is_from_meshtastic:

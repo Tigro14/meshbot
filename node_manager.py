@@ -399,9 +399,10 @@ class NodeManager:
                     if isinstance(node_info, dict) and 'user' in node_info:
                         user_info = node_info['user']
                         if isinstance(user_info, dict):
-                            long_name = user_info.get('longName', '').strip()
-                            short_name_raw = user_info.get('shortName', '').strip()
-                            hw_model = user_info.get('hwModel', '').strip()
+                            # Handle None values before calling .strip()
+                            long_name = (user_info.get('longName') or '').strip()
+                            short_name_raw = (user_info.get('shortName') or '').strip()
+                            hw_model = (user_info.get('hwModel') or '').strip()
                             
                             # Sanitize names to prevent SQL injection and XSS
                             name = clean_node_name(long_name or short_name_raw)
@@ -706,6 +707,35 @@ class NodeManager:
             if snr is None:
                 snr = 0.0
             
+            # ✅ FIX: Skip rx_history update for DM packets (not RF data)
+            # DM packets (MeshCore/Telegram) have snr=0.0 by default
+            # RX_LOG packets have real RF data and should ALWAYS be recorded
+            is_meshcore_dm = packet.get('_meshcore_dm', False)
+            is_meshcore_rx_log = packet.get('_meshcore_rx_log', False)
+            
+            # DEBUG: Log packet type and SNR value
+            debug_print(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            
+            if snr == 0.0 and not is_meshcore_rx_log:
+                # Skip SNR update but STILL update last_seen timestamp
+                # This ensures /my shows recent activity even without RF signal data
+                if from_id in self.rx_history:
+                    self.rx_history[from_id]['last_seen'] = time.time()
+                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+                    self.rx_history[from_id]['name'] = name
+                    debug_print(f"✅ [RX_HISTORY] TIMESTAMP updated 0x{from_id:08x} ({name}) | snr=0.0, no SNR update")
+                elif is_meshcore_dm:
+                    # Create new entry with snr=0.0 for DM packets
+                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+                    self.rx_history[from_id] = {
+                        'name': name,
+                        'snr': 0.0,
+                        'last_seen': time.time(),
+                        'count': 1
+                    }
+                    debug_print(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
+                return
+            
             # Obtenir le nom
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
         
@@ -717,6 +747,7 @@ class NodeManager:
                     'last_seen': time.time(),
                     'count': 1
                 }
+                debug_print(f"✅ [RX_HISTORY] NEW entry for 0x{from_id:08x} ({name}) | snr={snr:.1f}dB")
             else:
                 # Moyenne mobile du SNR
                 old_snr = self.rx_history[from_id]['snr']
@@ -727,6 +758,7 @@ class NodeManager:
                 self.rx_history[from_id]['last_seen'] = time.time()
                 self.rx_history[from_id]['count'] += 1
                 self.rx_history[from_id]['name'] = name
+                debug_print(f"✅ [RX_HISTORY] UPDATED 0x{from_id:08x} ({name}) | old_snr={old_snr:.1f}→new_snr={new_snr:.1f}dB | count={count+1}")
             
             # Limiter la taille de l'historique
             if len(self.rx_history) > MAX_RX_HISTORY:

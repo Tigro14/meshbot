@@ -288,36 +288,55 @@ class NetworkCommands:
             self.sender.send_single(error_msg, sender_id, sender_info)
 
     def handle_my(self, sender_id, sender_info, is_broadcast=False):
-        """Gérer la commande /my - Afficher vos signaux vus par votre node"""
+        """
+        Gérer la commande /my - Afficher vos signaux vus localement
+        
+        ✅ NO TCP DEPENDENCY: Utilise node_manager.rx_history (local SQLite)
+        ✅ Works for both Meshtastic and MeshCore networks
+        """
         info_print(f"My: {sender_info}")
 
         # Capturer le sender actuel pour le thread (important pour CLI!)
         current_sender = self.sender
 
-        def get_remote_signal_info():
+        def get_local_signal_info():
             try:
-                remote_nodes = self.remote_nodes_client.get_remote_nodes(REMOTE_NODE_HOST)
-                
-                if not remote_nodes:
-                    response = f"⚠️ {REMOTE_NODE_NAME} inaccessible"
-                    current_sender.send_single(response, sender_id, sender_info)
-                    return
-
                 # Normaliser l'ID
                 sender_id_normalized = sender_id & 0xFFFFFFFF
-
-                # Chercher le nœud
+                
+                # ✅ STEP 1: Check local rx_history (no TCP!)
                 sender_node_data = None
-                for node in remote_nodes:
-                    node_id_normalized = node['id'] & 0xFFFFFFFF
-                    if node_id_normalized == sender_id_normalized:
-                        sender_node_data = node
-                        break
-
+                if self.node_manager and sender_id_normalized in self.node_manager.rx_history:
+                    rx_data = self.node_manager.rx_history[sender_id_normalized]
+                    
+                    # Convert rx_history format to node_data format
+                    sender_node_data = {
+                        'id': sender_id_normalized,
+                        'name': self.node_manager.get_node_name(sender_id_normalized),
+                        'rssi': 0,  # rx_history doesn't store RSSI separately
+                        'snr': rx_data.get('snr', 0.0),
+                        'last_heard': rx_data.get('last_seen', 0)  # FIX: Use correct field name
+                    }
+                    debug_print(f"✅ Found node data in local rx_history (no TCP)")
+                
+                # ✅ STEP 2: If not in rx_history, check if we have the node in node_names
+                elif self.node_manager and sender_id_normalized in self.node_manager.node_names:
+                    node_info = self.node_manager.node_names[sender_id_normalized]
+                    sender_node_data = {
+                        'id': sender_id_normalized,
+                        'name': self.node_manager.get_node_name(sender_id_normalized),
+                        'rssi': 0,
+                        'snr': 0.0,
+                        'last_heard': node_info.get('last_update', 0)
+                    }
+                    debug_print(f"✅ Found node data in node_names (no TCP)")
+                
+                # Format response
                 if sender_node_data:
                     response = self._format_my_response(sender_node_data)
                 else:
-                    response = self._format_my_not_found(remote_nodes)
+                    # Node not in local history - they haven't sent packets to us recently
+                    response = self._format_my_not_found_local()
 
                 # Log conversation (pour tous les modes)
                 current_sender.log_conversation(sender_id, sender_info, "/my", response)
@@ -338,10 +357,14 @@ class NetworkCommands:
                 except:
                     pass
         
-        threading.Thread(target=get_remote_signal_info, daemon=True, name="RemoteSignalInfo").start()
+        threading.Thread(target=get_local_signal_info, daemon=True, name="LocalSignalInfo").start()
     
     def _format_my_response(self, node_data):
-        """Formater la réponse /my pour un nœud trouvé"""
+        """
+        Formater la réponse /my pour un nœud trouvé
+        
+        ✅ Works with local rx_history data (no TCP dependency)
+        """
         response_parts = []
         
         rssi = node_data.get('rssi', 0)
@@ -374,16 +397,16 @@ class NetworkCommands:
         else:
             response_parts.append(f"📈 {quality_desc}")
         
+        # Distance GPS si disponible
         distance_shown = False
         if self.node_manager:
-            # L'ID du nœud est dans node_data (vient de tigrog2)
             node_id = node_data.get('id')
             if node_id:
                 try:
                     gps_distance = self.node_manager.get_node_distance(node_id)
                     if gps_distance:
                         distance_str = self.node_manager.format_distance(gps_distance)
-                        response_parts.append(f"📍 {distance_str} de {REMOTE_NODE_NAME} (GPS)")
+                        response_parts.append(f"📍 {distance_str} (GPS)")
                         distance_shown = True
                 except Exception:
                     pass  # Silent fail, pas critique
@@ -391,34 +414,24 @@ class NetworkCommands:
         # Si pas de distance GPS, utiliser l'estimation RSSI
         if not distance_shown and display_rssi != 0 and display_rssi > -150:
             distance_est = estimate_distance_from_rssi(display_rssi)
-            response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME} (estimé)")
-
-
-        # Distance estimée
-        if display_rssi != 0 and display_rssi > -150:
-            distance_est = estimate_distance_from_rssi(display_rssi)
-            response_parts.append(f"📍 ~{distance_est} de {REMOTE_NODE_NAME}")
+            response_parts.append(f"📍 ~{distance_est} (estimé)")
         
-        # Statut liaison directe
-        response_parts.append(f"🎯 Direct → {REMOTE_NODE_NAME}")
+        # Statut liaison
+        response_parts.append("📶 Signal local")
         
         return " | ".join(response_parts)
     
-    def _format_my_not_found(self, remote_nodes):
-        """Formater la réponse /my pour un nœud non trouvé"""
-        response_parts = [
-            f"⚠️ Pas direct → {REMOTE_NODE_NAME}",
-            "🔀 Messages relayés"
-        ]
+    def _format_my_not_found_local(self):
+        """
+        Formater la réponse /my pour un nœud non trouvé dans l'historique local
         
-        # Suggérer relays potentiels
-        potential_relays = find_best_relays(remote_nodes)
-        if potential_relays:
-            best_relay = potential_relays[0]
-            response_parts.append(f"📡 Via réseau mesh")
-            response_parts.append(f"   (ex: {truncate_text(best_relay['name'], 8)})")
-        else:
-            response_parts.append("❓ Route mesh complexe")
+        ✅ NO TCP DEPENDENCY: Message local uniquement
+        """
+        response_parts = [
+            "📶 Signal non enregistré",
+            "⚠️ Aucun paquet reçu récemment",
+            "💡 Envoyez un message pour être détecté"
+        ]
         
         return "\n".join(response_parts)
     

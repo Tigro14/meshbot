@@ -7,6 +7,7 @@ Intégration avec le bot MeshBot en mode companion
 import threading
 import time
 import asyncio
+import hashlib
 from utils import info_print, debug_print, error_print, info_print_mc, debug_print_mc
 import traceback
 
@@ -158,6 +159,12 @@ class MeshCoreCLIWrapper:
         self.healthcheck_interval = 60  # Check every 60 seconds
         self.message_timeout = 300  # Alert if no messages for 5 minutes
         self.healthcheck_thread = None
+        
+        # Message deduplication tracking
+        # Format: {message_hash: {'timestamp': float, 'count': int}}
+        # Prevents sending same message multiple times within short window
+        self._sent_messages = {}
+        self._message_dedup_window = 30  # seconds - prevent duplicates within 30s
         
         # Determine debug mode: explicit parameter > config > False
         if debug is None:
@@ -1769,6 +1776,9 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
+            # DEBUG: Log SNR/RSSI extraction
+            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
+            
             # Calculate hex data length for display
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
             
@@ -2243,13 +2253,18 @@ class MeshCoreCLIWrapper:
                         'rxTime': int(time.time()),
                         'rssi': rssi,
                         'snr': snr,
-                        'hopLimit': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'hopLimit': 0,  # Packet received with 0 hops remaining
                         'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
                         'channel': 0,
                         'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
                         '_meshcore_broadcast': is_broadcast
                     }
+                    
+                    # Add routing path if available (for hop visualization)
+                    if hasattr(decoded_packet, 'path') and decoded_packet.path:
+                        bot_packet['_meshcore_path'] = decoded_packet.path
+                        debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
                     
                     # Forward ALL packets to bot (not just text messages)
                     debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
@@ -2330,6 +2345,50 @@ class MeshCoreCLIWrapper:
         if not self.meshcore:
             error_print("❌ [MESHCORE-CLI] Non connecté")
             return False
+        
+        # ========================================
+        # MESSAGE DEDUPLICATION
+        # ========================================
+        # Create hash of message + destination to detect duplicates
+        import hashlib
+        message_key = f"{destinationId}:{text}"
+        message_hash = hashlib.md5(message_key.encode()).hexdigest()
+        
+        current_time = time.time()
+        
+        # Clean up old entries (older than dedup window)
+        self._sent_messages = {
+            k: v for k, v in self._sent_messages.items()
+            if current_time - v['timestamp'] < self._message_dedup_window
+        }
+        
+        # Check if this message was sent recently
+        if message_hash in self._sent_messages:
+            last_send = self._sent_messages[message_hash]
+            time_since = current_time - last_send['timestamp']
+            count = last_send['count']
+            
+            # Warn if duplicate detected
+            debug_print_mc(f"⚠️  [DEDUP] Message déjà envoyé il y a {time_since:.1f}s (x{count}) - SKIP")
+            debug_print_mc(f"   Message: {text[:50]}{'...' if len(text) > 50 else ''}")
+            # Format destination ID properly (can't use ternary in format specifier)
+            dest_str = f"0x{destinationId:08x}" if isinstance(destinationId, int) else str(destinationId)
+            debug_print_mc(f"   Destination: {dest_str}")
+            
+            # Update count but don't resend
+            self._sent_messages[message_hash]['count'] += 1
+            return False  # Don't send duplicate
+        
+        # Record this send attempt
+        self._sent_messages[message_hash] = {
+            'timestamp': current_time,
+            'count': 1
+        }
+        debug_print_mc(f"✅ [DEDUP] Nouveau message enregistré (hash: {message_hash[:8]}...)")
+        
+        # ========================================
+        # SEND MESSAGE
+        # ========================================
         
         # Detect if this is a broadcast/channel message
         is_broadcast = (destinationId is None or destinationId == 0xFFFFFFFF)
