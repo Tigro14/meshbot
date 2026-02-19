@@ -717,11 +717,23 @@ class NodeManager:
             debug_print(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
             
             if snr == 0.0 and not is_meshcore_rx_log:
-                # Skip if SNR=0 unless it's an RX_LOG packet (which might have real SNR=0)
-                if is_meshcore_dm:
-                    debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (MeshCore DM, no RF data)")
-                else:
-                    debug_print(f"⏭️  Skipping rx_history update for 0x{from_id:08x} (snr=0.0, no RF data)")
+                # Skip SNR update but STILL update last_seen timestamp
+                # This ensures /my shows recent activity even without RF signal data
+                if from_id in self.rx_history:
+                    self.rx_history[from_id]['last_seen'] = time.time()
+                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+                    self.rx_history[from_id]['name'] = name
+                    debug_print(f"✅ [RX_HISTORY] TIMESTAMP updated 0x{from_id:08x} ({name}) | snr=0.0, no SNR update")
+                elif is_meshcore_dm:
+                    # Create new entry with snr=0.0 for DM packets
+                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+                    self.rx_history[from_id] = {
+                        'name': name,
+                        'snr': 0.0,
+                        'last_seen': time.time(),
+                        'count': 1
+                    }
+                    debug_print(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
                 return
             
             # Obtenir le nom
