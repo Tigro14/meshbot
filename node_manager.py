@@ -732,7 +732,9 @@ class NodeManager:
                         'name': name,
                         'snr': 0.0,
                         'last_seen': time.time(),
-                        'count': 1
+                        'count': 1,
+                        '_meshcore_dm': True,
+                        'path_len': packet.get('_meshcore_path_len', 0)
                     }
                     debug_func(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
                 return

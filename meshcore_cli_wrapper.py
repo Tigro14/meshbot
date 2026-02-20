@@ -1398,6 +1398,7 @@ class MeshCoreCLIWrapper:
                     error_print(traceback.format_exc())
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
+            path_len = payload.get('path_len', 0) if isinstance(payload, dict) else 0
             
             # Log avec gestion de None pour sender_id
             if sender_id is not None:
@@ -1440,7 +1441,8 @@ class MeshCoreCLIWrapper:
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
                 },
-                '_meshcore_dm': True  # Marquer comme DM MeshCore pour traitement spécial
+                '_meshcore_dm': True,  # Marquer comme DM MeshCore pour traitement spécial
+                '_meshcore_path_len': path_len  # Nombre de hops du DM
             }
             
             # Appeler le callback
