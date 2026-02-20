@@ -253,7 +253,15 @@ class LlamaClient:
                 return "Erreur serveur IA"
                 
         except Exception as e:
-            error_msg = f"Erreur IA ({source_type}): {str(e)[:50]}"
+            # Detect connection errors (llama.cpp unavailable) for a clear user message
+            try:
+                is_connection_error = isinstance(e, requests_module.exceptions.ConnectionError)
+            except Exception:
+                is_connection_error = False
+            if is_connection_error:
+                error_msg = "❌ llama.cpp non disponible"
+            else:
+                error_msg = f"Erreur IA ({source_type}): {str(e)[:50]}"
             error_print(f"EXCEPTION GLOBALE: {error_msg}")
             error_print(f"Stack trace complet: {traceback.format_exc()}")
             return error_msg
