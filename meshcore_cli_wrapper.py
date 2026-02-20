@@ -1834,6 +1834,9 @@ class MeshCoreCLIWrapper:
                 debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - {direction_info}")
                 debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{raw_hex[:40]}...")
             
+            # True for Path/Trace routing-only packets — logged once then skipped
+            is_routing_packet = False
+
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
                 try:
@@ -1889,8 +1892,14 @@ class MeshCoreCLIWrapper:
                     
                     # Add actual routing path if available (shows which nodes the packet traversed)
                     if hasattr(packet, 'path') and packet.path:
-                        # Path is a list/array of node IDs the packet traveled through
-                        path_str = ' → '.join([f"0x{node:08x}" if isinstance(node, int) else str(node) for node in packet.path])
+                        # Truncate long paths (Path-type packets can have 100+ entries)
+                        path_items = packet.path
+                        format_node_id = lambda n: f"0x{n:08x}" if isinstance(n, int) else str(n)
+                        if len(path_items) > 5:
+                            remaining_count = len(path_items) - 5
+                            path_str = ' → '.join(format_node_id(n) for n in path_items[:5]) + f' … (+{remaining_count} more)'
+                        else:
+                            path_str = ' → '.join(format_node_id(n) for n in path_items)
                         info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
@@ -1993,10 +2002,12 @@ class MeshCoreCLIWrapper:
                                 content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
                                 debug_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
                             
-                            # Routing packets
+                            # Routing packets — flag for early skip before forwarding
                             elif packet.payload_type.name == 'Trace':
+                                is_routing_packet = True
                                 debug_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
                             elif packet.payload_type.name == 'Path':
+                                is_routing_packet = True
                                 debug_print_mc(f"🛣️  [RX_LOG] Path packet (routing info)")
                         
                         # In debug mode, show raw payload info if available
@@ -2018,7 +2029,7 @@ class MeshCoreCLIWrapper:
             # CRITICAL FIX: Forward ALL packets to bot for statistics
             # This allows the bot to count ALL MeshCore packets (not just text messages)
             # The bot's traffic_monitor will handle packet type filtering and counting
-            if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback:
+            if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback and not is_routing_packet:
                 try:
                     # IMPORTANT: Parse header FIRST to get correct sender/receiver addresses
                     # The header_info is already parsed above, but we need it here too
@@ -2035,15 +2046,6 @@ class MeshCoreCLIWrapper:
                     packet_text = None
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
-                    
-                    # Debug: Log payload structure ALWAYS for troubleshooting
-                    debug_print_mc(f"🔍 [RX_LOG] Checking decoded_packet for payload...")
-                    debug_print_mc(f"🔍 [RX_LOG] Has payload attribute: {hasattr(decoded_packet, 'payload')}")
-                    if hasattr(decoded_packet, 'payload'):
-                        debug_print_mc(f"🔍 [RX_LOG] Payload value: {decoded_packet.payload}")
-                        debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
-                        if isinstance(decoded_packet.payload, dict):
-                            debug_print_mc(f"🔍 [RX_LOG] Payload keys: {list(decoded_packet.payload.keys())}")
                     
                     if decoded_packet.payload and isinstance(decoded_packet.payload, dict):
                         decoded_payload = decoded_packet.payload.get('decoded')
@@ -2113,13 +2115,6 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value in [12, 13, 15]:
                                             # Types 12, 13, 15 are encrypted message wrappers
                                             # Try to decrypt with MeshCore Public channel PSK
-                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) detected")
-                                            
-                                            # Debug logging for decryption troubleshooting
-                                            debug_print_mc(f"🔍 [DECRYPT] Debug info:")
-                                            debug_print_mc(f"   CRYPTO_AVAILABLE: {CRYPTO_AVAILABLE}")
-                                            debug_print_mc(f"   payload_bytes: {len(payload_bytes) if payload_bytes else 0}B")
-                                            debug_print_mc(f"   sender_id: 0x{sender_id:08x}")
                                             
                                             # Try decryption if crypto is available
                                             decrypted_text = None
@@ -2130,16 +2125,9 @@ class MeshCoreCLIWrapper:
                                                 if hasattr(decoded_packet, 'message_hash') and decoded_packet.message_hash:
                                                     # message_hash is hex string, convert first 8 chars (4 bytes) to int
                                                     packet_id = int(decoded_packet.message_hash[:8], 16)
-                                                    debug_print_mc(f"   ✅ packet_id from message_hash: {packet_id} (0x{packet_id:08x})")
                                                 elif packet_header and 'msg_hash' in packet_header:
                                                     # Fall back to packet header
                                                     packet_id = int(packet_header['msg_hash'][:8], 16)
-                                                    debug_print_mc(f"   ✅ packet_id from packet_header: {packet_id} (0x{packet_id:08x})")
-                                                else:
-                                                    debug_print_mc(f"   ❌ packet_id not found (no message_hash)")
-                                                
-                                                debug_print_mc(f"   packet_id: {packet_id}")
-                                                debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
                                                 
                                                 # Always strip 16-byte MeshCore header from payload
                                                 # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
@@ -2147,7 +2135,6 @@ class MeshCoreCLIWrapper:
                                                 if len(payload_bytes) > 16:
                                                     encrypted_payload = payload_bytes[16:]
                                                     payload_bytes = encrypted_payload  # Update payload_bytes to strip header
-                                                    debug_print_mc(f"🔍 [DECRYPT] Stripped 16-byte header, payload now {len(payload_bytes)}B")
                                                     
                                                     # Skip protobuf varint length prefix before decryption
                                                     # After MeshCore header, there's a protobuf varint that encodes the payload length
@@ -2171,16 +2158,13 @@ class MeshCoreCLIWrapper:
                                                         length, varint_size = decode_varint(encrypted_payload)
                                                         encrypted_payload = encrypted_payload[varint_size:]
                                                         payload_bytes = encrypted_payload  # Update again after varint skip
-                                                        debug_print_mc(f"🔍 [DECRYPT] Skipped varint ({varint_size} bytes, length={length}), encrypted payload now {len(encrypted_payload)}B")
                                                 else:
-                                                    debug_print_mc(f"⚠️  [DECRYPT] Payload too short ({len(payload_bytes)}B), cannot strip header")
                                                     encrypted_payload = payload_bytes
                                                 
                                                 # Always attempt PSK decryption (Public channel uses PSK even for messages to specific users)
                                                 # Public channel messages decrypt to readable text, DMs produce garbage (detected by readability check)
                                                 if packet_id is not None and sender_id != 0xFFFFFFFF:
-                                                    debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
-                                                    debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
+                                                    debug_print_mc(f"🔓 [DECRYPT] type={payload_type_value} id=0x{packet_id:08x} from=0x{sender_id:08x} payload={len(encrypted_payload)}B")
                                                     
                                                     decrypted_text = decrypt_meshcore_public(
                                                         encrypted_payload, 
@@ -2202,13 +2186,6 @@ class MeshCoreCLIWrapper:
                                                         debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
                                                         # Mark as encrypted for display
                                                         packet_text = '[ENCRYPTED]'
-                                                else:
-                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
-                                            else:
-                                                if not CRYPTO_AVAILABLE:
-                                                    debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
-                                                if not payload_bytes:
-                                                    debug_print_mc(f"❌ [DECRYPT] No payload bytes to decrypt")
                                             
                                             # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
                                             portnum = 'TEXT_MESSAGE_APP'
@@ -2217,7 +2194,6 @@ class MeshCoreCLIWrapper:
                                         else:
                                             # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
-                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                                     except:
                                         portnum = 'UNKNOWN_APP'
                     elif decoded_packet.payload:
@@ -2248,7 +2224,6 @@ class MeshCoreCLIWrapper:
                                     portnum = 'NODEINFO_APP'
                                 elif payload_type_value == 7:
                                     portnum = 'TELEMETRY_APP'
-                                debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                             except:
                                 pass
                     else:
@@ -2297,11 +2272,8 @@ class MeshCoreCLIWrapper:
                     # Add routing path if available (for hop visualization)
                     if hasattr(decoded_packet, 'path') and decoded_packet.path:
                         bot_packet['_meshcore_path'] = decoded_packet.path
-                        debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
                     
                     # Forward to bot callback
-                    debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
-                    debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
                     self.message_callback(bot_packet, None)
                     debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
