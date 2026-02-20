@@ -696,6 +696,10 @@ class NodeManager:
             if not from_id:
                 return
             
+            # Skip broadcast/unidentifiable sender (0xFFFFFFFF = unresolved packet header)
+            if from_id == 0xFFFFFFFF:
+                return
+            
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
             hop_limit = packet.get('hopLimit', 0)
             hop_start = packet.get('hopStart', 5)

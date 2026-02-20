@@ -389,6 +389,9 @@ class NetworkCommands:
             response_parts.append(f"{rssi_icon} {rssi_str} {snr_str}")
         elif node_data.get('_meshcore_dm'):
             path_len = node_data.get('path_len', 0)
+            # 255 (0xFF) is the MeshCore sentinel meaning "unknown / direct"
+            if path_len == 255:
+                path_len = 0
             hop_str = f"{path_len} hop{'s' if path_len > 1 else ''}" if path_len > 0 else "direct"
             response_parts.append(f"📡 MeshCore ({hop_str})")
         else:

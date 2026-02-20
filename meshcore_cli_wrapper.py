@@ -2298,11 +2298,16 @@ class MeshCoreCLIWrapper:
                         bot_packet['_meshcore_path'] = decoded_packet.path
                         debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
                     
-                    # Forward ALL packets to bot (not just text messages)
-                    debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
-                    debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
-                    self.message_callback(bot_packet, None)
-                    debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
+                    # Skip unidentifiable packets (sender_id = 0xFFFFFFFF means header
+                    # could not be parsed — typically too-short routing/ACK packets)
+                    if sender_id == 0xFFFFFFFF:
+                        debug_print_mc(f"⏭️  [RX_LOG] Skipping unidentifiable packet (sender=0xffffffff, {len(payload_bytes) if payload_bytes else 0}B)")
+                    else:
+                        # Forward to bot callback
+                        debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
+                        debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
+                        self.message_callback(bot_packet, None)
+                        debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
                 except Exception as forward_error:
                     debug_print_mc(f"⚠️ [RX_LOG] Error forwarding packet: {forward_error}")
