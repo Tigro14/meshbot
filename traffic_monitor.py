@@ -639,8 +639,9 @@ class TrafficMonitor:
             to_id = packet.get('to', 0)
             is_dm = to_id != 0xFFFFFFFF and to_id != 0
             is_meshcore_dm = packet.get('_meshcore_dm', False)
+            sender_name_mc = self.node_manager.get_node_name(from_id)
             
-            debug_print_mc(f"📦 MeshCore packet: {portnum} from 0x{from_id:08x}, DM={is_dm}, _meshcore_dm={is_meshcore_dm}")
+            debug_print_mc(f"📦 MeshCore packet: {portnum} from 0x{from_id:08x} ({sender_name_mc}), DM={is_dm}, _meshcore_dm={is_meshcore_dm}")
         
         # Log périodique pour suivre l'activité (tous les 10 paquets)
         if not hasattr(self, '_packet_add_count'):

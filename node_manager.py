@@ -714,20 +714,21 @@ class NodeManager:
             is_meshcore_dm = packet.get('_meshcore_dm', False)
             is_meshcore_rx_log = packet.get('_meshcore_rx_log', False)
             
+            # Resolve name early so it appears in all RX_HISTORY debug lines
+            name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+            
             # DEBUG: Log packet type and SNR value
-            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}) | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
             
             if snr == 0.0 and not is_meshcore_rx_log:
                 # Skip SNR update but STILL update last_seen timestamp
                 # This ensures /my shows recent activity even without RF signal data
                 if from_id in self.rx_history:
                     self.rx_history[from_id]['last_seen'] = time.time()
-                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
                     self.rx_history[from_id]['name'] = name
                     debug_func(f"✅ [RX_HISTORY] TIMESTAMP updated 0x{from_id:08x} ({name}) | snr=0.0, no SNR update")
                 elif is_meshcore_dm:
                     # Create new entry with snr=0.0 for DM packets
-                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
                     self.rx_history[from_id] = {
                         'name': name,
                         'snr': 0.0,
@@ -739,9 +740,6 @@ class NodeManager:
                     debug_func(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
                 return
             
-            # Obtenir le nom
-            name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
-        
             # Mettre à jour l'historique RX
             if from_id not in self.rx_history:
                 self.rx_history[from_id] = {
