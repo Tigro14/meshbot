@@ -1071,11 +1071,28 @@ class MeshCoreCLIWrapper:
                             # SAVE CONTACTS TO DATABASE (like NODEINFO for Meshtastic)
                             if post_count > 0 and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
                                 saved_count = 0
-                                for contact in post_contacts:
+                                # post_contacts is a dict keyed by pubkey_prefix; iterate .items() to get values
+                                contacts_items = post_contacts.items() if isinstance(post_contacts, dict) else enumerate(post_contacts)
+                                for _key, contact in contacts_items:
                                     try:
                                         contact_id = contact.get('contact_id') or contact.get('node_id')
-                                        name = contact.get('name') or contact.get('long_name')
+                                        # meshcore library stores display name as 'adv_name'
+                                        name = contact.get('adv_name') or contact.get('name') or contact.get('long_name')
                                         public_key = contact.get('public_key') or contact.get('publicKey')
+                                        
+                                        # Derive node_id from public_key prefix when not explicitly provided
+                                        if not contact_id and public_key:
+                                            try:
+                                                if isinstance(public_key, str) and len(public_key) >= 8:
+                                                    contact_id = int(public_key[:8], 16)
+                                                elif isinstance(public_key, bytes) and len(public_key) >= 4:
+                                                    contact_id = int.from_bytes(public_key[:4], 'big')
+                                            except Exception:
+                                                pass
+                                        
+                                        if not contact_id:
+                                            debug_print_mc(f"⚠️ [MESHCORE-SYNC] Contact sans ID dérivable, ignoré: {name}")
+                                            continue
                                         
                                         # Convert contact_id to int if string
                                         if isinstance(contact_id, str):
@@ -1092,21 +1109,28 @@ class MeshCoreCLIWrapper:
                                         contact_data = {
                                             'node_id': contact_id,
                                             'name': best_name,
-                                            'shortName': name or '',  # Use extracted name, not short_name field
+                                            'shortName': name or '',
                                             'hwModel': contact.get('hw_model', None),
                                             'publicKey': public_key,
-                                            'lat': contact.get('latitude', None),
-                                            'lon': contact.get('longitude', None),
+                                            'lat': contact.get('adv_lat') if contact.get('adv_lat') is not None else contact.get('latitude'),
+                                            'lon': contact.get('adv_lon') if contact.get('adv_lon') is not None else contact.get('longitude'),
                                             'alt': contact.get('altitude', None),
                                             'source': 'meshcore'
                                         }
                                         self.node_manager.persistence.save_meshcore_contact(contact_data)
-                                        # CRITICAL: Also add to meshcore.contacts dict
-                                        self._add_contact_to_meshcore(contact_data)
+                                        # Populate in-memory name cache so get_node_name() resolves immediately
+                                        self.node_manager.node_names[contact_id] = {
+                                            'name': best_name,
+                                            'shortName': name or '',
+                                            'hwModel': contact_data['hwModel'],
+                                            'lat': contact_data['lat'],
+                                            'lon': contact_data['lon'],
+                                            'alt': contact_data['alt'],
+                                            'last_update': None
+                                        }
                                         saved_count += 1
                                     except Exception as save_err:
-                                        # Only log errors, not every save
-                                        debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
+                                        debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
                                 
                                 # Single summary line instead of verbose logging
                                 info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
