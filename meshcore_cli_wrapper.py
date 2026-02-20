@@ -166,6 +166,11 @@ class MeshCoreCLIWrapper:
         self._sent_messages = {}
         self._message_dedup_window = 30  # seconds - prevent duplicates within 30s
         
+        # Latest RX_LOG_DATA for channel echo correlation
+        # Stores SNR/RSSI/path from the most recent RF packet received
+        # Used to attach signal data to CHANNEL_MSG_RECV events (echoes pattern)
+        self.latest_rx_log = {}  # {'snr': float, 'rssi': int, 'path_len': int, 'timestamp': float}
+        
         # Determine debug mode: explicit parameter > config > False
         if debug is None:
             try:
@@ -920,79 +925,39 @@ class MeshCoreCLIWrapper:
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
-                # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
-                # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
-                rx_log_enabled = False
-                try:
-                    import config
-                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
-                except ImportError:
-                    rx_log_enabled = True  # Default to enabled
+                # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
                 
-                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
+                # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet, allowing
+                # us to attach SNR/RSSI from the RF layer to the decoded channel message.
+                if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
-                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
-                elif not rx_log_enabled:
-                    info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
-                    info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
-                    
-                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
-                    # This allows the bot to respond to commands sent on the public channel
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
-                        info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
-                elif not hasattr(EventType, 'RX_LOG_DATA'):
-                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
-                    
-                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                else:
+                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
                 
-                # Also subscribe to RX_LOG_DATA
-                rx_log_enabled = False
-                try:
-                    import config
-                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
-                except ImportError:
-                    rx_log_enabled = True
+                # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
-                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
+                if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
-                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
-                elif not rx_log_enabled:
-                    info_print_mc("ℹ️  RX_LOG_DATA désactivé")
-                    
-                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
-                elif not hasattr(EventType, 'RX_LOG_DATA'):
-                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                else:
+                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -1665,6 +1630,27 @@ class MeshCoreCLIWrapper:
             else:
                 channel_index = 0
             
+            # Extract path_len from CHANNEL_MSG_RECV payload (number of hops)
+            # This is provided directly by the meshcore library in the event payload.
+            # Use `or 0` to handle the case where path_len is present but set to None.
+            if isinstance(payload, dict):
+                channel_path_len = payload.get('path_len') or 0
+            else:
+                channel_path_len = getattr(payload, 'path_len', None) or 0
+            
+            # Get SNR/RSSI from latest_rx_log (channel echo correlation)
+            # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet.
+            # Only use if the RX_LOG was recent (within 2 seconds).
+            echo_snr = 0.0
+            echo_rssi = 0
+            if self.latest_rx_log and (time.time() - self.latest_rx_log.get('timestamp', 0)) < 2.0:
+                echo_snr = self.latest_rx_log.get('snr', 0.0)
+                echo_rssi = self.latest_rx_log.get('rssi', 0)
+                # Use decoder path_len if CHANNEL_MSG_RECV didn't provide one
+                if not channel_path_len:
+                    channel_path_len = self.latest_rx_log.get('path_len', 0)
+                debug_print_mc(f"📡 [CHANNEL-ECHO] SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
+            
             # Extract message text
             if isinstance(payload, dict):
                 message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
@@ -1718,18 +1704,25 @@ class MeshCoreCLIWrapper:
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
+            if echo_snr or echo_rssi:
+                debug_print_mc(f"   📶 SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
             
             # Convert to bot-compatible packet format
             # CRITICAL: Set to_id=0xFFFFFFFF so message is recognized as broadcast by message_router.py
             packet = {
                 'from': sender_id,
                 'to': 0xFFFFFFFF,  # Broadcast address - critical for routing
+                'snr': echo_snr,           # From channel echo (RX_LOG correlation)
+                'rssi': echo_rssi,         # From channel echo (RX_LOG correlation)
+                'hopLimit': 0,             # Received: 0 hops remaining
+                'hopStart': channel_path_len,  # Total hops taken (from CHANNEL_MSG_RECV or RX_LOG)
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': message_text.encode('utf-8')
                 },
                 'channel': channel_index,
-                '_meshcore_dm': False  # NOT a DM - this is a public channel message
+                '_meshcore_dm': False,             # NOT a DM - this is a public channel message
+                '_meshcore_path_len': channel_path_len  # Path length for rx_history
             }
             
             decoded = packet['decoded']
@@ -1780,6 +1773,16 @@ class MeshCoreCLIWrapper:
             
             # DEBUG: Log SNR/RSSI extraction
             debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
+            
+            # Store latest RF signal data for channel echo correlation
+            # CHANNEL_MSG_RECV events arrive just after RX_LOG_DATA for the same packet;
+            # storing here lets _on_channel_message attach real SNR/RSSI to channel messages.
+            self.latest_rx_log = {
+                'snr': snr,
+                'rssi': rssi,
+                'timestamp': time.time(),
+                'path_len': 0  # Will be updated below if decoder is available
+            }
             
             # Calculate hex data length for display
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
@@ -1855,6 +1858,9 @@ class MeshCoreCLIWrapper:
                     
                     # Add hop count (always show, even if 0, for routing visibility)
                     info_parts.append(f"Hops: {packet.path_length}")
+                    
+                    # Update path_len in latest_rx_log for channel echo correlation
+                    self.latest_rx_log['path_len'] = packet.path_length if packet.path_length else 0
                     
                     # Add actual routing path if available (shows which nodes the packet traversed)
                     if hasattr(packet, 'path') and packet.path:
