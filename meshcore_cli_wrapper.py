@@ -1795,8 +1795,9 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
-            # DEBUG: Log SNR/RSSI extraction
-            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
+            # Compute size and header upfront for early-exit check
+            hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
+            header_info = self._parse_meshcore_header(raw_hex)
             
             # Store latest RF signal data for channel echo correlation
             # CHANNEL_MSG_RECV events arrive just after RX_LOG_DATA for the same packet;
@@ -1808,11 +1809,14 @@ class MeshCoreCLIWrapper:
                 'path_len': 0  # Will be updated below if decoder is available
             }
             
-            # Calculate hex data length for display
-            hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
+            # Packets whose header cannot be parsed (too short, malformed, etc.) cannot be
+            # attributed to any node — skip all downstream processing with one compact line.
+            if header_info is None:
+                debug_print_mc(f"⏭️  [RX_LOG] Short/unidentifiable packet ({hex_len}B, SNR:{snr}dB) — likely ACK/routing, skipped")
+                return
             
-            # Parse packet header to get sender/receiver information
-            header_info = self._parse_meshcore_header(raw_hex)
+            # DEBUG: Log SNR/RSSI extraction (identifiable packets only)
+            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
             
             # Build first log line with sender/receiver info if available
             if header_info:
@@ -1829,9 +1833,6 @@ class MeshCoreCLIWrapper:
                 
                 debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - {direction_info}")
                 debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{raw_hex[:40]}...")
-            else:
-                # Fallback to old format if header parsing fails
-                debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
@@ -2298,16 +2299,11 @@ class MeshCoreCLIWrapper:
                         bot_packet['_meshcore_path'] = decoded_packet.path
                         debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
                     
-                    # Skip unidentifiable packets (sender_id = 0xFFFFFFFF means header
-                    # could not be parsed — typically too-short routing/ACK packets)
-                    if sender_id == 0xFFFFFFFF:
-                        debug_print_mc(f"⏭️  [RX_LOG] Skipping unidentifiable packet (sender=0xffffffff, {len(payload_bytes) if payload_bytes else 0}B)")
-                    else:
-                        # Forward to bot callback
-                        debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
-                        debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
-                        self.message_callback(bot_packet, None)
-                        debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
+                    # Forward to bot callback
+                    debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
+                    debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
+                    self.message_callback(bot_packet, None)
+                    debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
                 except Exception as forward_error:
                     debug_print_mc(f"⚠️ [RX_LOG] Error forwarding packet: {forward_error}")
