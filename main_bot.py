@@ -2068,10 +2068,9 @@ class MeshBot:
         # Nettoyage initial
         gc.collect()
         
-        # Test llama
+        # Test llama (optionnel - le bot démarre même si llama.cpp est indisponible)
         if not self.llama_client.test_connection():
-            error_print("llama.cpp requis")
-            return False
+            info_print("⚠️ llama.cpp non disponible - /bot désactivé jusqu'à reconnexion")
        
         try:
             # ========================================
