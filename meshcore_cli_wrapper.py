@@ -132,7 +132,7 @@ def _regroup_path_bytes(path_items):
     """
     Fix for meshcoredecoder library bug: it returns packet.path as a flat list of
     individual bytes (each 0-255) instead of a list of 4-byte little-endian uint32
-    node IDs, causing hop counts like 143 for a packet that should show ~35 hops.
+    node IDs, causing hop counts like 52 for a packet that should show ~13 hops.
 
     Detection: if every item in path_items is an integer that fits in a single byte
     (value 0-255), we treat the whole list as raw bytes and regroup them as 4-byte
@@ -142,15 +142,18 @@ def _regroup_path_bytes(path_items):
     If the path already contains values > 255 (i.e. real uint32 node IDs), it is
     returned unchanged.
 
-    Returns (corrected_hop_count: int, regrouped_path: list[int]).
+    Returns (corrected_hop_count: int, regrouped_path: list[int], was_regrouped: bool).
+    The `was_regrouped` flag is True whenever the flat-byte-list bug was detected and
+    fixed; callers must use `corrected_hop_count` instead of the raw `path_length`
+    field from the decoder in that case.
     """
     if not path_items:
-        return 0, []
+        return 0, [], False
 
     all_bytes = all(isinstance(n, int) and 0 <= n <= 255 for n in path_items)
     if not all_bytes:
         # Values look like real uint32 node IDs already — nothing to fix.
-        return len(path_items), list(path_items)
+        return len(path_items), list(path_items), False
 
     # Regroup as 4-byte little-endian uint32 node IDs.
     # Use integer division to determine how many complete 4-byte groups exist,
@@ -161,7 +164,7 @@ def _regroup_path_bytes(path_items):
         b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
         node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
 
-    return len(node_ids), node_ids
+    return len(node_ids), node_ids, True
 
 
 class MeshCoreCLIWrapper:
@@ -2301,10 +2304,11 @@ class MeshCoreCLIWrapper:
                     # Fix meshcoredecoder library bug: path may be a flat byte list
                     # instead of a list of 4-byte little-endian node IDs.
                     raw_path = packet.path if hasattr(packet, 'path') and packet.path else []
-                    corrected_hops, corrected_path = _regroup_path_bytes(raw_path)
-                    # If decoder path_length looks wrong (>64, MeshCore's hard limit)
-                    # use our regrouped count instead.
-                    display_hops = corrected_hops if packet.path_length > 64 else packet.path_length
+                    corrected_hops, corrected_path, path_was_regrouped = _regroup_path_bytes(raw_path)
+                    # Use regrouped count when the byte-list bug was detected (was_regrouped),
+                    # OR when path_length obviously overflows (>64, MeshCore's hard limit).
+                    # Both cases mean packet.path_length is a byte count, not a hop count.
+                    display_hops = corrected_hops if (path_was_regrouped or packet.path_length > 64) else packet.path_length
 
                     # Add hop count (always show, even if 0, for routing visibility)
                     info_parts.append(f"Hops: {display_hops}")
@@ -2700,9 +2704,9 @@ class MeshCoreCLIWrapper:
                     
                     # Apply the same byte-list fix for hopStart and path forwarding
                     fwd_raw_path = decoded_packet.path if hasattr(decoded_packet, 'path') and decoded_packet.path else []
-                    fwd_hops, fwd_path = _regroup_path_bytes(fwd_raw_path)
+                    fwd_hops, fwd_path, fwd_was_regrouped = _regroup_path_bytes(fwd_raw_path)
                     raw_pl = decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0
-                    hop_start = fwd_hops if raw_pl > 64 else raw_pl
+                    hop_start = fwd_hops if (fwd_was_regrouped or raw_pl > 64) else raw_pl
 
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
@@ -2728,7 +2732,17 @@ class MeshCoreCLIWrapper:
                     if portnum == 'ECDH_DM':
                         src = self._fmt_node(sender_id)
                         dst = self._fmt_node(receiver_id)
-                        debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} stored for stats")
+                        # Look up sender's public key for correlation with known contacts
+                        pubkey_str = "unknown"
+                        try:
+                            if self.node_manager:
+                                node_data = self.node_manager.node_names.get(sender_id, {})
+                                pk = node_data.get('publicKey') if isinstance(node_data, dict) else None
+                                if pk:
+                                    pubkey_str = pk.hex() if isinstance(pk, (bytes, bytearray)) else str(pk)
+                        except Exception:
+                            pass
+                        debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} | PK:{pubkey_str}")
                     else:
                         debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     

@@ -1233,6 +1233,26 @@ class TrafficMonitor:
                     if 'neighborinfo' in decoded:
                         neighbors = decoded['neighborinfo'].get('neighbors', [])
                         content_info.append(f"Neighbors:{len(neighbors)}")
+
+                # ECDH_DM — show sender's public key if known (helps correlate
+                # foreign DMs with known contacts in the area)
+                elif packet_type == 'ECDH_DM':
+                    pubkey_hex = None
+                    try:
+                        if self.node_manager:
+                            node_data = self.node_manager.node_names.get(from_id, {})
+                            pk = node_data.get('publicKey') if isinstance(node_data, dict) else None
+                            if pk:
+                                if isinstance(pk, (bytes, bytearray)):
+                                    pubkey_hex = pk.hex()
+                                elif isinstance(pk, str):
+                                    pubkey_hex = pk
+                    except Exception:
+                        pass
+                    if pubkey_hex:
+                        content_info.append(f"PK:{pubkey_hex}")
+                    else:
+                        content_info.append("PK:unknown")
             
             # Build line 2
             line2_parts = []
