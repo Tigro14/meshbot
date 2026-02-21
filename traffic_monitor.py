@@ -924,15 +924,20 @@ class TrafficMonitor:
                         alt = position.get('altitude')
 
                         if lat is not None and lon is not None:
-                            # Ajouter la position au packet_entry pour la sauvegarde DB
-                            packet_entry['position'] = {
-                                'latitude': lat,
-                                'longitude': lon,
-                                'altitude': alt
-                            }
-                            # Mise à jour du node_manager (en mémoire)
-                            self.node_manager.update_node_position(from_id, lat, lon, alt)
-                            debug_print_mt(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
+                            # Ignorer les positions proches de (0,0) - nœud sans fix GPS
+                            # Seuil de 0.0001° ~ 11m, couvre les valeurs parasites type 0.000005°
+                            if abs(lat) < 0.0001 and abs(lon) < 0.0001:
+                                debug_print_mt(f"⚠️ Position invalide ignorée pour {from_id:08x}: Lat:{lat:.6f}° Lon:{lon:.6f}° (pas de fix GPS)")
+                            else:
+                                # Ajouter la position au packet_entry pour la sauvegarde DB
+                                packet_entry['position'] = {
+                                    'latitude': lat,
+                                    'longitude': lon,
+                                    'altitude': alt
+                                }
+                                # Mise à jour du node_manager (en mémoire)
+                                self.node_manager.update_node_position(from_id, lat, lon, alt)
+                                debug_print_mt(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             self.all_packets.append(packet_entry)
             
@@ -1175,8 +1180,8 @@ class TrafficMonitor:
                 elif packet_type == 'POSITION_APP':
                     if 'position' in decoded:
                         pos = decoded['position']
-                        lat = pos.get('latitude', 0) / 1e7 if 'latitude' in pos else pos.get('latitudeI', 0) / 1e7
-                        lon = pos.get('longitude', 0) / 1e7 if 'longitude' in pos else pos.get('longitudeI', 0) / 1e7
+                        lat = pos.get('latitude', pos.get('latitudeI', 0) / 1e7)
+                        lon = pos.get('longitude', pos.get('longitudeI', 0) / 1e7)
                         alt = pos.get('altitude', 'N/A')
                         content_info.append(f"Lat:{lat:.6f}°")
                         content_info.append(f"Lon:{lon:.6f}°")
