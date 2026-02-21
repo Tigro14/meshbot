@@ -128,6 +128,42 @@ def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
         return None
 
 
+def _regroup_path_bytes(path_items):
+    """
+    Fix for meshcoredecoder library bug: it returns packet.path as a flat list of
+    individual bytes (each 0-255) instead of a list of 4-byte little-endian uint32
+    node IDs, causing hop counts like 143 for a packet that should show ~35 hops.
+
+    Detection: if every item in path_items is an integer that fits in a single byte
+    (value 0-255), we treat the whole list as raw bytes and regroup them as 4-byte
+    little-endian uint32 node IDs.  Any trailing bytes that do not form a complete
+    4-byte group are discarded.
+
+    If the path already contains values > 255 (i.e. real uint32 node IDs), it is
+    returned unchanged.
+
+    Returns (corrected_hop_count: int, regrouped_path: list[int]).
+    """
+    if not path_items:
+        return 0, []
+
+    all_bytes = all(isinstance(n, int) and 0 <= n <= 255 for n in path_items)
+    if not all_bytes:
+        # Values look like real uint32 node IDs already — nothing to fix.
+        return len(path_items), list(path_items)
+
+    # Regroup as 4-byte little-endian uint32 node IDs.
+    # Use integer division to determine how many complete 4-byte groups exist,
+    # avoiding accidental out-of-range access for odd-length lists.
+    node_ids = []
+    complete_groups = len(path_items) // 4
+    for i in range(0, complete_groups * 4, 4):
+        b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
+        node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
+
+    return len(node_ids), node_ids
+
+
 class MeshCoreCLIWrapper:
     """
     Wrapper pour meshcore-cli library
@@ -1884,22 +1920,29 @@ class MeshCoreCLIWrapper:
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
                     
+                    # Fix meshcoredecoder library bug: path may be a flat byte list
+                    # instead of a list of 4-byte little-endian node IDs.
+                    raw_path = packet.path if hasattr(packet, 'path') and packet.path else []
+                    corrected_hops, corrected_path = _regroup_path_bytes(raw_path)
+                    # If decoder path_length looks wrong (>64, MeshCore's hard limit)
+                    # use our regrouped count instead.
+                    display_hops = corrected_hops if packet.path_length > 64 else packet.path_length
+
                     # Add hop count (always show, even if 0, for routing visibility)
-                    info_parts.append(f"Hops: {packet.path_length}")
+                    info_parts.append(f"Hops: {display_hops}")
                     
                     # Update path_len in latest_rx_log for channel echo correlation
-                    self.latest_rx_log['path_len'] = packet.path_length if packet.path_length else 0
+                    self.latest_rx_log['path_len'] = display_hops if display_hops else 0
                     
                     # Add actual routing path if available (shows which nodes the packet traversed)
-                    if hasattr(packet, 'path') and packet.path:
-                        # Truncate long paths (Path-type packets can have 100+ entries)
-                        path_items = packet.path
+                    if corrected_path:
+                        # Truncate long paths (show first 5 hops + count of remaining)
                         format_node_id = lambda n: f"0x{n:08x}" if isinstance(n, int) else str(n)
-                        if len(path_items) > 5:
-                            remaining_count = len(path_items) - 5
-                            path_str = ' → '.join(format_node_id(n) for n in path_items[:5]) + f' … (+{remaining_count} more)'
+                        if len(corrected_path) > 5:
+                            remaining_count = len(corrected_path) - 5
+                            path_str = ' → '.join(format_node_id(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
                         else:
-                            path_str = ' → '.join(format_node_id(n) for n in path_items)
+                            path_str = ' → '.join(format_node_id(n) for n in corrected_path)
                         info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
@@ -2254,6 +2297,12 @@ class MeshCoreCLIWrapper:
                     if portnum == 'TEXT_MESSAGE_APP' and packet_text is not None:
                         decoded_dict['text'] = packet_text
                     
+                    # Apply the same byte-list fix for hopStart and path forwarding
+                    fwd_raw_path = decoded_packet.path if hasattr(decoded_packet, 'path') and decoded_packet.path else []
+                    fwd_hops, fwd_path = _regroup_path_bytes(fwd_raw_path)
+                    raw_pl = decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0
+                    hop_start = fwd_hops if raw_pl > 64 else raw_pl
+
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
                         'to': receiver_id,  # Use header receiver (CORRECT!)
@@ -2262,7 +2311,7 @@ class MeshCoreCLIWrapper:
                         'rssi': rssi,
                         'snr': snr,
                         'hopLimit': 0,  # Packet received with 0 hops remaining
-                        'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'hopStart': hop_start,
                         'channel': 0,
                         'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
@@ -2270,8 +2319,8 @@ class MeshCoreCLIWrapper:
                     }
                     
                     # Add routing path if available (for hop visualization)
-                    if hasattr(decoded_packet, 'path') and decoded_packet.path:
-                        bot_packet['_meshcore_path'] = decoded_packet.path
+                    if fwd_path:
+                        bot_packet['_meshcore_path'] = fwd_path
                     
                     # Forward to bot callback
                     self.message_callback(bot_packet, None)
