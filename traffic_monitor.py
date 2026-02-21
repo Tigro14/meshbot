@@ -937,7 +937,6 @@ class TrafficMonitor:
                                 }
                                 # Mise à jour du node_manager (en mémoire)
                                 self.node_manager.update_node_position(from_id, lat, lon, alt)
-                                debug_print_mt(f"📍 Position capturée: {from_id:08x} -> {lat:.5f}, {lon:.5f}")
 
             self.all_packets.append(packet_entry)
             
