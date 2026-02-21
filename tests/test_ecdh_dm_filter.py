@@ -159,6 +159,77 @@ def test_safetynet_to_id_zero_not_reclassified():
 
 
 # ---------------------------------------------------------------------------
+# Tests – _fmt_node compact label helper
+# ---------------------------------------------------------------------------
+
+def fmt_node(node_id, known_names=None):
+    """
+    Mirror the _fmt_node() method added to MeshCoreCLIWrapper.
+    known_names: dict {node_id: name} simulating node_manager state.
+    """
+    # Simulate _get_node_name: returns "0x{node_id:08x}" for unknown nodes
+    if known_names and node_id in known_names:
+        name = known_names[node_id]
+    else:
+        name = f"0x{node_id:08x}"  # fallback used by _get_node_name
+
+    if name.startswith("0x") or name == "Unknown":
+        return f"{node_id & 0xFFFFFF:06x}"
+    return name[:12]
+
+
+def compact_log_label(node_id, node_name):
+    """
+    Mirror the inline compact label used in the traffic_monitor safety-net.
+    node_name: result of node_manager.get_node_name(node_id)
+    """
+    if node_name.startswith('Node-'):
+        return f"{node_id & 0xFFFFFF:06x}"
+    return node_name
+
+
+def test_fmt_node_unknown_returns_last6hex():
+    print("\n🧪 Test: _fmt_node unknown node → last 6 hex chars")
+    label = fmt_node(0x56e6ca82)
+    assert label == 'e6ca82', f"Expected 'e6ca82', got '{label}'"
+    print(f"  ✅ 0x56e6ca82 → '{label}'")
+    return True
+
+
+def test_fmt_node_known_short_name():
+    print("\n🧪 Test: _fmt_node known node → short name")
+    label = fmt_node(0x02ce115f, known_names={0x02ce115f: 'tigro'})
+    assert label == 'tigro', f"Expected 'tigro', got '{label}'"
+    print(f"  ✅ 0x02ce115f (known) → '{label}'")
+    return True
+
+
+def test_fmt_node_long_name_truncated():
+    print("\n🧪 Test: _fmt_node long real name is truncated to 12 chars")
+    label = fmt_node(0x12345678, known_names={0x12345678: 'tigroPVCavityA'})
+    assert len(label) <= 12, f"Name too long: '{label}'"
+    assert label == 'tigroPVCavit', f"Expected 'tigroPVCavit', got '{label}'"
+    print(f"  ✅ 'tigroPVCavityA' → '{label}' (truncated)")
+    return True
+
+
+def test_compact_label_node_dash_fallback():
+    print("\n🧪 Test: compact_log_label 'Node-XXXXXXXX' → last 6 hex")
+    label = compact_log_label(0xe6ca825f, 'Node-e6ca825f')
+    assert label == 'ca825f', f"Expected 'ca825f', got '{label}'"
+    print(f"  ✅ 'Node-e6ca825f' → '{label}'")
+    return True
+
+
+def test_compact_label_real_name_kept():
+    print("\n🧪 Test: compact_log_label real name → kept as-is")
+    label = compact_log_label(0x02ce115f, 'tigro')
+    assert label == 'tigro', f"Expected 'tigro', got '{label}'"
+    print(f"  ✅ 'tigro' → '{label}'")
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -168,16 +239,21 @@ def run_all_tests():
     print("=" * 60)
 
     results = [
-        ("type=12 directed → ECDH_DM",             test_type12_directed_is_ecdh_dm()),
-        ("type=13 directed → ECDH_DM",             test_type13_directed_is_ecdh_dm()),
-        ("type=15 directed → ECDH_DM",             test_type15_directed_is_ecdh_dm()),
-        ("type=15 broadcast → PSK path",           test_type15_broadcast_tries_psk()),
-        ("type=1 unaffected",                       test_type1_text_message_unaffected()),
-        ("safety-net: [ENCRYPTED] directed MC",    test_safetynet_reclassifies_encrypted_directed()),
-        ("safety-net: broadcast unchanged",         test_safetynet_keeps_broadcast_encrypted()),
-        ("safety-net: Meshtastic unchanged",        test_safetynet_keeps_meshtastic_encrypted()),
-        ("safety-net: clear-text unchanged",        test_safetynet_keeps_clear_messages()),
-        ("safety-net: to_id=0 unchanged",          test_safetynet_to_id_zero_not_reclassified()),
+        ("type=12 directed → ECDH_DM",                  test_type12_directed_is_ecdh_dm()),
+        ("type=13 directed → ECDH_DM",                  test_type13_directed_is_ecdh_dm()),
+        ("type=15 directed → ECDH_DM",                  test_type15_directed_is_ecdh_dm()),
+        ("type=15 broadcast → PSK path",                test_type15_broadcast_tries_psk()),
+        ("type=1 unaffected",                            test_type1_text_message_unaffected()),
+        ("safety-net: [ENCRYPTED] directed MC",         test_safetynet_reclassifies_encrypted_directed()),
+        ("safety-net: broadcast unchanged",              test_safetynet_keeps_broadcast_encrypted()),
+        ("safety-net: Meshtastic unchanged",             test_safetynet_keeps_meshtastic_encrypted()),
+        ("safety-net: clear-text unchanged",             test_safetynet_keeps_clear_messages()),
+        ("safety-net: to_id=0 unchanged",               test_safetynet_to_id_zero_not_reclassified()),
+        ("_fmt_node: unknown → last-6-hex",              test_fmt_node_unknown_returns_last6hex()),
+        ("_fmt_node: known short name",                  test_fmt_node_known_short_name()),
+        ("_fmt_node: long name truncated",               test_fmt_node_long_name_truncated()),
+        ("compact_label: Node-XXXX → last-6-hex",       test_compact_label_node_dash_fallback()),
+        ("compact_label: real name kept",                test_compact_label_real_name_kept()),
     ]
 
     print("\n" + "=" * 60)

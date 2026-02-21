@@ -846,7 +846,10 @@ class TrafficMonitor:
                     packet_type == 'TEXT_MESSAGE_APP' and
                     message_text == '[ENCRYPTED]' and
                     to_id not in (0xFFFFFFFF, 0)):
-                debug_print_mc(f"🔒 Safety-net ECDH_DM: {sender_name}→0x{to_id:08x}")
+                dst_name = self.node_manager.get_node_name(to_id)
+                src_c = sender_name if not sender_name.startswith('Node-') else f"{from_id & 0xFFFFFF:06x}"
+                dst_c = dst_name   if not dst_name.startswith('Node-')  else f"{to_id & 0xFFFFFF:06x}"
+                debug_print_mc(f"🔒 [ECDH_DM] {src_c}→{dst_c}")
                 packet_type = 'ECDH_DM'
                 message_text = '[FOREIGN_DM]'
             

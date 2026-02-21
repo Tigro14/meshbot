@@ -1755,7 +1755,19 @@ class MeshCoreCLIWrapper:
             return f"0x{node_id:08x}"
         except Exception:
             return f"0x{node_id:08x}"
-    
+
+    def _fmt_node(self, node_id):
+        """
+        Return a compact node label for log output.
+        Uses shortName/longName if known, otherwise last 6 hex chars of the ID.
+        """
+        name = self._get_node_name(node_id)
+        # _get_node_name returns "0x{node_id:08x}" for unknown nodes
+        if name.startswith("0x") or name == "Unknown":
+            return f"{node_id & 0xFFFFFF:06x}"
+        # Truncate long real names to keep the log line compact
+        return name[:12]
+
     def _on_channel_message(self, event):
         """
         Callback pour les messages de canal public (CHANNEL_MSG_RECV)
@@ -2455,7 +2467,9 @@ class MeshCoreCLIWrapper:
                                             # Label it as ECDH_DM so statistics can be tracked,
                                             # but skip the pointless decryption attempt.
                                             if receiver_id != 0xFFFFFFFF:
-                                                debug_print_mc(f"🔒 [DECRYPT] type={payload_type_value} ECDH DM 0x{sender_id:08x}→0x{receiver_id:08x} (foreign DM - storing as ECDH_DM)")
+                                                src = self._fmt_node(sender_id)
+                                                dst = self._fmt_node(receiver_id)
+                                                debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} (type={payload_type_value})")
                                                 portnum = 'ECDH_DM'
                                                 packet_text = '[FOREIGN_DM]'
                                             # Try to decrypt with MeshCore Public channel PSK
@@ -2626,7 +2640,9 @@ class MeshCoreCLIWrapper:
                     # Forward to bot callback
                     self.message_callback(bot_packet, None)
                     if portnum == 'ECDH_DM':
-                        debug_print_mc(f"🔒 [RX_LOG] ECDH_DM logged for stats: 0x{sender_id:08x}→0x{receiver_id:08x}")
+                        src = self._fmt_node(sender_id)
+                        dst = self._fmt_node(receiver_id)
+                        debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} stored for stats")
                     else:
                         debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
