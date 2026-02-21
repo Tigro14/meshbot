@@ -892,7 +892,7 @@ class RemoteNodesClient:
                 return "\n".join(lines)
             else:
                 # Mode paginé normal
-                nodes_per_page = 7
+                nodes_per_page = 5
                 total_contacts = len(contacts)
                 total_pages = (total_contacts + nodes_per_page - 1) // nodes_per_page
                 
