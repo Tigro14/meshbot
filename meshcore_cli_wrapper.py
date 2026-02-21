@@ -2538,17 +2538,35 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value == 7:
                                             portnum = 'TELEMETRY_APP'
                                         elif payload_type_value in [12, 13, 15]:
-                                            # Types 12, 13, 15 are encrypted message wrappers
-                                            # If receiver is not broadcast, this is a private ECDH DM
-                                            # between other nodes - PSK decryption will always fail.
-                                            # Label it as ECDH_DM so statistics can be tracked,
-                                            # but skip the pointless decryption attempt.
+                                            # Types 12, 13, 15 are encrypted message wrappers.
+                                            # Non-broadcast receiver means it is a directed (DM) packet.
+                                            # Two very different cases:
+                                            #   A) Real ECDH DM: receiver is OUR node, OR at least
+                                            #      one endpoint is a known contact in our mesh.
+                                            #   B) Relay noise: BOTH sender AND receiver are unknown.
+                                            #      The same sliding-window byte pattern appears in
+                                            #      both IDs — they are derived from consecutive raw
+                                            #      bytes in another network's relay stream, not real
+                                            #      MeshCore node IDs.  Classify as OTHER_CHANNEL so
+                                            #      they don't pollute ECDH_DM statistics.
                                             if receiver_id != 0xFFFFFFFF:
+                                                local_id = self.localNode.nodeNum if self.localNode else None
+                                                nm = self.node_manager
+                                                is_to_us      = (receiver_id == local_id)
+                                                sender_known  = bool(nm and sender_id  in nm.node_names)
+                                                receiver_known = is_to_us or bool(nm and receiver_id in nm.node_names)
                                                 src = self._fmt_node(sender_id)
                                                 dst = self._fmt_node(receiver_id)
-                                                debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} (type={payload_type_value})")
-                                                portnum = 'ECDH_DM'
-                                                packet_text = '[FOREIGN_DM]'
+                                                if not sender_known and not receiver_known:
+                                                    # Both endpoints completely unknown →
+                                                    # directed relay noise from another network
+                                                    debug_print_mc(f"📻 [OTHER_CH] {src}→{dst} (type={payload_type_value}) directed foreign noise")
+                                                    portnum = 'OTHER_CHANNEL'
+                                                    packet_text = '[UNKNOWN_CHANNEL]'
+                                                else:
+                                                    debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} (type={payload_type_value})")
+                                                    portnum = 'ECDH_DM'
+                                                    packet_text = '[FOREIGN_DM]'
                                             # Try to decrypt with MeshCore Public channel PSK
                                             # (only for broadcast packets - directed ones are ECDH, already handled above)
                                             # Try decryption if crypto is available
