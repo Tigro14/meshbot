@@ -53,6 +53,7 @@ class TrafficDBBrowser:
         self.sort_order = 'desc'  # 'desc' (newest first) or 'asc' (oldest first)
         self.detail_mode = False
         self.detail_scroll = 0
+        self._node_name_cache = {}  # Cache for node name lookups
 
     def connect_db(self):
         """Connexion à la base de données"""
@@ -288,6 +289,61 @@ class TrafficDBBrowser:
             return text[:width-3] + '...'
         return text
 
+    def get_node_display_name(self, from_id, sender_name):
+        """Get the best display name for a node.
+
+        Falls back to shortName/name from meshtastic_nodes or meshcore_contacts
+        when sender_name is empty, 'Unknown', or a hex fallback (Node-XXXXXXXX).
+        Results are cached to avoid repeated DB lookups during a single display pass.
+        """
+        # Use sender_name as-is if it looks like a real name
+        if sender_name and sender_name != 'Unknown' and not sender_name.startswith('Node-'):
+            return sender_name
+
+        if from_id is None:
+            return sender_name or 'Unknown'
+
+        # Check cache
+        if from_id in self._node_name_cache:
+            cached = self._node_name_cache[from_id]
+            return cached if cached else (sender_name or 'Unknown')
+
+        # Try meshtastic_nodes first
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                'SELECT name, shortName FROM meshtastic_nodes WHERE node_id = ?',
+                (from_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                best = row['name'] or row['shortName']
+                if best:
+                    self._node_name_cache[from_id] = best
+                    return best
+        except sqlite3.OperationalError:
+            pass
+
+        # Then try meshcore_contacts
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                'SELECT name, shortName FROM meshcore_contacts WHERE node_id = ?',
+                (from_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                best = row['name'] or row['shortName']
+                if best:
+                    self._node_name_cache[from_id] = best
+                    return best
+        except sqlite3.OperationalError:
+            pass
+
+        result = sender_name or 'Unknown'
+        self._node_name_cache[from_id] = result
+        return result
+
     def draw_header(self, stdscr, height, width):
         """Dessine l'en-tête"""
         # Indicateurs de vue avec icônes et descriptions
@@ -387,7 +443,7 @@ class TrafficDBBrowser:
     def draw_packet_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de paquet"""
         ts = self.format_timestamp(item.get('timestamp'))
-        name = (item.get('sender_name') or 'Unknown')[:15]
+        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
         ptype = (item.get('packet_type') or 'N/A')[:20]
 
         # Indicateur de chiffrement
@@ -406,7 +462,7 @@ class TrafficDBBrowser:
     def draw_message_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de message"""
         ts = self.format_timestamp(item.get('timestamp'))
-        name = (item.get('sender_name') or 'Unknown')[:15]
+        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
         msg = self.truncate(item.get('message') or '', width - 36)
 
         line = f"{ts} {name:15s} {msg}"
@@ -821,7 +877,7 @@ class TrafficDBBrowser:
                     for i, item in enumerate(self.items, 1):
                         ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
                         f.write(f"[{i}/{len(self.items)}] {ts}\n")
-                        f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
+                        f.write(f"  From: {self.get_node_display_name(item.get('from_id'), item.get('sender_name'))} ({item.get('from_id')})\n")
                         f.write(f"  To: {item.get('to_id')}\n")
                         f.write(f"  Type: {item.get('packet_type')}\n")
                         if item.get('is_encrypted'):
@@ -838,7 +894,34 @@ class TrafficDBBrowser:
                     for i, item in enumerate(self.items, 1):
                         ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
                         f.write(f"[{i}/{len(self.items)}] {ts}\n")
-                        f.write(f"  From: {item.get('sender_name') or 'Unknown'} ({item.get('from_id')})\n")
+                        f.write(f"  From: {self.get_node_display_name(item.get('from_id'), item.get('sender_name'))} ({item.get('from_id')})\n")
+                        f.write(f"  Message: {item.get('message') or ''}\n")
+                        if item.get('rssi') is not None:
+                            f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
+                        f.write("\n")
+
+                elif self.current_view == 'meshcore_packets':
+                    for i, item in enumerate(self.items, 1):
+                        ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
+                        f.write(f"[{i}/{len(self.items)}] {ts}\n")
+                        f.write(f"  From: {self.get_node_display_name(item.get('from_id'), item.get('sender_name'))} ({item.get('from_id')})\n")
+                        f.write(f"  To: {item.get('to_id')}\n")
+                        f.write(f"  Type: {item.get('packet_type')}\n")
+                        if item.get('is_encrypted'):
+                            f.write(f"  🔒 ENCRYPTED\n")
+                        if item.get('message'):
+                            f.write(f"  Message: {item.get('message')}\n")
+                        if item.get('rssi') is not None:
+                            f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
+                        if item.get('hops') is not None:
+                            f.write(f"  Hops: {item.get('hops')}\n")
+                        f.write("\n")
+
+                elif self.current_view == 'meshcore_messages':
+                    for i, item in enumerate(self.items, 1):
+                        ts = datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else 'N/A'
+                        f.write(f"[{i}/{len(self.items)}] {ts}\n")
+                        f.write(f"  From: {self.get_node_display_name(item.get('from_id'), item.get('sender_name'))} ({item.get('from_id')})\n")
                         f.write(f"  Message: {item.get('message') or ''}\n")
                         if item.get('rssi') is not None:
                             f.write(f"  Signal: RSSI={item.get('rssi')} dBm, SNR={item.get('snr')} dB\n")
@@ -900,7 +983,7 @@ class TrafficDBBrowser:
                             'timestamp': item.get('timestamp'),
                             'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
                             'from_id': item.get('from_id'),
-                            'sender_name': item.get('sender_name'),
+                            'sender_name': self.get_node_display_name(item.get('from_id'), item.get('sender_name')),
                             'to_id': item.get('to_id'),
                             'packet_type': item.get('packet_type'),
                             'is_encrypted': 'Yes' if item.get('is_encrypted') else 'No',
@@ -922,7 +1005,47 @@ class TrafficDBBrowser:
                             'timestamp': item.get('timestamp'),
                             'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
                             'from_id': item.get('from_id'),
-                            'sender_name': item.get('sender_name'),
+                            'sender_name': self.get_node_display_name(item.get('from_id'), item.get('sender_name')),
+                            'message': item.get('message') or '',
+                            'rssi': item.get('rssi') or '',
+                            'snr': item.get('snr') or ''
+                        }
+                        writer.writerow(row)
+
+                elif self.current_view == 'meshcore_packets':
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'to_id',
+                                 'packet_type', 'is_encrypted', 'message', 'rssi', 'snr', 'hops', 'size']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for item in self.items:
+                        row = {
+                            'timestamp': item.get('timestamp'),
+                            'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
+                            'from_id': item.get('from_id'),
+                            'sender_name': self.get_node_display_name(item.get('from_id'), item.get('sender_name')),
+                            'to_id': item.get('to_id'),
+                            'packet_type': item.get('packet_type'),
+                            'is_encrypted': 'Yes' if item.get('is_encrypted') else 'No',
+                            'message': item.get('message') or '',
+                            'rssi': item.get('rssi') or '',
+                            'snr': item.get('snr') or '',
+                            'hops': item.get('hops') or '',
+                            'size': item.get('size') or ''
+                        }
+                        writer.writerow(row)
+
+                elif self.current_view == 'meshcore_messages':
+                    fieldnames = ['timestamp', 'datetime', 'from_id', 'sender_name', 'message', 'rssi', 'snr']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for item in self.items:
+                        row = {
+                            'timestamp': item.get('timestamp'),
+                            'datetime': datetime.fromtimestamp(item.get('timestamp')).strftime('%Y-%m-%d %H:%M:%S') if item.get('timestamp') else '',
+                            'from_id': item.get('from_id'),
+                            'sender_name': self.get_node_display_name(item.get('from_id'), item.get('sender_name')),
                             'message': item.get('message') or '',
                             'rssi': item.get('rssi') or '',
                             'snr': item.get('snr') or ''
@@ -1003,7 +1126,7 @@ class TrafficDBBrowser:
                 if self.current_view == 'packets':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = (item.get('sender_name') or 'Unknown')[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
                         ptype = (item.get('packet_type') or 'N/A')[:20]
                         encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
                         msg = self.truncate(item.get('message') or '', 80)
@@ -1014,7 +1137,27 @@ class TrafficDBBrowser:
                 elif self.current_view == 'messages':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = (item.get('sender_name') or 'Unknown')[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        msg = self.truncate(item.get('message') or '', 80)
+
+                        line = f"{ts} {name:15s} {msg}"
+                        f.write(line + '\n')
+
+                elif self.current_view == 'meshcore_packets':
+                    for item in visible_items:
+                        ts = self.format_timestamp(item.get('timestamp'))
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        ptype = (item.get('packet_type') or 'N/A')[:20]
+                        encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
+                        msg = self.truncate(item.get('message') or '', 80)
+
+                        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+                        f.write(line + '\n')
+
+                elif self.current_view == 'meshcore_messages':
+                    for item in visible_items:
+                        ts = self.format_timestamp(item.get('timestamp'))
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
                         msg = self.truncate(item.get('message') or '', 80)
 
                         line = f"{ts} {name:15s} {msg}"
