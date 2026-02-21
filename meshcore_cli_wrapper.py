@@ -1815,6 +1815,24 @@ class MeshCoreCLIWrapper:
         )
         return word_chars / n >= 0.60
 
+    @staticmethod
+    def _is_local_signal(snr, rssi):
+        """
+        Return True when signal metrics indicate a physically nearby node.
+
+        Thresholds (conservative):
+          SNR  ≥  0 dB  — positive SNR means signal well above noise floor
+          RSSI ≥ -80 dBm — strong enough to be within ~100 m in an urban environment
+
+        Either condition alone is sufficient.  Relay-noise packets from foreign
+        networks are typically received at very low SNR (< -5 dB) and high path
+        loss (RSSI < -100 dBm).
+        """
+        try:
+            return float(snr) >= 0.0 or int(rssi) >= -80
+        except (TypeError, ValueError):
+            return False
+
     def _fmt_node(self, node_id):
         """
         Return a compact node label for log output.
@@ -2540,31 +2558,69 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value in [12, 13, 15]:
                                             # Types 12, 13, 15 are encrypted message wrappers.
                                             # Non-broadcast receiver means it is a directed (DM) packet.
-                                            # Two very different cases:
-                                            #   A) Real ECDH DM: receiver is OUR node, OR at least
-                                            #      one endpoint is a known contact in our mesh.
-                                            #   B) Relay noise: BOTH sender AND receiver are unknown.
-                                            #      The same sliding-window byte pattern appears in
-                                            #      both IDs — they are derived from consecutive raw
-                                            #      bytes in another network's relay stream, not real
-                                            #      MeshCore node IDs.  Classify as OTHER_CHANNEL so
-                                            #      they don't pollute ECDH_DM statistics.
+                                            # Three cases:
+                                            #   A) DM to us: receiver == our local node ID → ECDH_DM
+                                            #   B) DM involving a known contact → ECDH_DM
+                                            #   C) Both endpoints unknown:
+                                            #      C1) Strong local signal (SNR≥0 or RSSI≥-80) →
+                                            #          real local node we haven't met yet → ECDH_DM
+                                            #          (register sender as pending contact)
+                                            #      C2) Weak/distant signal → relay noise from another
+                                            #          network (sliding-window artefact) → OTHER_CHANNEL
                                             if receiver_id != 0xFFFFFFFF:
                                                 local_id = self.localNode.nodeNum if self.localNode else None
                                                 nm = self.node_manager
-                                                is_to_us      = (receiver_id == local_id)
-                                                sender_known  = bool(nm and sender_id  in nm.node_names)
+                                                is_to_us       = (receiver_id == local_id)
+                                                sender_known   = bool(nm and sender_id  in nm.node_names)
                                                 receiver_known = is_to_us or bool(nm and receiver_id in nm.node_names)
                                                 src = self._fmt_node(sender_id)
                                                 dst = self._fmt_node(receiver_id)
+                                                sig_info = f"SNR:{snr}dB RSSI:{rssi}dBm"
+                                                is_local = self._is_local_signal(snr, rssi)
                                                 if not sender_known and not receiver_known:
-                                                    # Both endpoints completely unknown →
-                                                    # directed relay noise from another network
-                                                    debug_print_mc(f"📻 [OTHER_CH] {src}→{dst} (type={payload_type_value}) directed foreign noise")
-                                                    portnum = 'OTHER_CHANNEL'
-                                                    packet_text = '[UNKNOWN_CHANNEL]'
+                                                    if is_local:
+                                                        # Strong signal: real local node we haven't
+                                                        # received an ADVERTISEMENT from yet.
+                                                        # Register sender so future packets can
+                                                        # correlate once the name arrives.
+                                                        debug_print_mc(
+                                                            f"⚡ [LOCAL_DM] {src}→{dst} "
+                                                            f"(type={payload_type_value}) {sig_info} "
+                                                            f"— local node, not yet advertised"
+                                                        )
+                                                        portnum = 'ECDH_DM'
+                                                        packet_text = '[FOREIGN_DM]'
+                                                        # Register as pending contact so node_manager
+                                                        # will fill in the name on next ADVERTISEMENT
+                                                        if nm and sender_id and sender_id not in nm.node_names:
+                                                            nm.node_names[sender_id] = {
+                                                                'name': f"Node-{sender_id:08x}",
+                                                                'shortName': None,
+                                                                'hwModel': None,
+                                                                'lat': None, 'lon': None, 'alt': None,
+                                                                'last_update': None,
+                                                                'pending': True,  # will be updated by ADVERTISEMENT
+                                                            }
+                                                            debug_print_mc(
+                                                                f"📋 [LOCAL_DM] Registered pending "
+                                                                f"contact 0x{sender_id:08x} — "
+                                                                f"awaiting ADVERTISEMENT"
+                                                            )
+                                                    else:
+                                                        # Weak signal: both endpoints unknown and
+                                                        # distant → directed relay noise
+                                                        debug_print_mc(
+                                                            f"📻 [OTHER_CH] {src}→{dst} "
+                                                            f"(type={payload_type_value}) {sig_info} "
+                                                            f"directed foreign noise"
+                                                        )
+                                                        portnum = 'OTHER_CHANNEL'
+                                                        packet_text = '[UNKNOWN_CHANNEL]'
                                                 else:
-                                                    debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} (type={payload_type_value})")
+                                                    debug_print_mc(
+                                                        f"🔒 [ECDH_DM] {src}→{dst} "
+                                                        f"(type={payload_type_value}) {sig_info}"
+                                                    )
                                                     portnum = 'ECDH_DM'
                                                     packet_text = '[FOREIGN_DM]'
                                             # Try to decrypt with MeshCore Public channel PSK
