@@ -65,7 +65,7 @@ class DualInterfaceManager:
         self._last_meshtastic_packet_time = 0
         self._last_meshcore_packet_time = 0
         
-        info_print("🔄 DualInterfaceManager initialized")
+        debug_print("🔄 DualInterfaceManager initialized")
     
     def set_meshtastic_interface(self, interface):
         """
@@ -76,7 +76,7 @@ class DualInterfaceManager:
         """
         with self._meshtastic_lock:
             self.meshtastic_interface = interface
-            info_print(f"✅ Meshtastic interface set: {type(interface).__name__}")
+            debug_print(f"✅ Meshtastic interface set: {type(interface).__name__}")
     
     def set_meshcore_interface(self, interface):
         """
@@ -87,7 +87,7 @@ class DualInterfaceManager:
         """
         with self._meshcore_lock:
             self.meshcore_interface = interface
-            info_print(f"✅ MeshCore interface set: {type(interface).__name__}")
+            debug_print(f"✅ MeshCore interface set: {type(interface).__name__}")
     
     def has_meshtastic(self):
         """Check if Meshtastic interface is available"""

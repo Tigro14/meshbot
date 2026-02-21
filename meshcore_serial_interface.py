@@ -112,28 +112,13 @@ class MeshCoreSerialInterface:
             'nodeNum': 0xFFFFFFFE,  # Non-broadcast ID for companion mode
         })()
         
-        info_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
+        debug_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
         
         # IMPORTANT WARNING: This basic implementation has limitations
-        error_print("⚠️  " * 20)
-        error_print("⚠️  [MESHCORE] UTILISATION DE L'IMPLÉMENTATION BASIQUE")
-        error_print("⚠️  " * 20)
-        error_print("   LIMITATIONS:")
-        error_print("   - Protocole binaire NON supporté (seul format texte)")
-        error_print("   - DM encryption NON supportée")
-        error_print("   - Auto message fetching LIMITÉ")
-        error_print("")
-        error_print("   IMPACT:")
-        error_print("   - Si MeshCore envoie du binaire: AUCUN paquet ne sera loggué")
-        error_print("   - Pas de logs [DEBUG][MC]")
-        error_print("   - Bot NE RÉPONDRA PAS aux DM")
-        error_print("")
-        error_print("   SOLUTION RECOMMANDÉE:")
-        error_print("   $ pip install meshcore meshcoredecoder")
-        error_print("   $ sudo systemctl restart meshtastic-bot")
-        error_print("")
-        error_print("   Pour support complet, utilisez meshcore-cli library")
-        error_print("⚠️  " * 20)
+        # Only show when used as primary interface (not in hybrid mode where CLI wrapper handles reception)
+        if enable_read_loop:
+            error_print("⚠️  [MESHCORE] UTILISATION DE L'IMPLÉMENTATION BASIQUE (sans meshcore-cli)")
+            error_print("   DM encryption NON supportée - pip install meshcore meshcoredecoder")
         
     def connect(self):
         """Établit la connexion série avec MeshCore"""
@@ -161,26 +146,13 @@ class MeshCoreSerialInterface:
         
         # Check if read loop is disabled (hybrid mode with CLI wrapper)
         if not self.enable_read_loop:
-            info_print("=" * 80)
-            info_print("🔧 [MESHCORE-SERIAL] Read loop disabled (hybrid mode)")
-            info_print("=" * 80)
-            info_print(f"   Port série: {self.port}")
-            info_print(f"   Usage: SEND ONLY (broadcasts via binary protocol)")
-            info_print(f"   Receiving: Handled by MeshCoreCLIWrapper")
-            info_print("=" * 80)
+            debug_print(f"🔧 [MESHCORE-SERIAL] Read loop disabled (hybrid mode, send-only on {self.port})")
             return True
         
         self.running = True
         
         # Log initial diagnostics
-        info_print("=" * 80)
-        info_print("🔧 [MESHCORE] DÉMARRAGE DIAGNOSTICS")
-        info_print("=" * 80)
-        info_print(f"   Port série: {self.port}")
-        info_print(f"   Baudrate: {self.baudrate}")
-        info_print(f"   Port ouvert: {self.serial.is_open}")
-        info_print(f"   Message callback: {self.message_callback is not None}")
-        info_print("=" * 80)
+        debug_print(f"🔧 [MESHCORE] Démarrage lecture: port={self.port}, callback={self.message_callback is not None}")
         
         # Thread de lecture (passif + écoute push notifications)
         self.read_thread = threading.Thread(

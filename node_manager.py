@@ -853,18 +853,18 @@ class NodeManager:
             return 0
         
         # Perform full sync (forced or keys missing)
-        info_print("🔄 Starting public key synchronization to interface.nodes...")
+        debug_print("🔄 Starting public key synchronization to interface.nodes...")
         injected_count = 0
         
         # Safe access to nodes length with error handling
         try:
             nodes_count = len(nodes)
-            info_print(f"   Current interface.nodes count: {nodes_count}")
+            debug_print(f"   Current interface.nodes count: {nodes_count}")
         except Exception as e:
             error_print(f"⚠️ Error getting nodes count: {e}")
             nodes_count = 0
         
-        info_print(f"   Keys to sync from node_names: {keys_in_db}")
+        debug_print(f"   Keys to sync from node_names: {keys_in_db}")
         
         for node_id, node_data in self.node_names.items():
             # Get public key from our database
@@ -933,9 +933,9 @@ class NodeManager:
                 #debug_print(f"      ✅ Created node in interface.nodes with key")
         
         if injected_count > 0:
-            info_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
+            debug_print(f"✅ SYNC COMPLETE: {injected_count} public keys synchronized to interface.nodes")
         else:
-            info_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
+            debug_print(f"ℹ️ SYNC COMPLETE: No new keys to inject (all already present)")
         
         # Update cache to avoid re-checking unnecessarily
         # This prevents the expensive interface.nodes iteration on next periodic sync

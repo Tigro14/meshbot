@@ -61,8 +61,7 @@ class DBErrorMonitor:
         self.total_reboots = 0
         
         if self.enabled:
-            info_print(f"🔍 Moniteur d'erreurs DB initialisé:")
-            info_print(f"   Fenêtre: {window_seconds}s, Seuil: {error_threshold} erreurs")
+            debug_print(f"🔍 Moniteur d'erreurs DB initialisé: fenêtre={window_seconds}s, seuil={error_threshold} erreurs")
         else:
             debug_print("ℹ️ Moniteur d'erreurs DB désactivé")
     

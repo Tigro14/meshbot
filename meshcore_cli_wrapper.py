@@ -15,7 +15,7 @@ import traceback
 try:
     from meshcore import MeshCore, EventType
     MESHCORE_CLI_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] Library meshcore-cli disponible")
+    debug_print_mc("✅ [MESHCORE] Library meshcore-cli disponible")
 except ImportError:
     MESHCORE_CLI_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] Library meshcore-cli non disponible (pip install meshcore)")
@@ -28,7 +28,7 @@ try:
     from meshcoredecoder import MeshCoreDecoder
     from meshcoredecoder.utils.enum_names import get_route_type_name, get_payload_type_name
     MESHCORE_DECODER_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] Library meshcore-decoder disponible (packet decoding)")
+    debug_print_mc("✅ [MESHCORE] Library meshcore-decoder disponible (packet decoding)")
 except ImportError:
     MESHCORE_DECODER_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] Library meshcore-decoder non disponible (pip install meshcoredecoder)")
@@ -52,7 +52,7 @@ try:
     from cryptography.hazmat.backends import default_backend
     import base64
     CRYPTO_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
+    debug_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
 except ImportError:
     CRYPTO_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] cryptography non disponible (pip install cryptography)")
@@ -337,7 +337,7 @@ class MeshCoreCLIWrapper:
             return 0
 
         try:
-            info_print_mc("📋 [STARTUP] Récupération des contacts MeshCore au démarrage...")
+            debug_print_mc("📋 [STARTUP] Récupération des contacts MeshCore au démarrage...")
 
             async def _do_fetch():
                 contacts = None
@@ -356,7 +356,7 @@ class MeshCoreCLIWrapper:
                             if not is_error:
                                 contacts = result.payload if hasattr(result, 'payload') else result
                                 if contacts:
-                                    info_print_mc(f"✅ [STARTUP] {len(contacts)} contacts récupérés via commands.get_contacts()")
+                                    debug_print_mc(f"✅ [STARTUP] {len(contacts)} contacts récupérés via commands.get_contacts()")
                     except Exception as e:
                         debug_print_mc(f"⚠️ [STARTUP] commands.get_contacts() échoué: {e}")
 
@@ -429,7 +429,7 @@ class MeshCoreCLIWrapper:
                 except Exception as save_err:
                     debug_print_mc(f"⚠️ [STARTUP] Erreur sauvegarde contact: {save_err}")
 
-            info_print_mc(f"💾 [STARTUP] {saved_count} contacts MeshCore sauvegardés en base")
+            info_print_mc(f"✅ [STARTUP] {saved_count} contacts MeshCore chargés")
             return saved_count
 
         except Exception as e:
@@ -479,7 +479,7 @@ class MeshCoreCLIWrapper:
             contact = {
                 'node_id': contact_data['node_id'],
                 'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
-                'public_key': contact_data['publicKey'].hex(),  # Convert bytes to hex string for API
+                'public_key': pubkey_hex,  # Already a hex string (converted above)
             }
             
             # Initialize contacts dict if needed
@@ -488,9 +488,6 @@ class MeshCoreCLIWrapper:
             
             # Add to internal dict
             self.meshcore.contacts[pubkey_prefix] = contact
-            debug_print_mc(f"✅ [DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
-            debug_print_mc(f"📊 [DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
-            debug_print_mc(f"📊 [DM] Dict size: {len(self.meshcore.contacts)}")
             return True
             
         except Exception as e:
@@ -1020,13 +1017,13 @@ class MeshCoreCLIWrapper:
         if hasattr(self.meshcore, 'sync_contacts'):
             debug_print_mc("   ✅ Méthode sync_contacts() disponible")
         else:
-            info_print_mc("   ℹ️  Méthode sync_contacts() NON disponible (fonctionnalité optionnelle)")
+            debug_print_mc("   ℹ️  Méthode sync_contacts() NON disponible (fonctionnalité optionnelle)")
             # Note: Not added to issues_found - this is optional, not critical
         
         # Check 3: Auto message fetching
         debug_print_mc("\n3️⃣  Vérification auto message fetching...")
         if hasattr(self.meshcore, 'start_auto_message_fetching'):
-            info_print_mc("   ✅ start_auto_message_fetching() disponible")
+            debug_print_mc("   ✅ start_auto_message_fetching() disponible")
         else:
             error_print("   ❌ start_auto_message_fetching() NON disponible")
             issues_found.append("start_auto_message_fetching() non disponible - les messages doivent être récupérés manuellement")
@@ -1034,15 +1031,15 @@ class MeshCoreCLIWrapper:
         # Check 4: Event dispatcher
         debug_print_mc("\n4️⃣  Vérification event dispatcher...")
         if hasattr(self.meshcore, 'events'):
-            info_print_mc("   ✅ Event dispatcher (events) disponible")
+            debug_print_mc("   ✅ Event dispatcher (events) disponible")
         elif hasattr(self.meshcore, 'dispatcher'):
-            info_print_mc("   ✅ Event dispatcher (dispatcher) disponible")
+            debug_print_mc("   ✅ Event dispatcher (dispatcher) disponible")
         else:
             error_print("   ❌ Aucun event dispatcher trouvé")
             issues_found.append("Aucun event dispatcher - les événements ne peuvent pas être reçus")
         
         # Summary
-        info_print_mc("\n" + "="*60)
+        debug_print_mc("\n" + "="*60)
         if issues_found:
             error_print("⚠️  Problèmes de configuration détectés:")
             for i, issue in enumerate(issues_found, 1):
@@ -1053,8 +1050,8 @@ class MeshCoreCLIWrapper:
             error_print("   • Assurez-vous que auto message fetching est démarré")
             error_print("   • Activez le mode debug pour des logs plus détaillés")
         else:
-            info_print_mc("✅ Aucun problème de configuration détecté")
-        info_print_mc("="*60 + "\n")
+            debug_print_mc("✅ Aucun problème de configuration détecté")
+        debug_print_mc("="*60 + "\n")
         
         return len(issues_found) == 0
     
@@ -1091,52 +1088,52 @@ class MeshCoreCLIWrapper:
             # MeshCore uses 'events' attribute for subscriptions
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
+                debug_print_mc("✅ Souscription aux messages DM (events.subscribe)")
 
                 # Subscribe to ADVERTISEMENT events to capture/update real contact names
                 # MeshCore nodes periodically broadcast their name via advertisements
                 if hasattr(EventType, 'ADVERTISEMENT'):
                     self.meshcore.events.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
-                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
+                    debug_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                     self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    debug_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
                 else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
+                    debug_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
                 
                 # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
                 # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet, allowing
                 # us to attach SNR/RSSI from the RF layer to the decoded channel message.
                 if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                    debug_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
                 else:
-                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
+                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
+                debug_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
 
                 # Subscribe to ADVERTISEMENT events to capture/update real contact names
                 if hasattr(EventType, 'ADVERTISEMENT'):
                     self.meshcore.dispatcher.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
-                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
+                    debug_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                     self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    debug_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
                 else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    debug_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
                 # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
                 if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                    debug_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
                 else:
-                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
+                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -1306,7 +1303,7 @@ class MeshCoreCLIWrapper:
                                         debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
                                 
                                 # Single summary line instead of verbose logging
-                                info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
+                                debug_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
                             elif post_count > 0:
                                 # Contacts were synced but save conditions failed - only show in DEBUG
                                 debug_print_mc(f"⚠️ [MESHCORE-SYNC] {post_count} contacts synchronisés mais NON SAUVEGARDÉS")
@@ -1323,7 +1320,7 @@ class MeshCoreCLIWrapper:
                         # Check if contacts were actually synced (silent unless DEBUG)
                         await self._verify_contacts()
                     else:
-                        info_print_mc("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
+                        debug_print_mc("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
 
                     # Step 2: Use commands.get_contacts() (official API) to get contacts WITH adv_name
                     # This is the correct API for fetching named contacts from the device
@@ -1338,7 +1335,7 @@ class MeshCoreCLIWrapper:
                             if not is_error:
                                 contacts_to_save = result.payload if hasattr(result, 'payload') else result
                                 if contacts_to_save:
-                                    info_print_mc(f"📋 [MESHCORE-SYNC] {len(contacts_to_save)} contacts récupérés via commands.get_contacts()")
+                                    debug_print_mc(f"📋 [MESHCORE-SYNC] {len(contacts_to_save)} contacts récupérés via commands.get_contacts()")
                         except Exception as e:
                             debug_print_mc(f"⚠️ [MESHCORE-SYNC] commands.get_contacts() échoué: {e}")
 
@@ -1400,7 +1397,7 @@ class MeshCoreCLIWrapper:
                             except Exception as save_err:
                                 debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
 
-                        info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{len(contacts_to_save)} contacts sauvegardés")
+                        debug_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{len(contacts_to_save)} contacts sauvegardés")
                     elif contacts_to_save is None:
                         error_print("⚠️ [MESHCORE-SYNC] ATTENTION: aucun contact récupéré!")
                         error_print("   → Raisons: mode companion (appairage requis), base vide, ou problème de clé")
@@ -1414,7 +1411,7 @@ class MeshCoreCLIWrapper:
                 try:
                     if hasattr(self.meshcore, 'start_auto_message_fetching'):
                         await self.meshcore.start_auto_message_fetching()
-                        info_print_mc("✅ [MESHCORE-CLI] Auto message fetching démarré")
+                        debug_print_mc("✅ [MESHCORE-CLI] Auto message fetching démarré")
                     else:
                         info_print_mc("⚠️ [MESHCORE-CLI] start_auto_message_fetching() non disponible")
                         error_print("   ⚠️ Sans auto message fetching, les messages ne seront pas reçus automatiquement")
@@ -2811,7 +2808,6 @@ class MeshCoreCLIWrapper:
                 # DIAGNOSTIC: Show what's in meshcore.contacts dict
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     debug_print_mc(f"📊 [DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
-                    debug_print_mc(f"📊 [DM] Dict keys: {list(self.meshcore.contacts.keys())}")
                 else:
                     debug_print_mc(f"⚠️ [DM] meshcore.contacts is None or empty!")
                 

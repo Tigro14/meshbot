@@ -53,11 +53,7 @@ class VigilanceMonitor:
         self.last_color = None
         self.last_bulletin_date = None
 
-        info_print(f"🌦️ Vigilance monitor initialisé pour département {departement}")
-        info_print(f"   Check interval: {check_interval}s, Alert throttle: {alert_throttle}s")
-        info_print(f"   Alert levels: {', '.join(self.alert_levels)}")
-        if mesh_alert_manager and mesh_alert_manager.subscribed_nodes:
-            info_print(f"   Alertes Mesh: Activées ({len(mesh_alert_manager.subscribed_nodes)} nœuds)")
+        debug_print(f"🌦️ Vigilance monitor initialisé pour département {departement}: interval={check_interval}s, throttle={alert_throttle}s, levels={', '.join(self.alert_levels)}")
 
     def _log_final_error(self, error_type: str, error_msg: str, max_retries: int):
         """

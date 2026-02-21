@@ -435,8 +435,8 @@ class TrafficMonitor:
             if poll_interval is None:
                 poll_interval = globals().get('NEIGHBOR_LOAD_POLL_INTERVAL', 5)
             
-            info_print(f"👥 Chargement initial des voisins depuis l'interface...")
-            info_print(f"   Attente initiale: {wait_time}s, maximum: {max_wait_time}s, vérification tous les {poll_interval}s")
+            debug_print(f"👥 Chargement initial des voisins depuis l'interface...")
+            debug_print(f"   Attente initiale: {wait_time}s, maximum: {max_wait_time}s, vérification tous les {poll_interval}s")
             
             # Initial wait
             time.sleep(wait_time)
@@ -456,16 +456,16 @@ class TrafficMonitor:
                 current_node_count = len(interface.nodes) if interface.nodes else 0
                 
                 if current_node_count == 0:
-                    info_print(f"   ⏳ {elapsed_time}s: Aucun nœud chargé, attente...")
+                    debug_print(f"   ⏳ {elapsed_time}s: Aucun nœud chargé, attente...")
                 elif current_node_count == previous_node_count:
                     stable_count += 1
-                    info_print(f"   ⏳ {elapsed_time}s: {current_node_count} nœuds (stable {stable_count}/{required_stable_checks})")
+                    debug_print(f"   ⏳ {elapsed_time}s: {current_node_count} nœuds (stable {stable_count}/{required_stable_checks})")
                     if stable_count >= required_stable_checks:
-                        info_print(f"   ✅ Chargement stabilisé à {current_node_count} nœuds après {elapsed_time}s")
+                        debug_print(f"   ✅ Chargement stabilisé à {current_node_count} nœuds après {elapsed_time}s")
                         break
                 else:
                     stable_count = 0  # Reset stability counter
-                    info_print(f"   📈 {elapsed_time}s: {current_node_count} nœuds chargés (+{current_node_count - previous_node_count})")
+                    debug_print(f"   📈 {elapsed_time}s: {current_node_count} nœuds chargés (+{current_node_count - previous_node_count})")
                 
                 previous_node_count = current_node_count
                 time.sleep(poll_interval)
@@ -476,7 +476,7 @@ class TrafficMonitor:
                 return 0
             
             final_node_count = len(interface.nodes)
-            info_print(f"📊 Début extraction voisins de {final_node_count} nœuds...")
+            debug_print(f"📊 Début extraction voisins de {final_node_count} nœuds...")
             
             total_neighbors = 0
             nodes_with_neighbors = 0
@@ -576,32 +576,10 @@ class TrafficMonitor:
                 else:
                     nodes_without_neighbors += 1
             
-            info_print(f"✅ Chargement initial terminé:")
-            info_print(f"   • Nœuds totaux: {final_node_count}")
-            info_print(f"   • Nœuds avec voisins: {nodes_with_neighbors}")
-            info_print(f"   • Nœuds sans voisins: {nodes_without_neighbors}")
-            info_print(f"   • Relations de voisinage: {total_neighbors}")
-            
-            if nodes_with_neighbors > 0:
-                avg_neighbors = total_neighbors / nodes_with_neighbors
-                info_print(f"   • Moyenne voisins/nœud: {avg_neighbors:.1f}")
-            
-            # Report nodes without neighborinfo
-            # NOTE: This is EXPECTED at startup - neighborinfo is only populated when
-            # NEIGHBORINFO_APP packets are received, not from initial database sync
-            if nodes_without_neighborinfo > 0:
-                info_print(f"   ℹ️  Nœuds sans donnée voisinage en cache: {nodes_without_neighborinfo}/{final_node_count}")
-                if sample_nodes_without_neighborinfo:
-                    info_print(f"      Exemples: {', '.join(sample_nodes_without_neighborinfo)}")
-                
-                # Explain expected behavior
-                if nodes_without_neighborinfo == final_node_count:
-                    info_print(f"      ✓ Normal au démarrage: les données de voisinage ne sont pas incluses")
-                    info_print(f"        dans la base initiale du nœud (seulement NODEINFO, POSITION, etc.)")
-                    info_print(f"      → Collection passive via NEIGHBORINFO_APP broadcasts (15-30 min)")
-                else:
-                    info_print(f"      Note: Données de voisinage partielles au démarrage")
-                    info_print(f"      → Collection continue via NEIGHBORINFO_APP packets")
+            if total_neighbors > 0:
+                debug_print(f"✅ Chargement initial: {total_neighbors} relations voisinage dans {nodes_with_neighbors}/{final_node_count} nœuds")
+            else:
+                debug_print(f"✅ Chargement initial: {final_node_count} nœuds, aucune relation voisinage en cache (normal au démarrage)")
             
             return total_neighbors
             
