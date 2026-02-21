@@ -128,6 +128,42 @@ def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
         return None
 
 
+def _regroup_path_bytes(path_items):
+    """
+    Fix for meshcoredecoder library bug: it returns packet.path as a flat list of
+    individual bytes (each 0-255) instead of a list of 4-byte little-endian uint32
+    node IDs, causing hop counts like 143 for a packet that should show ~35 hops.
+
+    Detection: if every item in path_items is an integer that fits in a single byte
+    (value 0-255), we treat the whole list as raw bytes and regroup them as 4-byte
+    little-endian uint32 node IDs.  Any trailing bytes that do not form a complete
+    4-byte group are discarded.
+
+    If the path already contains values > 255 (i.e. real uint32 node IDs), it is
+    returned unchanged.
+
+    Returns (corrected_hop_count: int, regrouped_path: list[int]).
+    """
+    if not path_items:
+        return 0, []
+
+    all_bytes = all(isinstance(n, int) and 0 <= n <= 255 for n in path_items)
+    if not all_bytes:
+        # Values look like real uint32 node IDs already — nothing to fix.
+        return len(path_items), list(path_items)
+
+    # Regroup as 4-byte little-endian uint32 node IDs.
+    # Use integer division to determine how many complete 4-byte groups exist,
+    # avoiding accidental out-of-range access for odd-length lists.
+    node_ids = []
+    complete_groups = len(path_items) // 4
+    for i in range(0, complete_groups * 4, 4):
+        b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
+        node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
+
+    return len(node_ids), node_ids
+
+
 class MeshCoreCLIWrapper:
     """
     Wrapper pour meshcore-cli library
@@ -165,6 +201,11 @@ class MeshCoreCLIWrapper:
         # Prevents sending same message multiple times within short window
         self._sent_messages = {}
         self._message_dedup_window = 30  # seconds - prevent duplicates within 30s
+        
+        # Latest RX_LOG_DATA for channel echo correlation
+        # Stores SNR/RSSI/path from the most recent RF packet received
+        # Used to attach signal data to CHANNEL_MSG_RECV events (echoes pattern)
+        self.latest_rx_log = {}  # {'snr': float, 'rssi': int, 'path_len': int, 'timestamp': float}
         
         # Determine debug mode: explicit parameter > config > False
         if debug is None:
@@ -920,79 +961,39 @@ class MeshCoreCLIWrapper:
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
                 
-                # Also subscribe to RX_LOG_DATA to monitor ALL RF packets
-                # This allows the bot to see broadcasts, telemetry, and all mesh traffic (not just DMs)
-                rx_log_enabled = False
-                try:
-                    import config
-                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
-                except ImportError:
-                    rx_log_enabled = True  # Default to enabled
+                # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
                 
-                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
+                # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet, allowing
+                # us to attach SNR/RSSI from the RF layer to the decoded channel message.
+                if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
-                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
-                elif not rx_log_enabled:
-                    info_print_mc("ℹ️  RX_LOG_DATA désactivé (MESHCORE_RX_LOG_ENABLED=False)")
-                    info_print_mc("   → Le bot ne verra que les DM, pas les broadcasts")
-                    
-                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
-                    # This allows the bot to respond to commands sent on the public channel
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
-                        info_print_mc("   → Le bot ne pourra pas traiter les commandes du canal public")
-                elif not hasattr(EventType, 'RX_LOG_DATA'):
-                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible (version meshcore-cli ancienne?)")
-                    
-                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                else:
+                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
                 
-                # Also subscribe to RX_LOG_DATA
-                rx_log_enabled = False
-                try:
-                    import config
-                    rx_log_enabled = getattr(config, 'MESHCORE_RX_LOG_ENABLED', True)
-                except ImportError:
-                    rx_log_enabled = True
+                # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
+                if hasattr(EventType, 'CHANNEL_MSG_RECV'):
+                    self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
+                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                else:
+                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
-                if rx_log_enabled and hasattr(EventType, 'RX_LOG_DATA'):
+                # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
+                if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (tous les paquets RF)")
-                    info_print_mc("   → Monitoring actif: broadcasts, télémétrie, DMs, etc.")
-                    info_print_mc("   → CHANNEL_MSG_RECV non nécessaire (RX_LOG traite déjà les messages de canal)")
-                elif not rx_log_enabled:
-                    info_print_mc("ℹ️  RX_LOG_DATA désactivé")
-                    
-                    # Subscribe to CHANNEL_MSG_RECV only if RX_LOG is disabled
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
-                elif not hasattr(EventType, 'RX_LOG_DATA'):
-                    # Fallback to CHANNEL_MSG_RECV if RX_LOG not available
-                    if hasattr(EventType, 'CHANNEL_MSG_RECV'):
-                        self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                        info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
-                        info_print_mc("   → Le bot peut maintenant traiter les commandes du canal public (ex: /echo)")
-                    else:
-                        info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                else:
+                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
@@ -1106,11 +1107,28 @@ class MeshCoreCLIWrapper:
                             # SAVE CONTACTS TO DATABASE (like NODEINFO for Meshtastic)
                             if post_count > 0 and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
                                 saved_count = 0
-                                for contact in post_contacts:
+                                # post_contacts is a dict keyed by pubkey_prefix; iterate .items() to get values
+                                contacts_items = post_contacts.items() if isinstance(post_contacts, dict) else enumerate(post_contacts)
+                                for _key, contact in contacts_items:
                                     try:
                                         contact_id = contact.get('contact_id') or contact.get('node_id')
-                                        name = contact.get('name') or contact.get('long_name')
+                                        # meshcore library stores display name as 'adv_name'
+                                        name = contact.get('adv_name') or contact.get('name') or contact.get('long_name')
                                         public_key = contact.get('public_key') or contact.get('publicKey')
+                                        
+                                        # Derive node_id from public_key prefix when not explicitly provided
+                                        if not contact_id and public_key:
+                                            try:
+                                                if isinstance(public_key, str) and len(public_key) >= 8:
+                                                    contact_id = int(public_key[:8], 16)
+                                                elif isinstance(public_key, bytes) and len(public_key) >= 4:
+                                                    contact_id = int.from_bytes(public_key[:4], 'big')
+                                            except Exception:
+                                                pass
+                                        
+                                        if not contact_id:
+                                            debug_print_mc(f"⚠️ [MESHCORE-SYNC] Contact sans ID dérivable, ignoré: {name}")
+                                            continue
                                         
                                         # Convert contact_id to int if string
                                         if isinstance(contact_id, str):
@@ -1127,21 +1145,28 @@ class MeshCoreCLIWrapper:
                                         contact_data = {
                                             'node_id': contact_id,
                                             'name': best_name,
-                                            'shortName': name or '',  # Use extracted name, not short_name field
+                                            'shortName': name or '',
                                             'hwModel': contact.get('hw_model', None),
                                             'publicKey': public_key,
-                                            'lat': contact.get('latitude', None),
-                                            'lon': contact.get('longitude', None),
+                                            'lat': contact.get('adv_lat') if contact.get('adv_lat') is not None else contact.get('latitude'),
+                                            'lon': contact.get('adv_lon') if contact.get('adv_lon') is not None else contact.get('longitude'),
                                             'alt': contact.get('altitude', None),
                                             'source': 'meshcore'
                                         }
                                         self.node_manager.persistence.save_meshcore_contact(contact_data)
-                                        # CRITICAL: Also add to meshcore.contacts dict
-                                        self._add_contact_to_meshcore(contact_data)
+                                        # Populate in-memory name cache so get_node_name() resolves immediately
+                                        self.node_manager.node_names[contact_id] = {
+                                            'name': best_name,
+                                            'shortName': name or '',
+                                            'hwModel': contact_data['hwModel'],
+                                            'lat': contact_data['lat'],
+                                            'lon': contact_data['lon'],
+                                            'alt': contact_data['alt'],
+                                            'last_update': None
+                                        }
                                         saved_count += 1
                                     except Exception as save_err:
-                                        # Only log errors, not every save
-                                        debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact {contact.get('name', 'Unknown')}: {save_err}")
+                                        debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
                                 
                                 # Single summary line instead of verbose logging
                                 info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
@@ -1398,6 +1423,7 @@ class MeshCoreCLIWrapper:
                     error_print(traceback.format_exc())
             
             text = payload.get('text', '') if isinstance(payload, dict) else ''
+            path_len = payload.get('path_len', 0) if isinstance(payload, dict) else 0
             
             # Log avec gestion de None pour sender_id
             if sender_id is not None:
@@ -1440,7 +1466,8 @@ class MeshCoreCLIWrapper:
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': text.encode('utf-8')
                 },
-                '_meshcore_dm': True  # Marquer comme DM MeshCore pour traitement spécial
+                '_meshcore_dm': True,  # Marquer comme DM MeshCore pour traitement spécial
+                '_meshcore_path_len': path_len  # Nombre de hops du DM
             }
             
             # Appeler le callback
@@ -1663,6 +1690,27 @@ class MeshCoreCLIWrapper:
             else:
                 channel_index = 0
             
+            # Extract path_len from CHANNEL_MSG_RECV payload (number of hops)
+            # This is provided directly by the meshcore library in the event payload.
+            # Use `or 0` to handle the case where path_len is present but set to None.
+            if isinstance(payload, dict):
+                channel_path_len = payload.get('path_len') or 0
+            else:
+                channel_path_len = getattr(payload, 'path_len', None) or 0
+            
+            # Get SNR/RSSI from latest_rx_log (channel echo correlation)
+            # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet.
+            # Only use if the RX_LOG was recent (within 2 seconds).
+            echo_snr = 0.0
+            echo_rssi = 0
+            if self.latest_rx_log and (time.time() - self.latest_rx_log.get('timestamp', 0)) < 2.0:
+                echo_snr = self.latest_rx_log.get('snr', 0.0)
+                echo_rssi = self.latest_rx_log.get('rssi', 0)
+                # Use decoder path_len if CHANNEL_MSG_RECV didn't provide one
+                if not channel_path_len:
+                    channel_path_len = self.latest_rx_log.get('path_len', 0)
+                debug_print_mc(f"📡 [CHANNEL-ECHO] SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
+            
             # Extract message text
             if isinstance(payload, dict):
                 message_text = payload.get('text') or payload.get('message') or payload.get('msg') or ''
@@ -1716,18 +1764,25 @@ class MeshCoreCLIWrapper:
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
+            if echo_snr or echo_rssi:
+                debug_print_mc(f"   📶 SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
             
             # Convert to bot-compatible packet format
             # CRITICAL: Set to_id=0xFFFFFFFF so message is recognized as broadcast by message_router.py
             packet = {
                 'from': sender_id,
                 'to': 0xFFFFFFFF,  # Broadcast address - critical for routing
+                'snr': echo_snr,           # From channel echo (RX_LOG correlation)
+                'rssi': echo_rssi,         # From channel echo (RX_LOG correlation)
+                'hopLimit': 0,             # Received: 0 hops remaining
+                'hopStart': channel_path_len,  # Total hops taken (from CHANNEL_MSG_RECV or RX_LOG)
                 'decoded': {
                     'portnum': 'TEXT_MESSAGE_APP',
                     'payload': message_text.encode('utf-8')
                 },
                 'channel': channel_index,
-                '_meshcore_dm': False  # NOT a DM - this is a public channel message
+                '_meshcore_dm': False,             # NOT a DM - this is a public channel message
+                '_meshcore_path_len': channel_path_len  # Path length for rx_history
             }
             
             decoded = packet['decoded']
@@ -1776,14 +1831,28 @@ class MeshCoreCLIWrapper:
             rssi = payload.get('rssi', 0)
             raw_hex = payload.get('raw_hex', '')
             
-            # DEBUG: Log SNR/RSSI extraction
-            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
-            
-            # Calculate hex data length for display
+            # Compute size and header upfront for early-exit check
             hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
-            
-            # Parse packet header to get sender/receiver information
             header_info = self._parse_meshcore_header(raw_hex)
+            
+            # Store latest RF signal data for channel echo correlation
+            # CHANNEL_MSG_RECV events arrive just after RX_LOG_DATA for the same packet;
+            # storing here lets _on_channel_message attach real SNR/RSSI to channel messages.
+            self.latest_rx_log = {
+                'snr': snr,
+                'rssi': rssi,
+                'timestamp': time.time(),
+                'path_len': 0  # Will be updated below if decoder is available
+            }
+            
+            # Packets whose header cannot be parsed (too short, malformed, etc.) cannot be
+            # attributed to any node — skip all downstream processing with one compact line.
+            if header_info is None:
+                debug_print_mc(f"⏭️  [RX_LOG] Short/unidentifiable packet ({hex_len}B, SNR:{snr}dB) — likely ACK/routing, skipped")
+                return
+            
+            # DEBUG: Log SNR/RSSI extraction (identifiable packets only)
+            debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
             
             # Build first log line with sender/receiver info if available
             if header_info:
@@ -1800,10 +1869,10 @@ class MeshCoreCLIWrapper:
                 
                 debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - {direction_info}")
                 debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{raw_hex[:40]}...")
-            else:
-                # Fallback to old format if header parsing fails
-                debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - SNR:{snr}dB RSSI:{rssi}dBm Hex:{raw_hex[:40]}...")
             
+            # True for Path/Trace routing-only packets — logged once then skipped
+            is_routing_packet = False
+
             # Try to decode packet if meshcore-decoder is available
             if MESHCORE_DECODER_AVAILABLE and raw_hex:
                 try:
@@ -1851,13 +1920,29 @@ class MeshCoreCLIWrapper:
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
                     
+                    # Fix meshcoredecoder library bug: path may be a flat byte list
+                    # instead of a list of 4-byte little-endian node IDs.
+                    raw_path = packet.path if hasattr(packet, 'path') and packet.path else []
+                    corrected_hops, corrected_path = _regroup_path_bytes(raw_path)
+                    # If decoder path_length looks wrong (>64, MeshCore's hard limit)
+                    # use our regrouped count instead.
+                    display_hops = corrected_hops if packet.path_length > 64 else packet.path_length
+
                     # Add hop count (always show, even if 0, for routing visibility)
-                    info_parts.append(f"Hops: {packet.path_length}")
+                    info_parts.append(f"Hops: {display_hops}")
+                    
+                    # Update path_len in latest_rx_log for channel echo correlation
+                    self.latest_rx_log['path_len'] = display_hops if display_hops else 0
                     
                     # Add actual routing path if available (shows which nodes the packet traversed)
-                    if hasattr(packet, 'path') and packet.path:
-                        # Path is a list/array of node IDs the packet traveled through
-                        path_str = ' → '.join([f"0x{node:08x}" if isinstance(node, int) else str(node) for node in packet.path])
+                    if corrected_path:
+                        # Truncate long paths (show first 5 hops + count of remaining)
+                        format_node_id = lambda n: f"0x{n:08x}" if isinstance(n, int) else str(n)
+                        if len(corrected_path) > 5:
+                            remaining_count = len(corrected_path) - 5
+                            path_str = ' → '.join(format_node_id(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
+                        else:
+                            path_str = ' → '.join(format_node_id(n) for n in corrected_path)
                         info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
@@ -1960,10 +2045,12 @@ class MeshCoreCLIWrapper:
                                 content_type = "Group Text" if packet.payload_type.name == 'GroupText' else "Group Data"
                                 debug_print_mc(f"👥 [RX_LOG] {content_type} (public broadcast)")
                             
-                            # Routing packets
+                            # Routing packets — flag for early skip before forwarding
                             elif packet.payload_type.name == 'Trace':
+                                is_routing_packet = True
                                 debug_print_mc(f"🔍 [RX_LOG] Trace packet (routing diagnostic)")
                             elif packet.payload_type.name == 'Path':
+                                is_routing_packet = True
                                 debug_print_mc(f"🛣️  [RX_LOG] Path packet (routing info)")
                         
                         # In debug mode, show raw payload info if available
@@ -1985,7 +2072,7 @@ class MeshCoreCLIWrapper:
             # CRITICAL FIX: Forward ALL packets to bot for statistics
             # This allows the bot to count ALL MeshCore packets (not just text messages)
             # The bot's traffic_monitor will handle packet type filtering and counting
-            if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback:
+            if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback and not is_routing_packet:
                 try:
                     # IMPORTANT: Parse header FIRST to get correct sender/receiver addresses
                     # The header_info is already parsed above, but we need it here too
@@ -2002,15 +2089,6 @@ class MeshCoreCLIWrapper:
                     packet_text = None
                     portnum = 'UNKNOWN_APP'  # Default
                     payload_bytes = b''
-                    
-                    # Debug: Log payload structure ALWAYS for troubleshooting
-                    debug_print_mc(f"🔍 [RX_LOG] Checking decoded_packet for payload...")
-                    debug_print_mc(f"🔍 [RX_LOG] Has payload attribute: {hasattr(decoded_packet, 'payload')}")
-                    if hasattr(decoded_packet, 'payload'):
-                        debug_print_mc(f"🔍 [RX_LOG] Payload value: {decoded_packet.payload}")
-                        debug_print_mc(f"🔍 [RX_LOG] Payload type: {type(decoded_packet.payload).__name__}")
-                        if isinstance(decoded_packet.payload, dict):
-                            debug_print_mc(f"🔍 [RX_LOG] Payload keys: {list(decoded_packet.payload.keys())}")
                     
                     if decoded_packet.payload and isinstance(decoded_packet.payload, dict):
                         decoded_payload = decoded_packet.payload.get('decoded')
@@ -2080,13 +2158,6 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value in [12, 13, 15]:
                                             # Types 12, 13, 15 are encrypted message wrappers
                                             # Try to decrypt with MeshCore Public channel PSK
-                                            debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) detected")
-                                            
-                                            # Debug logging for decryption troubleshooting
-                                            debug_print_mc(f"🔍 [DECRYPT] Debug info:")
-                                            debug_print_mc(f"   CRYPTO_AVAILABLE: {CRYPTO_AVAILABLE}")
-                                            debug_print_mc(f"   payload_bytes: {len(payload_bytes) if payload_bytes else 0}B")
-                                            debug_print_mc(f"   sender_id: 0x{sender_id:08x}")
                                             
                                             # Try decryption if crypto is available
                                             decrypted_text = None
@@ -2097,16 +2168,9 @@ class MeshCoreCLIWrapper:
                                                 if hasattr(decoded_packet, 'message_hash') and decoded_packet.message_hash:
                                                     # message_hash is hex string, convert first 8 chars (4 bytes) to int
                                                     packet_id = int(decoded_packet.message_hash[:8], 16)
-                                                    debug_print_mc(f"   ✅ packet_id from message_hash: {packet_id} (0x{packet_id:08x})")
                                                 elif packet_header and 'msg_hash' in packet_header:
                                                     # Fall back to packet header
                                                     packet_id = int(packet_header['msg_hash'][:8], 16)
-                                                    debug_print_mc(f"   ✅ packet_id from packet_header: {packet_id} (0x{packet_id:08x})")
-                                                else:
-                                                    debug_print_mc(f"   ❌ packet_id not found (no message_hash)")
-                                                
-                                                debug_print_mc(f"   packet_id: {packet_id}")
-                                                debug_print_mc(f"   Condition check: packet_id={packet_id} is not None and sender_id={sender_id:08x} != 0xFFFFFFFF")
                                                 
                                                 # Always strip 16-byte MeshCore header from payload
                                                 # Header: type(4) + sender(4) + receiver(4) + msg_hash(4) = 16 bytes (NOT encrypted)
@@ -2114,7 +2178,6 @@ class MeshCoreCLIWrapper:
                                                 if len(payload_bytes) > 16:
                                                     encrypted_payload = payload_bytes[16:]
                                                     payload_bytes = encrypted_payload  # Update payload_bytes to strip header
-                                                    debug_print_mc(f"🔍 [DECRYPT] Stripped 16-byte header, payload now {len(payload_bytes)}B")
                                                     
                                                     # Skip protobuf varint length prefix before decryption
                                                     # After MeshCore header, there's a protobuf varint that encodes the payload length
@@ -2138,16 +2201,13 @@ class MeshCoreCLIWrapper:
                                                         length, varint_size = decode_varint(encrypted_payload)
                                                         encrypted_payload = encrypted_payload[varint_size:]
                                                         payload_bytes = encrypted_payload  # Update again after varint skip
-                                                        debug_print_mc(f"🔍 [DECRYPT] Skipped varint ({varint_size} bytes, length={length}), encrypted payload now {len(encrypted_payload)}B")
                                                 else:
-                                                    debug_print_mc(f"⚠️  [DECRYPT] Payload too short ({len(payload_bytes)}B), cannot strip header")
                                                     encrypted_payload = payload_bytes
                                                 
                                                 # Always attempt PSK decryption (Public channel uses PSK even for messages to specific users)
                                                 # Public channel messages decrypt to readable text, DMs produce garbage (detected by readability check)
                                                 if packet_id is not None and sender_id != 0xFFFFFFFF:
-                                                    debug_print_mc(f"🔓 [DECRYPT] Attempting MeshCore Public decryption...")
-                                                    debug_print_mc(f"   Packet ID: {packet_id}, From: 0x{sender_id:08x}")
+                                                    debug_print_mc(f"🔓 [DECRYPT] type={payload_type_value} id=0x{packet_id:08x} from=0x{sender_id:08x} payload={len(encrypted_payload)}B")
                                                     
                                                     decrypted_text = decrypt_meshcore_public(
                                                         encrypted_payload, 
@@ -2169,13 +2229,6 @@ class MeshCoreCLIWrapper:
                                                         debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
                                                         # Mark as encrypted for display
                                                         packet_text = '[ENCRYPTED]'
-                                                else:
-                                                    debug_print_mc(f"❌ [DECRYPT] Decryption skipped: packet_id or sender_id condition failed")
-                                            else:
-                                                if not CRYPTO_AVAILABLE:
-                                                    debug_print_mc(f"❌ [DECRYPT] Crypto library not available")
-                                                if not payload_bytes:
-                                                    debug_print_mc(f"❌ [DECRYPT] No payload bytes to decrypt")
                                             
                                             # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
                                             portnum = 'TEXT_MESSAGE_APP'
@@ -2184,7 +2237,6 @@ class MeshCoreCLIWrapper:
                                         else:
                                             # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
-                                        debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                                     except:
                                         portnum = 'UNKNOWN_APP'
                     elif decoded_packet.payload:
@@ -2215,7 +2267,6 @@ class MeshCoreCLIWrapper:
                                     portnum = 'NODEINFO_APP'
                                 elif payload_type_value == 7:
                                     portnum = 'TELEMETRY_APP'
-                                debug_print_mc(f"📋 [RX_LOG] Determined portnum from type {payload_type_value}: {portnum}")
                             except:
                                 pass
                     else:
@@ -2246,6 +2297,12 @@ class MeshCoreCLIWrapper:
                     if portnum == 'TEXT_MESSAGE_APP' and packet_text is not None:
                         decoded_dict['text'] = packet_text
                     
+                    # Apply the same byte-list fix for hopStart and path forwarding
+                    fwd_raw_path = decoded_packet.path if hasattr(decoded_packet, 'path') and decoded_packet.path else []
+                    fwd_hops, fwd_path = _regroup_path_bytes(fwd_raw_path)
+                    raw_pl = decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0
+                    hop_start = fwd_hops if raw_pl > 64 else raw_pl
+
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
                         'to': receiver_id,  # Use header receiver (CORRECT!)
@@ -2254,7 +2311,7 @@ class MeshCoreCLIWrapper:
                         'rssi': rssi,
                         'snr': snr,
                         'hopLimit': 0,  # Packet received with 0 hops remaining
-                        'hopStart': decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0,
+                        'hopStart': hop_start,
                         'channel': 0,
                         'decoded': decoded_dict,
                         '_meshcore_rx_log': True,  # Mark as RX_LOG packet
@@ -2262,13 +2319,10 @@ class MeshCoreCLIWrapper:
                     }
                     
                     # Add routing path if available (for hop visualization)
-                    if hasattr(decoded_packet, 'path') and decoded_packet.path:
-                        bot_packet['_meshcore_path'] = decoded_packet.path
-                        debug_print_mc(f"   📍 Path: {' → '.join([f'0x{n:08x}' if isinstance(n, int) else str(n) for n in decoded_packet.path])}")
+                    if fwd_path:
+                        bot_packet['_meshcore_path'] = fwd_path
                     
-                    # Forward ALL packets to bot (not just text messages)
-                    debug_print_mc(f"➡️  [RX_LOG] Forwarding {portnum} packet to bot callback")
-                    debug_print_mc(f"   📦 From: 0x{sender_id:08x} → To: 0x{receiver_id:08x} | Broadcast: {is_broadcast}")
+                    # Forward to bot callback
                     self.message_callback(bot_packet, None)
                     debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     

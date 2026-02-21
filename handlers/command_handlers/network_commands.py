@@ -315,7 +315,9 @@ class NetworkCommands:
                         'name': self.node_manager.get_node_name(sender_id_normalized),
                         'rssi': 0,  # rx_history doesn't store RSSI separately
                         'snr': rx_data.get('snr', 0.0),
-                        'last_heard': rx_data.get('last_seen', 0)  # FIX: Use correct field name
+                        'last_heard': rx_data.get('last_seen', 0),  # FIX: Use correct field name
+                        '_meshcore_dm': rx_data.get('_meshcore_dm', False),
+                        'path_len': rx_data.get('path_len', 0)
                     }
                     debug_print(f"✅ Found node data in local rx_history (no TCP)")
                 
@@ -385,11 +387,21 @@ class NetworkCommands:
             rssi_str = f"~{display_rssi}dBm" if rssi_estimated else f"{display_rssi}dBm" if display_rssi != 0 else "n/a"
             snr_str = f"SNR:{snr:.1f}dB" if snr != 0 else "SNR:n/a"
             response_parts.append(f"{rssi_icon} {rssi_str} {snr_str}")
+        elif node_data.get('_meshcore_dm'):
+            path_len = node_data.get('path_len', 0)
+            # 255 (0xFF) is the MeshCore sentinel meaning "unknown / direct"
+            if path_len == 255:
+                path_len = 0
+            hop_str = f"{path_len} hop{'s' if path_len > 1 else ''}" if path_len > 0 else "direct"
+            response_parts.append(f"📡 MeshCore ({hop_str})")
         else:
             response_parts.append("📶 Signal: n/a")
         
         # Qualité + temps
-        quality_desc = get_signal_quality_description(display_rssi, snr)
+        if node_data.get('_meshcore_dm') and snr == 0 and display_rssi == 0:
+            quality_desc = "Contact actif"
+        else:
+            quality_desc = get_signal_quality_description(display_rssi, snr)
         last_heard = node_data.get('last_heard', 0)
         if last_heard > 0:
             time_str = format_elapsed_time(last_heard)

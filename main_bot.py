@@ -867,7 +867,7 @@ class MeshBot:
             # ========================================
             # Mise à jour de la base de nœuds depuis TOUS les packets
             self.node_manager.update_node_from_packet(packet, source=source)
-            self.node_manager.update_rx_history(packet)
+            self.node_manager.update_rx_history(packet, source=source)
             self.node_manager.track_packet_type(packet)
 
             # Enregistrer TOUS les paquets pour les statistiques
