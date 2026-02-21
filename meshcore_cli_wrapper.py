@@ -488,9 +488,6 @@ class MeshCoreCLIWrapper:
             
             # Add to internal dict
             self.meshcore.contacts[pubkey_prefix] = contact
-            debug_print_mc(f"✅ [DM] Contact ajouté à meshcore.contacts: {pubkey_prefix}")
-            debug_print_mc(f"📊 [DM] Dict keys après ajout: {list(self.meshcore.contacts.keys())}")
-            debug_print_mc(f"📊 [DM] Dict size: {len(self.meshcore.contacts)}")
             return True
             
         except Exception as e:
@@ -2811,7 +2808,6 @@ class MeshCoreCLIWrapper:
                 # DIAGNOSTIC: Show what's in meshcore.contacts dict
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     debug_print_mc(f"📊 [DM] meshcore.contacts dict size: {len(self.meshcore.contacts)}")
-                    debug_print_mc(f"📊 [DM] Dict keys: {list(self.meshcore.contacts.keys())}")
                 else:
                     debug_print_mc(f"⚠️ [DM] meshcore.contacts is None or empty!")
                 
