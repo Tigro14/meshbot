@@ -88,6 +88,7 @@ class MessageRouter:
         
         # Determine network source from packet
         # In dual mode, packet has 'source' field: 'local', 'tcp', 'tigrog2' (Meshtastic) or 'meshcore'
+        # 'cli' is treated as network-neutral (neither meshcore nor meshtastic)
         packet_source = packet.get('source', 'local')
         is_from_meshcore = (packet_source == 'meshcore')
         is_from_meshtastic = (packet_source in ['local', 'tcp', 'tigrog2'])

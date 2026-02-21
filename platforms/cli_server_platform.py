@@ -427,7 +427,8 @@ class CLIServerPlatform(MessagingPlatform):
                     'id': 0,
                     'rxTime': 0,
                     'hopLimit': 0,
-                    'channel': 0
+                    'channel': 0,
+                    'source': 'cli'  # Mark as CLI source to bypass network isolation checks
                 }
 
                 decoded = packet['decoded']
