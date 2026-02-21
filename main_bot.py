@@ -62,28 +62,12 @@ from meshcore_serial_interface import MeshCoreStandaloneInterface
 try:
     from meshcore_cli_wrapper import MeshCoreCLIWrapper
     MESHCORE_CLI_AVAILABLE = True
-    info_print_mc("=" * 80)
-    info_print_mc("✅ MESHCORE: Using HYBRID mode (BEST OF BOTH)")
-    info_print_mc("=" * 80)
-    info_print_mc("   ✅ MeshCoreSerialInterface for broadcasts (binary protocol)")
-    info_print_mc("   ✅ MeshCoreCLIWrapper for DM messages (meshcore-cli API)")
-    info_print_mc("   ✅ Full channel broadcast support")
-    info_print_mc("   ✅ DM messages logged with [DEBUG][MC]")
-    info_print_mc("=" * 80)
+    info_print_mc("✅ MESHCORE: Using HYBRID mode (serial for broadcasts + meshcore-cli for DM)")
     MESHCORE_FULL_SUPPORT = True
 except ImportError:
     MeshCoreCLIWrapper = None
     MESHCORE_CLI_AVAILABLE = False
-    info_print_mc("=" * 80)
-    info_print_mc("✅ MESHCORE: Using MeshCoreSerialInterface (BROADCAST SUPPORT)")
-    info_print_mc("=" * 80)
-    info_print_mc("   ✅ Binary protocol supported")
-    info_print_mc("   ✅ Channel broadcasts supported")
-    info_print_mc("   ⚠️  DM message decoding limited (no meshcore-cli)")
-    info_print_mc("")
-    info_print_mc("   💡 TIP: Install meshcore-cli for enhanced DM support")
-    info_print_mc("      $ pip install meshcore meshcoredecoder")
-    info_print_mc("=" * 80)
+    info_print_mc("⚠️ MESHCORE: meshcore-cli unavailable, using serial-only mode (no DM support)")
     MESHCORE_FULL_SUPPORT = False
 
 
@@ -418,7 +402,7 @@ class MeshBot:
         io_health_enabled = globals().get('IO_HEALTH_CHECK_ENABLED', True)
         if io_health_enabled:
             try:
-                info_print("🔍 Initialisation du moniteur de santé I/O...")
+                debug_print("🔍 Initialisation du moniteur de santé I/O...")
                 db_path = self.traffic_monitor.persistence.db_path
                 failure_threshold = globals().get('IO_HEALTH_CHECK_FAILURE_THRESHOLD', 3)
                 cooldown = globals().get('IO_HEALTH_CHECK_COOLDOWN', 900)
@@ -429,7 +413,7 @@ class MeshBot:
                     cooldown_seconds=cooldown,
                     enabled=True
                 )
-                info_print(f"✅ Moniteur I/O activé: seuil={failure_threshold}, cooldown={cooldown}s")
+                debug_print(f"✅ Moniteur I/O activé: seuil={failure_threshold}, cooldown={cooldown}s")
             except Exception as e:
                 error_print(f"⚠️ Erreur initialisation I/O health monitor: {e}")
                 error_print(traceback.format_exc())
@@ -439,7 +423,7 @@ class MeshBot:
         self.vigilance_monitor = None
         if globals().get('VIGILANCE_ENABLED', False):
             try:
-                info_print("🌦️ Initialisation du moniteur de vigilance météo...")
+                debug_print("🌦️ Initialisation du moniteur de vigilance météo...")
                 self.vigilance_monitor = VigilanceMonitor(
                     departement=globals().get('VIGILANCE_DEPARTEMENT', '75'),
                     check_interval=globals().get('VIGILANCE_CHECK_INTERVAL', 28800),
@@ -2043,7 +2027,7 @@ class MeshBot:
                 reboot_callback=reboot_callback
             )
             
-            info_print("✅ Moniteur d'erreurs DB initialisé avec auto-reboot")
+            debug_print("✅ Moniteur d'erreurs DB initialisé avec auto-reboot")
             
         except Exception as e:
             error_print(f"❌ Erreur initialisation moniteur DB: {e}")
@@ -2226,12 +2210,8 @@ class MeshBot:
                 # Auto-detect USB port if configured
                 meshcore_port = USBPortDetector.resolve_port(meshcore_port, "MeshCore")
                 
-                info_print("=" * 80)
-                info_print_mc("🔗 MESHCORE DUAL MODE INITIALIZATION")
-                info_print("=" * 80)
-                info_print_mc(f"📍 MeshCore port: {meshcore_port}")
-                info_print_mc(f"🔧 Interface class: {MeshCoreSerialInterface.__name__}")
-                info_print_mc("🔍 Creating MeshCore interface...")
+                info_print_mc(f"🔗 MESHCORE DUAL MODE: port={meshcore_port}, interface={MeshCoreSerialInterface.__name__}")
+                debug_print_mc("🔍 Creating MeshCore interface...")
                 
                 meshcore_interface = MeshCoreSerialInterface(meshcore_port)
                 info_print_mc(f"✅ Interface object created: {type(meshcore_interface).__name__}")
@@ -2283,7 +2263,7 @@ class MeshBot:
                     # Configure node_manager for pubkey lookups
                     if hasattr(meshcore_interface, 'set_node_manager'):
                         meshcore_interface.set_node_manager(self.node_manager)
-                        info_print("✅ Node manager configured for pubkey lookups")
+                        debug_print("✅ Node manager configured for pubkey lookups")
                     
                     # Fetch MeshCore contacts synchronously at startup (before event loop)
                     # This populates the SQLite DB so /nodesmc returns real data immediately
@@ -2297,12 +2277,9 @@ class MeshBot:
                     
                     info_print_mc("🔍 Starting MeshCore serial reading thread...")
                     if not meshcore_interface.start_reading():
-                        error_print("=" * 80)
                         error_print("❌ MESHCORE START_READING FAILED - Dual mode désactivé")
-                        error_print("=" * 80)
                         error_print("   → MeshCore serial thread did not start")
                         error_print("   → Check logs above for thread creation errors")
-                        error_print("=" * 80)
                         self._dual_mode_active = False
                         self.interface = meshtastic_interface
                         
@@ -2317,28 +2294,20 @@ class MeshBot:
                     else:
                         info_print_mc("✅ MeshCore reading thread started")
                         
-                        info_print("🔍 Configuring dual interface manager...")
+                        debug_print("🔍 Configuring dual interface manager...")
                         self.dual_interface.set_meshcore_interface(meshcore_interface)
-                        info_print_mc("✅ MeshCore interface set in dual manager")
+                        debug_print_mc("✅ MeshCore interface set in dual manager")
                         
                         # Setup callbacks for both interfaces
-                        info_print("🔍 Setting up message callbacks...")
+                        debug_print("🔍 Setting up message callbacks...")
                         self.dual_interface.setup_message_callbacks()
-                        info_print("✅ Message callbacks configured")
+                        debug_print("✅ Message callbacks configured")
                         
                         # Set primary interface for compatibility (use Meshtastic for full features)
                         self.interface = self.dual_interface.get_primary_interface()
-                        info_print(f"✅ Primary interface: {type(self.interface).__name__}")
+                        debug_print(f"✅ Primary interface: {type(self.interface).__name__}")
                         
-                        info_print("=" * 80)
-                        info_print_mc("✅ MESHCORE DUAL MODE INITIALIZATION COMPLETE")
-                        info_print("=" * 80)
-                        info_print(f"   → Meshtastic: {type(meshtastic_interface).__name__}")
-                        info_print_mc(f"   → MeshCore: {type(meshcore_interface).__name__}")
-                        info_print("   → Bot will receive packets from BOTH networks")
-                        info_print("   → Meshtastic packets: [DEBUG][MT]")
-                        info_print_mc("   → MeshCore packets: [DEBUG][MC]")
-                        info_print("=" * 80)
+                        info_print_mc(f"✅ DUAL MODE actif: Meshtastic={type(meshtastic_interface).__name__}, MeshCore={type(meshcore_interface).__name__}")
                 
                 # Stabilization
                 time.sleep(3)

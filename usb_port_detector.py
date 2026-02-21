@@ -247,7 +247,7 @@ class USBPortDetector:
             return port_config
         
         info_print(f"🔍 Auto-detecting USB port for {device_name}...")
-        info_print(f"   Configuration: {port_config}")
+        debug_print(f"   Configuration: {port_config}")
         
         # List all devices for debugging
         devices = USBPortDetector.list_usb_serial_devices()
@@ -269,7 +269,7 @@ class USBPortDetector:
                 if dev['port'] == detected_port:
                     info_print(f"   Device: {dev.get('manufacturer', 'N/A')} {dev.get('product', 'N/A')}")
                     if dev.get('serial'):
-                        info_print(f"   Serial: {dev['serial']}")
+                        debug_print(f"   Serial: {dev['serial']}")
                     break
             
             return detected_port

@@ -15,7 +15,7 @@ import traceback
 try:
     from meshcore import MeshCore, EventType
     MESHCORE_CLI_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] Library meshcore-cli disponible")
+    debug_print_mc("✅ [MESHCORE] Library meshcore-cli disponible")
 except ImportError:
     MESHCORE_CLI_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] Library meshcore-cli non disponible (pip install meshcore)")
@@ -28,7 +28,7 @@ try:
     from meshcoredecoder import MeshCoreDecoder
     from meshcoredecoder.utils.enum_names import get_route_type_name, get_payload_type_name
     MESHCORE_DECODER_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] Library meshcore-decoder disponible (packet decoding)")
+    debug_print_mc("✅ [MESHCORE] Library meshcore-decoder disponible (packet decoding)")
 except ImportError:
     MESHCORE_DECODER_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] Library meshcore-decoder non disponible (pip install meshcoredecoder)")
@@ -52,7 +52,7 @@ try:
     from cryptography.hazmat.backends import default_backend
     import base64
     CRYPTO_AVAILABLE = True
-    info_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
+    debug_print_mc("✅ [MESHCORE] cryptography disponible (déchiffrement canal Public)")
 except ImportError:
     CRYPTO_AVAILABLE = False
     info_print_mc("⚠️ [MESHCORE] cryptography non disponible (pip install cryptography)")
@@ -1091,52 +1091,52 @@ class MeshCoreCLIWrapper:
             # MeshCore uses 'events' attribute for subscriptions
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
+                debug_print_mc("✅ Souscription aux messages DM (events.subscribe)")
 
                 # Subscribe to ADVERTISEMENT events to capture/update real contact names
                 # MeshCore nodes periodically broadcast their name via advertisements
                 if hasattr(EventType, 'ADVERTISEMENT'):
                     self.meshcore.events.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
-                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
+                    debug_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                     self.meshcore.events.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    debug_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
                 else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
+                    debug_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible (version meshcore-cli ancienne?)")
                 
                 # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
                 # RX_LOG_DATA arrives just before CHANNEL_MSG_RECV for the same packet, allowing
                 # us to attach SNR/RSSI from the RF layer to the decoded channel message.
                 if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.events.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                    debug_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
                 else:
-                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
+                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
                 
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
-                info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
+                debug_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
 
                 # Subscribe to ADVERTISEMENT events to capture/update real contact names
                 if hasattr(EventType, 'ADVERTISEMENT'):
                     self.meshcore.dispatcher.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
-                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
+                    debug_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
                     self.meshcore.dispatcher.subscribe(EventType.CHANNEL_MSG_RECV, self._on_channel_message)
-                    info_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
+                    debug_print_mc("✅ Souscription aux messages de canal public (CHANNEL_MSG_RECV)")
                 else:
-                    info_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
+                    debug_print_mc("⚠️  EventType.CHANNEL_MSG_RECV non disponible")
                 
                 # Always subscribe to RX_LOG_DATA for channel echo correlation (SNR/RSSI)
                 if hasattr(EventType, 'RX_LOG_DATA'):
                     self.meshcore.dispatcher.subscribe(EventType.RX_LOG_DATA, self._on_rx_log_data)
-                    info_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
+                    debug_print_mc("✅ Souscription à RX_LOG_DATA (channel echo: SNR/path correlation)")
                 else:
-                    info_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
+                    debug_print_mc("⚠️  EventType.RX_LOG_DATA non disponible - pas de SNR pour les messages de canal")
             else:
                 error_print("❌ [MESHCORE-CLI] Ni events ni dispatcher trouvé")
                 return False
