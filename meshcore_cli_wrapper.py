@@ -1172,10 +1172,10 @@ class MeshCoreCLIWrapper:
     
     def _healthcheck_monitor(self):
         """Monitor meshcore connection health and alert on failures"""
-        info_print_mc("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
+        debug_print_mc("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
         
         # Wait for initial connection to stabilize
-        time.sleep(300)
+        time.sleep(600)
         
         while self.running:
             try:
@@ -1189,10 +1189,6 @@ class MeshCoreCLIWrapper:
                         if self.connection_healthy:
                             # First time detecting the issue
                             error_print(f"⚠️ [MC] ALERTE HEALTHCHECK: Aucun message reçu depuis {int(time_since_last_message)}s")
-                            error_print(f"   [MC] → La connexion au nœud semble perdue")
-                            error_print(f"   [MC] → Vérifiez: 1) Le nœud est allumé")
-                            error_print(f"   [MC] →          2) Le câble série est connecté ({self.port})")
-                            error_print(f"   [MC] →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
                             self.connection_healthy = False
                     else:
                         # Connection is healthy
