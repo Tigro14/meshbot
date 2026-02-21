@@ -78,6 +78,7 @@ class TrafficMonitor:
             'ENCRYPTED': '🔐 Chiffré',
             'PKI_ENCRYPTED': '🔐 PKI Chiffré',
             'ECDH_DM': '🔒 DM Étranger',
+            'OTHER_CHANNEL': '📻 Autre canal',
             'UNKNOWN': '❓ Inconnu'
         }
         
@@ -840,19 +841,22 @@ class TrafficMonitor:
             sender_name = self.node_manager.get_node_name(from_id)
 
             # Safety net: MeshCore TEXT_MESSAGE_APP packets that are still '[ENCRYPTED]'
-            # after the CLI-wrapper filter (broadcast PSK failure) → reclassify as ECDH_DM
-            # so they don't pollute the TEXT_MESSAGE_APP stats as garbled noise.
-            if (source == 'meshcore' and
-                    packet_type == 'TEXT_MESSAGE_APP' and
-                    message_text == '[ENCRYPTED]' and
-                    to_id not in (0xFFFFFFFF, 0)):
-                dst_name = self.node_manager.get_node_name(to_id)
+            # after the CLI-wrapper filter → reclassify based on whether directed or broadcast.
+            if source == 'meshcore' and packet_type == 'TEXT_MESSAGE_APP' and message_text == '[ENCRYPTED]':
                 src_c = sender_name if not sender_name.startswith('Node-') else f"{from_id & 0xFFFFFF:06x}"
-                dst_c = dst_name   if not dst_name.startswith('Node-')  else f"{to_id & 0xFFFFFF:06x}"
-                debug_print_mc(f"🔒 [ECDH_DM] {src_c}→{dst_c}")
-                packet_type = 'ECDH_DM'
-                message_text = '[FOREIGN_DM]'
-            
+                if to_id not in (0xFFFFFFFF, 0):
+                    # Directed: private ECDH DM between other nodes
+                    dst_name = self.node_manager.get_node_name(to_id)
+                    dst_c = dst_name if not dst_name.startswith('Node-') else f"{to_id & 0xFFFFFF:06x}"
+                    debug_print_mc(f"🔒 [ECDH_DM] {src_c}→{dst_c}")
+                    packet_type = 'ECDH_DM'
+                    message_text = '[FOREIGN_DM]'
+                else:
+                    # Broadcast: undecodable message from another channel/PSK
+                    debug_print_mc(f"📻 [OTHER_CH] {src_c}: broadcast [ENCRYPTED] — other network/PSK")
+                    packet_type = 'OTHER_CHANNEL'
+                    message_text = '[UNKNOWN_CHANNEL]'
+
             # Calculer la taille approximative du paquet
             packet_size = len(str(packet))
             
@@ -1555,6 +1559,7 @@ class TrafficMonitor:
                 'routing': 0,
                 'encrypted': 0,
                 'ecdh_dm': 0,
+                'other_channel': 0,
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
@@ -1639,6 +1644,8 @@ class TrafficMonitor:
                         stats['encrypted'] += 1
                     elif packet_type == 'ECDH_DM':
                         stats['ecdh_dm'] += 1
+                    elif packet_type == 'OTHER_CHANNEL':
+                        stats['other_channel'] += 1
                     else:
                         stats['other'] += 1
             
@@ -1700,6 +1707,8 @@ class TrafficMonitor:
                         breakdown.append(f"🔐{stats['encrypted']}")
                     if stats.get('ecdh_dm', 0) > 0:
                         breakdown.append(f"🔒{stats['ecdh_dm']}")
+                    if stats.get('other_channel', 0) > 0:
+                        breakdown.append(f"📻{stats['other_channel']}")
                     if stats['other'] > 0:
                         breakdown.append(f"❓{stats['other']}")
 

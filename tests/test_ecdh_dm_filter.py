@@ -54,14 +54,16 @@ def classify_rx_log_packet(payload_type_value, receiver_id):
 
 def safety_net_reclassify(source, packet_type, message_text, to_id):
     """
-    Mirror the safety-net block in traffic_monitor.add_packet().
+    Mirror the updated safety-net block in traffic_monitor.add_packet().
     Returns (new_packet_type, new_message_text).
     """
     if (source == 'meshcore' and
             packet_type == 'TEXT_MESSAGE_APP' and
-            message_text == '[ENCRYPTED]' and
-            to_id not in (BROADCAST_ID, 0)):
-        return 'ECDH_DM', '[FOREIGN_DM]'
+            message_text == '[ENCRYPTED]'):
+        if to_id not in (BROADCAST_ID, 0):
+            return 'ECDH_DM', '[FOREIGN_DM]'
+        else:
+            return 'OTHER_CHANNEL', '[UNKNOWN_CHANNEL]'
     return packet_type, message_text
 
 
@@ -125,11 +127,12 @@ def test_safetynet_reclassifies_encrypted_directed():
     return True
 
 
-def test_safetynet_keeps_broadcast_encrypted():
-    print("\n🧪 Test: safety-net leaves broadcast [ENCRYPTED] as TEXT_MESSAGE_APP")
+def test_safetynet_broadcast_encrypted_becomes_other_channel():
+    print("\n🧪 Test: safety-net reclassifies broadcast [ENCRYPTED] as OTHER_CHANNEL")
     pt, msg = safety_net_reclassify('meshcore', 'TEXT_MESSAGE_APP', '[ENCRYPTED]', BROADCAST_ID)
-    assert pt == 'TEXT_MESSAGE_APP', f"Broadcast should stay TEXT_MESSAGE_APP, got {pt}"
-    print("  ✅ [ENCRYPTED] broadcast → TEXT_MESSAGE_APP unchanged")
+    assert pt == 'OTHER_CHANNEL', f"Broadcast should become OTHER_CHANNEL, got {pt}"
+    assert msg == '[UNKNOWN_CHANNEL]'
+    print("  ✅ [ENCRYPTED] broadcast → OTHER_CHANNEL / [UNKNOWN_CHANNEL]")
     return True
 
 
@@ -150,11 +153,12 @@ def test_safetynet_keeps_clear_messages():
     return True
 
 
-def test_safetynet_to_id_zero_not_reclassified():
-    print("\n🧪 Test: safety-net skips to_id=0 (treated as broadcast equivalent)")
+def test_safetynet_to_id_zero_becomes_other_channel():
+    print("\n🧪 Test: safety-net reclassifies to_id=0 [ENCRYPTED] as OTHER_CHANNEL")
     pt, msg = safety_net_reclassify('meshcore', 'TEXT_MESSAGE_APP', '[ENCRYPTED]', 0)
-    assert pt == 'TEXT_MESSAGE_APP', f"to_id=0 should not be reclassified, got {pt}"
-    print("  ✅ to_id=0 → TEXT_MESSAGE_APP unchanged (broadcast equivalent)")
+    assert pt == 'OTHER_CHANNEL', f"to_id=0 should become OTHER_CHANNEL, got {pt}"
+    assert msg == '[UNKNOWN_CHANNEL]'
+    print("  ✅ to_id=0 [ENCRYPTED] → OTHER_CHANNEL / [UNKNOWN_CHANNEL]")
     return True
 
 
@@ -245,10 +249,10 @@ def run_all_tests():
         ("type=15 broadcast → PSK path",                test_type15_broadcast_tries_psk()),
         ("type=1 unaffected",                            test_type1_text_message_unaffected()),
         ("safety-net: [ENCRYPTED] directed MC",         test_safetynet_reclassifies_encrypted_directed()),
-        ("safety-net: broadcast unchanged",              test_safetynet_keeps_broadcast_encrypted()),
+        ("safety-net: broadcast → OTHER_CHANNEL",        test_safetynet_broadcast_encrypted_becomes_other_channel()),
         ("safety-net: Meshtastic unchanged",             test_safetynet_keeps_meshtastic_encrypted()),
         ("safety-net: clear-text unchanged",             test_safetynet_keeps_clear_messages()),
-        ("safety-net: to_id=0 unchanged",               test_safetynet_to_id_zero_not_reclassified()),
+        ("safety-net: to_id=0 → OTHER_CHANNEL",         test_safetynet_to_id_zero_becomes_other_channel()),
         ("_fmt_node: unknown → last-6-hex",              test_fmt_node_unknown_returns_last6hex()),
         ("_fmt_node: known short name",                  test_fmt_node_known_short_name()),
         ("_fmt_node: long name truncated",               test_fmt_node_long_name_truncated()),

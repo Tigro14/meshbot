@@ -1780,6 +1780,42 @@ class MeshCoreCLIWrapper:
             crc = 0x00000001
         return crc
 
+    @staticmethod
+    def _is_plausible_text(text):
+        """
+        Return True if `text` looks like a genuine human message rather than
+        PSK decryption garbage.
+
+        Rules:
+          1. At least 2 non-whitespace characters.
+          2. First visible character is alphanumeric, '/', '@' or '#' (covers
+             bot commands and mentions).  Bare punctuation starters like '=',
+             '"', '$', '&', '{', '}' are rejected.
+          3. Short strings (≤ 4 chars) must be pure ASCII — prevents random
+             Cyrillic / Latin-Extended decryption artifacts (e.g. 'ӿaC').
+          4. At least 60 % of characters are "word-like" (letter, digit,
+             space, or common punctuation) — rejects high-noise strings like
+             'F p+&+]+FDD'.
+        """
+        if not text:
+            return False
+        stripped = text.strip()
+        n = len(stripped)
+        if n < 2:
+            return False
+        first = stripped[0]
+        if not (first.isalpha() or first.isdigit() or first in '/@#'):
+            return False
+        # Short strings must be ASCII-only (avoid decryption artifacts)
+        if n <= 4 and not stripped.isascii():
+            return False
+        # Word-char ratio ≥ 60 %
+        word_chars = sum(
+            1 for c in stripped
+            if c.isalpha() or c.isdigit() or c in ' \t.,!?:;\'"/@#-\n\r'
+        )
+        return word_chars / n >= 0.60
+
     def _fmt_node(self, node_id):
         """
         Return a compact node label for log output.
@@ -2574,22 +2610,35 @@ class MeshCoreCLIWrapper:
                                                     
                                                     # Validate decryption result is readable text
                                                     # Public channel: PSK decryption produces readable UTF-8
-                                                    # DMs: PSK decryption produces garbage (ECDH-encrypted)
-                                                    if decrypted_text and all(c.isprintable() or c in '\n\r\t' for c in decrypted_text):
+                                                    # DMs / wrong-PSK: PSK decryption produces garbage
+                                                    if decrypted_text and self._is_plausible_text(decrypted_text):
                                                         debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
                                                         # Update payload with decrypted text
                                                         packet_text = decrypted_text
                                                         payload_bytes = decrypted_text.encode('utf-8')
                                                     else:
-                                                        # Non-printable result = ECDH-encrypted DM
-                                                        debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
+                                                        # Non-plausible result = ECDH-encrypted DM or wrong PSK
+                                                        debug_print_mc(f"⚠️  [DECRYPT] Non-plausible result (likely ECDH DM or wrong PSK)")
                                                         # Mark as encrypted for display
                                                         packet_text = '[ENCRYPTED]'
-                                            
-                                            # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
-                                            portnum = 'TEXT_MESSAGE_APP'
-                                            if not decrypted_text:
-                                                debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP (not decrypted)")
+
+                                            # Assign portnum based on broadcast + decryption outcome:
+                                            # - Broadcast + undecodable/implausible → OTHER_CHANNEL
+                                            #   (other network/PSK relay noise, relay node ID in sender)
+                                            # - Broadcast + good decryption → TEXT_MESSAGE_APP
+                                            # - Directed (ECDH_DM) → already handled above
+                                            if portnum != 'ECDH_DM':
+                                                if (receiver_id == 0xFFFFFFFF and
+                                                        (not decrypted_text or packet_text == '[ENCRYPTED]' or
+                                                         not self._is_plausible_text(packet_text))):
+                                                    portnum = 'OTHER_CHANNEL'
+                                                    packet_text = '[UNKNOWN_CHANNEL]'
+                                                    src = self._fmt_node(sender_id)
+                                                    debug_print_mc(f"📻 [OTHER_CH] {src}: broadcast undecodable/other-PSK — not our traffic")
+                                                else:
+                                                    portnum = 'TEXT_MESSAGE_APP'
+                                                    if not decrypted_text:
+                                                        debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP")
                                         else:
                                             # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
