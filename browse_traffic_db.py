@@ -443,15 +443,15 @@ class TrafficDBBrowser:
     def draw_packet_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de paquet"""
         ts = self.format_timestamp(item.get('timestamp'))
-        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
         ptype = (item.get('packet_type') or 'N/A')[:20]
 
         # Indicateur de chiffrement
         encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
 
-        msg = self.truncate(item.get('message') or '', width - 64)
+        msg = self.truncate(item.get('message') or '', width - 69)
 
-        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+        line = f"{ts} {name:20s} {ptype:20s} {encrypted_icon} {msg}"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -462,10 +462,10 @@ class TrafficDBBrowser:
     def draw_message_line(self, stdscr, y, x, width, item, is_selected):
         """Dessine une ligne de message"""
         ts = self.format_timestamp(item.get('timestamp'))
-        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
-        msg = self.truncate(item.get('message') or '', width - 36)
+        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
+        msg = self.truncate(item.get('message') or '', width - 41)
 
-        line = f"{ts} {name:15s} {msg}"
+        line = f"{ts} {name:20s} {msg}"
 
         attr = curses.A_REVERSE if is_selected else curses.A_NORMAL
         try:
@@ -1126,41 +1126,41 @@ class TrafficDBBrowser:
                 if self.current_view == 'packets':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
                         ptype = (item.get('packet_type') or 'N/A')[:20]
                         encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
                         msg = self.truncate(item.get('message') or '', 80)
 
-                        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+                        line = f"{ts} {name:20s} {ptype:20s} {encrypted_icon} {msg}"
                         f.write(line + '\n')
 
                 elif self.current_view == 'messages':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
                         msg = self.truncate(item.get('message') or '', 80)
 
-                        line = f"{ts} {name:15s} {msg}"
+                        line = f"{ts} {name:20s} {msg}"
                         f.write(line + '\n')
 
                 elif self.current_view == 'meshcore_packets':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
                         ptype = (item.get('packet_type') or 'N/A')[:20]
                         encrypted_icon = '🔒' if item.get('is_encrypted') else '  '
                         msg = self.truncate(item.get('message') or '', 80)
 
-                        line = f"{ts} {name:15s} {ptype:20s} {encrypted_icon} {msg}"
+                        line = f"{ts} {name:20s} {ptype:20s} {encrypted_icon} {msg}"
                         f.write(line + '\n')
 
                 elif self.current_view == 'meshcore_messages':
                     for item in visible_items:
                         ts = self.format_timestamp(item.get('timestamp'))
-                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:15]
+                        name = self.get_node_display_name(item.get('from_id'), item.get('sender_name'))[:20]
                         msg = self.truncate(item.get('message') or '', 80)
 
-                        line = f"{ts} {name:15s} {msg}"
+                        line = f"{ts} {name:20s} {msg}"
                         f.write(line + '\n')
 
                 elif self.current_view in ['nodes_stats', 'meshtastic_nodes', 'meshcore_contacts']:
