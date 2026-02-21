@@ -1571,7 +1571,11 @@ class MeshBot:
                 telemetry_enabled = globals().get('ESPHOME_TELEMETRY_ENABLED', True)
                 telemetry_interval = globals().get('ESPHOME_TELEMETRY_INTERVAL', 3600)
                 
-                if telemetry_enabled and self.interface:
+                # Only broadcast telemetry on interfaces that support sendData()
+                # MeshCore interfaces (MeshCoreHybridInterface) do not support sendData()
+                # and should not receive telemetry broadcasts (use DM /power instead)
+                interface_supports_broadcast = self.interface and hasattr(self.interface, 'sendData')
+                if telemetry_enabled and interface_supports_broadcast:
                     current_time = time.time()
                     time_since_last = current_time - self._last_telemetry_broadcast
                     
