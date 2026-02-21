@@ -688,11 +688,16 @@ class NodeManager:
         except Exception as e:
             debug_print(f"Erreur traitement NodeInfo: {e}")
 
-    def update_rx_history(self, packet):
+    def update_rx_history(self, packet, source='meshtastic'):
         """Mettre à jour l'historique des signaux reçus (DIRECT uniquement - 0 hop) - SNR UNIQUEMENT"""
         try:
+            debug_func, _ = self._get_log_funcs(source)
             from_id = packet.get('from')
             if not from_id:
+                return
+            
+            # Skip broadcast/unidentifiable sender (0xFFFFFFFF = unresolved packet header)
+            if from_id == 0xFFFFFFFF:
                 return
             
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
@@ -713,32 +718,32 @@ class NodeManager:
             is_meshcore_dm = packet.get('_meshcore_dm', False)
             is_meshcore_rx_log = packet.get('_meshcore_rx_log', False)
             
+            # Resolve name early so it appears in all RX_HISTORY debug lines
+            name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
+            
             # DEBUG: Log packet type and SNR value
-            debug_print(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}) | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
             
             if snr == 0.0 and not is_meshcore_rx_log:
                 # Skip SNR update but STILL update last_seen timestamp
                 # This ensures /my shows recent activity even without RF signal data
                 if from_id in self.rx_history:
                     self.rx_history[from_id]['last_seen'] = time.time()
-                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
                     self.rx_history[from_id]['name'] = name
-                    debug_print(f"✅ [RX_HISTORY] TIMESTAMP updated 0x{from_id:08x} ({name}) | snr=0.0, no SNR update")
+                    debug_func(f"✅ [RX_HISTORY] TIMESTAMP updated 0x{from_id:08x} ({name}) | snr=0.0, no SNR update")
                 elif is_meshcore_dm:
                     # Create new entry with snr=0.0 for DM packets
-                    name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
                     self.rx_history[from_id] = {
                         'name': name,
                         'snr': 0.0,
                         'last_seen': time.time(),
-                        'count': 1
+                        'count': 1,
+                        '_meshcore_dm': True,
+                        'path_len': packet.get('_meshcore_path_len', 0)
                     }
-                    debug_print(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
+                    debug_func(f"✅ [RX_HISTORY] NEW entry 0x{from_id:08x} ({name}) | snr=0.0 (DM packet)")
                 return
             
-            # Obtenir le nom
-            name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
-        
             # Mettre à jour l'historique RX
             if from_id not in self.rx_history:
                 self.rx_history[from_id] = {
@@ -747,7 +752,7 @@ class NodeManager:
                     'last_seen': time.time(),
                     'count': 1
                 }
-                debug_print(f"✅ [RX_HISTORY] NEW entry for 0x{from_id:08x} ({name}) | snr={snr:.1f}dB")
+                debug_func(f"✅ [RX_HISTORY] NEW entry for 0x{from_id:08x} ({name}) | snr={snr:.1f}dB")
             else:
                 # Moyenne mobile du SNR
                 old_snr = self.rx_history[from_id]['snr']
@@ -758,7 +763,7 @@ class NodeManager:
                 self.rx_history[from_id]['last_seen'] = time.time()
                 self.rx_history[from_id]['count'] += 1
                 self.rx_history[from_id]['name'] = name
-                debug_print(f"✅ [RX_HISTORY] UPDATED 0x{from_id:08x} ({name}) | old_snr={old_snr:.1f}→new_snr={new_snr:.1f}dB | count={count+1}")
+                debug_func(f"✅ [RX_HISTORY] UPDATED 0x{from_id:08x} ({name}) | old_snr={old_snr:.1f}→new_snr={new_snr:.1f}dB | count={count+1}")
             
             # Limiter la taille de l'historique
             if len(self.rx_history) > MAX_RX_HISTORY:
