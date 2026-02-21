@@ -337,7 +337,7 @@ class MeshCoreCLIWrapper:
             return 0
 
         try:
-            info_print_mc("📋 [STARTUP] Récupération des contacts MeshCore au démarrage...")
+            debug_print_mc("📋 [STARTUP] Récupération des contacts MeshCore au démarrage...")
 
             async def _do_fetch():
                 contacts = None
@@ -356,7 +356,7 @@ class MeshCoreCLIWrapper:
                             if not is_error:
                                 contacts = result.payload if hasattr(result, 'payload') else result
                                 if contacts:
-                                    info_print_mc(f"✅ [STARTUP] {len(contacts)} contacts récupérés via commands.get_contacts()")
+                                    debug_print_mc(f"✅ [STARTUP] {len(contacts)} contacts récupérés via commands.get_contacts()")
                     except Exception as e:
                         debug_print_mc(f"⚠️ [STARTUP] commands.get_contacts() échoué: {e}")
 
@@ -429,7 +429,7 @@ class MeshCoreCLIWrapper:
                 except Exception as save_err:
                     debug_print_mc(f"⚠️ [STARTUP] Erreur sauvegarde contact: {save_err}")
 
-            info_print_mc(f"💾 [STARTUP] {saved_count} contacts MeshCore sauvegardés en base")
+            info_print_mc(f"✅ [STARTUP] {saved_count} contacts MeshCore chargés")
             return saved_count
 
         except Exception as e:
@@ -479,7 +479,7 @@ class MeshCoreCLIWrapper:
             contact = {
                 'node_id': contact_data['node_id'],
                 'adv_name': contact_data.get('name', f"Node-{contact_data['node_id']:08x}"),
-                'public_key': contact_data['publicKey'].hex(),  # Convert bytes to hex string for API
+                'public_key': pubkey_hex,  # Already a hex string (converted above)
             }
             
             # Initialize contacts dict if needed
@@ -1020,13 +1020,13 @@ class MeshCoreCLIWrapper:
         if hasattr(self.meshcore, 'sync_contacts'):
             debug_print_mc("   ✅ Méthode sync_contacts() disponible")
         else:
-            info_print_mc("   ℹ️  Méthode sync_contacts() NON disponible (fonctionnalité optionnelle)")
+            debug_print_mc("   ℹ️  Méthode sync_contacts() NON disponible (fonctionnalité optionnelle)")
             # Note: Not added to issues_found - this is optional, not critical
         
         # Check 3: Auto message fetching
         debug_print_mc("\n3️⃣  Vérification auto message fetching...")
         if hasattr(self.meshcore, 'start_auto_message_fetching'):
-            info_print_mc("   ✅ start_auto_message_fetching() disponible")
+            debug_print_mc("   ✅ start_auto_message_fetching() disponible")
         else:
             error_print("   ❌ start_auto_message_fetching() NON disponible")
             issues_found.append("start_auto_message_fetching() non disponible - les messages doivent être récupérés manuellement")
@@ -1034,15 +1034,15 @@ class MeshCoreCLIWrapper:
         # Check 4: Event dispatcher
         debug_print_mc("\n4️⃣  Vérification event dispatcher...")
         if hasattr(self.meshcore, 'events'):
-            info_print_mc("   ✅ Event dispatcher (events) disponible")
+            debug_print_mc("   ✅ Event dispatcher (events) disponible")
         elif hasattr(self.meshcore, 'dispatcher'):
-            info_print_mc("   ✅ Event dispatcher (dispatcher) disponible")
+            debug_print_mc("   ✅ Event dispatcher (dispatcher) disponible")
         else:
             error_print("   ❌ Aucun event dispatcher trouvé")
             issues_found.append("Aucun event dispatcher - les événements ne peuvent pas être reçus")
         
         # Summary
-        info_print_mc("\n" + "="*60)
+        debug_print_mc("\n" + "="*60)
         if issues_found:
             error_print("⚠️  Problèmes de configuration détectés:")
             for i, issue in enumerate(issues_found, 1):
@@ -1053,8 +1053,8 @@ class MeshCoreCLIWrapper:
             error_print("   • Assurez-vous que auto message fetching est démarré")
             error_print("   • Activez le mode debug pour des logs plus détaillés")
         else:
-            info_print_mc("✅ Aucun problème de configuration détecté")
-        info_print_mc("="*60 + "\n")
+            debug_print_mc("✅ Aucun problème de configuration détecté")
+        debug_print_mc("="*60 + "\n")
         
         return len(issues_found) == 0
     
@@ -1306,7 +1306,7 @@ class MeshCoreCLIWrapper:
                                         debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
                                 
                                 # Single summary line instead of verbose logging
-                                info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
+                                debug_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{post_count} contacts sauvegardés")
                             elif post_count > 0:
                                 # Contacts were synced but save conditions failed - only show in DEBUG
                                 debug_print_mc(f"⚠️ [MESHCORE-SYNC] {post_count} contacts synchronisés mais NON SAUVEGARDÉS")
@@ -1323,7 +1323,7 @@ class MeshCoreCLIWrapper:
                         # Check if contacts were actually synced (silent unless DEBUG)
                         await self._verify_contacts()
                     else:
-                        info_print_mc("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
+                        debug_print_mc("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
 
                     # Step 2: Use commands.get_contacts() (official API) to get contacts WITH adv_name
                     # This is the correct API for fetching named contacts from the device
@@ -1338,7 +1338,7 @@ class MeshCoreCLIWrapper:
                             if not is_error:
                                 contacts_to_save = result.payload if hasattr(result, 'payload') else result
                                 if contacts_to_save:
-                                    info_print_mc(f"📋 [MESHCORE-SYNC] {len(contacts_to_save)} contacts récupérés via commands.get_contacts()")
+                                    debug_print_mc(f"📋 [MESHCORE-SYNC] {len(contacts_to_save)} contacts récupérés via commands.get_contacts()")
                         except Exception as e:
                             debug_print_mc(f"⚠️ [MESHCORE-SYNC] commands.get_contacts() échoué: {e}")
 
@@ -1400,7 +1400,7 @@ class MeshCoreCLIWrapper:
                             except Exception as save_err:
                                 debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
 
-                        info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{len(contacts_to_save)} contacts sauvegardés")
+                        debug_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{len(contacts_to_save)} contacts sauvegardés")
                     elif contacts_to_save is None:
                         error_print("⚠️ [MESHCORE-SYNC] ATTENTION: aucun contact récupéré!")
                         error_print("   → Raisons: mode companion (appairage requis), base vide, ou problème de clé")
