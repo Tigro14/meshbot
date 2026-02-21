@@ -77,6 +77,8 @@ class TrafficMonitor:
             'PAXCOUNTER_APP': '🚶 Paxcounter',
             'ENCRYPTED': '🔐 Chiffré',
             'PKI_ENCRYPTED': '🔐 PKI Chiffré',
+            'ECDH_DM': '🔒 DM Étranger',
+            'OTHER_CHANNEL': '📻 Autre canal',
             'UNKNOWN': '❓ Inconnu'
         }
         
@@ -837,7 +839,24 @@ class TrafficMonitor:
         
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
-            
+
+            # Safety net: MeshCore TEXT_MESSAGE_APP packets that are still '[ENCRYPTED]'
+            # after the CLI-wrapper filter → reclassify based on whether directed or broadcast.
+            if source == 'meshcore' and packet_type == 'TEXT_MESSAGE_APP' and message_text == '[ENCRYPTED]':
+                src_c = sender_name if not sender_name.startswith('Node-') else f"{from_id & 0xFFFFFF:06x}"
+                if to_id not in (0xFFFFFFFF, 0):
+                    # Directed: private ECDH DM between other nodes
+                    dst_name = self.node_manager.get_node_name(to_id)
+                    dst_c = dst_name if not dst_name.startswith('Node-') else f"{to_id & 0xFFFFFF:06x}"
+                    debug_print_mc(f"🔒 [ECDH_DM] {src_c}→{dst_c}")
+                    packet_type = 'ECDH_DM'
+                    message_text = '[FOREIGN_DM]'
+                else:
+                    # Broadcast: undecodable message from another channel/PSK
+                    debug_print_mc(f"📻 [OTHER_CH] {src_c}: broadcast [ENCRYPTED] — other network/PSK")
+                    packet_type = 'OTHER_CHANNEL'
+                    message_text = '[UNKNOWN_CHANNEL]'
+
             # Calculer la taille approximative du paquet
             packet_size = len(str(packet))
             
@@ -1214,6 +1233,26 @@ class TrafficMonitor:
                     if 'neighborinfo' in decoded:
                         neighbors = decoded['neighborinfo'].get('neighbors', [])
                         content_info.append(f"Neighbors:{len(neighbors)}")
+
+                # ECDH_DM — show sender's public key if known (helps correlate
+                # foreign DMs with known contacts in the area)
+                elif packet_type == 'ECDH_DM':
+                    pubkey_hex = None
+                    try:
+                        if self.node_manager:
+                            node_data = self.node_manager.node_names.get(from_id, {})
+                            pk = node_data.get('publicKey') if isinstance(node_data, dict) else None
+                            if pk:
+                                if isinstance(pk, (bytes, bytearray)):
+                                    pubkey_hex = pk.hex()
+                                elif isinstance(pk, str):
+                                    pubkey_hex = pk
+                    except Exception:
+                        pass
+                    if pubkey_hex:
+                        content_info.append(f"PK:{pubkey_hex}")
+                    else:
+                        content_info.append("PK:unknown")
             
             # Build line 2
             line2_parts = []
@@ -1539,6 +1578,8 @@ class TrafficMonitor:
                 'nodeinfo': 0,
                 'routing': 0,
                 'encrypted': 0,
+                'ecdh_dm': 0,
+                'other_channel': 0,
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
@@ -1621,6 +1662,10 @@ class TrafficMonitor:
                         stats['routing'] += 1
                     elif packet_type in ('ENCRYPTED', 'PKI_ENCRYPTED'):
                         stats['encrypted'] += 1
+                    elif packet_type == 'ECDH_DM':
+                        stats['ecdh_dm'] += 1
+                    elif packet_type == 'OTHER_CHANNEL':
+                        stats['other_channel'] += 1
                     else:
                         stats['other'] += 1
             
@@ -1680,6 +1725,10 @@ class TrafficMonitor:
                         breakdown.append(f"🔀{stats['routing']}")
                     if stats['encrypted'] > 0:
                         breakdown.append(f"🔐{stats['encrypted']}")
+                    if stats.get('ecdh_dm', 0) > 0:
+                        breakdown.append(f"🔒{stats['ecdh_dm']}")
+                    if stats.get('other_channel', 0) > 0:
+                        breakdown.append(f"📻{stats['other_channel']}")
                     if stats['other'] > 0:
                         breakdown.append(f"❓{stats['other']}")
 

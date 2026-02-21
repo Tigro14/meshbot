@@ -132,7 +132,7 @@ def _regroup_path_bytes(path_items):
     """
     Fix for meshcoredecoder library bug: it returns packet.path as a flat list of
     individual bytes (each 0-255) instead of a list of 4-byte little-endian uint32
-    node IDs, causing hop counts like 143 for a packet that should show ~35 hops.
+    node IDs, causing hop counts like 52 for a packet that should show ~13 hops.
 
     Detection: if every item in path_items is an integer that fits in a single byte
     (value 0-255), we treat the whole list as raw bytes and regroup them as 4-byte
@@ -142,15 +142,18 @@ def _regroup_path_bytes(path_items):
     If the path already contains values > 255 (i.e. real uint32 node IDs), it is
     returned unchanged.
 
-    Returns (corrected_hop_count: int, regrouped_path: list[int]).
+    Returns (corrected_hop_count: int, regrouped_path: list[int], was_regrouped: bool).
+    The `was_regrouped` flag is True whenever the flat-byte-list bug was detected and
+    fixed; callers must use `corrected_hop_count` instead of the raw `path_length`
+    field from the decoder in that case.
     """
     if not path_items:
-        return 0, []
+        return 0, [], False
 
     all_bytes = all(isinstance(n, int) and 0 <= n <= 255 for n in path_items)
     if not all_bytes:
         # Values look like real uint32 node IDs already — nothing to fix.
-        return len(path_items), list(path_items)
+        return len(path_items), list(path_items), False
 
     # Regroup as 4-byte little-endian uint32 node IDs.
     # Use integer division to determine how many complete 4-byte groups exist,
@@ -161,7 +164,7 @@ def _regroup_path_bytes(path_items):
         b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
         node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
 
-    return len(node_ids), node_ids
+    return len(node_ids), node_ids, True
 
 
 class MeshCoreCLIWrapper:
@@ -1172,10 +1175,10 @@ class MeshCoreCLIWrapper:
     
     def _healthcheck_monitor(self):
         """Monitor meshcore connection health and alert on failures"""
-        info_print_mc("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
+        debug_print_mc("🏥 [MESHCORE-HEALTHCHECK] Healthcheck monitoring started")
         
         # Wait for initial connection to stabilize
-        time.sleep(300)
+        time.sleep(600)
         
         while self.running:
             try:
@@ -1189,10 +1192,6 @@ class MeshCoreCLIWrapper:
                         if self.connection_healthy:
                             # First time detecting the issue
                             error_print(f"⚠️ [MC] ALERTE HEALTHCHECK: Aucun message reçu depuis {int(time_since_last_message)}s")
-                            error_print(f"   [MC] → La connexion au nœud semble perdue")
-                            error_print(f"   [MC] → Vérifiez: 1) Le nœud est allumé")
-                            error_print(f"   [MC] →          2) Le câble série est connecté ({self.port})")
-                            error_print(f"   [MC] →          3) meshcore-cli peut se connecter: meshcore-cli -s {self.port} -b {self.baudrate} chat")
                             self.connection_healthy = False
                     else:
                         # Connection is healthy
@@ -1650,13 +1649,19 @@ class MeshCoreCLIWrapper:
                     info_print_mc(f"📬 [MESHCORE-DM] De: <inconnu> | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
             
             # Créer un pseudo-packet compatible avec le code existant
-            # Si sender_id est toujours None après tous les essais, utiliser 0xFFFFFFFF
-            # MAIS marquer le paquet comme DM (pas broadcast) via le champ 'to'
+            # Si sender_id est toujours None après tous les essais, éviter 0xFFFFFFFF
+            # (adresse de broadcast) qui polluerait la DB avec Node-ffffffff.
+            # Utiliser plutôt un ID synthétique dérivé de pubkey_prefix si disponible.
             if sender_id is None:
-                sender_id = 0xFFFFFFFF
+                if pubkey_prefix:
+                    # pubkey_prefix too short for earlier derivation — use CRC of it
+                    sender_id = self._synthetic_node_id(pubkey_prefix)
+                    debug_print_mc(f"🆔 [MESHCORE-DM] Synthetic ID from pubkey_prefix: 0x{sender_id:08x}")
+                else:
+                    sender_id = 0xFFFFFFFF
                 # Marquer comme DM en utilisant to=localNode (pas broadcast)
                 to_id = self.localNode.nodeNum
-                
+
                 # AVERTISSEMENT: Le bot ne pourra pas répondre sans ID de contact valide
                 error_print(f"⚠️ [MESHCORE-DM] Expéditeur inconnu (pubkey {pubkey_prefix} non trouvé)")
                 error_print(f"   → Le message sera traité mais le bot ne pourra pas répondre")
@@ -1755,7 +1760,91 @@ class MeshCoreCLIWrapper:
             return f"0x{node_id:08x}"
         except Exception:
             return f"0x{node_id:08x}"
-    
+
+    def _synthetic_node_id(self, name):
+        """
+        Derive a deterministic 32-bit node ID from a sender name.
+
+        Used when a public-channel message carries a "SenderName: text" prefix but
+        the sender's node ID cannot be resolved from pubkey_prefix or the contact DB.
+        Using a CRC32 of the name guarantees:
+          - same name → same ID across restarts
+          - different names → (almost certainly) different IDs
+          - never 0, 0xFFFFFFFF (broadcast), or 0xFFFFFFFE (local sentinel)
+        """
+        import zlib
+        crc = zlib.crc32(name.encode('utf-8', errors='replace')) & 0xFFFFFFFF
+        # Avoid reserved values
+        if crc in (0, 0xFFFFFFFF, 0xFFFFFFFE):
+            crc = 0x00000001
+        return crc
+
+    @staticmethod
+    def _is_plausible_text(text):
+        """
+        Return True if `text` looks like a genuine human message rather than
+        PSK decryption garbage.
+
+        Rules:
+          1. At least 2 non-whitespace characters.
+          2. First visible character is alphanumeric, '/', '@' or '#' (covers
+             bot commands and mentions).  Bare punctuation starters like '=',
+             '"', '$', '&', '{', '}' are rejected.
+          3. Short strings (≤ 4 chars) must be pure ASCII — prevents random
+             Cyrillic / Latin-Extended decryption artifacts (e.g. 'ӿaC').
+          4. At least 60 % of characters are "word-like" (letter, digit,
+             space, or common punctuation) — rejects high-noise strings like
+             'F p+&+]+FDD'.
+        """
+        if not text:
+            return False
+        stripped = text.strip()
+        n = len(stripped)
+        if n < 2:
+            return False
+        first = stripped[0]
+        if not (first.isalpha() or first.isdigit() or first in '/@#'):
+            return False
+        # Short strings must be ASCII-only (avoid decryption artifacts)
+        if n <= 4 and not stripped.isascii():
+            return False
+        # Word-char ratio ≥ 60 %
+        word_chars = sum(
+            1 for c in stripped
+            if c.isalpha() or c.isdigit() or c in ' \t.,!?:;\'"/@#-\n\r'
+        )
+        return word_chars / n >= 0.60
+
+    @staticmethod
+    def _is_local_signal(snr, rssi):
+        """
+        Return True when signal metrics indicate a physically nearby node.
+
+        Thresholds (conservative):
+          SNR  ≥  0 dB  — positive SNR means signal well above noise floor
+          RSSI ≥ -80 dBm — strong enough to be within ~100 m in an urban environment
+
+        Either condition alone is sufficient.  Relay-noise packets from foreign
+        networks are typically received at very low SNR (< -5 dB) and high path
+        loss (RSSI < -100 dBm).
+        """
+        try:
+            return float(snr) >= 0.0 or int(rssi) >= -80
+        except (TypeError, ValueError):
+            return False
+
+    def _fmt_node(self, node_id):
+        """
+        Return a compact node label for log output.
+        Uses shortName/longName if known, otherwise last 6 hex chars of the ID.
+        """
+        name = self._get_node_name(node_id)
+        # _get_node_name returns "0x{node_id:08x}" for unknown nodes
+        if name.startswith("0x") or name == "Unknown":
+            return f"{node_id & 0xFFFFFF:06x}"
+        # Truncate long real names to keep the log line compact
+        return name[:12]
+
     def _on_channel_message(self, event):
         """
         Callback pour les messages de canal public (CHANNEL_MSG_RECV)
@@ -1971,10 +2060,27 @@ class MeshCoreCLIWrapper:
                         except Exception as e:
                             debug_print_mc(f"⚠️ [CHANNEL] Error looking up sender: {e}")
                 
-                # If still no sender_id, use broadcast address
+                # If still no sender_id, derive a deterministic synthetic ID from the
+                # sender name (if known) instead of falling back to the broadcast address
+                # 0xFFFFFFFF. A synthetic ID is stable across restarts (same name →
+                # same ID) and avoids polluting the DB with Node-ffffffff rows.
                 if sender_id is None:
-                    sender_id = 0xFFFFFFFF
-                    debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) - sender unknown")
+                    if ': ' in message_text:
+                        extracted_name = message_text.split(': ', 1)[0]
+                        sender_id = self._synthetic_node_id(extracted_name)
+                        debug_print_mc(f"🆔 [CHANNEL] Synthetic ID for '{extracted_name}': 0x{sender_id:08x}")
+                        # Register the name so future messages from this node are consistent
+                        if self.node_manager and sender_id not in self.node_manager.node_names:
+                            self.node_manager.node_names[sender_id] = {
+                                'name': extracted_name,
+                                'shortName': None,
+                                'hwModel': None,
+                                'lat': None, 'lon': None, 'alt': None,
+                                'last_update': None,
+                            }
+                    else:
+                        sender_id = 0xFFFFFFFF
+                        debug_print_mc("📢 [CHANNEL] Sender truly unknown (no name prefix) — using 0xFFFFFFFF")
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
@@ -2216,10 +2322,11 @@ class MeshCoreCLIWrapper:
                     # Fix meshcoredecoder library bug: path may be a flat byte list
                     # instead of a list of 4-byte little-endian node IDs.
                     raw_path = packet.path if hasattr(packet, 'path') and packet.path else []
-                    corrected_hops, corrected_path = _regroup_path_bytes(raw_path)
-                    # If decoder path_length looks wrong (>64, MeshCore's hard limit)
-                    # use our regrouped count instead.
-                    display_hops = corrected_hops if packet.path_length > 64 else packet.path_length
+                    corrected_hops, corrected_path, path_was_regrouped = _regroup_path_bytes(raw_path)
+                    # Use regrouped count when the byte-list bug was detected (was_regrouped),
+                    # OR when path_length obviously overflows (>64, MeshCore's hard limit).
+                    # Both cases mean packet.path_length is a byte count, not a hop count.
+                    display_hops = corrected_hops if (path_was_regrouped or packet.path_length > 64) else packet.path_length
 
                     # Add hop count (always show, even if 0, for routing visibility)
                     info_parts.append(f"Hops: {display_hops}")
@@ -2449,12 +2556,71 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value == 7:
                                             portnum = 'TELEMETRY_APP'
                                         elif payload_type_value in [12, 13, 15]:
-                                            # Types 12, 13, 15 are encrypted message wrappers
+                                            # Types 12, 13, 15: encrypted/directed message wrappers.
+                                            # Non-broadcast receiver = directed packet.
+                                            #   • At least one endpoint known OR receiver==us → ECDH_DM
+                                            #   • Both endpoints unknown                    → OTHER_CHANNEL
+                                            #
+                                            # In ALL cases we emit a full raw-hex diagnostic block so
+                                            # the traffic can be investigated and correctly classified.
+                                            if receiver_id != 0xFFFFFFFF:
+                                                local_id = self.localNode.nodeNum if self.localNode else None
+                                                nm = self.node_manager
+                                                is_to_us       = (receiver_id == local_id)
+                                                sender_known   = bool(nm and sender_id  in nm.node_names)
+                                                receiver_known = is_to_us or bool(nm and receiver_id in nm.node_names)
+                                                src = self._fmt_node(sender_id)
+                                                dst = self._fmt_node(receiver_id)
+                                                sig_info = f"SNR:{snr}dB RSSI:{rssi}dBm"
+
+                                                # ── Raw-hex diagnostic block ────────────────────────
+                                                # Always dump full packet bytes for type 12/13/15 so
+                                                # we can figure out the true wire format.
+                                                try:
+                                                    _raw = raw_hex or ''
+                                                    _raw_bytes = bytes.fromhex(_raw) if _raw else b''
+                                                    _total = len(_raw_bytes)
+                                                    # Header breakdown (16 bytes)
+                                                    _h_type  = _raw_bytes[0:4].hex()   if _total >= 4  else '??'
+                                                    _h_src   = _raw_bytes[4:8].hex()   if _total >= 8  else '??'
+                                                    _h_dst   = _raw_bytes[8:12].hex()  if _total >= 12 else '??'
+                                                    _h_hash  = _raw_bytes[12:16].hex() if _total >= 16 else '??'
+                                                    _payload = _raw_bytes[16:]
+                                                    _pay_hex = ' '.join(f'{b:02X}' for b in _payload)
+                                                    debug_print_mc(
+                                                        f"🔬 [RAW/{payload_type_value}] {src}→{dst} "
+                                                        f"{sig_info} total={_total}B"
+                                                    )
+                                                    debug_print_mc(
+                                                        f"   hdr  type={_h_type} src={_h_src} "
+                                                        f"dst={_h_dst} hash={_h_hash}"
+                                                    )
+                                                    debug_print_mc(
+                                                        f"   pay  ({len(_payload)}B) {_pay_hex}"
+                                                    )
+                                                except Exception as _e:
+                                                    debug_print_mc(f"   🔬 [RAW] dump failed: {_e}")
+
+                                                if not sender_known and not receiver_known:
+                                                    debug_print_mc(
+                                                        f"📻 [OTHER_CH] {src}→{dst} "
+                                                        f"(type={payload_type_value}) {sig_info} "
+                                                        f"both endpoints unknown"
+                                                    )
+                                                    portnum = 'OTHER_CHANNEL'
+                                                    packet_text = '[UNKNOWN_CHANNEL]'
+                                                else:
+                                                    debug_print_mc(
+                                                        f"🔒 [ECDH_DM] {src}→{dst} "
+                                                        f"(type={payload_type_value}) {sig_info}"
+                                                    )
+                                                    portnum = 'ECDH_DM'
+                                                    packet_text = '[FOREIGN_DM]'
                                             # Try to decrypt with MeshCore Public channel PSK
-                                            
+                                            # (only for broadcast packets - directed ones are ECDH, already handled above)
                                             # Try decryption if crypto is available
                                             decrypted_text = None
-                                            if CRYPTO_AVAILABLE and payload_bytes:
+                                            if portnum != 'ECDH_DM' and CRYPTO_AVAILABLE and payload_bytes:
                                                 # Get packet_id for decryption nonce
                                                 # Extract from message_hash (available in decoded_packet)
                                                 packet_id = None
@@ -2511,22 +2677,35 @@ class MeshCoreCLIWrapper:
                                                     
                                                     # Validate decryption result is readable text
                                                     # Public channel: PSK decryption produces readable UTF-8
-                                                    # DMs: PSK decryption produces garbage (ECDH-encrypted)
-                                                    if decrypted_text and all(c.isprintable() or c in '\n\r\t' for c in decrypted_text):
+                                                    # DMs / wrong-PSK: PSK decryption produces garbage
+                                                    if decrypted_text and self._is_plausible_text(decrypted_text):
                                                         debug_print_mc(f"✅ [DECRYPT] Decrypted: \"{decrypted_text[:50]}{'...' if len(decrypted_text) > 50 else ''}\"")
                                                         # Update payload with decrypted text
                                                         packet_text = decrypted_text
                                                         payload_bytes = decrypted_text.encode('utf-8')
                                                     else:
-                                                        # Non-printable result = ECDH-encrypted DM
-                                                        debug_print_mc(f"⚠️  [DECRYPT] Non-printable result (likely ECDH DM) or decryption failed")
+                                                        # Non-plausible result = ECDH-encrypted DM or wrong PSK
+                                                        debug_print_mc(f"⚠️  [DECRYPT] Non-plausible result (likely ECDH DM or wrong PSK)")
                                                         # Mark as encrypted for display
                                                         packet_text = '[ENCRYPTED]'
-                                            
-                                            # Map to TEXT_MESSAGE_APP (encrypted or decrypted)
-                                            portnum = 'TEXT_MESSAGE_APP'
-                                            if not decrypted_text:
-                                                debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP (not decrypted)")
+
+                                            # Assign portnum based on broadcast + decryption outcome:
+                                            # - Broadcast + undecodable/implausible → OTHER_CHANNEL
+                                            #   (other network/PSK relay noise, relay node ID in sender)
+                                            # - Broadcast + good decryption → TEXT_MESSAGE_APP
+                                            # - Directed (ECDH_DM) → already handled above
+                                            if portnum != 'ECDH_DM':
+                                                if (receiver_id == 0xFFFFFFFF and
+                                                        (not decrypted_text or packet_text == '[ENCRYPTED]' or
+                                                         not self._is_plausible_text(packet_text))):
+                                                    portnum = 'OTHER_CHANNEL'
+                                                    packet_text = '[UNKNOWN_CHANNEL]'
+                                                    src = self._fmt_node(sender_id)
+                                                    debug_print_mc(f"📻 [OTHER_CH] {src}: broadcast undecodable/other-PSK — not our traffic")
+                                                else:
+                                                    portnum = 'TEXT_MESSAGE_APP'
+                                                    if not decrypted_text:
+                                                        debug_print_mc(f"🔐 [RX_LOG] Encrypted packet (type {payload_type_value}) → TEXT_MESSAGE_APP")
                                         else:
                                             # Unknown type - keep as UNKNOWN_APP
                                             portnum = 'UNKNOWN_APP'
@@ -2592,9 +2771,9 @@ class MeshCoreCLIWrapper:
                     
                     # Apply the same byte-list fix for hopStart and path forwarding
                     fwd_raw_path = decoded_packet.path if hasattr(decoded_packet, 'path') and decoded_packet.path else []
-                    fwd_hops, fwd_path = _regroup_path_bytes(fwd_raw_path)
+                    fwd_hops, fwd_path, fwd_was_regrouped = _regroup_path_bytes(fwd_raw_path)
                     raw_pl = decoded_packet.path_length if hasattr(decoded_packet, 'path_length') else 0
-                    hop_start = fwd_hops if raw_pl > 64 else raw_pl
+                    hop_start = fwd_hops if (fwd_was_regrouped or raw_pl > 64) else raw_pl
 
                     bot_packet = {
                         'from': sender_id,  # Use header sender (CORRECT!)
@@ -2617,7 +2796,22 @@ class MeshCoreCLIWrapper:
                     
                     # Forward to bot callback
                     self.message_callback(bot_packet, None)
-                    debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
+                    if portnum == 'ECDH_DM':
+                        src = self._fmt_node(sender_id)
+                        dst = self._fmt_node(receiver_id)
+                        # Look up sender's public key for correlation with known contacts
+                        pubkey_str = "unknown"
+                        try:
+                            if self.node_manager:
+                                node_data = self.node_manager.node_names.get(sender_id, {})
+                                pk = node_data.get('publicKey') if isinstance(node_data, dict) else None
+                                if pk:
+                                    pubkey_str = pk.hex() if isinstance(pk, (bytes, bytearray)) else str(pk)
+                        except Exception:
+                            pass
+                        debug_print_mc(f"🔒 [ECDH_DM] {src}→{dst} | PK:{pubkey_str}")
+                    else:
+                        debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
                 except Exception as forward_error:
                     debug_print_mc(f"⚠️ [RX_LOG] Error forwarding packet: {forward_error}")
