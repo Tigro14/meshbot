@@ -1414,7 +1414,7 @@ class MeshCoreCLIWrapper:
                 try:
                     if hasattr(self.meshcore, 'start_auto_message_fetching'):
                         await self.meshcore.start_auto_message_fetching()
-                        info_print_mc("✅ [MESHCORE-CLI] Auto message fetching démarré")
+                        debug_print_mc("✅ [MESHCORE-CLI] Auto message fetching démarré")
                     else:
                         info_print_mc("⚠️ [MESHCORE-CLI] start_auto_message_fetching() non disponible")
                         error_print("   ⚠️ Sans auto message fetching, les messages ne seront pas reçus automatiquement")

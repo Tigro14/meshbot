@@ -1654,7 +1654,6 @@ class TrafficPersistence:
             ))
             
             self.conn.commit()
-            debug_print(f"✅ Contact MeshCore sauvegardé: {new_name} (0x{contact_data['node_id']:08x})")
             
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde du contact MeshCore : {e}")

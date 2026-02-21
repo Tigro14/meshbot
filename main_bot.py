@@ -2614,7 +2614,7 @@ class MeshBot:
             # (Uniquement si Meshtastic est actif)
             if meshtastic_enabled:
                 self.remote_nodes_client.interface = self.interface
-                info_print("♻️ Interface partagée avec RemoteNodesClient")
+                debug_print("♻️ Interface partagée avec RemoteNodesClient")
             
             # ========================================
             # SYNCHRONISATION DES CLÉS PUBLIQUES (Meshtastic uniquement)
@@ -2625,12 +2625,12 @@ class MeshBot:
             # violating ESP32 single-connection limitation.
             if meshtastic_enabled:
                 try:
-                    info_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
+                    debug_print("🔑 Synchronisation des clés publiques vers interface.nodes...")
                     injected = self.node_manager.sync_pubkeys_to_interface(self.interface, force=True)
                     if injected > 0:
-                        info_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
+                        debug_print(f"✅ {injected} clés publiques restaurées pour déchiffrement DM")
                     else:
-                        info_print("ℹ️  Aucune clé publique à synchroniser (collection continue)")
+                        debug_print("ℹ️  Aucune clé publique à synchroniser (collection continue)")
                 except Exception as e:
                     error_print(f"⚠️  Erreur synchronisation clés publiques: {e}")
                     error_print(traceback.format_exc())
@@ -2649,12 +2649,12 @@ class MeshBot:
                 try:
                     total_neighbors = self.traffic_monitor.populate_neighbors_from_interface(self.interface)
                     if total_neighbors > 0:
-                        info_print(f"👥 Base de voisinage initialisée avec {total_neighbors} relations")
+                        debug_print(f"👥 Base de voisinage initialisée avec {total_neighbors} relations")
                     else:
-                        info_print("ℹ️  Aucun voisin trouvé au démarrage (collection continue en tâche de fond)")
+                        debug_print("ℹ️  Aucun voisin trouvé au démarrage (collection continue en tâche de fond)")
                 except Exception as e:
                     error_print(f"⚠️  Erreur lors du chargement initial des voisins: {e}")
-                    info_print("   → Collection continue via NEIGHBORINFO_APP packets")
+                    debug_print("   → Collection continue via NEIGHBORINFO_APP packets")
             
             # ========================================
             # ABONNEMENT AUX MESSAGES
@@ -2662,137 +2662,36 @@ class MeshBot:
             # En mode Meshtastic: S'abonner aux messages via pubsub
             # En mode MeshCore: Le callback est déjà configuré
             
-            # === ULTRA-VISIBLE DIAGNOSTIC BANNER ===
-            info_print("=" * 80)
-            info_print("🔔 SUBSCRIPTION SETUP - CRITICAL FOR PACKET RECEPTION")
-            info_print("=" * 80)
-            info_print(f"   meshtastic_enabled = {meshtastic_enabled}")
-            info_print_mc(f"   meshcore_enabled = {meshcore_enabled}")
-            info_print(f"   dual_mode (config) = {dual_mode}")
-            info_print(f"   dual_mode (active) = {self._dual_mode_active}")
-            info_print(f"   connection_mode = {connection_mode}")
-            info_print(f"   interface type = {type(self.interface).__name__ if hasattr(self, 'interface') and self.interface else 'None'}")
-            
+            # === SUBSCRIPTION SETUP ===
             # CRITICAL: Warn if dual mode config is True but active is False
             if dual_mode and not self._dual_mode_active:
-                error_print("=" * 80)
-                error_print("⚠️  DUAL MODE MISMATCH DETECTED!")
-                error_print("=" * 80)
-                error_print(f"   Config: DUAL_NETWORK_MODE = True")
-                error_print(f"   Runtime: dual_mode_active = False")
-                error_print("")
-                error_print("   ❌ Dual mode initialization FAILED during startup")
-                error_print("   → Check logs above for error messages:")
-                error_print("      - 'Échec création interface Meshtastic'")
-                error_print("      - 'MESHCORE CONNECTION FAILED'")
-                error_print("      - 'MESHCORE START_READING FAILED'")
-                error_print("")
-                error_print("   📋 Bot running in FALLBACK mode:")
+                error_print("⚠️  DUAL MODE MISMATCH: config=True but active=False - check startup errors")
                 if hasattr(self, 'interface') and self.interface:
                     interface_name = type(self.interface).__name__
                     if 'MeshCore' in interface_name:
-                        error_print("      → Using MeshCore ONLY (Meshtastic failed)")
+                        error_print("   → Running MeshCore ONLY (Meshtastic failed)")
                     else:
-                        error_print("      → Using Meshtastic ONLY (MeshCore failed)")
-                error_print("=" * 80)
+                        error_print("   → Running Meshtastic ONLY (MeshCore failed)")
             
-            # Show which packet sources are active
-            if self._dual_mode_active:
-                info_print("   📡 ACTIVE NETWORKS:")
-                info_print("      ✅ Meshtastic (via primary interface)")
-                info_print_mc("      ✅ MeshCore (via dual interface)")
-                info_print("      → Will see [DEBUG][MT] AND [DEBUG][MC] packets")
-            elif meshtastic_enabled and not meshcore_enabled:
-                info_print("   📡 ACTIVE NETWORK:")
-                info_print("      ✅ Meshtastic ONLY")
-                info_print("      → Will see [DEBUG][MT] packets only")
-            elif meshcore_enabled and not meshtastic_enabled:
-                info_print("   📡 ACTIVE NETWORK:")
-                info_print_mc("      ✅ MeshCore ONLY")
-                info_print("      → Will see [DEBUG][MC] packets only")
-            elif meshtastic_enabled and meshcore_enabled and not dual_mode:
-                info_print("   📡 ACTIVE NETWORK:")
-                info_print_mc("      ✅ Meshtastic ONLY (MeshCore ignored)")
-                info_print("      ⚠️  Both enabled but DUAL_NETWORK_MODE=False")
-                info_print("      → Will see [DEBUG][MT] packets only")
-                info_print_mc("      → To enable MeshCore: Set DUAL_NETWORK_MODE=True")
-            
-            # Add post-initialization diagnostic if config doesn't match reality
             if dual_mode and meshtastic_enabled and meshcore_enabled:
                 if not self._dual_mode_active:
-                    error_print("=" * 80)
-                    error_print("⚠️  DUAL MODE INITIALIZATION FAILED!")
-                    error_print("=" * 80)
-                    error_print("   CONFIG: DUAL_NETWORK_MODE=True")
-                    error_print("   REALITY: Running in Meshtastic-only mode")
-                    error_print("")
-                    error_print("   POSSIBLE CAUSES:")
-                    error_print("   1. Meshtastic port creation failed")
-                    error_print("   2. MeshCore port connection failed")
-                    error_print("   3. MeshCore start_reading failed")
-                    error_print("")
-                    error_print("   CHECK LOGS ABOVE for error messages:")
-                    error_print("   - Look for '❌ Échec création interface Meshtastic'")
-                    error_print("   - Look for '❌ Échec connexion MeshCore'")
-                    error_print("   - Look for '❌ Échec démarrage lecture MeshCore'")
-                    error_print("")
-                    error_print("   VERIFY:")
-                    error_print(f"   - SERIAL_PORT exists and accessible")
-                    error_print(f"   - MESHCORE_SERIAL_PORT exists and accessible")
-                    error_print(f"   - Both ports are different")
-                    error_print(f"   - meshcore/meshcoredecoder libraries installed")
-                    error_print("=" * 80)
-            
-            info_print("=" * 80)
-            
+                    error_print("⚠️  DUAL MODE INITIALIZATION FAILED - running in fallback mode")
+
             if meshtastic_enabled:
-                # DOIT être fait immédiatement après la création de l'interface
-                # S'abonner aux différents types de messages Meshtastic
-                # - meshtastic.receive.text : messages texte (TEXT_MESSAGE_APP)
-                # - meshtastic.receive.data : messages de données
-                # - meshtastic.receive : messages génériques (fallback)
-                
-                info_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
-                
-                # S'abonner avec le callback principal
-                # NOTE: Seulement "meshtastic.receive" pour éviter les duplications
-                # (ce topic catch ALL messages: text, data, position, etc.)
+                debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
                 pub.subscribe(self.on_message, "meshtastic.receive")
-                
-                info_print_mt("✅ ✅ ✅ SUBSCRIBED TO meshtastic.receive ✅ ✅ ✅")
-                info_print_mt(f"   Callback: {self.on_message}")
-                info_print_mt(f"   Topic: 'meshtastic.receive'")
-                info_print_mt("   → Meshtastic interface should now publish packets to this callback")
-                info_print_mt("   → You should see '🔔 on_message CALLED' when packets arrive")
+                info_print_mt("✅ Subscribed to meshtastic.receive")
             else:
-                info_print_mc("ℹ️  ℹ️  ℹ️  Mode companion: Messages gérés par interface MeshCore")
-                info_print_mc("   → MeshCore callback already configured")
-                info_print_mc("   → Packets will arrive via MeshCore, not pubsub")
+                debug_print_mc("ℹ️  Mode companion: Messages gérés par interface MeshCore")
             
-            info_print("=" * 80)
-            
-            # === TEST PUBSUB AFTER SUBSCRIPTION ===
+            # Verify pubsub subscription
             if meshtastic_enabled:
-                info_print("🧪 Testing pubsub mechanism...")
                 try:
-                    # Try to send a test message through pubsub to verify it works
-                    # Note: pub is already imported at module level (line 18)
-                    
-                    # Check if we're subscribed
                     subscribers = pub.getDefaultTopicMgr().getTopic("meshtastic.receive").getListeners()
-                    info_print(f"   Subscribers to 'meshtastic.receive': {len(subscribers)}")
-                    for i, sub in enumerate(subscribers):
-                        info_print(f"     [{i}] {sub}")
-                    
-                    if len(subscribers) > 0:
-                        info_print("   ✅ Subscription verified - at least one listener registered")
-                    else:
-                        info_print("   ⚠️  WARNING: No subscribers found! Subscription may have failed")
-                        
+                    if not subscribers:
+                        error_print("⚠️  WARNING: No subscribers on meshtastic.receive! Subscription may have failed")
                 except Exception as e:
-                    info_print(f"   ⚠️  Could not verify subscription: {e}")
-            
-            info_print("=" * 80)
+                    debug_print(f"   ⚠️  Could not verify subscription: {e}")
             
             self.running = True
 
