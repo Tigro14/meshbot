@@ -1650,13 +1650,19 @@ class MeshCoreCLIWrapper:
                     info_print_mc(f"📬 [MESHCORE-DM] De: <inconnu> | Message: {text[:50]}{'...' if len(text) > 50 else ''}")
             
             # Créer un pseudo-packet compatible avec le code existant
-            # Si sender_id est toujours None après tous les essais, utiliser 0xFFFFFFFF
-            # MAIS marquer le paquet comme DM (pas broadcast) via le champ 'to'
+            # Si sender_id est toujours None après tous les essais, éviter 0xFFFFFFFF
+            # (adresse de broadcast) qui polluerait la DB avec Node-ffffffff.
+            # Utiliser plutôt un ID synthétique dérivé de pubkey_prefix si disponible.
             if sender_id is None:
-                sender_id = 0xFFFFFFFF
+                if pubkey_prefix:
+                    # pubkey_prefix too short for earlier derivation — use CRC of it
+                    sender_id = self._synthetic_node_id(pubkey_prefix)
+                    debug_print_mc(f"🆔 [MESHCORE-DM] Synthetic ID from pubkey_prefix: 0x{sender_id:08x}")
+                else:
+                    sender_id = 0xFFFFFFFF
                 # Marquer comme DM en utilisant to=localNode (pas broadcast)
                 to_id = self.localNode.nodeNum
-                
+
                 # AVERTISSEMENT: Le bot ne pourra pas répondre sans ID de contact valide
                 error_print(f"⚠️ [MESHCORE-DM] Expéditeur inconnu (pubkey {pubkey_prefix} non trouvé)")
                 error_print(f"   → Le message sera traité mais le bot ne pourra pas répondre")
@@ -1755,6 +1761,24 @@ class MeshCoreCLIWrapper:
             return f"0x{node_id:08x}"
         except Exception:
             return f"0x{node_id:08x}"
+
+    def _synthetic_node_id(self, name):
+        """
+        Derive a deterministic 32-bit node ID from a sender name.
+
+        Used when a public-channel message carries a "SenderName: text" prefix but
+        the sender's node ID cannot be resolved from pubkey_prefix or the contact DB.
+        Using a CRC32 of the name guarantees:
+          - same name → same ID across restarts
+          - different names → (almost certainly) different IDs
+          - never 0, 0xFFFFFFFF (broadcast), or 0xFFFFFFFE (local sentinel)
+        """
+        import zlib
+        crc = zlib.crc32(name.encode('utf-8', errors='replace')) & 0xFFFFFFFF
+        # Avoid reserved values
+        if crc in (0, 0xFFFFFFFF, 0xFFFFFFFE):
+            crc = 0x00000001
+        return crc
 
     def _fmt_node(self, node_id):
         """
@@ -1983,10 +2007,27 @@ class MeshCoreCLIWrapper:
                         except Exception as e:
                             debug_print_mc(f"⚠️ [CHANNEL] Error looking up sender: {e}")
                 
-                # If still no sender_id, use broadcast address
+                # If still no sender_id, derive a deterministic synthetic ID from the
+                # sender name (if known) instead of falling back to the broadcast address
+                # 0xFFFFFFFF. A synthetic ID is stable across restarts (same name →
+                # same ID) and avoids polluting the DB with Node-ffffffff rows.
                 if sender_id is None:
-                    sender_id = 0xFFFFFFFF
-                    debug_print_mc("📢 [CHANNEL] Using broadcast sender ID (0xFFFFFFFF) - sender unknown")
+                    if ': ' in message_text:
+                        extracted_name = message_text.split(': ', 1)[0]
+                        sender_id = self._synthetic_node_id(extracted_name)
+                        debug_print_mc(f"🆔 [CHANNEL] Synthetic ID for '{extracted_name}': 0x{sender_id:08x}")
+                        # Register the name so future messages from this node are consistent
+                        if self.node_manager and sender_id not in self.node_manager.node_names:
+                            self.node_manager.node_names[sender_id] = {
+                                'name': extracted_name,
+                                'shortName': None,
+                                'hwModel': None,
+                                'lat': None, 'lon': None, 'alt': None,
+                                'last_update': None,
+                            }
+                    else:
+                        sender_id = 0xFFFFFFFF
+                        debug_print_mc("📢 [CHANNEL] Sender truly unknown (no name prefix) — using 0xFFFFFFFF")
             
             # Log the channel message
             info_print_mc(f"📢 [CHANNEL] Message de 0x{sender_id:08x} sur canal {channel_index}: {message_text[:50]}{'...' if len(message_text) > 50 else ''}")
