@@ -2556,17 +2556,13 @@ class MeshCoreCLIWrapper:
                                         elif payload_type_value == 7:
                                             portnum = 'TELEMETRY_APP'
                                         elif payload_type_value in [12, 13, 15]:
-                                            # Types 12, 13, 15 are encrypted message wrappers.
-                                            # Non-broadcast receiver means it is a directed (DM) packet.
-                                            # Three cases:
-                                            #   A) DM to us: receiver == our local node ID → ECDH_DM
-                                            #   B) DM involving a known contact → ECDH_DM
-                                            #   C) Both endpoints unknown:
-                                            #      C1) Strong local signal (SNR≥0 or RSSI≥-80) →
-                                            #          real local node we haven't met yet → ECDH_DM
-                                            #          (register sender as pending contact)
-                                            #      C2) Weak/distant signal → relay noise from another
-                                            #          network (sliding-window artefact) → OTHER_CHANNEL
+                                            # Types 12, 13, 15: encrypted/directed message wrappers.
+                                            # Non-broadcast receiver = directed packet.
+                                            #   • At least one endpoint known OR receiver==us → ECDH_DM
+                                            #   • Both endpoints unknown                    → OTHER_CHANNEL
+                                            #
+                                            # In ALL cases we emit a full raw-hex diagnostic block so
+                                            # the traffic can be investigated and correctly classified.
                                             if receiver_id != 0xFFFFFFFF:
                                                 local_id = self.localNode.nodeNum if self.localNode else None
                                                 nm = self.node_manager
@@ -2576,46 +2572,43 @@ class MeshCoreCLIWrapper:
                                                 src = self._fmt_node(sender_id)
                                                 dst = self._fmt_node(receiver_id)
                                                 sig_info = f"SNR:{snr}dB RSSI:{rssi}dBm"
-                                                is_local = self._is_local_signal(snr, rssi)
+
+                                                # ── Raw-hex diagnostic block ────────────────────────
+                                                # Always dump full packet bytes for type 12/13/15 so
+                                                # we can figure out the true wire format.
+                                                try:
+                                                    _raw = raw_hex or ''
+                                                    _raw_bytes = bytes.fromhex(_raw) if _raw else b''
+                                                    _total = len(_raw_bytes)
+                                                    # Header breakdown (16 bytes)
+                                                    _h_type  = _raw_bytes[0:4].hex()   if _total >= 4  else '??'
+                                                    _h_src   = _raw_bytes[4:8].hex()   if _total >= 8  else '??'
+                                                    _h_dst   = _raw_bytes[8:12].hex()  if _total >= 12 else '??'
+                                                    _h_hash  = _raw_bytes[12:16].hex() if _total >= 16 else '??'
+                                                    _payload = _raw_bytes[16:]
+                                                    _pay_hex = ' '.join(f'{b:02X}' for b in _payload)
+                                                    debug_print_mc(
+                                                        f"🔬 [RAW/{payload_type_value}] {src}→{dst} "
+                                                        f"{sig_info} total={_total}B"
+                                                    )
+                                                    debug_print_mc(
+                                                        f"   hdr  type={_h_type} src={_h_src} "
+                                                        f"dst={_h_dst} hash={_h_hash}"
+                                                    )
+                                                    debug_print_mc(
+                                                        f"   pay  ({len(_payload)}B) {_pay_hex}"
+                                                    )
+                                                except Exception as _e:
+                                                    debug_print_mc(f"   🔬 [RAW] dump failed: {_e}")
+
                                                 if not sender_known and not receiver_known:
-                                                    if is_local:
-                                                        # Strong signal: real local node we haven't
-                                                        # received an ADVERTISEMENT from yet.
-                                                        # Register sender so future packets can
-                                                        # correlate once the name arrives.
-                                                        debug_print_mc(
-                                                            f"⚡ [LOCAL_DM] {src}→{dst} "
-                                                            f"(type={payload_type_value}) {sig_info} "
-                                                            f"— local node, not yet advertised"
-                                                        )
-                                                        portnum = 'ECDH_DM'
-                                                        packet_text = '[FOREIGN_DM]'
-                                                        # Register as pending contact so node_manager
-                                                        # will fill in the name on next ADVERTISEMENT
-                                                        if nm and sender_id and sender_id not in nm.node_names:
-                                                            nm.node_names[sender_id] = {
-                                                                'name': f"Node-{sender_id:08x}",
-                                                                'shortName': None,
-                                                                'hwModel': None,
-                                                                'lat': None, 'lon': None, 'alt': None,
-                                                                'last_update': None,
-                                                                'pending': True,  # will be updated by ADVERTISEMENT
-                                                            }
-                                                            debug_print_mc(
-                                                                f"📋 [LOCAL_DM] Registered pending "
-                                                                f"contact 0x{sender_id:08x} — "
-                                                                f"awaiting ADVERTISEMENT"
-                                                            )
-                                                    else:
-                                                        # Weak signal: both endpoints unknown and
-                                                        # distant → directed relay noise
-                                                        debug_print_mc(
-                                                            f"📻 [OTHER_CH] {src}→{dst} "
-                                                            f"(type={payload_type_value}) {sig_info} "
-                                                            f"directed foreign noise"
-                                                        )
-                                                        portnum = 'OTHER_CHANNEL'
-                                                        packet_text = '[UNKNOWN_CHANNEL]'
+                                                    debug_print_mc(
+                                                        f"📻 [OTHER_CH] {src}→{dst} "
+                                                        f"(type={payload_type_value}) {sig_info} "
+                                                        f"both endpoints unknown"
+                                                    )
+                                                    portnum = 'OTHER_CHANNEL'
+                                                    packet_text = '[UNKNOWN_CHANNEL]'
                                                 else:
                                                     debug_print_mc(
                                                         f"🔒 [ECDH_DM] {src}→{dst} "
