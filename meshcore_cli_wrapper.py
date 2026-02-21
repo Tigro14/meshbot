@@ -304,7 +304,139 @@ class MeshCoreCLIWrapper:
         """
         self.node_manager = node_manager
         debug_print_mc("✅  NodeManager configuré")
-    
+
+    def fetch_contacts_initial(self):
+        """
+        Synchronously fetch MeshCore contacts at bot startup and save them to the SQLite DB.
+
+        This mirrors what Meshtastic does with load_nodes_from_sqlite() at startup:
+        contacts are retrieved from the device and persisted immediately so that
+        /nodesmc (and the CLI bot) can show full, up-to-date results as soon as the
+        bot is ready — without waiting for the async event loop to run sync_contacts().
+
+        Must be called AFTER connect() and set_node_manager(), but BEFORE start_reading()
+        (so the event loop is not yet running and we can safely use run_until_complete).
+
+        Returns:
+            int: Number of contacts saved (0 on failure or if not supported)
+        """
+        if not self.meshcore:
+            debug_print_mc("⚠️ [STARTUP] fetch_contacts_initial: pas de connexion meshcore")
+            return 0
+
+        if not self.node_manager:
+            debug_print_mc("⚠️ [STARTUP] fetch_contacts_initial: node_manager non configuré")
+            return 0
+
+        if not hasattr(self.node_manager, 'persistence') or not self.node_manager.persistence:
+            debug_print_mc("⚠️ [STARTUP] fetch_contacts_initial: persistence non configurée")
+            return 0
+
+        if not hasattr(self, '_loop') or self._loop is None:
+            debug_print_mc("⚠️ [STARTUP] fetch_contacts_initial: event loop non disponible")
+            return 0
+
+        try:
+            info_print_mc("📋 [STARTUP] Récupération des contacts MeshCore au démarrage...")
+
+            async def _do_fetch():
+                contacts = None
+
+                # PRIMARY: commands.get_contacts() is the official API and returns adv_name
+                # This is the correct way to get contacts with real names from the device
+                if hasattr(self.meshcore, 'commands') and hasattr(self.meshcore.commands, 'get_contacts'):
+                    try:
+                        result = await self.meshcore.commands.get_contacts()
+                        # Result is an Event; payload is the contacts dict {pubkey_prefix: contact_dict}
+                        if result is not None:
+                            # Check for error event type if EventType is available
+                            is_error = False
+                            if EventType is not None and hasattr(result, 'type'):
+                                is_error = (result.type == EventType.ERROR)
+                            if not is_error:
+                                contacts = result.payload if hasattr(result, 'payload') else result
+                                if contacts:
+                                    info_print_mc(f"✅ [STARTUP] {len(contacts)} contacts récupérés via commands.get_contacts()")
+                    except Exception as e:
+                        debug_print_mc(f"⚠️ [STARTUP] commands.get_contacts() échoué: {e}")
+
+                # FALLBACK: sync_contacts() + self.meshcore.contacts
+                if not contacts and hasattr(self.meshcore, 'sync_contacts'):
+                    try:
+                        await self.meshcore.sync_contacts()
+                        contacts = self.meshcore.contacts if hasattr(self.meshcore, 'contacts') else None
+                        if contacts:
+                            debug_print_mc(f"ℹ️  [STARTUP] {len(contacts)} contacts via sync_contacts() (fallback)")
+                    except Exception as e:
+                        debug_print_mc(f"⚠️ [STARTUP] sync_contacts() échoué: {e}")
+
+                return contacts
+
+            contacts = self._loop.run_until_complete(_do_fetch())
+
+            if not contacts:
+                error_print("⚠️ [STARTUP] Aucun contact MeshCore récupéré au démarrage")
+                return 0
+
+            # contacts can be a dict {pubkey_prefix: contact_dict} or a list
+            contact_items = contacts.values() if isinstance(contacts, dict) else contacts
+            saved_count = 0
+            for contact in contact_items:
+                try:
+                    contact_id = contact.get('contact_id') or contact.get('node_id')
+                    # adv_name is the primary name field in meshcore-cli contacts; fall back to name/long_name
+                    name = contact.get('adv_name') or contact.get('name') or contact.get('long_name')
+                    public_key = contact.get('public_key') or contact.get('publicKey')
+
+                    # Derive contact_id from public_key if not provided
+                    if not contact_id and public_key:
+                        try:
+                            pk_hex = public_key if isinstance(public_key, str) else public_key.hex()
+                            if len(pk_hex) >= 8:
+                                contact_id = int(pk_hex[:8], 16)
+                        except Exception:
+                            pass
+
+                    if not contact_id:
+                        debug_print_mc("⚠️ [STARTUP] Contact sans ID ignoré")
+                        continue
+
+                    # Convert contact_id to int if string
+                    if isinstance(contact_id, str):
+                        if contact_id.startswith('!'):
+                            contact_id = int(contact_id[1:], 16)
+                        else:
+                            try:
+                                contact_id = int(contact_id, 16)
+                            except ValueError:
+                                contact_id = int(contact_id)
+
+                    best_name = name or f"Node-{contact_id:08x}"
+                    contact_data = {
+                        'node_id': contact_id,
+                        'name': best_name,
+                        'shortName': name or best_name,
+                        'hwModel': contact.get('hw_model', None),
+                        'publicKey': public_key,
+                        'lat': contact.get('lat') or contact.get('latitude') or contact.get('adv_lat'),
+                        'lon': contact.get('lon') or contact.get('longitude') or contact.get('adv_lon'),
+                        'alt': contact.get('alt') or contact.get('altitude'),
+                        'source': 'meshcore'
+                    }
+                    self.node_manager.persistence.save_meshcore_contact(contact_data)
+                    self._add_contact_to_meshcore(contact_data)
+                    saved_count += 1
+                except Exception as save_err:
+                    debug_print_mc(f"⚠️ [STARTUP] Erreur sauvegarde contact: {save_err}")
+
+            info_print_mc(f"💾 [STARTUP] {saved_count} contacts MeshCore sauvegardés en base")
+            return saved_count
+
+        except Exception as e:
+            error_print(f"❌ [STARTUP] Erreur fetch_contacts_initial: {e}")
+            error_print(traceback.format_exc())
+            return 0
+
     def _add_contact_to_meshcore(self, contact_data):
         """
         Add a contact to meshcore's internal contact list
@@ -960,6 +1092,12 @@ class MeshCoreCLIWrapper:
             if hasattr(self.meshcore, 'events'):
                 self.meshcore.events.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (events.subscribe)")
+
+                # Subscribe to ADVERTISEMENT events to capture/update real contact names
+                # MeshCore nodes periodically broadcast their name via advertisements
+                if hasattr(EventType, 'ADVERTISEMENT'):
+                    self.meshcore.events.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
+                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
@@ -980,6 +1118,11 @@ class MeshCoreCLIWrapper:
             elif hasattr(self.meshcore, 'dispatcher'):
                 self.meshcore.dispatcher.subscribe(EventType.CONTACT_MSG_RECV, self._on_contact_message)
                 info_print_mc("✅ Souscription aux messages DM (dispatcher.subscribe)")
+
+                # Subscribe to ADVERTISEMENT events to capture/update real contact names
+                if hasattr(EventType, 'ADVERTISEMENT'):
+                    self.meshcore.dispatcher.subscribe(EventType.ADVERTISEMENT, self._on_advertisement)
+                    info_print_mc("✅ Souscription aux ADVERTISEMENT events (mise à jour noms contacts)")
                 
                 # Subscribe to CHANNEL_MSG_RECV for decoded public channel messages (with path_len)
                 if hasattr(EventType, 'CHANNEL_MSG_RECV'):
@@ -1089,14 +1232,8 @@ class MeshCoreCLIWrapper:
                 
                 # CRITICAL: Sync contacts first to enable CONTACT_MSG_RECV events
                 try:
+                    # Step 1: sync_contacts() enables DM decryption (key exchange)
                     if hasattr(self.meshcore, 'sync_contacts'):
-                        # Get initial count for comparison
-                        initial_count = 0
-                        if hasattr(self.meshcore, 'contacts'):
-                            initial_contacts = self.meshcore.contacts
-                            initial_count = len(initial_contacts) if initial_contacts else 0
-                        
-                        # Sync contacts (silent unless DEBUG_MODE)
                         await self.meshcore.sync_contacts()
                         
                         # Check post-sync state
@@ -1187,7 +1324,87 @@ class MeshCoreCLIWrapper:
                         await self._verify_contacts()
                     else:
                         info_print_mc("ℹ️  [MESHCORE-CLI] sync_contacts() non disponible (fonctionnalité optionnelle)")
-                        debug_print_mc("   Note: Sans sync_contacts(), certains DM peuvent nécessiter un appairage manuel")
+
+                    # Step 2: Use commands.get_contacts() (official API) to get contacts WITH adv_name
+                    # This is the correct API for fetching named contacts from the device
+                    contacts_to_save = None
+
+                    if hasattr(self.meshcore, 'commands') and hasattr(self.meshcore.commands, 'get_contacts'):
+                        try:
+                            result = await self.meshcore.commands.get_contacts()
+                            is_error = False
+                            if EventType is not None and hasattr(result, 'type'):
+                                is_error = (result.type == EventType.ERROR)
+                            if not is_error:
+                                contacts_to_save = result.payload if hasattr(result, 'payload') else result
+                                if contacts_to_save:
+                                    info_print_mc(f"📋 [MESHCORE-SYNC] {len(contacts_to_save)} contacts récupérés via commands.get_contacts()")
+                        except Exception as e:
+                            debug_print_mc(f"⚠️ [MESHCORE-SYNC] commands.get_contacts() échoué: {e}")
+
+                    # Fallback to self.meshcore.contacts if commands API not available
+                    if contacts_to_save is None and hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                        contacts_to_save = self.meshcore.contacts
+                        debug_print_mc(f"ℹ️  [MESHCORE-SYNC] Utilisation de meshcore.contacts ({len(contacts_to_save)}) en fallback")
+
+                    # Step 3: Save contacts to database
+                    if contacts_to_save and self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                        saved_count = 0
+                        # contacts can be a dict {pubkey_prefix: contact_dict} or a list
+                        contact_items = contacts_to_save.values() if isinstance(contacts_to_save, dict) else contacts_to_save
+                        for contact in contact_items:
+                            try:
+                                contact_id = contact.get('contact_id') or contact.get('node_id')
+                                # adv_name is the primary name field in meshcore-cli contacts; fall back to name/long_name
+                                name = contact.get('adv_name') or contact.get('name') or contact.get('long_name')
+                                public_key = contact.get('public_key') or contact.get('publicKey')
+
+                                # Derive contact_id from public_key if not provided
+                                if not contact_id and public_key:
+                                    try:
+                                        pk_hex = public_key if isinstance(public_key, str) else public_key.hex()
+                                        if len(pk_hex) >= 8:
+                                            contact_id = int(pk_hex[:8], 16)
+                                    except Exception:
+                                        pass
+
+                                if not contact_id:
+                                    debug_print_mc(f"⚠️ [MESHCORE-SYNC] Contact sans ID ignoré")
+                                    continue
+
+                                # Convert contact_id to int if string
+                                if isinstance(contact_id, str):
+                                    if contact_id.startswith('!'):
+                                        contact_id = int(contact_id[1:], 16)
+                                    else:
+                                        try:
+                                            contact_id = int(contact_id, 16)
+                                        except ValueError:
+                                            contact_id = int(contact_id)
+
+                                best_name = name or f"Node-{contact_id:08x}"
+                                contact_data = {
+                                    'node_id': contact_id,
+                                    'name': best_name,
+                                    'shortName': name or best_name,
+                                    'hwModel': contact.get('hw_model', None),
+                                    'publicKey': public_key,
+                                    'lat': contact.get('lat') or contact.get('latitude') or contact.get('adv_lat'),
+                                    'lon': contact.get('lon') or contact.get('longitude') or contact.get('adv_lon'),
+                                    'alt': contact.get('alt') or contact.get('altitude'),
+                                    'source': 'meshcore'
+                                }
+                                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                                self._add_contact_to_meshcore(contact_data)
+                                saved_count += 1
+                            except Exception as save_err:
+                                debug_print_mc(f"⚠️ [MESHCORE-SYNC] Erreur sauvegarde contact: {save_err}")
+
+                        info_print_mc(f"💾 [MESHCORE-SYNC] {saved_count}/{len(contacts_to_save)} contacts sauvegardés")
+                    elif contacts_to_save is None:
+                        error_print("⚠️ [MESHCORE-SYNC] ATTENTION: aucun contact récupéré!")
+                        error_print("   → Raisons: mode companion (appairage requis), base vide, ou problème de clé")
+
                 except Exception as e:
                     error_print(f"❌ [MESHCORE-CLI] Erreur sync_contacts: {e}")
                     error_print(traceback.format_exc())
@@ -1802,7 +2019,86 @@ class MeshCoreCLIWrapper:
         except Exception as e:
             error_print(f"❌ [MESHCORE-CHANNEL] Erreur traitement message de canal: {e}")
             error_print(traceback.format_exc())
-    
+
+    def _on_advertisement(self, event):
+        """
+        Callback pour les événements ADVERTISEMENT (annonces de nœuds MeshCore).
+
+        MeshCore nodes periodically broadcast their name, GPS position, and public key
+        via advertisement packets.  This event is the *primary* source of real contact
+        names on the mesh and is used to keep the SQLite DB up-to-date so that
+        /nodesmc always shows human-readable names.
+
+        Args:
+            event: Event object from meshcore dispatcher
+        """
+        try:
+            payload = event.payload if hasattr(event, 'payload') else event
+            if not isinstance(payload, dict):
+                debug_print_mc(f"⚠️ [ADVERT] Payload non-dict: {type(payload).__name__}")
+                return
+
+            # Extract name — adv_name is the canonical field in meshcore-cli advertisements
+            adv_name = payload.get('adv_name') or payload.get('name') or payload.get('long_name')
+            public_key = payload.get('public_key') or payload.get('publicKey')
+
+            if not adv_name and not public_key:
+                debug_print_mc("⚠️ [ADVERT] Pas de nom ni de clé dans l'événement, ignoré")
+                return
+
+            # Derive contact_id (= first 4 bytes of public_key)
+            contact_id = payload.get('node_id') or payload.get('contact_id')
+            if not contact_id and public_key:
+                try:
+                    pk_hex = public_key if isinstance(public_key, str) else public_key.hex()
+                    if len(pk_hex) >= 8:
+                        contact_id = int(pk_hex[:8], 16)
+                except Exception:
+                    pass
+
+            if not contact_id:
+                debug_print_mc("⚠️ [ADVERT] Impossible de dériver l'ID depuis la clé publique, ignoré")
+                return
+
+            if isinstance(contact_id, str):
+                try:
+                    contact_id = int(contact_id, 16) if not contact_id.startswith('!') else int(contact_id[1:], 16)
+                except ValueError:
+                    contact_id = int(contact_id)
+
+            if not adv_name:
+                # No name — nothing useful to update
+                return
+
+            info_print_mc(f"📡 [ADVERT] {adv_name} (0x{contact_id:08x}) - mise à jour en base")
+
+            if self.node_manager and hasattr(self.node_manager, 'persistence') and self.node_manager.persistence:
+                contact_data = {
+                    'node_id': contact_id,
+                    'name': adv_name,
+                    'shortName': adv_name,
+                    'hwModel': payload.get('hw_model') or payload.get('hwModel'),
+                    'publicKey': public_key,
+                    'lat': payload.get('adv_lat') or payload.get('lat') or payload.get('latitude'),
+                    'lon': payload.get('adv_lon') or payload.get('lon') or payload.get('longitude'),
+                    'alt': payload.get('alt') or payload.get('altitude'),
+                    'source': 'meshcore'
+                }
+                self.node_manager.persistence.save_meshcore_contact(contact_data)
+                debug_print_mc(f"✅ [ADVERT] Contact sauvegardé: {adv_name} (0x{contact_id:08x})")
+
+                # Also update in-memory node_names for consistent display
+                if hasattr(self.node_manager, 'node_names'):
+                    self.node_manager.node_names[contact_id] = {
+                        'name': adv_name,
+                        'shortName': adv_name,
+                        'publicKey': public_key,
+                    }
+
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-ADVERT] Erreur traitement advertisement: {e}")
+            error_print(traceback.format_exc())
+
     def _on_rx_log_data(self, event):
         """
         Callback pour les événements RX_LOG_DATA (données RF brutes)

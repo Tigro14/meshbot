@@ -49,7 +49,7 @@ def get_meshcore_paginated_split(contacts, page=1, days_filter=30, max_length=16
     contacts.sort(key=lambda x: x['last_heard'], reverse=True)
     
     # Pagination
-    nodes_per_page = 7
+    nodes_per_page = 5
     total_contacts = len(contacts)
     total_pages = (total_contacts + nodes_per_page - 1) // nodes_per_page
     

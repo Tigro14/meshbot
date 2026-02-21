@@ -2285,6 +2285,16 @@ class MeshBot:
                         meshcore_interface.set_node_manager(self.node_manager)
                         info_print("✅ Node manager configured for pubkey lookups")
                     
+                    # Fetch MeshCore contacts synchronously at startup (before event loop)
+                    # This populates the SQLite DB so /nodesmc returns real data immediately
+                    if hasattr(meshcore_interface, 'fetch_contacts_initial'):
+                        try:
+                            n = meshcore_interface.fetch_contacts_initial()
+                            if n > 0:
+                                info_print_mc(f"✅ {n} contacts MeshCore chargés au démarrage (dual mode)")
+                        except Exception as e:
+                            error_print(f"⚠️ Erreur chargement initial contacts MeshCore (dual mode): {e}")
+                    
                     info_print_mc("🔍 Starting MeshCore serial reading thread...")
                     if not meshcore_interface.start_reading():
                         error_print("=" * 80)
@@ -2604,6 +2614,16 @@ class MeshBot:
                 # Configure node_manager for pubkey lookups
                 if hasattr(self.interface, 'set_node_manager'):
                     self.interface.set_node_manager(self.node_manager)
+                
+                # Fetch MeshCore contacts synchronously at startup (before event loop)
+                # This populates the SQLite DB so /nodesmc returns real data immediately
+                if hasattr(self.interface, 'fetch_contacts_initial'):
+                    try:
+                        n = self.interface.fetch_contacts_initial()
+                        if n > 0:
+                            info_print_mc(f"✅ {n} contacts MeshCore chargés au démarrage")
+                    except Exception as e:
+                        error_print(f"⚠️ Erreur chargement initial contacts MeshCore: {e}")
                 
                 # Démarrer la lecture des messages
                 if not self.interface.start_reading():
