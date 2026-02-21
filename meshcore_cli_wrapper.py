@@ -2450,11 +2450,19 @@ class MeshCoreCLIWrapper:
                                             portnum = 'TELEMETRY_APP'
                                         elif payload_type_value in [12, 13, 15]:
                                             # Types 12, 13, 15 are encrypted message wrappers
+                                            # If receiver is not broadcast, this is a private ECDH DM
+                                            # between other nodes - PSK decryption will always fail.
+                                            # Label it as ECDH_DM so statistics can be tracked,
+                                            # but skip the pointless decryption attempt.
+                                            if receiver_id != 0xFFFFFFFF:
+                                                debug_print_mc(f"🔒 [DECRYPT] type={payload_type_value} ECDH DM 0x{sender_id:08x}→0x{receiver_id:08x} (foreign DM - storing as ECDH_DM)")
+                                                portnum = 'ECDH_DM'
+                                                packet_text = '[FOREIGN_DM]'
                                             # Try to decrypt with MeshCore Public channel PSK
-                                            
+                                            # (only for broadcast packets - directed ones are ECDH, already handled above)
                                             # Try decryption if crypto is available
                                             decrypted_text = None
-                                            if CRYPTO_AVAILABLE and payload_bytes:
+                                            if portnum != 'ECDH_DM' and CRYPTO_AVAILABLE and payload_bytes:
                                                 # Get packet_id for decryption nonce
                                                 # Extract from message_hash (available in decoded_packet)
                                                 packet_id = None
@@ -2617,7 +2625,10 @@ class MeshCoreCLIWrapper:
                     
                     # Forward to bot callback
                     self.message_callback(bot_packet, None)
-                    debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
+                    if portnum == 'ECDH_DM':
+                        debug_print_mc(f"🔒 [RX_LOG] ECDH_DM logged for stats: 0x{sender_id:08x}→0x{receiver_id:08x}")
+                    else:
+                        debug_print_mc(f"✅ [RX_LOG] Packet forwarded successfully")
                     
                 except Exception as forward_error:
                     debug_print_mc(f"⚠️ [RX_LOG] Error forwarding packet: {forward_error}")

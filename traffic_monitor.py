@@ -77,6 +77,7 @@ class TrafficMonitor:
             'PAXCOUNTER_APP': '🚶 Paxcounter',
             'ENCRYPTED': '🔐 Chiffré',
             'PKI_ENCRYPTED': '🔐 PKI Chiffré',
+            'ECDH_DM': '🔒 DM Étranger',
             'UNKNOWN': '❓ Inconnu'
         }
         
@@ -837,6 +838,17 @@ class TrafficMonitor:
         
             # Obtenir le nom du nœud
             sender_name = self.node_manager.get_node_name(from_id)
+
+            # Safety net: MeshCore TEXT_MESSAGE_APP packets that are still '[ENCRYPTED]'
+            # after the CLI-wrapper filter (broadcast PSK failure) → reclassify as ECDH_DM
+            # so they don't pollute the TEXT_MESSAGE_APP stats as garbled noise.
+            if (source == 'meshcore' and
+                    packet_type == 'TEXT_MESSAGE_APP' and
+                    message_text == '[ENCRYPTED]' and
+                    to_id not in (0xFFFFFFFF, 0)):
+                debug_print_mc(f"🔒 Safety-net ECDH_DM: {sender_name}→0x{to_id:08x}")
+                packet_type = 'ECDH_DM'
+                message_text = '[FOREIGN_DM]'
             
             # Calculer la taille approximative du paquet
             packet_size = len(str(packet))
@@ -1539,6 +1551,7 @@ class TrafficMonitor:
                 'nodeinfo': 0,
                 'routing': 0,
                 'encrypted': 0,
+                'ecdh_dm': 0,
                 'other': 0,
                 'bytes': 0,
                 'last_seen': 0,
@@ -1621,6 +1634,8 @@ class TrafficMonitor:
                         stats['routing'] += 1
                     elif packet_type in ('ENCRYPTED', 'PKI_ENCRYPTED'):
                         stats['encrypted'] += 1
+                    elif packet_type == 'ECDH_DM':
+                        stats['ecdh_dm'] += 1
                     else:
                         stats['other'] += 1
             
@@ -1680,6 +1695,8 @@ class TrafficMonitor:
                         breakdown.append(f"🔀{stats['routing']}")
                     if stats['encrypted'] > 0:
                         breakdown.append(f"🔐{stats['encrypted']}")
+                    if stats.get('ecdh_dm', 0) > 0:
+                        breakdown.append(f"🔒{stats['ecdh_dm']}")
                     if stats['other'] > 0:
                         breakdown.append(f"❓{stats['other']}")
 
