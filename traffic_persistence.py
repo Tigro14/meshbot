@@ -1610,6 +1610,30 @@ class TrafficPersistence:
                 except:
                     # If not base64, treat as hex
                     public_key = bytes.fromhex(public_key.replace(' ', ''))
+
+            new_name = contact_data.get('name')
+            new_short = contact_data.get('shortName')
+
+            # Preserve an existing real name when the incoming save would replace it
+            # with a generic fallback like "Node-xxxxxxxx".  This prevents a sync that
+            # can't resolve names from erasing a name previously learned via advertisement.
+            # Use a strict regex to match only auto-generated fallback names (exactly 8 hex chars).
+            import re as _re
+            _fallback_re = _re.compile(r'^Node-[0-9a-fA-F]{8}$')
+            name_is_fallback = (not new_name) or bool(_fallback_re.match(new_name))
+            if name_is_fallback:
+                cursor.execute(
+                    "SELECT name, shortName FROM meshcore_contacts WHERE node_id = ?",
+                    (node_id_str,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    existing_name = row[0] or ''
+                    existing_short = row[1] or ''
+                    # Keep existing name if it's a real name (not a fallback)
+                    if existing_name and not _fallback_re.match(existing_name):
+                        new_name = existing_name
+                        new_short = existing_short or existing_name
             
             # Insert or replace
             cursor.execute('''
@@ -1618,8 +1642,8 @@ class TrafficPersistence:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 node_id_str,
-                contact_data.get('name'),
-                contact_data.get('shortName'),
+                new_name,
+                new_short,
                 contact_data.get('hwModel'),
                 public_key,
                 contact_data.get('lat'),
@@ -1630,7 +1654,7 @@ class TrafficPersistence:
             ))
             
             self.conn.commit()
-            debug_print(f"✅ Contact MeshCore sauvegardé: {contact_data.get('name')} (0x{contact_data['node_id']:08x})")
+            debug_print(f"✅ Contact MeshCore sauvegardé: {new_name} (0x{contact_data['node_id']:08x})")
             
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde du contact MeshCore : {e}")
