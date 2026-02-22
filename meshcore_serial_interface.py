@@ -112,6 +112,13 @@ class MeshCoreSerialInterface:
             'nodeNum': 0xFFFFFFFE,  # Non-broadcast ID for companion mode
         })()
         
+        # Lock to serialise all writes to the serial port.
+        # Without this, _poll_loop, _read_loop and sendText() can all
+        # call serial.write() simultaneously, causing the OS write buffer
+        # to fill up and every thread to block in write() – which is what
+        # produces the load-average spike observed with py-spy.
+        self._write_lock = threading.Lock()
+
         debug_print(f"🔧 [MESHCORE] Initialisation interface série: {port}")
         
         # IMPORTANT WARNING: This basic implementation has limitations
@@ -126,7 +133,8 @@ class MeshCoreSerialInterface:
             self.serial = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
-                timeout=1.0
+                timeout=1.0,
+                write_timeout=2.0,  # Prevent serial.write() from blocking indefinitely
             )
             info_print(f"✅ [MESHCORE] Connexion série établie: {self.port}")
             return True
@@ -234,7 +242,8 @@ class MeshCoreSerialInterface:
                 # Construire le paquet
                 packet = bytes([0x3C]) + struct.pack('<H', length) + payload
                 
-                self.serial.write(packet)
+                with self._write_lock:
+                    self.serial.write(packet)
                 debug_print(f"📤 [MESHCORE-POLL] Demande de messages en attente (protocole binaire)")
                 
                 # Attendre avant la prochaine demande
@@ -414,7 +423,8 @@ class MeshCoreSerialInterface:
                         payload = bytes([CMD_SYNC_NEXT_MESSAGE])
                         length = len(payload)
                         packet = bytes([0x3C]) + struct.pack('<H', length) + payload
-                        self.serial.write(packet)
+                        with self._write_lock:
+                            self.serial.write(packet)
                         debug_print(f"📤 [MESHCORE-PUSH] Demande de récupération du message (protocole binaire)")
                     except Exception as sync_err:
                         error_print(f"❌ [MESHCORE-PUSH] Erreur envoi SYNC_NEXT: {sync_err}")
@@ -508,12 +518,17 @@ class MeshCoreSerialInterface:
                 debug_print(f"🔍 [MESHCORE-DEBUG] Message: {repr(message)}")
                 
                 # Write command to serial port
-                bytes_written = self.serial.write(cmd.encode('utf-8'))
+                with self._write_lock:
+                    bytes_written = self.serial.write(cmd.encode('utf-8'))
                 debug_print(f"🔍 [MESHCORE-DEBUG] Bytes written: {bytes_written}/{len(cmd)}")
                 
-                # Force immediate transmission
-                self.serial.flush()
-                debug_print(f"🔍 [MESHCORE-DEBUG] Flush completed")
+                # Note: flush() intentionally omitted here – flush() blocks waiting
+                # for the OS to drain the entire write buffer, which can take an extended
+                # period if the device is slow, causing all calling threads to pile up
+                # and driving load average high. The OS drains the buffer on its own
+                # schedule without needing an explicit flush.
+                # SerialTimeoutException (subclass of SerialException) from the
+                # write_timeout is caught by the outer except block.
                 
                 info_print(f"✅ [MESHCORE-CHANNEL] Broadcast envoyé via text protocol ({len(message)} chars)")
                 
@@ -535,8 +550,10 @@ class MeshCoreSerialInterface:
                 # Format simple pour envoi DM via MeshCore
                 # TODO: Implémenter protocole binaire complet avec CMD_SEND_TXT_MSG
                 cmd = f"SEND_DM:{destinationId:08x}:{message}\n"
-                self.serial.write(cmd.encode('utf-8'))
-                self.serial.flush()  # Force immediate transmission to hardware
+                with self._write_lock:
+                    self.serial.write(cmd.encode('utf-8'))
+                # Note: flush() intentionally omitted – flush() blocks waiting for the OS
+                # to drain the entire write buffer; see broadcast path comment above.
                 debug_print(f"📤 [MESHCORE-DM] Envoyé à 0x{destinationId:08x}: {message[:50]}{'...' if len(message) > 50 else ''}")
                 return True
             
