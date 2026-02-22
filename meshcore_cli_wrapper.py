@@ -2057,6 +2057,7 @@ class MeshCoreCLIWrapper:
             # Only use if the RX_LOG was recent (within 2 seconds).
             echo_snr = 0.0
             echo_rssi = 0
+            echo_path = []  # routing path from decoder (list of uint32 node IDs)
             if self.latest_rx_log and (time.time() - self.latest_rx_log.get('timestamp', 0)) < 2.0:
                 echo_snr = self.latest_rx_log.get('snr', 0.0)
                 echo_rssi = self.latest_rx_log.get('rssi', 0)
@@ -2064,6 +2065,10 @@ class MeshCoreCLIWrapper:
                 if not channel_path_len:
                     channel_path_len = self.latest_rx_log.get('path_len', 0)
                 debug_print_mc(f"📡 [CHANNEL-ECHO] SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
+                echo_path = self.latest_rx_log.get('path', [])
+                if echo_path:
+                    path_str = ' → '.join(self._fmt_node(n) for n in echo_path)
+                    debug_print_mc(f"   🛣️  Path: {path_str}")
             
             # Extract message text
             if isinstance(payload, dict):
@@ -2155,6 +2160,8 @@ class MeshCoreCLIWrapper:
                 '_meshcore_dm': False,             # NOT a DM - this is a public channel message
                 '_meshcore_path_len': channel_path_len  # Path length for rx_history
             }
+            if echo_path:
+                packet['_meshcore_path'] = echo_path  # relay node IDs for debug display
             
             decoded = packet['decoded']
             
@@ -2395,19 +2402,19 @@ class MeshCoreCLIWrapper:
 
                     # Add hop count (always show, even if 0, for routing visibility)
                     info_parts.append(f"Hops: {display_hops}")
-                    
-                    # Update path_len in latest_rx_log for channel echo correlation
+
+                    # Update path_len and path in latest_rx_log for channel echo correlation
                     self.latest_rx_log['path_len'] = display_hops if display_hops else 0
-                    
+                    self.latest_rx_log['path'] = corrected_path  # stored for _on_channel_message
+
                     # Add actual routing path if available (shows which nodes the packet traversed)
                     if corrected_path:
-                        # Truncate long paths (show first 5 hops + count of remaining)
-                        format_node_id = lambda n: f"0x{n:08x}" if isinstance(n, int) else str(n)
+                        # Use node names for readability; fall back to short hex ID
                         if len(corrected_path) > 5:
                             remaining_count = len(corrected_path) - 5
-                            path_str = ' → '.join(format_node_id(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
+                            path_str = ' → '.join(self._fmt_node(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
                         else:
-                            path_str = ' → '.join(format_node_id(n) for n in corrected_path)
+                            path_str = ' → '.join(self._fmt_node(n) for n in corrected_path)
                         info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
