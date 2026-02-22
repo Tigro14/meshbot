@@ -3023,7 +3023,7 @@ class MeshBot:
             
             while self.running:
                 try:
-                    time.sleep(300)
+                    time.sleep(30)
                     cleanup_counter += 1
                     status_log_counter += 1
                     
