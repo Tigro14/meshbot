@@ -130,41 +130,48 @@ def decrypt_meshcore_public(encrypted_bytes, packet_id, from_id, psk):
 
 def _regroup_path_bytes(path_items):
     """
-    Fix for meshcoredecoder library bug: it returns packet.path as a flat list of
-    individual bytes (each 0-255) instead of a list of 4-byte little-endian uint32
-    node IDs, causing hop counts like 52 for a packet that should show ~13 hops.
+    Reconstruct the list of 4-byte little-endian uint32 node IDs from the raw
+    path data returned by meshcoredecoder.
 
-    Detection: if every item in path_items is an integer that fits in a single byte
-    (value 0-255), we treat the whole list as raw bytes and regroup them as 4-byte
-    little-endian uint32 node IDs.  Any trailing bytes that do not form a complete
-    4-byte group are discarded.
+    meshcoredecoder ≥ 0.2.x returns ``packet.path`` as a flat list of 2-char hex
+    strings (one string per byte), e.g. ``['78', '56', '34', '12', 'f0', 'de',
+    'bc', '9a']`` for the two-node path [0x12345678, 0x9ABCDEF0].
 
-    If the path already contains values > 255 (i.e. real uint32 node IDs), it is
-    returned unchanged.
+    Older decoder builds returned the path as a flat list of integers (0-255)
+    instead of strings, so both formats are handled.
 
-    Returns (corrected_hop_count: int, regrouped_path: list[int], was_regrouped: bool).
-    The `was_regrouped` flag is True whenever the flat-byte-list bug was detected and
-    fixed; callers must use `corrected_hop_count` instead of the raw `path_length`
-    field from the decoder in that case.
+    The function also accepts a list that already contains uint32 values (> 255)
+    and returns it unchanged in that case.
+
+    Returns (hop_count: int, node_ids: list[int], was_regrouped: bool).
+    ``was_regrouped`` is True when the raw flat-byte format was detected and
+    converted; callers must use ``hop_count`` rather than the raw
+    ``packet.path_length`` byte-count field in that case.
     """
     if not path_items:
         return 0, [], False
 
+    # ── Case 1: 2-char hex strings (meshcoredecoder ≥ 0.2.x) ──────────────
+    if all(isinstance(n, str) and len(n) == 2 for n in path_items):
+        node_ids = []
+        complete_groups = len(path_items) // 4
+        for i in range(0, complete_groups * 4, 4):
+            b = [int(path_items[i + j], 16) for j in range(4)]
+            node_ids.append(b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24))
+        return len(node_ids), node_ids, True
+
+    # ── Case 2: flat integer bytes (0-255) — older decoder builds ───────────
     all_bytes = all(isinstance(n, int) and 0 <= n <= 255 for n in path_items)
-    if not all_bytes:
-        # Values look like real uint32 node IDs already — nothing to fix.
-        return len(path_items), list(path_items), False
+    if all_bytes:
+        node_ids = []
+        complete_groups = len(path_items) // 4
+        for i in range(0, complete_groups * 4, 4):
+            b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
+            node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
+        return len(node_ids), node_ids, True
 
-    # Regroup as 4-byte little-endian uint32 node IDs.
-    # Use integer division to determine how many complete 4-byte groups exist,
-    # avoiding accidental out-of-range access for odd-length lists.
-    node_ids = []
-    complete_groups = len(path_items) // 4
-    for i in range(0, complete_groups * 4, 4):
-        b0, b1, b2, b3 = path_items[i], path_items[i+1], path_items[i+2], path_items[i+3]
-        node_ids.append(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
-
-    return len(node_ids), node_ids, True
+    # ── Case 3: already uint32 node IDs (values > 255) ──────────────────────
+    return len(path_items), list(path_items), False
 
 
 class MeshCoreCLIWrapper:
@@ -1701,39 +1708,83 @@ class MeshCoreCLIWrapper:
             error_print(f"❌ [MESHCORE-CLI] Erreur traitement message: {e}")
             error_print(traceback.format_exc())
     
-    def _parse_meshcore_header(self, hex_string):
+    def _parse_meshcore_header(self, rf_hex):
         """
-        Parse MeshCore packet header to extract sender/receiver information
-        
-        MeshCore packet structure:
-        - Byte 0-3: Message type + version (1 byte type, 3 bytes reserved)
-        - Byte 4-7: Sender node ID (4 bytes, little-endian)
-        - Byte 8-11: Receiver node ID (4 bytes, little-endian)
-        - Byte 12-15: Message hash (4 bytes)
-        - Byte 16+: Payload data
-        
+        Parse a raw MeshCore RF packet to extract routing and sender information.
+
+        MeshCore RF packets do NOT carry fixed sender/receiver fields in the header.
+        The packet structure is:
+          - Byte 0    : Header (route_type 2b | payload_type 4b | version 2b)
+          - Byte 1    : path_length (byte count, NOT hop count)
+          - Bytes 2…  : path data   (path_length bytes of 4-byte LE node IDs)
+          - Remaining : payload (type-specific)
+
+        For TransportFlood/TransportDirect packets, 4 transport-code bytes are
+        inserted between the header byte and the path_length byte.
+
+        The *sender* is only available in the decoded payload:
+          - Advert packets  : first 4 bytes of public_key (big-endian) → node_id
+          - Direct/Response : sender comes from companion-protocol events
+          - GroupText       : sender embedded in text prefix ("Name: msg")
+
         Args:
-            hex_string: Raw packet hex string
-            
+            rf_hex: Raw RF packet as a hex string (must NOT include the 2-byte
+                    SNR/RSSI prefix that the LOG_DATA event prepends).
+
         Returns:
-            dict with sender_id, receiver_id, msg_hash or None if parsing fails
+            dict with keys sender_id, receiver_id, msg_hash, route_type, payload_type
+            or None if the packet is too short / cannot be parsed.
         """
-        if not hex_string or len(hex_string) < 32:  # At least 16 bytes for header
+        if not rf_hex or len(rf_hex) < 4:  # Need at least 2 bytes (header + path_length)
             return None
-        
+
         try:
-            # Convert hex to bytes
-            data = bytes.fromhex(hex_string)
-            
-            # Parse header fields
-            sender_id = int.from_bytes(data[4:8], 'little')
-            receiver_id = int.from_bytes(data[8:12], 'little')
-            msg_hash = data[12:16].hex()
-            
+            data = bytes.fromhex(rf_hex)
+            if len(data) < 2:
+                return None
+
+            header = data[0]
+            route_type_val = header & 0x03
+            payload_type_val = (header >> 2) & 0x0F
+
+            # For TransportFlood (2) and TransportDirect (3) there are 4 transport-
+            # code bytes after the header, before path_length.
+            offset = 1
+            if route_type_val in (2, 3):  # TransportFlood, TransportDirect
+                offset += 4
+
+            if len(data) <= offset:
+                return None
+
+            path_length_bytes = data[offset]
+            # receiver_id: Direct/TransportDirect packets are addressed to a specific
+            # node but that address is encoded in transport_codes or the payload — not
+            # available as a simple 4-byte field.  Use broadcast sentinel for Flood;
+            # leave as 0xFFFFFFFF (unknown) for Direct.
+            receiver_id = 0xFFFFFFFF
+
+            # sender_id: derive from Advert public_key (first 4 bytes, big-endian
+            # matches MeshCore's advertiser node-ID convention).
+            sender_id = 0xFFFFFFFF
+            if MESHCORE_DECODER_AVAILABLE:
+                try:
+                    packet = MeshCoreDecoder.decode(rf_hex)
+                    if packet and packet.payload:
+                        decoded_payload = packet.payload.get('decoded')
+                        if decoded_payload and hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
+                            # public_key is a hex string; first 4 bytes (8 hex chars) → node ID
+                            pk_hex = decoded_payload.public_key
+                            if len(pk_hex) >= 8:
+                                sender_id = int(pk_hex[:8], 16)
+                except Exception:
+                    pass
+
             return {
                 'sender_id': sender_id,
                 'receiver_id': receiver_id,
-                'msg_hash': msg_hash,
+                'route_type': route_type_val,
+                'payload_type': payload_type_val,
+                'path_length_bytes': path_length_bytes,
             }
         except Exception:
             return None
@@ -2006,6 +2057,7 @@ class MeshCoreCLIWrapper:
             # Only use if the RX_LOG was recent (within 2 seconds).
             echo_snr = 0.0
             echo_rssi = 0
+            echo_path = []  # routing path from decoder (list of uint32 node IDs)
             if self.latest_rx_log and (time.time() - self.latest_rx_log.get('timestamp', 0)) < 2.0:
                 echo_snr = self.latest_rx_log.get('snr', 0.0)
                 echo_rssi = self.latest_rx_log.get('rssi', 0)
@@ -2013,6 +2065,10 @@ class MeshCoreCLIWrapper:
                 if not channel_path_len:
                     channel_path_len = self.latest_rx_log.get('path_len', 0)
                 debug_print_mc(f"📡 [CHANNEL-ECHO] SNR:{echo_snr}dB RSSI:{echo_rssi}dBm Hops:{channel_path_len}")
+                echo_path = self.latest_rx_log.get('path', [])
+                if echo_path:
+                    path_str = ' → '.join(self._fmt_node(n) for n in echo_path)
+                    debug_print_mc(f"   🛣️  Path: {path_str}")
             
             # Extract message text
             if isinstance(payload, dict):
@@ -2104,6 +2160,8 @@ class MeshCoreCLIWrapper:
                 '_meshcore_dm': False,             # NOT a DM - this is a public channel message
                 '_meshcore_path_len': channel_path_len  # Path length for rx_history
             }
+            if echo_path:
+                packet['_meshcore_path'] = echo_path  # relay node IDs for debug display
             
             decoded = packet['decoded']
             
@@ -2228,12 +2286,22 @@ class MeshCoreCLIWrapper:
             # Extract packet metadata
             snr = payload.get('snr', 0.0)
             rssi = payload.get('rssi', 0)
-            raw_hex = payload.get('raw_hex', '')
-            
-            # Compute size and header upfront for early-exit check
-            hex_len = len(raw_hex) // 2 if raw_hex else 0  # 2 hex chars = 1 byte
-            header_info = self._parse_meshcore_header(raw_hex)
-            
+
+            # The LOG_DATA event payload dict has two hex fields:
+            #   'raw_hex'  — the full response bytes after the packet-type byte:
+            #                SNR_byte + RSSI_byte + RF_packet_bytes
+            #   'payload'  — only the RF packet bytes (what MeshCoreDecoder expects)
+            # Always prefer 'payload' for decoding; fall back to stripping the
+            # 2-byte (4 hex-char) SNR/RSSI prefix from 'raw_hex' if 'payload' is absent.
+            rf_hex = payload.get('payload', '')
+            if not rf_hex:
+                full_raw = payload.get('raw_hex', '')
+                rf_hex = full_raw[4:] if len(full_raw) > 4 else ''
+
+            # Packet size = actual RF bytes (without the 2-byte SNR/RSSI overhead)
+            hex_len = len(rf_hex) // 2 if rf_hex else 0
+            header_info = self._parse_meshcore_header(rf_hex)
+
             # Store latest RF signal data for channel echo correlation
             # CHANNEL_MSG_RECV events arrive just after RX_LOG_DATA for the same packet;
             # storing here lets _on_channel_message attach real SNR/RSSI to channel messages.
@@ -2243,40 +2311,40 @@ class MeshCoreCLIWrapper:
                 'timestamp': time.time(),
                 'path_len': 0  # Will be updated below if decoder is available
             }
-            
+
             # Packets whose header cannot be parsed (too short, malformed, etc.) cannot be
             # attributed to any node — skip all downstream processing with one compact line.
             if header_info is None:
                 debug_print_mc(f"⏭️  [RX_LOG] Short/unidentifiable packet ({hex_len}B, SNR:{snr}dB) — likely ACK/routing, skipped")
                 return
-            
+
             # DEBUG: Log SNR/RSSI extraction (identifiable packets only)
             debug_print_mc(f"📊 [RX_LOG] Extracted signal data: snr={snr}dB, rssi={rssi}dBm")
-            
+
             # Build first log line with sender/receiver info if available
             if header_info:
                 sender_id = header_info['sender_id']
                 receiver_id = header_info['receiver_id']
-                sender_name = self._get_node_name(sender_id)
+                sender_name = self._get_node_name(sender_id) if sender_id != 0xFFFFFFFF else "?"
                 receiver_name = self._get_node_name(receiver_id)
-                
+
                 # Check if broadcast (0xFFFFFFFF)
                 if receiver_id == 0xFFFFFFFF:
                     direction_info = f"From: {sender_name} → Broadcast"
                 else:
                     direction_info = f"From: {sender_name} → To: {receiver_name}"
-                
+
                 debug_print_mc(f"📡 [RX_LOG] Paquet RF reçu ({hex_len}B) - {direction_info}")
-                debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{raw_hex[:40]}...")
-            
+                debug_print_mc(f"   📶 SNR:{snr}dB RSSI:{rssi}dBm | Hex:{rf_hex[:40]}...")
+
             # True for Path/Trace routing-only packets — logged once then skipped
             is_routing_packet = False
 
             # Try to decode packet if meshcore-decoder is available
-            if MESHCORE_DECODER_AVAILABLE and raw_hex:
+            if MESHCORE_DECODER_AVAILABLE and rf_hex:
                 try:
                     # Decode the packet using meshcore-decoder
-                    packet = MeshCoreDecoder.decode(raw_hex)
+                    packet = MeshCoreDecoder.decode(rf_hex)
                     
                     # Get human-readable names for route and payload types
                     route_name = get_route_type_name(packet.route_type)
@@ -2319,30 +2387,34 @@ class MeshCoreCLIWrapper:
                     if packet.message_hash:
                         info_parts.append(f"Hash: {packet.message_hash[:8]}")
                     
-                    # Fix meshcoredecoder library bug: path may be a flat byte list
-                    # instead of a list of 4-byte little-endian node IDs.
+                    # Fix meshcoredecoder path format: the decoder returns packet.path
+                    # as a flat list of 2-char hex strings (one per byte), not as a list
+                    # of uint32 node IDs.  _regroup_path_bytes handles all known formats.
                     raw_path = packet.path if hasattr(packet, 'path') and packet.path else []
                     corrected_hops, corrected_path, path_was_regrouped = _regroup_path_bytes(raw_path)
-                    # Use regrouped count when the byte-list bug was detected (was_regrouped),
-                    # OR when path_length obviously overflows (>64, MeshCore's hard limit).
-                    # Both cases mean packet.path_length is a byte count, not a hop count.
-                    display_hops = corrected_hops if (path_was_regrouped or packet.path_length > 64) else packet.path_length
+                    # packet.path_length is always a *byte* count (4 bytes per node ID).
+                    # Divide by 4 to get the actual hop count.  The regrouped count from
+                    # _regroup_path_bytes is already in nodes, so prefer it when available.
+                    if path_was_regrouped:
+                        display_hops = corrected_hops
+                    else:
+                        display_hops = packet.path_length // 4
 
                     # Add hop count (always show, even if 0, for routing visibility)
                     info_parts.append(f"Hops: {display_hops}")
-                    
-                    # Update path_len in latest_rx_log for channel echo correlation
+
+                    # Update path_len and path in latest_rx_log for channel echo correlation
                     self.latest_rx_log['path_len'] = display_hops if display_hops else 0
-                    
+                    self.latest_rx_log['path'] = corrected_path  # stored for _on_channel_message
+
                     # Add actual routing path if available (shows which nodes the packet traversed)
                     if corrected_path:
-                        # Truncate long paths (show first 5 hops + count of remaining)
-                        format_node_id = lambda n: f"0x{n:08x}" if isinstance(n, int) else str(n)
+                        # Use node names for readability; fall back to short hex ID
                         if len(corrected_path) > 5:
                             remaining_count = len(corrected_path) - 5
-                            path_str = ' → '.join(format_node_id(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
+                            path_str = ' → '.join(self._fmt_node(n) for n in corrected_path[:5]) + f' … (+{remaining_count} more)'
                         else:
-                            path_str = ' → '.join(format_node_id(n) for n in corrected_path)
+                            path_str = ' → '.join(self._fmt_node(n) for n in corrected_path)
                         info_parts.append(f"Path: {path_str}")
                     
                     # Add transport codes if available (useful for debugging routing)
@@ -2472,18 +2544,15 @@ class MeshCoreCLIWrapper:
             # CRITICAL FIX: Forward ALL packets to bot for statistics
             # This allows the bot to count ALL MeshCore packets (not just text messages)
             # The bot's traffic_monitor will handle packet type filtering and counting
-            if MESHCORE_DECODER_AVAILABLE and raw_hex and self.message_callback and not is_routing_packet:
+            if MESHCORE_DECODER_AVAILABLE and rf_hex and self.message_callback and not is_routing_packet:
                 try:
-                    # IMPORTANT: Parse header FIRST to get correct sender/receiver addresses
-                    # The header_info is already parsed above, but we need it here too
-                    packet_header = self._parse_meshcore_header(raw_hex)
-                    
-                    # Extract sender and receiver from packet header (CORRECT SOURCE!)
-                    sender_id = packet_header['sender_id'] if packet_header else 0xFFFFFFFF
-                    receiver_id = packet_header['receiver_id'] if packet_header else 0xFFFFFFFF
-                    
+                    # header_info was already computed from the corrected rf_hex above.
+                    # Use it directly — no need to call _parse_meshcore_header again.
+                    sender_id = header_info['sender_id'] if header_info else 0xFFFFFFFF
+                    receiver_id = header_info['receiver_id'] if header_info else 0xFFFFFFFF
+
                     # Decode packet again (we already did above, but need clean decode for forwarding)
-                    decoded_packet = MeshCoreDecoder.decode(raw_hex)
+                    decoded_packet = MeshCoreDecoder.decode(rf_hex)
                     
                     # Extract packet information for all packet types
                     packet_text = None
@@ -2519,13 +2588,13 @@ class MeshCoreCLIWrapper:
                             # Payload not decoded (encrypted or unknown type)
                             # Check if there's raw payload data in decoded_packet
                             raw_payload = decoded_packet.payload.get('raw', b'')
-                            
-                            # CRITICAL FIX: If decoded raw is empty, use original raw_hex from event
-                            # The decoder can't decrypt encrypted packets, so payload['raw'] is empty
-                            # But the original hex data is available in the event payload
-                            if not raw_payload and raw_hex:
-                                debug_print_mc(f"🔧 [RX_LOG] Decoded raw empty, using original raw_hex: {len(raw_hex)//2}B")
-                                raw_payload = raw_hex
+
+                            # If the decoder couldn't decode the payload (e.g. encrypted),
+                            # fall back to the RF hex so the traffic monitor still accounts
+                            # for the packet.
+                            if not raw_payload and rf_hex:
+                                debug_print_mc(f"🔧 [RX_LOG] Decoded raw empty, using original rf_hex: {len(rf_hex)//2}B")
+                                raw_payload = rf_hex
                             
                             if raw_payload:
                                 # Have raw payload - use it
@@ -2577,7 +2646,7 @@ class MeshCoreCLIWrapper:
                                                 # Always dump full packet bytes for type 12/13/15 so
                                                 # we can figure out the true wire format.
                                                 try:
-                                                    _raw = raw_hex or ''
+                                                    _raw = rf_hex or ''
                                                     _raw_bytes = bytes.fromhex(_raw) if _raw else b''
                                                     _total = len(_raw_bytes)
                                                     # Header breakdown (16 bytes)
