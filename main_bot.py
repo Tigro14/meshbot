@@ -3023,7 +3023,7 @@ class MeshBot:
             
             while self.running:
                 try:
-                    time.sleep(30)
+                    time.sleep(300)
                     cleanup_counter += 1
                     status_log_counter += 1
                     
@@ -3033,18 +3033,15 @@ class MeshBot:
                         uptime_str = f"{int(uptime/60)}m {int(uptime%60)}s"
                         
                         # Log packet reception status
-                        info_print("=" * 80)
                         info_print(f"📊 BOT STATUS - Uptime: {uptime_str}")
                         info_print(f"📦 Packets this session: {self._packets_this_session}")
                         info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
                         
                         if self._packets_this_session == 0:
                             info_print("⚠️  WARNING: No packets received yet!")
-                            info_print("   → Check Meshtastic connection if packets expected")
                         else:
                             info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
                         
-                        info_print("=" * 80)
                     
                     if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
                         self.cleanup_cache()
