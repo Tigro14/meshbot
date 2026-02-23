@@ -1763,19 +1763,33 @@ class MeshCoreCLIWrapper:
             # leave as 0xFFFFFFFF (unknown) for Direct.
             receiver_id = 0xFFFFFFFF
 
-            # sender_id: derive from Advert public_key (first 4 bytes, big-endian
-            # matches MeshCore's advertiser node-ID convention).
+            # sender_id: derive from payload when available.
+            # • Advert: public_key first 4 bytes (big-endian) → node ID
+            # • AnonRequest: sender_public_key first 4 bytes → sender node ID
+            # All other packet types have the sender in the encrypted payload → 0xFFFFFFFF.
             sender_id = 0xFFFFFFFF
             if MESHCORE_DECODER_AVAILABLE:
                 try:
                     packet = MeshCoreDecoder.decode(rf_hex)
                     if packet and packet.payload:
                         decoded_payload = packet.payload.get('decoded')
-                        if decoded_payload and hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
-                            # public_key is a hex string; first 4 bytes (8 hex chars) → node ID
-                            pk_hex = decoded_payload.public_key
-                            if len(pk_hex) >= 8:
-                                sender_id = int(pk_hex[:8], 16)
+                        if decoded_payload:
+                            # Advert: public_key carries advertiser's full public key
+                            if hasattr(decoded_payload, 'public_key') and decoded_payload.public_key:
+                                pk_hex = decoded_payload.public_key
+                                if len(pk_hex) >= 8:
+                                    try:
+                                        sender_id = int(pk_hex[:8], 16)
+                                    except (ValueError, TypeError):
+                                        pass
+                            # AnonRequest: sender_public_key carries sender's full public key
+                            elif hasattr(decoded_payload, 'sender_public_key') and decoded_payload.sender_public_key:
+                                pk_hex = decoded_payload.sender_public_key
+                                if len(pk_hex) >= 8:
+                                    try:
+                                        sender_id = int(pk_hex[:8], 16)
+                                    except (ValueError, TypeError):
+                                        pass
                 except Exception:
                     pass
 
@@ -2475,6 +2489,17 @@ class MeshCoreCLIWrapper:
                                 text_preview = decoded_payload.text[:50] if len(decoded_payload.text) > 50 else decoded_payload.text
                                 msg_type = "📢 Public" if is_public else "📨 Direct"
                                 debug_print_mc(f"📝 [RX_LOG] {msg_type} Message: \"{text_preview}\"")
+                            elif not hasattr(decoded_payload, 'text') and not hasattr(decoded_payload, 'app_data'):
+                                # TextMessage with encrypted payload (Direct ECDH) — no cleartext available.
+                                # Show source_hash / destination_hash as routing hints (1-byte pubkey prefixes).
+                                _src_h = getattr(decoded_payload, 'source_hash', None)
+                                _dst_h = getattr(decoded_payload, 'destination_hash', None)
+                                if _src_h is not None or _dst_h is not None:
+                                    debug_print_mc(
+                                        f"🔑 [RX_LOG] ECDH Direct:"
+                                        f" src_prefix={_src_h or '??'} → dst_prefix={_dst_h or '??'}"
+                                        f" (1-byte pubkey hash - sender encrypted, cannot identify)"
+                                    )
                             
                             elif hasattr(decoded_payload, 'app_data'):
                                 # Advert with app_data - show device info
@@ -2511,6 +2536,19 @@ class MeshCoreCLIWrapper:
                                             advert_parts.append(f"GPS: ({lat:.4f}, {lon:.4f})")
                                     
                                     debug_print_mc(f"📢 [RX_LOG] Advert {' | '.join(advert_parts)}")
+                            
+                            # AnonRequest: show sender pubkey prefix if available
+                            elif hasattr(decoded_payload, 'sender_public_key'):
+                                if decoded_payload.sender_public_key:
+                                    anon_node_id = None
+                                    try:
+                                        anon_node_id = int(decoded_payload.sender_public_key[:8], 16)
+                                    except (ValueError, TypeError):
+                                        pass
+                                    anon_str = f"Node: 0x{anon_node_id:08x}" if anon_node_id else f"PubKey: {decoded_payload.sender_public_key[:12]}..."
+                                    debug_print_mc(f"🔓 [RX_LOG] AnonRequest from {anon_str}")
+                                else:
+                                    debug_print_mc(f"🔓 [RX_LOG] AnonRequest (sender_public_key not yet available — payload too short?)")
                             
                             # Group messages
                             elif packet.payload_type.name in ['GroupText', 'GroupData']:
