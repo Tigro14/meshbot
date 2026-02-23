@@ -2682,9 +2682,20 @@ class MeshBot:
                     error_print("⚠️  DUAL MODE INITIALIZATION FAILED - running in fallback mode")
 
             if meshtastic_enabled:
-                debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
-                pub.subscribe(self.on_message, "meshtastic.receive")
-                info_print_mt("✅ Subscribed to meshtastic.receive")
+                if self._dual_mode_active:
+                    # Dual mode: DualInterfaceManager.setup_message_callbacks() already subscribed
+                    # a listener to "meshtastic.receive" that calls on_message with the correct
+                    # network_source=NetworkSource.MESHTASTIC.
+                    # Subscribing on_message HERE too would cause every Meshtastic packet to be
+                    # processed TWICE: once with network_source set (correct) and once without
+                    # (network_source=None).  The second call double-counts throttle usage,
+                    # effectively halving MAX_COMMANDS_PER_WINDOW and making DMs appear broken
+                    # after only 2-3 commands.
+                    info_print_mt("ℹ️  Dual mode: Meshtastic messages handled by DualInterfaceManager")
+                else:
+                    debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
+                    pub.subscribe(self.on_message, "meshtastic.receive")
+                    info_print_mt("✅ Subscribed to meshtastic.receive")
             else:
                 debug_print_mc("ℹ️  Mode companion: Messages gérés par interface MeshCore")
             
