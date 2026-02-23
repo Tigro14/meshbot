@@ -970,7 +970,14 @@ class MeshBot:
                 
                 try:
                     message = payload.decode('utf-8').strip()
-                except:
+                except Exception:
+                    # Payload is binary — Meshtastic Python couldn't decrypt it.
+                    # Log it so it shows up in diagnostics (previously this was a
+                    # silent drop that made it look like no messages arrived at all).
+                    debug_print_mt(
+                        f"🔐 [MT] Encrypted TEXT_MESSAGE_APP from 0x{from_id:08x}"
+                        f" ({len(payload)}B) — cannot decode, skipping command processing"
+                    )
                     return
                 
                 if not message:
@@ -1771,7 +1778,7 @@ class MeshBot:
                             psk_status = 'none/unknown'
 
             ch_display = ch_name if ch_name else 'LongFast (default)'
-            debug_print_mt(
+            info_print_mt(
                 f"📻 [MT-CONFIG] Channel 0: name='{ch_display}'"
                 f" | PSK={psk_status}"
             )
@@ -1788,15 +1795,29 @@ class MeshBot:
                     preset_name = (getattr(preset, 'name', str(preset))
                                    if preset is not None else 'UNKNOWN')
                     hop_limit = getattr(lora, 'hop_limit', 3)
-                    debug_print_mt(
+                    info_print_mt(
                         f"📻 [MT-CONFIG] LoRa: region={region_name}"
                         f" | preset={preset_name}"
                         f" | hop_limit={hop_limit}"
                     )
                 else:
-                    debug_print_mt("📻 [MT-CONFIG] LoRa config not available")
+                    info_print_mt("📻 [MT-CONFIG] LoRa config not available")
             else:
-                debug_print_mt("📻 [MT-CONFIG] localConfig not available yet")
+                info_print_mt("📻 [MT-CONFIG] localConfig not available yet")
+
+            # --- interface.nodes snapshot (how many non-local nodes the radio knows) ---
+            nodes = getattr(mt_interface, 'nodes', None)
+            my_id = getattr(local_node, 'nodeNum', None)
+            if nodes is not None:
+                total = len(nodes)
+                other = sum(
+                    1 for _k, v in nodes.items()
+                    if isinstance(v, dict) and v.get('num', 0) != (my_id or 0)
+                )
+                info_print_mt(
+                    f"📡 [MT-NODES] interface.nodes: {total} total"
+                    f" ({other} non-local) — if 0, radio may never have heard any RF peer"
+                )
         except Exception as e:
             debug_print(f"⚠️ _log_meshtastic_channel_config error: {e}")
 
@@ -1863,19 +1884,19 @@ class MeshBot:
                     known_count = len(all_other_nodes)
                     if known_count == 0:
                         cause = (
-                            "NEVER heard any RF peer → likely channel/PSK"
-                            " mismatch or wrong frequency/region"
+                            "NEVER heard any RF peer → check antenna, channel PSK,"
+                            " LoRa region/preset, and that other nodes are nearby"
                         )
                     else:
                         cause = (
                             f"{known_count} node(s) known from DB but none"
                             " heard recently → coverage gap or nodes went silent"
                         )
-                    debug_print_mt(
+                    info_print_mt(
                         f"⚠️ [MT-RF] No Meshtastic RF peers heard in last 10min"
                         f" (uptime: {uptime:.0f}s | known nodes: {known_count})"
                     )
-                    debug_print_mt(f"   → {cause}")
+                    info_print_mt(f"   → {cause}")
                     # Dump channel + LoRa config to help diagnose mismatch
                     self._log_meshtastic_channel_config(mt_interface)
         except Exception as e:

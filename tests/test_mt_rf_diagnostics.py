@@ -563,5 +563,197 @@ class TestMTRFActivityEnhancedWarning(unittest.TestCase):
         _, known, wtype = self._classify_warning(nodes)
         self.assertEqual(wtype, 'known_but_silent')
         self.assertEqual(known, 3)
+# ---------------------------------------------------------------------------
+# 6. _log_meshtastic_channel_config: interface.nodes count reported
+# ---------------------------------------------------------------------------
+
+class TestMTNodesCount(unittest.TestCase):
+    """Validate the new interface.nodes count extraction in _log_meshtastic_channel_config."""
+
+    def _count_nodes(self, nodes_dict, my_id=0x16fad3dc):
+        """Replicate the nodes-count logic added to _log_meshtastic_channel_config."""
+        total = len(nodes_dict)
+        other = sum(
+            1 for _k, v in nodes_dict.items()
+            if isinstance(v, dict) and v.get('num', 0) != my_id
+        )
+        return total, other
+
+    def test_empty_nodes(self):
+        """Empty interface.nodes → 0 total, 0 other."""
+        total, other = self._count_nodes({})
+        self.assertEqual(total, 0)
+        self.assertEqual(other, 0)
+
+    def test_only_local_node(self):
+        """Only the local node → 1 total, 0 other."""
+        nodes = {'!16fad3dc': {'num': 0x16fad3dc}}
+        total, other = self._count_nodes(nodes)
+        self.assertEqual(total, 1)
+        self.assertEqual(other, 0)
+
+    def test_local_plus_two_remote(self):
+        """Local + 2 remote → 3 total, 2 other."""
+        nodes = {
+            '!16fad3dc': {'num': 0x16fad3dc},
+            '!a3fe27d3': {'num': 0xa3fe27d3},
+            '!82cae656': {'num': 0x82cae656},
+        }
+        total, other = self._count_nodes(nodes)
+        self.assertEqual(total, 3)
+        self.assertEqual(other, 2)
+
+    def test_non_dict_entry_ignored(self):
+        """Non-dict entries in nodes are skipped for the 'other' count."""
+        nodes = {
+            '!16fad3dc': {'num': 0x16fad3dc},
+            '!xxxxxxxx': 'not-a-dict',   # malformed entry — should be skipped
+            '!a3fe27d3': {'num': 0xa3fe27d3},
+        }
+        total, other = self._count_nodes(nodes)
+        self.assertEqual(total, 3)  # total counts all keys
+        self.assertEqual(other, 1)  # only the valid remote dict is counted
+
+
+# ---------------------------------------------------------------------------
+# 7. on_message: encrypted TEXT_MESSAGE_APP must produce a debug log not a
+#    silent return
+# ---------------------------------------------------------------------------
+
+class TestOnMessageEncryptedDropLog(unittest.TestCase):
+    """
+    Validate that the encrypted TEXT_MESSAGE_APP fix emits a debug log
+    rather than silently returning.
+    """
+
+    def _simulate_encrypted_text_handling(self, payload):
+        """
+        Replicate the fixed on_message TEXT_MESSAGE_APP logic and return
+        (message_or_none, logged_msg) where logged_msg contains the
+        debug string that would have been emitted.
+        """
+        logged = []
+        message = None
+        try:
+            message = payload.decode('utf-8').strip()
+        except Exception:
+            logged.append(
+                f"🔐 [MT] Encrypted TEXT_MESSAGE_APP from 0x12345678"
+                f" ({len(payload)}B) — cannot decode, skipping command processing"
+            )
+            return None, logged
+        return message, logged
+
+    def test_plaintext_no_log(self):
+        """Plain UTF-8 payload → decoded normally, no encryption log."""
+        msg, logs = self._simulate_encrypted_text_handling(b'/help')
+        self.assertEqual(msg, '/help')
+        self.assertEqual(logs, [])
+
+    def test_binary_encrypted_payload_logs(self):
+        """Binary (non-UTF-8) payload → None returned, log emitted."""
+        binary = b'\x00\xff\xfe\xab\xcd\xef'
+        msg, logs = self._simulate_encrypted_text_handling(binary)
+        self.assertIsNone(msg)
+        self.assertEqual(len(logs), 1)
+        self.assertIn('🔐 [MT] Encrypted TEXT_MESSAGE_APP', logs[0])
+        self.assertIn('6B', logs[0])
+        self.assertIn('cannot decode', logs[0])
+
+    def test_empty_bytes_decodes_successfully(self):
+        """Empty bytes decode as empty string (no exception, no log emitted).
+
+        Empty bytes are valid UTF-8 and decode to ''; the downstream
+        ``if not message: return`` check handles the empty-string case.
+        This test verifies the exception path is NOT taken for empty bytes.
+        """
+        msg, logs = self._simulate_encrypted_text_handling(b'')
+        # empty bytes decode fine as UTF-8 to ''
+        self.assertEqual(msg, '')
+        self.assertEqual(logs, [])
+
+    def test_partial_utf8_logs(self):
+        """Partial/invalid UTF-8 sequence → log emitted."""
+        invalid_utf8 = b'\xff\xfe\x00\x01'
+        msg, logs = self._simulate_encrypted_text_handling(invalid_utf8)
+        self.assertIsNone(msg)
+        self.assertIn('cannot decode', logs[0])
+
+
+# ---------------------------------------------------------------------------
+# 8. DualInterfaceManager: Packet #N log now includes portnum + from_id
+# ---------------------------------------------------------------------------
+
+class TestDualManagerPacketLog(unittest.TestCase):
+    """Verify the enhanced Packet #N received log format."""
+
+    def _build_log_line(self, packet, count):
+        """Replicate the new log format in on_meshtastic_message."""
+        _portnum = (packet.get('decoded', {}).get('portnum', 'UNKNOWN')
+                    if packet else 'NONE')
+        _from_id = packet.get('from', 0) if packet else 0
+        return (
+            f"📡 [MESHTASTIC] Packet #{count} received:"
+            f" {_portnum} from 0x{_from_id:08x}"
+        )
+
+    def test_telemetry_local(self):
+        pkt = {'from': 0x16fad3dc, 'decoded': {'portnum': 'TELEMETRY_APP'}}
+        line = self._build_log_line(pkt, 5)
+        self.assertIn('TELEMETRY_APP', line)
+        self.assertIn('0x16fad3dc', line)
+        self.assertIn('Packet #5', line)
+
+    def test_text_from_other_node(self):
+        pkt = {'from': 0xa3fe27d3, 'decoded': {'portnum': 'TEXT_MESSAGE_APP'}}
+        line = self._build_log_line(pkt, 12)
+        self.assertIn('TEXT_MESSAGE_APP', line)
+        self.assertIn('0xa3fe27d3', line)
+        self.assertIn('Packet #12', line)
+
+    def test_none_packet(self):
+        """None packet → NONE portnum, 0x00000000 from_id."""
+        line = self._build_log_line(None, 1)
+        self.assertIn('NONE', line)
+        self.assertIn('0x00000000', line)
+
+    def test_missing_decoded(self):
+        """Packet with no 'decoded' key → UNKNOWN portnum."""
+        pkt = {'from': 0xdeadbeef}
+        line = self._build_log_line(pkt, 3)
+        self.assertIn('UNKNOWN', line)
+        self.assertIn('0xdeadbeef', line)
+
+
+# ---------------------------------------------------------------------------
+# 9. _check_meshtastic_rf_activity: enhanced cause message for NEVER heard
+# ---------------------------------------------------------------------------
+
+class TestMTRFActivityCauseMessage(unittest.TestCase):
+    """Validate the updated cause hint mentions antenna check."""
+
+    def _get_cause_string(self, known_count):
+        if known_count == 0:
+            return (
+                "NEVER heard any RF peer → check antenna, channel PSK,"
+                " LoRa region/preset, and that other nodes are nearby"
+            )
+        return (
+            f"{known_count} node(s) known from DB but none"
+            " heard recently → coverage gap or nodes went silent"
+        )
+
+    def test_never_heard_mentions_antenna(self):
+        cause = self._get_cause_string(0)
+        self.assertIn('antenna', cause)
+        self.assertIn('PSK', cause)
+        self.assertIn('region', cause)
+
+    def test_known_but_silent_mentions_coverage(self):
+        cause = self._get_cause_string(3)
+        self.assertIn('coverage gap', cause)
+        self.assertIn('3', cause)
+
+
 if __name__ == '__main__':
     unittest.main()

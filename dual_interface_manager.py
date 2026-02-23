@@ -153,7 +153,13 @@ class DualInterfaceManager:
                 self._meshtastic_packet_count += 1
                 self._last_meshtastic_packet_time = time.time()
             
-            debug_print(f"📡 [MESHTASTIC] Packet #{self._meshtastic_packet_count} received")
+            _portnum = (packet.get('decoded', {}).get('portnum', 'UNKNOWN')
+                        if packet else 'NONE')
+            _from_id = packet.get('from', 0) if packet else 0
+            debug_print(
+                f"📡 [MESHTASTIC] Packet #{self._meshtastic_packet_count} received:"
+                f" {_portnum} from 0x{_from_id:08x}"
+            )
             
             # Forward to main callback with network source tag
             if self.message_callback:
