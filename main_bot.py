@@ -839,6 +839,12 @@ class MeshBot:
                 source = 'local' if is_from_our_interface else 'tigrog2'
                 # Removed excessive debug log: Source détectée Legacy mode
             
+            # Stamp source into packet dict so downstream handlers (message_router, etc.)
+            # can read it via packet.get('source').  Without this, message_router always
+            # falls back to 'local' which mis-identifies MeshCore packets as Meshtastic and
+            # incorrectly blocks /nodesmc & /trafficmc from MeshCore DMs.
+            packet['source'] = source
+
             # Log final source determination
 
             # Obtenir l'ID du nœud local pour filtrage

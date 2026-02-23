@@ -86,12 +86,19 @@ class MessageRouter:
         is_broadcast = to_id in [0xFFFFFFFF, 0]
         sender_info = self.node_manager.get_node_name(sender_id, actual_interface)
         
-        # Determine network source from packet
-        # In dual mode, packet has 'source' field: 'local', 'tcp', 'tigrog2' (Meshtastic) or 'meshcore'
-        # 'cli' is treated as network-neutral (neither meshcore nor meshtastic)
+        # Determine network source from packet.
+        # on_message in main_bot.py stamps packet['source'] = source for every packet:
+        #   'meshtastic' – DUAL_NETWORK_MODE, packet arrived on the Meshtastic interface
+        #   'local'      – single-mode serial (MESHTASTIC_ENABLED=True, DUAL_NETWORK_MODE=False)
+        #   'tcp'        – single-mode TCP (CONNECTION_MODE='tcp')
+        #   'tigrog2'    – legacy remote TCP node
+        #   'meshcore'   – MeshCore companion or DUAL_NETWORK_MODE MeshCore interface
+        #   'unknown'    – dual mode fallback (network_source not MESHTASTIC/MESHCORE)
+        # If the key is absent (e.g. injected test packet) we fall back to 'local'.
         packet_source = packet.get('source', 'local')
         is_from_meshcore = (packet_source == 'meshcore')
-        is_from_meshtastic = (packet_source in ['local', 'tcp', 'tigrog2'])
+        # 'meshtastic' (dual) and 'local'/'tcp'/'tigrog2' (single) are all Meshtastic sources
+        is_from_meshtastic = (packet_source in ['meshtastic', 'local', 'tcp', 'tigrog2'])
         
         # DEBUG: Log message routing decision
         debug_print(f"🔍 [ROUTER-DEBUG] _meshcore_dm={is_meshcore_dm} | is_for_me={is_for_me} | is_broadcast={is_broadcast} | to=0x{to_id:08x} | source={packet_source}")
