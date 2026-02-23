@@ -1481,6 +1481,11 @@ class MeshBot:
                 # Mise à jour de la base de nœuds
                 debug_print("🔄 Mise à jour périodique...")
                 self.node_manager.update_node_database(self.interface)
+
+                # Check Meshtastic RF activity (dual mode or Meshtastic-only)
+                # Logs recently-heard nodes or warns when only local traffic seen.
+                if globals().get('MESHTASTIC_ENABLED', True):
+                    self._check_meshtastic_rf_activity()
                 
                 # Nettoyage périodique
                 self.context_manager.cleanup_old_contexts()
@@ -1710,6 +1715,72 @@ class MeshBot:
                 error_print(f"Erreur thread health TCP: {e}")
                 import traceback
                 error_print(traceback.format_exc())
+
+    def _check_meshtastic_rf_activity(self):
+        """
+        Scan interface.nodes for Meshtastic nodes heard via RF in the last 10 minutes.
+
+        Logs recently-heard nodes at DEBUG level, or a warning when only the
+        local node's own serial-echoed packets have been observed (snr=0.0) for
+        more than 5 minutes.  This helps distinguish a quiet network from a
+        hardware / channel-key problem.
+        """
+        try:
+            # Resolve the Meshtastic interface (dual mode or single mode)
+            mt_interface = None
+            if self._dual_mode_active and self.dual_interface:
+                mt_interface = self.dual_interface.meshtastic_interface
+            elif self.interface and hasattr(self.interface, 'nodes'):
+                mt_interface = self.interface
+
+            if not mt_interface or not hasattr(mt_interface, 'nodes') or not mt_interface.nodes:
+                return
+
+            # Our local node ID (skip it when scanning for RF peers)
+            my_id = None
+            if hasattr(mt_interface, 'localNode') and mt_interface.localNode:
+                my_id = getattr(mt_interface.localNode, 'nodeNum', None)
+
+            now = time.time()
+            window_s = 600  # 10-minute look-back
+            recently_heard = []
+
+            for _key, node_info in mt_interface.nodes.items():
+                if not isinstance(node_info, dict):
+                    continue
+                node_num = node_info.get('num', 0)
+                if not node_num or (my_id and node_num == my_id):
+                    continue
+                last_heard = node_info.get('lastHeard', 0)
+                if last_heard and (now - last_heard) < window_s:
+                    user = node_info.get('user') or {}
+                    name = (user.get('longName') or user.get('shortName')
+                            or f'0x{node_num:08x}')
+                    recently_heard.append((name, node_num, now - last_heard))
+
+            if recently_heard:
+                debug_print_mt(
+                    f"📡 [MT-RF] {len(recently_heard)} Meshtastic node(s) heard"
+                    f" via RF in last 10min:"
+                )
+                # Log up to 5 examples — enough context without flooding the log
+                for name, node_num, ago in recently_heard[:5]:
+                    debug_print_mt(
+                        f"   └─ {name} (0x{node_num:08x}) — {ago:.0f}s ago"
+                    )
+            else:
+                uptime = now - self._session_start_time
+                if uptime > 300:  # Only warn after 5+ minutes
+                    debug_print_mt(
+                        f"⚠️ [MT-RF] No other Meshtastic nodes heard via RF"
+                        f" in last 10min (uptime: {uptime:.0f}s)"
+                    )
+                    debug_print_mt(
+                        "   → Possible causes: no local Meshtastic RF traffic,"
+                        " wrong channel key, radio placement, or hardware issue"
+                    )
+        except Exception as e:
+            debug_print(f"⚠️ Error in _check_meshtastic_rf_activity: {e}")
 
     def cleanup_cache(self):
         """Nettoyage périodique général"""

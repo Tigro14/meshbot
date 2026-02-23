@@ -702,7 +702,12 @@ class NodeManager:
             
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
             hop_limit = packet.get('hopLimit', 0)
-            hop_start = packet.get('hopStart', 5)
+            # Use hopLimit as fallback for hopStart (absent in older firmware).
+            # Without this, the old default of 5 produced "hops=2" for locally
+            # generated packets (hopStart=missing→5, hopLimit=3 → 5-3=2) even
+            # though the packet had taken 0 hops.  Defaulting to hopLimit gives
+            # hops_taken=0 for locally-generated packets (hopStart==hopLimit).
+            hop_start = packet.get('hopStart', hop_limit)
             hops_taken = hop_start - hop_limit
             
             # Extraire SNR (essayer plusieurs clés)
@@ -722,7 +727,13 @@ class NodeManager:
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
             
             # DEBUG: Log packet type and SNR value
-            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}) | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            # Add [local]/[RF] tag so it is immediately clear whether the packet
+            # was generated locally (snr=0.0, serial echo) or received over RF.
+            if source in ('meshtastic', 'local', 'tcp', 'tigrog2'):
+                _origin_tag = " [local]" if (snr == 0.0 and not is_meshcore_rx_log) else " [RF]"
+            else:
+                _origin_tag = ""
+            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}){_origin_tag} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
             
             if snr == 0.0 and not is_meshcore_rx_log:
                 # Skip SNR update but STILL update last_seen timestamp
