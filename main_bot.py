@@ -2755,6 +2755,14 @@ class MeshBot:
                     blitz_lon = globals().get('BLITZ_LONGITUDE', 0.0)
                     lat = blitz_lat if blitz_lat != 0.0 else None
                     lon = blitz_lon if blitz_lon != 0.0 else None
+
+                    # Fallback: utiliser BOT_POSITION si BLITZ_LATITUDE/BLITZ_LONGITUDE non configurés
+                    if lat is None or lon is None:
+                        bot_position = globals().get('BOT_POSITION')
+                        if (bot_position and len(bot_position) == 2
+                                and bot_position[0] != 0.0 and bot_position[1] != 0.0):
+                            lat, lon = bot_position
+                            debug_print(f"⚡ Blitz monitor: utilisation de BOT_POSITION ({lat}, {lon})")
                     
                     mesh_alert_threshold = globals().get('BLITZ_MESH_ALERT_THRESHOLD', 5)
 
