@@ -1716,14 +1716,101 @@ class MeshBot:
                 import traceback
                 error_print(traceback.format_exc())
 
+    def _log_meshtastic_channel_config(self, mt_interface):
+        """Log Meshtastic channel + LoRa configuration once for diagnostics.
+
+        Reads channel 0 name/PSK-status and LoRa region/modem_preset from the
+        interface's localNode and emits a single DEBUG line per attribute.
+        All attribute accesses use safe getattr/hasattr so the method never
+        raises even on older firmware that lacks certain config fields.
+        """
+        try:
+            if not mt_interface:
+                return
+            local_node = getattr(mt_interface, 'localNode', None)
+            if not local_node:
+                debug_print_mt("📻 [MT-CONFIG] localNode not available yet")
+                return
+
+            # --- Channel 0 ---
+            channels = getattr(local_node, 'channels', None)
+            ch_name = ''
+            psk_status = 'unknown'
+            if channels:
+                # channels can be a list or a dict keyed by index
+                items = (channels.values()
+                         if isinstance(channels, dict) else channels)
+                primary_ch = None
+                for ch in items:
+                    role = getattr(ch, 'role', None)
+                    role_name = (getattr(role, 'name', str(role))
+                                 if role is not None else '')
+                    if role_name in ('PRIMARY', '1'):
+                        primary_ch = ch
+                        break
+                if primary_ch is None:
+                    # Fall back to first channel
+                    try:
+                        primary_ch = (list(channels.values())[0]
+                                      if isinstance(channels, dict)
+                                      else channels[0])
+                    except IndexError:
+                        pass
+                if primary_ch is not None:
+                    settings = getattr(primary_ch, 'settings', None)
+                    if settings:
+                        ch_name = getattr(settings, 'name', '') or ''
+                        psk_bytes = getattr(settings, 'psk', None)
+                        # Default PSK is a single byte \x01 (index into built-in
+                        # key list); a real custom PSK is 16 bytes.
+                        if psk_bytes and len(psk_bytes) > 1:
+                            psk_status = 'custom'
+                        elif psk_bytes:
+                            psk_status = 'default'
+                        else:
+                            psk_status = 'none/unknown'
+
+            ch_display = ch_name if ch_name else 'LongFast (default)'
+            debug_print_mt(
+                f"📻 [MT-CONFIG] Channel 0: name='{ch_display}'"
+                f" | PSK={psk_status}"
+            )
+
+            # --- LoRa config ---
+            local_config = getattr(local_node, 'localConfig', None)
+            if local_config:
+                lora = getattr(local_config, 'lora', None)
+                if lora:
+                    region = getattr(lora, 'region', None)
+                    region_name = (getattr(region, 'name', str(region))
+                                   if region is not None else 'UNSET')
+                    preset = getattr(lora, 'modem_preset', None)
+                    preset_name = (getattr(preset, 'name', str(preset))
+                                   if preset is not None else 'UNKNOWN')
+                    hop_limit = getattr(lora, 'hop_limit', 3)
+                    debug_print_mt(
+                        f"📻 [MT-CONFIG] LoRa: region={region_name}"
+                        f" | preset={preset_name}"
+                        f" | hop_limit={hop_limit}"
+                    )
+                else:
+                    debug_print_mt("📻 [MT-CONFIG] LoRa config not available")
+            else:
+                debug_print_mt("📻 [MT-CONFIG] localConfig not available yet")
+        except Exception as e:
+            debug_print(f"⚠️ _log_meshtastic_channel_config error: {e}")
+
     def _check_meshtastic_rf_activity(self):
         """
         Scan interface.nodes for Meshtastic nodes heard via RF in the last 10 minutes.
 
-        Logs recently-heard nodes at DEBUG level, or a warning when only the
-        local node's own serial-echoed packets have been observed (snr=0.0) for
-        more than 5 minutes.  This helps distinguish a quiet network from a
-        hardware / channel-key problem.
+        Logs recently-heard nodes at DEBUG level, or a detailed warning when only
+        the local node's own serial-echoed packets have been observed for more than
+        5 minutes.  The warning distinguishes:
+        - "NEVER heard any RF peer" → likely channel/PSK/frequency mismatch
+        - "N nodes known but none heard recently" → coverage/timing issue
+        and always dumps the local radio's channel + LoRa config so the operator
+        can compare it with the settings of their Meshtastic device.
         """
         try:
             # Resolve the Meshtastic interface (dual mode or single mode)
@@ -1744,6 +1831,7 @@ class MeshBot:
             now = time.time()
             window_s = 600  # 10-minute look-back
             recently_heard = []
+            all_other_nodes = []  # all non-local nodes ever seen in interface.nodes
 
             for _key, node_info in mt_interface.nodes.items():
                 if not isinstance(node_info, dict):
@@ -1751,6 +1839,7 @@ class MeshBot:
                 node_num = node_info.get('num', 0)
                 if not node_num or (my_id and node_num == my_id):
                     continue
+                all_other_nodes.append(node_num)
                 last_heard = node_info.get('lastHeard', 0)
                 if last_heard and (now - last_heard) < window_s:
                     user = node_info.get('user') or {}
@@ -1771,14 +1860,24 @@ class MeshBot:
             else:
                 uptime = now - self._session_start_time
                 if uptime > 300:  # Only warn after 5+ minutes
+                    known_count = len(all_other_nodes)
+                    if known_count == 0:
+                        cause = (
+                            "NEVER heard any RF peer → likely channel/PSK"
+                            " mismatch or wrong frequency/region"
+                        )
+                    else:
+                        cause = (
+                            f"{known_count} node(s) known from DB but none"
+                            " heard recently → coverage gap or nodes went silent"
+                        )
                     debug_print_mt(
-                        f"⚠️ [MT-RF] No other Meshtastic nodes heard via RF"
-                        f" in last 10min (uptime: {uptime:.0f}s)"
+                        f"⚠️ [MT-RF] No Meshtastic RF peers heard in last 10min"
+                        f" (uptime: {uptime:.0f}s | known nodes: {known_count})"
                     )
-                    debug_print_mt(
-                        "   → Possible causes: no local Meshtastic RF traffic,"
-                        " wrong channel key, radio placement, or hardware issue"
-                    )
+                    debug_print_mt(f"   → {cause}")
+                    # Dump channel + LoRa config to help diagnose mismatch
+                    self._log_meshtastic_channel_config(mt_interface)
         except Exception as e:
             debug_print(f"⚠️ Error in _check_meshtastic_rf_activity: {e}")
 
@@ -2389,6 +2488,8 @@ class MeshBot:
                         debug_print(f"✅ Primary interface: {type(self.interface).__name__}")
                         
                         info_print_mc(f"✅ DUAL MODE actif: Meshtastic={type(meshtastic_interface).__name__}, MeshCore={type(meshcore_interface).__name__}")
+                        # Log Meshtastic channel/LoRa config at startup for diagnostics
+                        self._log_meshtastic_channel_config(meshtastic_interface)
                 
                 # Stabilization
                 time.sleep(3)
@@ -2773,6 +2874,8 @@ class MeshBot:
                     debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
                     pub.subscribe(self.on_message, "meshtastic.receive")
                     info_print_mt("✅ Subscribed to meshtastic.receive")
+                    # Log Meshtastic channel/LoRa config at startup for diagnostics
+                    self._log_meshtastic_channel_config(self.interface)
             else:
                 debug_print_mc("ℹ️  Mode companion: Messages gérés par interface MeshCore")
             

@@ -268,5 +268,300 @@ class TestCheckMeshtasticRFActivity(unittest.TestCase):
         self.assertEqual(len(heard), 0)
 
 
+# ---------------------------------------------------------------------------
+# 4. _log_meshtastic_channel_config — channel/LoRa info extraction
+# ---------------------------------------------------------------------------
+
+class _FakeEnum:
+    """Mimics a protobuf enum value with a .name attribute."""
+    def __init__(self, name):
+        self.name = name
+    def __str__(self):
+        return self.name
+
+
+class _FakeSettings:
+    def __init__(self, name='', psk=b'\x01'):
+        self.name = name
+        self.psk = psk
+
+
+class _FakeChannel:
+    def __init__(self, role_name='PRIMARY', ch_name='', psk=b'\x01'):
+        self.role = _FakeEnum(role_name)
+        self.settings = _FakeSettings(name=ch_name, psk=psk)
+
+
+class _FakeLora:
+    def __init__(self, region='EU_868', preset='LONG_FAST', hop_limit=3):
+        self.region = _FakeEnum(region)
+        self.modem_preset = _FakeEnum(preset)
+        self.hop_limit = hop_limit
+
+
+class _FakeLocalConfig:
+    def __init__(self, lora=None):
+        self.lora = lora or _FakeLora()
+
+
+class _FakeLocalNode:
+    def __init__(self, channels=None, local_config=None, node_num=0x16fad3dc):
+        self.channels = channels
+        self.localConfig = local_config or _FakeLocalConfig()
+        self.nodeNum = node_num
+
+
+class _FakeMTInterface:
+    def __init__(self, local_node=None, nodes=None):
+        self.localNode = local_node
+        self.nodes = nodes or {}
+
+
+def _run_channel_config_log(interface):
+    """
+    Replicate the logic of _log_meshtastic_channel_config and return
+    (ch_name, psk_status, region, preset, hop_limit) extracted values.
+    """
+    local_node = getattr(interface, 'localNode', None)
+    if not local_node:
+        return None
+
+    ch_name = ''
+    psk_status = 'unknown'
+    channels = getattr(local_node, 'channels', None)
+    if channels:
+        items = (channels.values() if isinstance(channels, dict) else channels)
+        primary_ch = None
+        for ch in items:
+            role = getattr(ch, 'role', None)
+            role_name = (getattr(role, 'name', str(role))
+                         if role is not None else '')
+            if role_name in ('PRIMARY', '1'):
+                primary_ch = ch
+                break
+        if primary_ch is None:
+            try:
+                primary_ch = (list(channels.values())[0]
+                              if isinstance(channels, dict)
+                              else channels[0])
+            except IndexError:
+                pass
+        if primary_ch is not None:
+            settings = getattr(primary_ch, 'settings', None)
+            if settings:
+                ch_name = getattr(settings, 'name', '') or ''
+                psk_bytes = getattr(settings, 'psk', None)
+                if psk_bytes and len(psk_bytes) > 1:
+                    psk_status = 'custom'
+                elif psk_bytes:
+                    psk_status = 'default'
+                else:
+                    psk_status = 'none/unknown'
+
+    ch_display = ch_name if ch_name else 'LongFast (default)'
+
+    region_name = 'UNSET'
+    preset_name = 'UNKNOWN'
+    hop_limit = 3
+    local_config = getattr(local_node, 'localConfig', None)
+    if local_config:
+        lora = getattr(local_config, 'lora', None)
+        if lora:
+            region = getattr(lora, 'region', None)
+            region_name = (getattr(region, 'name', str(region))
+                           if region is not None else 'UNSET')
+            preset = getattr(lora, 'modem_preset', None)
+            preset_name = (getattr(preset, 'name', str(preset))
+                           if preset is not None else 'UNKNOWN')
+            hop_limit = getattr(lora, 'hop_limit', 3)
+
+    return ch_display, psk_status, region_name, preset_name, hop_limit
+
+
+class TestMTChannelConfig(unittest.TestCase):
+    """Validate _log_meshtastic_channel_config extraction logic."""
+
+    def test_default_channel_psk(self):
+        """Single-byte PSK → status 'default'."""
+        ch = _FakeChannel(role_name='PRIMARY', ch_name='', psk=b'\x01')
+        node = _FakeLocalNode(channels=[ch])
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        self.assertIsNotNone(result)
+        ch_display, psk_status, region, preset, hop = result
+        self.assertEqual(ch_display, 'LongFast (default)')  # empty name → default display
+        self.assertEqual(psk_status, 'default')
+
+    def test_custom_channel_name_and_psk(self):
+        """16-byte PSK + custom name → custom PSK, real name shown."""
+        custom_psk = b'\xde\xad\xbe\xef' * 4   # 16 bytes
+        ch = _FakeChannel(role_name='PRIMARY', ch_name='MyNet', psk=custom_psk)
+        node = _FakeLocalNode(channels=[ch])
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        ch_display, psk_status, _, _, _ = result
+        self.assertEqual(ch_display, 'MyNet')
+        self.assertEqual(psk_status, 'custom')
+
+    def test_lora_region_and_preset(self):
+        """LoRa region EU_868 + preset LONG_FAST are extracted correctly."""
+        ch = _FakeChannel()
+        lora = _FakeLora(region='EU_868', preset='LONG_FAST', hop_limit=5)
+        node = _FakeLocalNode(channels=[ch], local_config=_FakeLocalConfig(lora=lora))
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        _, _, region, preset, hop = result
+        self.assertEqual(region, 'EU_868')
+        self.assertEqual(preset, 'LONG_FAST')
+        self.assertEqual(hop, 5)
+
+    def test_no_local_node_returns_none(self):
+        """If localNode is None the function returns None gracefully."""
+        iface = _FakeMTInterface(local_node=None)
+        result = _run_channel_config_log(iface)
+        self.assertIsNone(result)
+
+    def test_channel_dict_format(self):
+        """channels can be a dict keyed by index (as returned by some firmware)."""
+        custom_psk = b'\xca\xfe' * 8
+        ch = _FakeChannel(role_name='PRIMARY', ch_name='DictCh', psk=custom_psk)
+        node = _FakeLocalNode(channels={0: ch})
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        ch_display, psk_status, _, _, _ = result
+        self.assertEqual(ch_display, 'DictCh')
+        self.assertEqual(psk_status, 'custom')
+
+    def test_no_psk_bytes(self):
+        """PSK field is None → status 'none/unknown'."""
+        ch = _FakeChannel()
+        ch.settings.psk = None
+        node = _FakeLocalNode(channels=[ch])
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        _, psk_status, _, _, _ = result
+        self.assertEqual(psk_status, 'none/unknown')
+
+    def test_secondary_channel_uses_primary(self):
+        """Only the PRIMARY channel's config is extracted, not a SECONDARY one."""
+        secondary = _FakeChannel(role_name='SECONDARY', ch_name='Side', psk=b'\x02')
+        primary = _FakeChannel(role_name='PRIMARY', ch_name='Main', psk=b'\x01')
+        node = _FakeLocalNode(channels=[secondary, primary])
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        ch_display, psk_status, _, _, _ = result
+        self.assertEqual(ch_display, 'Main')
+
+
+# ---------------------------------------------------------------------------
+# 5. Enhanced warning: known_count distinction
+# ---------------------------------------------------------------------------
+
+class TestMTRFActivityEnhancedWarning(unittest.TestCase):
+    """
+    Validate the enhanced _check_meshtastic_rf_activity warning that
+    distinguishes 'NEVER heard' (0 known nodes) vs 'known but silent'.
+    """
+
+    def _classify_warning(self, nodes_dict, my_id=0x16fad3dc,
+                           session_age_s=400):
+        """
+        Replicate the warning-classification logic and return
+        (recently_heard_count, known_count, warning_type)
+        where warning_type is 'none', 'never_heard', or 'known_but_silent'.
+        """
+        now = time.time()
+        window_s = 600
+        recently_heard = []
+        all_other_nodes = []
+
+        for _key, node_info in nodes_dict.items():
+            if not isinstance(node_info, dict):
+                continue
+            node_num = node_info.get('num', 0)
+            if not node_num or (my_id and node_num == my_id):
+                continue
+            all_other_nodes.append(node_num)
+            last_heard = node_info.get('lastHeard', 0)
+            if last_heard and (now - last_heard) < window_s:
+                user = node_info.get('user') or {}
+                name = (user.get('longName') or user.get('shortName')
+                        or f'0x{node_num:08x}')
+                recently_heard.append((name, node_num, now - last_heard))
+
+        uptime = session_age_s
+        if recently_heard:
+            return len(recently_heard), len(all_other_nodes), 'none'
+
+        if uptime <= 300:
+            return 0, len(all_other_nodes), 'none'
+
+        known_count = len(all_other_nodes)
+        if known_count == 0:
+            return 0, 0, 'never_heard'
+        else:
+            return 0, known_count, 'known_but_silent'
+
+    def test_never_heard_any_node(self):
+        """Empty nodes dict → 'never_heard' warning (channel mismatch hint)."""
+        _, known, wtype = self._classify_warning({})
+        self.assertEqual(wtype, 'never_heard')
+        self.assertEqual(known, 0)
+
+    def test_only_local_node_known(self):
+        """Only the bot's own node in nodes dict → 'never_heard'."""
+        nodes = {
+            '!16fad3dc': {
+                'num': 0x16fad3dc,
+                'lastHeard': int(time.time()) - 10,
+                'user': {'longName': 'Meshtastic d3dc'},
+            }
+        }
+        _, known, wtype = self._classify_warning(nodes, my_id=0x16fad3dc)
+        self.assertEqual(wtype, 'never_heard')
+        self.assertEqual(known, 0)   # local node excluded from count
+
+    def test_known_nodes_not_heard_recently(self):
+        """Nodes in DB but last heard >10min ago → 'known_but_silent'."""
+        nodes = {
+            '!aabbccdd': {
+                'num': 0xaabbccdd,
+                'lastHeard': int(time.time()) - 800,  # 13+ min ago
+                'user': {'longName': 'SilentNode'},
+            }
+        }
+        _, known, wtype = self._classify_warning(nodes, my_id=0x16fad3dc)
+        self.assertEqual(wtype, 'known_but_silent')
+        self.assertEqual(known, 1)
+
+    def test_recently_heard_suppresses_warning(self):
+        """Node heard 60s ago → no warning."""
+        nodes = {
+            '!aabbccdd': {
+                'num': 0xaabbccdd,
+                'lastHeard': int(time.time()) - 60,
+                'user': {'longName': 'ActiveNode'},
+            }
+        }
+        heard, _, wtype = self._classify_warning(nodes, my_id=0x16fad3dc)
+        self.assertEqual(wtype, 'none')
+        self.assertEqual(heard, 1)
+
+    def test_short_uptime_suppresses_warning(self):
+        """Uptime <5min: no warning even if no RF heard."""
+        _, _, wtype = self._classify_warning({}, session_age_s=100)
+        self.assertEqual(wtype, 'none')
+
+    def test_three_known_silent_nodes(self):
+        """Three nodes in DB but all silent → known_count=3, 'known_but_silent'."""
+        old_ts = int(time.time()) - 900  # 15 minutes ago — outside 10-min window
+        nodes = {
+            '!aabbccdd': {'num': 0xaabbccdd, 'lastHeard': old_ts, 'user': {}},  # arbitrary test ID
+            '!bbccddee': {'num': 0xbbccddee, 'lastHeard': old_ts, 'user': {}},  # arbitrary test ID
+            '!ccddeeff': {'num': 0xccddeeff, 'lastHeard': old_ts, 'user': {}},  # arbitrary test ID
+        }
+        _, known, wtype = self._classify_warning(nodes)
+        self.assertEqual(wtype, 'known_but_silent')
+        self.assertEqual(known, 3)
 if __name__ == '__main__':
     unittest.main()
