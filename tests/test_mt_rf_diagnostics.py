@@ -928,5 +928,171 @@ class TestMeshtasticSubscriptionHealthCheck(unittest.TestCase):
         self.assertEqual(logs, [])
 
 
+# ---------------------------------------------------------------------------
+# 9. numTotalNodes extraction from local TELEMETRY_APP
+# ---------------------------------------------------------------------------
+
+class TestNumTotalNodesExtraction(unittest.TestCase):
+    """
+    Validate the numTotalNodes extraction logic added to
+    node_manager.update_rx_history() and the enhanced RF activity warning.
+    """
+
+    def _extract_hw_num_total_nodes(self, packet, source='meshtastic', snr=0.0):
+        """
+        Replicate the extraction logic added to update_rx_history():
+        When snr=0.0 AND source is meshtastic/local AND portnum=TELEMETRY_APP,
+        pull numTotalNodes from decoded.telemetry.localStats and return it.
+        Returns None if conditions are not met or field is absent.
+        """
+        if snr != 0.0 or source not in ('meshtastic', 'local'):
+            return None
+        portnum_check = packet.get('decoded', {}).get('portnum', '')
+        if portnum_check != 'TELEMETRY_APP':
+            return None
+        telemetry = packet.get('decoded', {}).get('telemetry', {})
+        local_stats = telemetry.get('localStats', {})
+        return local_stats.get('numTotalNodes')
+
+    def _build_local_telemetry_packet(self, num_total_nodes):
+        """Build a minimal local-node TELEMETRY_APP packet with localStats."""
+        return {
+            'from': 0x16fad3dc,
+            'to': 0xffffffff,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {
+                    'time': 79280,
+                    'localStats': {
+                        'uptimeSeconds': 79280,
+                        'numTotalNodes': num_total_nodes,
+                        'heapTotalBytes': 156724,
+                        'heapFreeBytes': 85936,
+                    },
+                },
+            },
+        }
+
+    def test_num_total_nodes_extracted_when_1(self):
+        """Local TELEMETRY_APP with numTotalNodes=1 → extracted correctly."""
+        pkt = self._build_local_telemetry_packet(1)
+        result = self._extract_hw_num_total_nodes(pkt)
+        self.assertEqual(result, 1)
+
+    def test_num_total_nodes_extracted_when_5(self):
+        """Local TELEMETRY_APP with numTotalNodes=5 → extracted correctly."""
+        pkt = self._build_local_telemetry_packet(5)
+        result = self._extract_hw_num_total_nodes(pkt)
+        self.assertEqual(result, 5)
+
+    def test_not_extracted_when_rf_packet(self):
+        """snr != 0.0 (RF packet from another node) → not extracted."""
+        pkt = self._build_local_telemetry_packet(3)
+        result = self._extract_hw_num_total_nodes(pkt, snr=12.5)
+        self.assertIsNone(result)
+
+    def test_not_extracted_for_meshcore_source(self):
+        """MeshCore-source packet → not extracted (only meshtastic/local)."""
+        pkt = self._build_local_telemetry_packet(2)
+        result = self._extract_hw_num_total_nodes(pkt, source='meshcore')
+        self.assertIsNone(result)
+
+    def test_not_extracted_when_no_local_stats(self):
+        """TELEMETRY_APP without localStats (e.g. deviceMetrics only) → None."""
+        pkt = {
+            'from': 0x16fad3dc,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'time': 100, 'deviceMetrics': {'batteryLevel': 78}},
+            },
+        }
+        result = self._extract_hw_num_total_nodes(pkt)
+        self.assertIsNone(result)
+
+    def test_not_extracted_for_wrong_portnum(self):
+        """Non-TELEMETRY_APP packet → not extracted."""
+        pkt = {
+            'from': 0x16fad3dc,
+            'decoded': {'portnum': 'NODEINFO_APP', 'telemetry': {'localStats': {'numTotalNodes': 5}}},
+        }
+        result = self._extract_hw_num_total_nodes(pkt)
+        self.assertIsNone(result)
+
+    # --- enhanced warning with hw_nodes ---
+
+    def _classify_warning_with_hw(self, nodes, hw_nodes=None, session_age_s=600, my_id=0x16fad3dc):
+        """
+        Replicate the _check_meshtastic_rf_activity warning logic with the
+        hw_nodes (numTotalNodes) addition.  Returns a dict describing the warning.
+        """
+        now = time.time()
+        window_s = 600
+        recently_heard = []
+        all_other_nodes = []
+        for _key, node_info in nodes.items():
+            if not isinstance(node_info, dict):
+                continue
+            node_num = node_info.get('num', 0)
+            if not node_num or node_num == my_id:
+                continue
+            all_other_nodes.append(node_num)
+            last_heard = node_info.get('lastHeard', 0)
+            if last_heard and (now - last_heard) < window_s:
+                recently_heard.append(node_num)
+
+        if recently_heard:
+            return {'type': 'none', 'hw_nodes': hw_nodes}
+
+        if session_age_s < 300:
+            return {'type': 'none', 'hw_nodes': hw_nodes}
+
+        known_count = len(all_other_nodes)
+        hw_suffix = f" | hw_nodes={hw_nodes}" if hw_nodes is not None else ""
+        hw_alarm = (hw_nodes is not None and hw_nodes <= 1)
+        return {
+            'type': 'never' if known_count == 0 else 'known_but_silent',
+            'known': known_count,
+            'hw_suffix': hw_suffix,
+            'hw_alarm': hw_alarm,
+            'hw_nodes': hw_nodes,
+        }
+
+    def test_hw_suffix_included_when_hw_nodes_known(self):
+        """hw_nodes known → hw_suffix is non-empty."""
+        result = self._classify_warning_with_hw({}, hw_nodes=1)
+        self.assertIn('hw_nodes=1', result['hw_suffix'])
+
+    def test_hw_suffix_absent_when_hw_nodes_unknown(self):
+        """hw_nodes=None → hw_suffix is empty string."""
+        result = self._classify_warning_with_hw({}, hw_nodes=None)
+        self.assertEqual(result['hw_suffix'], '')
+
+    def test_hw_alarm_fires_when_hw_nodes_1(self):
+        """hw_nodes=1 → hw_alarm True (radio confirms no RF peers seen)."""
+        result = self._classify_warning_with_hw({}, hw_nodes=1)
+        self.assertTrue(result['hw_alarm'])
+
+    def test_hw_alarm_fires_when_hw_nodes_0(self):
+        """hw_nodes=0 → hw_alarm True (edge case: firmware might report 0)."""
+        result = self._classify_warning_with_hw({}, hw_nodes=0)
+        self.assertTrue(result['hw_alarm'])
+
+    def test_hw_alarm_does_not_fire_when_hw_nodes_5(self):
+        """hw_nodes=5 → hw_alarm False (radio has heard other nodes)."""
+        result = self._classify_warning_with_hw({}, hw_nodes=5)
+        self.assertFalse(result['hw_alarm'])
+
+    def test_hw_alarm_absent_when_hw_nodes_unknown(self):
+        """hw_nodes=None → hw_alarm False (no data)."""
+        result = self._classify_warning_with_hw({}, hw_nodes=None)
+        self.assertFalse(result['hw_alarm'])
+
+    def test_warning_type_never_when_no_nodes_at_all(self):
+        """No nodes in DB and hw_nodes=1 → warning type 'never'."""
+        result = self._classify_warning_with_hw({}, hw_nodes=1)
+        self.assertEqual(result['type'], 'never')
+        self.assertTrue(result['hw_alarm'])
+
+
 if __name__ == '__main__':
     unittest.main()

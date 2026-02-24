@@ -1821,6 +1821,15 @@ class MeshBot:
                     f"📡 [MT-NODES] interface.nodes: {total} total"
                     f" ({other} non-local) — if 0, radio may never have heard any RF peer"
                 )
+            # --- Hardware node count from firmware telemetry ---
+            hw_nodes = getattr(self.node_manager, '_mt_hw_num_total_nodes', None)
+            if hw_nodes is not None:
+                info_print_mt(
+                    f"📊 [MT-HW] Radio firmware numTotalNodes={hw_nodes}"
+                    + (" — radio has NOT heard any RF peer since last reboot"
+                       if hw_nodes <= 1 else
+                       f" — radio has heard {hw_nodes} node(s) via RF since last reboot")
+                )
         except Exception as e:
             debug_print(f"⚠️ _log_meshtastic_channel_config error: {e}")
 
@@ -1926,6 +1935,17 @@ class MeshBot:
                 uptime = now - self._session_start_time
                 if uptime > 300:  # Only warn after 5+ minutes
                     known_count = len(all_other_nodes)
+                    # Pull hardware numTotalNodes from node_manager if available.
+                    # This is the radio firmware's own count (from TELEMETRY_APP
+                    # localStats) and is the single most authoritative indicator:
+                    # hw_nodes=1 means the RADIO HARDWARE has never heard any
+                    # other node via RF since last reboot — rules out any software
+                    # subscription issue and points squarely at hardware/channel.
+                    hw_nodes = getattr(self.node_manager, '_mt_hw_num_total_nodes', None)
+                    hw_suffix = (
+                        f" | hw_nodes={hw_nodes}"
+                        if hw_nodes is not None else ""
+                    )
                     if known_count == 0:
                         cause = (
                             "NEVER heard any RF peer → check antenna, channel PSK,"
@@ -1938,9 +1958,20 @@ class MeshBot:
                         )
                     info_print_mt(
                         f"⚠️ [MT-RF] No Meshtastic RF peers heard in last 10min"
-                        f" (uptime: {uptime:.0f}s | known nodes: {known_count})"
+                        f" (uptime: {uptime:.0f}s | known nodes: {known_count}{hw_suffix})"
                     )
                     info_print_mt(f"   → {cause}")
+                    # When hardware itself reports only 1 node (itself), the radio
+                    # has genuinely not heard any peer since last reboot — this
+                    # rules out a subscription/software issue entirely.
+                    if hw_nodes is not None and hw_nodes <= 1:
+                        info_print_mt(
+                            f"   ⚠️ [MT-HW] Radio firmware numTotalNodes={hw_nodes}"
+                            f" → radio has NOT heard any other node via RF since"
+                            f" last reboot. This is a HARDWARE/CHANNEL issue:"
+                            f" verify channel name, PSK, LoRa region and preset"
+                            f" match the nodes you want to communicate with."
+                        )
                     # Dump channel + LoRa config to help diagnose mismatch
                     self._log_meshtastic_channel_config(mt_interface)
         except Exception as e:
