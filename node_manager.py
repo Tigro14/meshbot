@@ -755,8 +755,19 @@ class NodeManager:
                 _portnum_check = packet.get('decoded', {}).get('portnum', '')
                 if _portnum_check == 'TELEMETRY_APP':
                     _telemetry = packet.get('decoded', {}).get('telemetry', {})
-                    _local_stats = _telemetry.get('localStats', {})
-                    _num_nodes = _local_stats.get('numTotalNodes')
+                    # Meshtastic firmware reports numTotalNodes in two different
+                    # sub-dicts depending on firmware version and telemetry type:
+                    #   • localStats  — sent periodically (may be infrequent)
+                    #   • deviceMetrics — sent more frequently, includes
+                    #     numOnlineNodes / numTotalNodes in some firmware builds
+                    # We try localStats first (most authoritative), then
+                    # deviceMetrics as a fallback.
+                    _num_nodes = None
+                    for _sub_key in ('localStats', 'deviceMetrics'):
+                        _sub = _telemetry.get(_sub_key, {})
+                        _num_nodes = _sub.get('numTotalNodes')
+                        if _num_nodes is not None:
+                            break
                     if _num_nodes is not None:
                         self._mt_hw_num_total_nodes = _num_nodes
                         _hw_extra = f" | hw_nodes={_num_nodes}"

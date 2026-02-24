@@ -1094,5 +1094,259 @@ class TestNumTotalNodesExtraction(unittest.TestCase):
         self.assertTrue(result['hw_alarm'])
 
 
+# ---------------------------------------------------------------------------
+# 14. lastHeard scan in _log_meshtastic_channel_config
+# ---------------------------------------------------------------------------
+
+class TestLastHeardScan(unittest.TestCase):
+    """Validate the lastHeard scan logic added to _log_meshtastic_channel_config."""
+
+    def _run_last_heard_scan(self, nodes, my_id=0x16fad3dc, now=None):
+        """
+        Replicate the lastHeard scan logic from _log_meshtastic_channel_config.
+        Returns dict with: last_heard_name, last_heard_ago_s, recent_24h_count,
+        label ('recent'|'stale'|'never'|'no_entries').
+        """
+        now = now or time.time()
+        last_heard_entries = []
+        for _k, _v in nodes.items():
+            if not isinstance(_v, dict):
+                continue
+            _nid = _v.get('num', 0)
+            if not _nid or _nid == my_id:
+                continue
+            _lh = _v.get('lastHeard', 0)
+            if _lh and _lh > 0:
+                _user = _v.get('user') or {}
+                _name = (_user.get('longName') or _user.get('shortName')
+                         or f'0x{_nid:08x}')
+                last_heard_entries.append((_lh, _nid, _name))
+
+        if not last_heard_entries:
+            return {'label': 'no_entries', 'recent_24h_count': 0}
+
+        last_heard_entries.sort(reverse=True)
+        _lh_ts, _lh_id, _lh_name = last_heard_entries[0]
+        _ago = now - _lh_ts
+        _recent_24h = sum(1 for (_t, _i, _n) in last_heard_entries
+                          if (now - _t) < 86400)
+        if _recent_24h:
+            label = 'recent'
+        else:
+            label = 'stale'
+        return {
+            'label': label,
+            'last_name': _lh_name,
+            'last_ago_s': _ago,
+            'recent_24h_count': _recent_24h,
+        }
+
+    def test_empty_nodes_no_entries(self):
+        """No non-local nodes → label 'no_entries'."""
+        result = self._run_last_heard_scan({})
+        self.assertEqual(result['label'], 'no_entries')
+
+    def test_local_only_no_entries(self):
+        """Only local node in nodeDB → no entries (local is excluded)."""
+        nodes = {'!16fad3dc': {'num': 0x16fad3dc, 'lastHeard': int(time.time())}}
+        result = self._run_last_heard_scan(nodes)
+        self.assertEqual(result['label'], 'no_entries')
+
+    def test_recent_node_reported(self):
+        """Node heard 5 minutes ago → label 'recent', recent_24h_count=1."""
+        now = time.time()
+        nodes = {
+            '!a3fe27d3': {
+                'num': 0xa3fe27d3,
+                'lastHeard': int(now) - 300,  # 5 min ago
+                'user': {'longName': 'TestNode'},
+            }
+        }
+        result = self._run_last_heard_scan(nodes, now=now)
+        self.assertEqual(result['label'], 'recent')
+        self.assertEqual(result['recent_24h_count'], 1)
+        self.assertEqual(result['last_name'], 'TestNode')
+        self.assertAlmostEqual(result['last_ago_s'], 300, delta=2)
+
+    def test_stale_node_two_days_ago(self):
+        """Node heard 2 days ago → label 'stale', recent_24h_count=0."""
+        now = time.time()
+        nodes = {
+            '!a3fe27d3': {
+                'num': 0xa3fe27d3,
+                'lastHeard': int(now) - 2 * 86400,
+                'user': {'longName': 'StaleNode'},
+            }
+        }
+        result = self._run_last_heard_scan(nodes, now=now)
+        self.assertEqual(result['label'], 'stale')
+        self.assertEqual(result['recent_24h_count'], 0)
+        self.assertAlmostEqual(result['last_ago_s'], 2 * 86400, delta=2)
+
+    def test_mixed_nodes_picks_most_recent(self):
+        """With both fresh and stale nodes, most recent is selected."""
+        now = time.time()
+        nodes = {
+            '!aaaa0001': {'num': 0xaaaa0001, 'lastHeard': int(now) - 3600,
+                          'user': {'longName': 'NodeA'}},
+            '!bbbb0002': {'num': 0xbbbb0002, 'lastHeard': int(now) - 300,
+                          'user': {'longName': 'NodeB'}},   # most recent
+            '!cccc0003': {'num': 0xcccc0003, 'lastHeard': int(now) - 7200,
+                          'user': {'longName': 'NodeC'}},
+        }
+        result = self._run_last_heard_scan(nodes, now=now)
+        self.assertEqual(result['last_name'], 'NodeB')
+        self.assertEqual(result['recent_24h_count'], 3)
+
+    def test_node_with_zero_last_heard_excluded(self):
+        """lastHeard=0 means never heard via RF — excluded from entries."""
+        nodes = {
+            '!a3fe27d3': {'num': 0xa3fe27d3, 'lastHeard': 0, 'user': {}},
+        }
+        result = self._run_last_heard_scan(nodes)
+        self.assertEqual(result['label'], 'no_entries')
+
+    def test_fallback_name_from_short_name(self):
+        """Node with only shortName → shortName used in output."""
+        now = time.time()
+        nodes = {
+            '!a3fe27d3': {
+                'num': 0xa3fe27d3,
+                'lastHeard': int(now) - 60,
+                'user': {'shortName': 'TN'},
+            }
+        }
+        result = self._run_last_heard_scan(nodes, now=now)
+        self.assertEqual(result['last_name'], 'TN')
+
+    def test_fallback_name_from_node_id(self):
+        """Node with no user info → hex ID used as name."""
+        now = time.time()
+        nodes = {
+            '!a3fe27d3': {'num': 0xa3fe27d3, 'lastHeard': int(now) - 60}
+        }
+        result = self._run_last_heard_scan(nodes, now=now)
+        self.assertIn('0xa3fe27d3', result['last_name'])
+
+
+# ---------------------------------------------------------------------------
+# 15. numTotalNodes from deviceMetrics fallback in update_rx_history
+# ---------------------------------------------------------------------------
+
+class TestNumTotalNodesDeviceMetricsFallback(unittest.TestCase):
+    """
+    Validate the new fallback logic in node_manager.update_rx_history:
+    numTotalNodes is tried first from localStats, then from deviceMetrics.
+    """
+
+    def _extract_hw_num_total_nodes(self, packet):
+        """
+        Replicate the extraction logic from update_rx_history for
+        TELEMETRY_APP packets from a local source (snr=0.0).
+        Returns the extracted numTotalNodes value or None.
+        """
+        snr = packet.get('snr', 0.0)
+        if snr != 0.0:
+            return None
+        decoded = packet.get('decoded', {})
+        if decoded.get('portnum') != 'TELEMETRY_APP':
+            return None
+        telemetry = decoded.get('telemetry', {})
+        for sub_key in ('localStats', 'deviceMetrics'):
+            sub = telemetry.get(sub_key, {})
+            num = sub.get('numTotalNodes')
+            if num is not None:
+                return num
+        return None
+
+    def test_local_stats_preferred(self):
+        """localStats.numTotalNodes is returned when present."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'localStats': {'numTotalNodes': 5}},
+            }
+        }
+        self.assertEqual(self._extract_hw_num_total_nodes(pkt), 5)
+
+    def test_device_metrics_fallback(self):
+        """deviceMetrics.numTotalNodes used when localStats absent."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'deviceMetrics': {'numTotalNodes': 3}},
+            }
+        }
+        self.assertEqual(self._extract_hw_num_total_nodes(pkt), 3)
+
+    def test_local_stats_takes_priority_over_device_metrics(self):
+        """When both present, localStats wins."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {
+                    'localStats': {'numTotalNodes': 7},
+                    'deviceMetrics': {'numTotalNodes': 2},
+                },
+            }
+        }
+        self.assertEqual(self._extract_hw_num_total_nodes(pkt), 7)
+
+    def test_rf_packet_not_extracted(self):
+        """Non-local packet (snr != 0.0) → returns None."""
+        pkt = {
+            'snr': 12.5,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'localStats': {'numTotalNodes': 1}},
+            }
+        }
+        self.assertIsNone(self._extract_hw_num_total_nodes(pkt))
+
+    def test_non_telemetry_portnum_not_extracted(self):
+        """Non-TELEMETRY_APP portnum → returns None."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TEXT_MESSAGE_APP',
+                'telemetry': {'localStats': {'numTotalNodes': 1}},
+            }
+        }
+        self.assertIsNone(self._extract_hw_num_total_nodes(pkt))
+
+    def test_no_num_total_nodes_returns_none(self):
+        """TELEMETRY_APP with telemetry that has no numTotalNodes → None."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'localStats': {'uptimeSeconds': 3600}},
+            }
+        }
+        self.assertIsNone(self._extract_hw_num_total_nodes(pkt))
+
+    def test_empty_telemetry_returns_none(self):
+        """Empty telemetry dict → None."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {'portnum': 'TELEMETRY_APP', 'telemetry': {}}
+        }
+        self.assertIsNone(self._extract_hw_num_total_nodes(pkt))
+
+    def test_hw_nodes_1_is_correctly_extracted(self):
+        """numTotalNodes=1 (only self heard) is extracted correctly."""
+        pkt = {
+            'snr': 0.0,
+            'decoded': {
+                'portnum': 'TELEMETRY_APP',
+                'telemetry': {'localStats': {'numTotalNodes': 1}},
+            }
+        }
+        self.assertEqual(self._extract_hw_num_total_nodes(pkt), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

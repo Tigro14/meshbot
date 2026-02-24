@@ -1723,6 +1723,15 @@ class MeshBot:
                 import traceback
                 error_print(traceback.format_exc())
 
+    @staticmethod
+    def _format_age_s(seconds):
+        """Return a human-readable age string for a given number of seconds."""
+        if seconds < 3600:
+            return f"{seconds/60:.0f}min ago"
+        if seconds < 86400:
+            return f"{seconds/3600:.1f}h ago"
+        return f"{seconds/86400:.1f} days ago"
+
     def _log_meshtastic_channel_config(self, mt_interface):
         """Log Meshtastic channel + LoRa configuration once for diagnostics.
 
@@ -1821,6 +1830,61 @@ class MeshBot:
                     f"📡 [MT-NODES] interface.nodes: {total} total"
                     f" ({other} non-local) — if 0, radio may never have heard any RF peer"
                 )
+
+                # --- lastHeard scan: tells us WHEN the radio last received any RF peer ---
+                # Each entry in interface.nodes has a 'lastHeard' Unix timestamp (0 if never).
+                # This data persists across reboots in the device's nodeDB — unlike
+                # numTotalNodes (which resets on reboot) it shows the historical picture.
+                now_ts = time.time()
+                last_heard_entries = []
+                for _k, _v in nodes.items():
+                    if not isinstance(_v, dict):
+                        continue
+                    _nid = _v.get('num', 0)
+                    if not _nid or (my_id and _nid == my_id):
+                        continue
+                    _lh = _v.get('lastHeard', 0)
+                    if _lh and _lh > 0:
+                        _user = _v.get('user') or {}
+                        _name = (_user.get('longName') or _user.get('shortName')
+                                 or f'0x{_nid:08x}')
+                        last_heard_entries.append((_lh, _nid, _name))
+
+                if last_heard_entries:
+                    last_heard_entries.sort(reverse=True)
+                    _lh_ts, _lh_id, _lh_name = last_heard_entries[0]
+                    _ago_str = self._format_age_s(now_ts - _lh_ts)
+                    info_print_mt(
+                        f"🕐 [MT-LASTHEARD] Most recent RF peer in nodeDB:"
+                        f" {_lh_name} (0x{_lh_id:08x}) — {_ago_str}"
+                    )
+                    # Also log count of "recently active" nodes (last 24h)
+                    _recent_24h = sum(
+                        1 for (_t, _i, _n) in last_heard_entries
+                        if (now_ts - _t) < 86400
+                    )
+                    if _recent_24h:
+                        info_print_mt(
+                            f"📶 [MT-LASTHEARD] {_recent_24h} node(s) heard in last 24h"
+                        )
+                    else:
+                        info_print_mt(
+                            f"⚠️ [MT-LASTHEARD] 0 nodes heard in last 24h"
+                            f" — radio may not be receiving RF"
+                            f" (last heard: {_ago_str})"
+                        )
+                elif other > 0:
+                    # Nodes in DB but none have lastHeard set
+                    info_print_mt(
+                        f"⚠️ [MT-LASTHEARD] {other} node(s) in nodeDB but all"
+                        f" lastHeard=0 — radio has likely never heard any RF peer"
+                    )
+                else:
+                    info_print_mt(
+                        "⚠️ [MT-LASTHEARD] nodeDB empty (0 non-local nodes)"
+                        " — radio has never heard any Meshtastic peer via RF"
+                    )
+
             # --- Hardware node count from firmware telemetry ---
             hw_nodes = getattr(self.node_manager, '_mt_hw_num_total_nodes', None)
             if hw_nodes is not None:
@@ -1961,6 +2025,41 @@ class MeshBot:
                         f" (uptime: {uptime:.0f}s | known nodes: {known_count}{hw_suffix})"
                     )
                     info_print_mt(f"   → {cause}")
+
+                    # Add lastHeard detail from nodeDB — persists across reboots so
+                    # it tells us whether the radio was ever healthy and when it
+                    # last heard an RF peer, which is distinct from numTotalNodes
+                    # (which resets on device reboot).
+                    if known_count > 0:
+                        _lh_entries = []
+                        for node_key, node_info in nodes.items():
+                            if not isinstance(node_info, dict):
+                                continue
+                            _nid = node_info.get('num', 0)
+                            if not _nid or (my_id and _nid == my_id):
+                                continue
+                            _lh = node_info.get('lastHeard', 0)
+                            if _lh and _lh > 0:
+                                _user = node_info.get('user') or {}
+                                _nm = (_user.get('longName') or _user.get('shortName')
+                                       or f'0x{_nid:08x}')
+                                _lh_entries.append((_lh, _nid, _nm))
+                        if _lh_entries:
+                            _lh_entries.sort(reverse=True)
+                            _lh_ts, _lh_id, _lh_nm = _lh_entries[0]
+                            _ago_str = self._format_age_s(now - _lh_ts)
+                            info_print_mt(
+                                f"   📅 Last RF peer in nodeDB:"
+                                f" {_lh_nm} (0x{_lh_id:08x})"
+                                f" — {_ago_str}"
+                            )
+                        else:
+                            info_print_mt(
+                                f"   📅 All {known_count} nodeDB entries have"
+                                f" lastHeard=0 — radio may never have heard any"
+                                f" RF peer (or firmware nodeDB is corrupted)"
+                            )
+
                     # When hardware itself reports only 1 node (itself), the radio
                     # has genuinely not heard any peer since last reboot — this
                     # rules out a subscription/software issue entirely.
