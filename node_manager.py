@@ -30,6 +30,15 @@ class NodeManager:
         # which can cause TCP disconnections on ESP32-based nodes
         self._last_sync_time = 0
         self._last_synced_keys_hash = None
+
+        # numTotalNodes reported by the local Meshtastic radio firmware in its
+        # own TELEMETRY_APP localStats broadcast.  This is the authoritative
+        # hardware-level count of how many nodes the radio has heard via RF
+        # since its last reboot.  A value of 1 means the radio has never heard
+        # any other node — confirming a hardware/channel issue rather than a
+        # software subscription problem.  Updated each time a local TELEMETRY_APP
+        # with localStats is received.
+        self._mt_hw_num_total_nodes = None
         
         # Position du bot (à récupérer depuis config.py)
         try:
@@ -702,7 +711,12 @@ class NodeManager:
             
             # FILTRER UNIQUEMENT LES MESSAGES DIRECTS (0 hop)
             hop_limit = packet.get('hopLimit', 0)
-            hop_start = packet.get('hopStart', 5)
+            # Use hopLimit as fallback for hopStart (absent in older firmware).
+            # Without this, the old default of 5 produced "hops=2" for locally
+            # generated packets (hopStart=missing→5, hopLimit=3 → 5-3=2) even
+            # though the packet had taken 0 hops.  Defaulting to hopLimit gives
+            # hops_taken=0 for locally-generated packets (hopStart==hopLimit).
+            hop_start = packet.get('hopStart', hop_limit)
             hops_taken = hop_start - hop_limit
             
             # Extraire SNR (essayer plusieurs clés)
@@ -722,7 +736,43 @@ class NodeManager:
             name = self.get_node_name(from_id, self.interface if hasattr(self, 'interface') else None)
             
             # DEBUG: Log packet type and SNR value
-            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}) | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}")
+            # Add [local]/[RF] tag so it is immediately clear whether the packet
+            # was generated locally (snr=0.0, serial echo) or received over RF.
+            if source in ('meshtastic', 'local', 'tcp', 'tigrog2'):
+                _origin_tag = " [local]" if (snr == 0.0 and not is_meshcore_rx_log) else " [RF]"
+            else:
+                _origin_tag = ""
+
+            # For local TELEMETRY_APP from the Meshtastic radio, extract
+            # numTotalNodes from localStats.  This is the firmware's own count of
+            # how many nodes it has heard via RF since last reboot; a value of 1
+            # means it has only ever seen itself — the most authoritative evidence
+            # of a hardware/channel issue vs a software subscription problem.
+            # "Local" sources: 'meshtastic' (dual-mode path) and 'local' (serial
+            # single-mode path); both correspond to packets echoed from /dev/ttyACM0.
+            _hw_extra = ""
+            if snr == 0.0 and source in ('meshtastic', 'local'):
+                _portnum_check = packet.get('decoded', {}).get('portnum', '')
+                if _portnum_check == 'TELEMETRY_APP':
+                    _telemetry = packet.get('decoded', {}).get('telemetry', {})
+                    # Meshtastic firmware reports numTotalNodes in two different
+                    # sub-dicts depending on firmware version and telemetry type:
+                    #   • localStats  — sent periodically (may be infrequent)
+                    #   • deviceMetrics — sent more frequently, includes
+                    #     numOnlineNodes / numTotalNodes in some firmware builds
+                    # We try localStats first (most authoritative), then
+                    # deviceMetrics as a fallback.
+                    _num_nodes = None
+                    for _sub_key in ('localStats', 'deviceMetrics'):
+                        _sub = _telemetry.get(_sub_key, {})
+                        _num_nodes = _sub.get('numTotalNodes')
+                        if _num_nodes is not None:
+                            break
+                    if _num_nodes is not None:
+                        self._mt_hw_num_total_nodes = _num_nodes
+                        _hw_extra = f" | hw_nodes={_num_nodes}"
+
+            debug_func(f"🔍 [RX_HISTORY] Node 0x{from_id:08x} ({name}){_origin_tag} | snr={snr} | DM={is_meshcore_dm} | RX_LOG={is_meshcore_rx_log} | hops={hops_taken}{_hw_extra}")
             
             if snr == 0.0 and not is_meshcore_rx_log:
                 # Skip SNR update but STILL update last_seen timestamp

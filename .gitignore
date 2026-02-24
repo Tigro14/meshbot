@@ -15,3 +15,4 @@ map/info*.tmp
 map/*.log
 map/.infoup.lock
 map/map_config.sh
+config.py.backup

@@ -480,6 +480,10 @@ class MeshBot:
         self._last_packet_count = 0  # Track if packets are still arriving
         self._last_packet_time = time.time()  # When last packet arrived
         
+        # Throttle for Meshtastic channel/LoRa config dump in periodic warnings
+        # so the same config block is not repeated every 10 minutes.
+        self._last_mt_config_dump_time = 0
+
         # Scheduled reconnection tracking (for TCP_FORCE_RECONNECT_INTERVAL)
         self._last_forced_reconnect = time.time()  # Track last scheduled reconnection
         
@@ -839,6 +843,12 @@ class MeshBot:
                 source = 'local' if is_from_our_interface else 'tigrog2'
                 # Removed excessive debug log: Source détectée Legacy mode
             
+            # Stamp source into packet dict so downstream handlers (message_router, etc.)
+            # can read it via packet.get('source').  Without this, message_router always
+            # falls back to 'local' which mis-identifies MeshCore packets as Meshtastic and
+            # incorrectly blocks /nodesmc & /trafficmc from MeshCore DMs.
+            packet['source'] = source
+
             # Log final source determination
 
             # Obtenir l'ID du nœud local pour filtrage
@@ -964,7 +974,14 @@ class MeshBot:
                 
                 try:
                     message = payload.decode('utf-8').strip()
-                except:
+                except Exception:
+                    # Payload is binary — Meshtastic Python couldn't decrypt it.
+                    # Log it so it shows up in diagnostics (previously this was a
+                    # silent drop that made it look like no messages arrived at all).
+                    debug_print_mt(
+                        f"🔐 [MT] Encrypted TEXT_MESSAGE_APP from 0x{from_id:08x}"
+                        f" ({len(payload)}B) — cannot decode, skipping command processing"
+                    )
                     return
                 
                 if not message:
@@ -1475,6 +1492,11 @@ class MeshBot:
                 # Mise à jour de la base de nœuds
                 debug_print("🔄 Mise à jour périodique...")
                 self.node_manager.update_node_database(self.interface)
+
+                # Check Meshtastic RF activity (dual mode or Meshtastic-only)
+                # Logs recently-heard nodes or warns when only local traffic seen.
+                if globals().get('MESHTASTIC_ENABLED', True):
+                    self._check_meshtastic_rf_activity()
                 
                 # Nettoyage périodique
                 self.context_manager.cleanup_old_contexts()
@@ -1704,6 +1726,380 @@ class MeshBot:
                 error_print(f"Erreur thread health TCP: {e}")
                 import traceback
                 error_print(traceback.format_exc())
+
+    @staticmethod
+    def _format_age_s(seconds):
+        """Return a human-readable age string for a given number of seconds."""
+        if seconds < 3600:
+            return f"{seconds/60:.0f}min ago"
+        if seconds < 86400:
+            return f"{seconds/3600:.1f}h ago"
+        return f"{seconds/86400:.1f} days ago"
+
+    def _log_meshtastic_channel_config(self, mt_interface):
+        """Log Meshtastic channel + LoRa configuration once for diagnostics.
+
+        Reads channel 0 name/PSK-status and LoRa region/modem_preset from the
+        interface's localNode and emits a single DEBUG line per attribute.
+        All attribute accesses use safe getattr/hasattr so the method never
+        raises even on older firmware that lacks certain config fields.
+        """
+        try:
+            if not mt_interface:
+                return
+            local_node = getattr(mt_interface, 'localNode', None)
+            if not local_node:
+                info_print_mt(
+                    "📻 [MT-CONFIG] localNode not available yet"
+                    " — config will be logged on next diagnostic cycle"
+                )
+                return
+
+            # --- Channel 0 ---
+            channels = getattr(local_node, 'channels', None)
+            ch_name = ''
+            psk_status = 'unknown'
+            if channels:
+                # channels can be a list or a dict keyed by index
+                items = (channels.values()
+                         if isinstance(channels, dict) else channels)
+                primary_ch = None
+                for ch in items:
+                    role = getattr(ch, 'role', None)
+                    role_name = (getattr(role, 'name', str(role))
+                                 if role is not None else '')
+                    if role_name in ('PRIMARY', '1'):
+                        primary_ch = ch
+                        break
+                if primary_ch is None:
+                    # Fall back to first channel
+                    try:
+                        primary_ch = (list(channels.values())[0]
+                                      if isinstance(channels, dict)
+                                      else channels[0])
+                    except IndexError:
+                        pass
+                if primary_ch is not None:
+                    settings = getattr(primary_ch, 'settings', None)
+                    if settings:
+                        ch_name = getattr(settings, 'name', '') or ''
+                        psk_bytes = getattr(settings, 'psk', None)
+                        # Default PSK is a single byte \x01 (index into built-in
+                        # key list); a real custom PSK is 16 bytes.
+                        if psk_bytes and len(psk_bytes) > 1:
+                            psk_status = 'custom'
+                        elif psk_bytes:
+                            psk_status = 'default'
+                        else:
+                            psk_status = 'none/unknown'
+
+            ch_display = ch_name if ch_name else 'LongFast (default)'
+            info_print_mt(
+                f"📻 [MT-CONFIG] Channel 0: name='{ch_display}'"
+                f" | PSK={psk_status}"
+            )
+
+            # --- LoRa config ---
+            local_config = getattr(local_node, 'localConfig', None)
+            if local_config:
+                lora = getattr(local_config, 'lora', None)
+                if lora:
+                    region_int = getattr(lora, 'region', 0)
+                    preset_int = getattr(lora, 'modem_preset', 0)
+                    hop_limit = getattr(lora, 'hop_limit', 3)
+                    # Protobuf 5/6.x returns plain int for enum fields — use Name() to
+                    # get the human-readable name (e.g., EU_868, LONG_FAST) instead of '3', '0'
+                    try:
+                        from meshtastic.protobuf import config_pb2 as _cpb2
+                        region_name = _cpb2.Config.LoRaConfig.RegionCode.Name(region_int)
+                        preset_name = _cpb2.Config.LoRaConfig.ModemPreset.Name(preset_int)
+                    except (ValueError, ImportError, AttributeError):
+                        region_name = str(region_int)
+                        preset_name = str(preset_int)
+                    info_print_mt(
+                        f"📻 [MT-CONFIG] LoRa: region={region_name}"
+                        f" | preset={preset_name}"
+                        f" | hop_limit={hop_limit}"
+                    )
+                else:
+                    info_print_mt("📻 [MT-CONFIG] LoRa config not available")
+            else:
+                info_print_mt("📻 [MT-CONFIG] localConfig not available yet")
+
+            # --- interface.nodes snapshot (how many non-local nodes the radio knows) ---
+            # NOTE: interface.nodes may be augmented by our sync_pubkeys_to_interface code
+            # which injects bot-known nodes (from node_names.json) to enable DM decryption.
+            # Those injected entries have no 'lastHeard' field.  We therefore count only
+            # nodes with lastHeard > 0 as "actually heard by the radio firmware".
+            nodes = getattr(mt_interface, 'nodes', None)
+            my_id = getattr(local_node, 'nodeNum', None)
+            if nodes is not None:
+                total = len(nodes)
+                # Count all non-local entries (includes bot-injected fake entries)
+                other_total = sum(
+                    1 for _k, v in nodes.items()
+                    if isinstance(v, dict) and v.get('num', 0) != (my_id or 0)
+                )
+
+                # --- lastHeard scan: only entries with lastHeard>0 were ACTUALLY heard by RF ---
+                # Injected entries (added by sync_pubkeys_to_interface) have no lastHeard,
+                # so they correctly fall out of this count.
+                now_ts = time.time()
+                last_heard_entries = []
+                injected_count = 0
+                for _k, _v in nodes.items():
+                    if not isinstance(_v, dict):
+                        continue
+                    _nid = _v.get('num', 0)
+                    if not _nid or (my_id and _nid == my_id):
+                        continue
+                    _lh = _v.get('lastHeard', 0)
+                    if _lh and _lh > 0:
+                        _user = _v.get('user') or {}
+                        _name = (_user.get('longName') or _user.get('shortName')
+                                 or f'0x{_nid:08x}')
+                        last_heard_entries.append((_lh, _nid, _name))
+                    else:
+                        injected_count += 1  # no lastHeard → bot-injected or not yet heard via RF
+
+                # Count of nodes that were truly heard by the radio
+                fw_heard = len(last_heard_entries)
+
+                info_print_mt(
+                    f"📡 [MT-NODES] interface.nodes: {total} total"
+                    f" ({fw_heard} heard by radio"
+                    + (f", {injected_count} no-RF-signal-yet" if injected_count else "")
+                    + ")"
+                )
+
+                if last_heard_entries:
+                    last_heard_entries.sort(reverse=True)
+                    _lh_ts, _lh_id, _lh_name = last_heard_entries[0]
+                    _ago_str = self._format_age_s(now_ts - _lh_ts)
+                    info_print_mt(
+                        f"🕐 [MT-LASTHEARD] Most recent RF peer in nodeDB:"
+                        f" {_lh_name} (0x{_lh_id:08x}) — {_ago_str}"
+                    )
+                    # Also log count of "recently active" nodes (last 24h)
+                    _recent_24h = sum(
+                        1 for (_t, _i, _n) in last_heard_entries
+                        if (now_ts - _t) < 86400
+                    )
+                    if _recent_24h:
+                        info_print_mt(
+                            f"📶 [MT-LASTHEARD] {_recent_24h} node(s) heard in last 24h"
+                        )
+                    else:
+                        info_print_mt(
+                            f"⚠️ [MT-LASTHEARD] 0 nodes heard in last 24h"
+                            f" — radio may not be receiving RF"
+                            f" (last heard: {_ago_str})"
+                        )
+                else:
+                    # No nodes with lastHeard>0 — radio has NEVER heard any RF peer
+                    info_print_mt(
+                        "⚠️ [MT-LASTHEARD] 0 nodes ever heard by radio firmware via RF"
+                        + (f" ({injected_count} entries are bot-injected, not RF-heard)"
+                           if injected_count else "")
+                    )
+
+            # --- Hardware node count from firmware telemetry ---
+            hw_nodes = getattr(self.node_manager, '_mt_hw_num_total_nodes', None)
+            if hw_nodes is not None:
+                info_print_mt(
+                    f"📊 [MT-HW] Radio firmware numTotalNodes={hw_nodes}"
+                    + (" — radio has NOT heard any RF peer since last reboot"
+                       if hw_nodes <= 1 else
+                       f" — radio has heard {hw_nodes} node(s) via RF since last reboot")
+                )
+        except Exception as e:
+            debug_print(f"⚠️ _log_meshtastic_channel_config error: {e}")
+
+    def _check_meshtastic_rf_activity(self):
+        """
+        Scan interface.nodes for Meshtastic nodes heard via RF in the last 10 minutes.
+
+        Logs recently-heard nodes at DEBUG level, or a detailed warning when only
+        the local node's own serial-echoed packets have been observed for more than
+        5 minutes.  The warning distinguishes:
+        - "NEVER heard any RF peer" → likely channel/PSK/frequency mismatch
+        - "N nodes known but none heard recently" → coverage/timing issue
+        and always dumps the local radio's channel + LoRa config so the operator
+        can compare it with the settings of their Meshtastic device.
+        """
+        try:
+            # Resolve the Meshtastic interface (dual mode or single mode)
+            mt_interface = None
+            if self._dual_mode_active and self.dual_interface:
+                mt_interface = self.dual_interface.meshtastic_interface
+            elif self.interface and hasattr(self.interface, 'nodes'):
+                mt_interface = self.interface
+
+            if not mt_interface or not hasattr(mt_interface, 'nodes'):
+                return
+
+            # --- Subscription health check ---
+            # Verify we are still subscribed to meshtastic.receive.  pypubsub
+            # drops bound-method listeners if the owning object is GC'd.  This
+            # catch-and-renew guard ensures reception is restored automatically.
+            meshtastic_enabled = globals().get('MESHTASTIC_ENABLED', True)
+            if meshtastic_enabled:
+                try:
+                    from pubsub import pub
+                    if self._dual_mode_active and self.dual_interface:
+                        listener = getattr(
+                            self.dual_interface, '_meshtastic_pubsub_listener', None
+                        )
+                        if listener is not None and not pub.isSubscribed(
+                            listener, 'meshtastic.receive'
+                        ):
+                            info_print_mt(
+                                "⚠️  [MT-SUB] Subscription silently dropped"
+                                " — re-subscribing to meshtastic.receive..."
+                            )
+                            pub.subscribe(listener, 'meshtastic.receive')
+                            info_print_mt(
+                                "✅ [MT-SUB] Re-subscribed to meshtastic.receive"
+                            )
+                    else:
+                        if not pub.isSubscribed(self.on_message, 'meshtastic.receive'):
+                            info_print_mt(
+                                "⚠️  [MT-SUB] Subscription silently dropped"
+                                " — re-subscribing to meshtastic.receive..."
+                            )
+                            pub.subscribe(self.on_message, 'meshtastic.receive')
+                            info_print_mt(
+                                "✅ [MT-SUB] Re-subscribed to meshtastic.receive"
+                            )
+                except Exception as _sub_err:
+                    debug_print_mt(f"[MT-SUB] Health check error: {_sub_err}")
+
+            # nodes dict — can be empty {} when radio has never heard any RF peer.
+            # We must NOT return early in that case: the empty-nodes case is exactly
+            # when the "NEVER heard any RF peer" warning must fire.
+            nodes = mt_interface.nodes or {}
+
+            # Our local node ID (skip it when scanning for RF peers)
+            my_id = None
+            if hasattr(mt_interface, 'localNode') and mt_interface.localNode:
+                my_id = getattr(mt_interface.localNode, 'nodeNum', None)
+
+            now = time.time()
+            window_s = 600  # 10-minute look-back
+            recently_heard = []
+            all_other_nodes = []  # non-local nodes with lastHeard > 0 (actually heard by radio)
+            # NOTE: interface.nodes may include entries injected by sync_pubkeys_to_interface
+            # (they have no lastHeard).  Only count nodes with lastHeard > 0 as
+            # "known to the radio" to avoid inflating known_count with fake entries.
+
+            for _key, node_info in nodes.items():
+                if not isinstance(node_info, dict):
+                    continue
+                node_num = node_info.get('num', 0)
+                if not node_num or (my_id and node_num == my_id):
+                    continue
+                last_heard = node_info.get('lastHeard', 0)
+                if last_heard and last_heard > 0:
+                    all_other_nodes.append(node_num)
+                    if (now - last_heard) < window_s:
+                        user = node_info.get('user') or {}
+                        name = (user.get('longName') or user.get('shortName')
+                                or f'0x{node_num:08x}')
+                        recently_heard.append((name, node_num, now - last_heard))
+
+            if recently_heard:
+                debug_print_mt(
+                    f"📡 [MT-RF] {len(recently_heard)} Meshtastic node(s) heard"
+                    f" via RF in last 10min:"
+                )
+                # Log up to 5 examples — enough context without flooding the log
+                for name, node_num, ago in recently_heard[:5]:
+                    debug_print_mt(
+                        f"   └─ {name} (0x{node_num:08x}) — {ago:.0f}s ago"
+                    )
+            else:
+                uptime = now - self._session_start_time
+                if uptime > 300:  # Only warn after 5+ minutes
+                    known_count = len(all_other_nodes)
+                    # Pull hardware numTotalNodes from node_manager if available.
+                    # This is the radio firmware's own count (from TELEMETRY_APP
+                    # localStats) and is the single most authoritative indicator:
+                    # hw_nodes=1 means the RADIO HARDWARE has never heard any
+                    # other node via RF since last reboot — rules out any software
+                    # subscription issue and points squarely at hardware/channel.
+                    hw_nodes = getattr(self.node_manager, '_mt_hw_num_total_nodes', None)
+                    hw_suffix = (
+                        f" | hw_nodes={hw_nodes}"
+                        if hw_nodes is not None else ""
+                    )
+                    if known_count == 0:
+                        cause = (
+                            "NEVER heard any RF peer → check antenna, channel PSK,"
+                            " LoRa region/preset, and that other nodes are nearby"
+                        )
+                    else:
+                        cause = (
+                            f"{known_count} node(s) known from DB but none"
+                            " heard recently → coverage gap or nodes went silent"
+                        )
+                    info_print_mt(
+                        f"⚠️ [MT-RF] No Meshtastic RF peers heard in last 10min"
+                        f" (uptime: {uptime:.0f}s | known nodes: {known_count}{hw_suffix})"
+                    )
+                    info_print_mt(f"   → {cause}")
+
+                    # Add lastHeard detail from nodeDB — persists across reboots so
+                    # it tells us whether the radio was ever healthy and when it
+                    # last heard an RF peer, which is distinct from numTotalNodes
+                    # (which resets on device reboot).
+                    if known_count > 0:
+                        _lh_entries = []
+                        for node_key, node_info in nodes.items():
+                            if not isinstance(node_info, dict):
+                                continue
+                            _nid = node_info.get('num', 0)
+                            if not _nid or (my_id and _nid == my_id):
+                                continue
+                            _lh = node_info.get('lastHeard', 0)
+                            if _lh and _lh > 0:
+                                _user = node_info.get('user') or {}
+                                _nm = (_user.get('longName') or _user.get('shortName')
+                                       or f'0x{_nid:08x}')
+                                _lh_entries.append((_lh, _nid, _nm))
+                        if _lh_entries:
+                            _lh_entries.sort(reverse=True)
+                            _lh_ts, _lh_id, _lh_nm = _lh_entries[0]
+                            _ago_str = self._format_age_s(now - _lh_ts)
+                            info_print_mt(
+                                f"   📅 Last RF peer in nodeDB:"
+                                f" {_lh_nm} (0x{_lh_id:08x})"
+                                f" — {_ago_str}"
+                            )
+                        else:
+                            # This branch is only reached if known_count>0 but the
+                            # same nodes lack lastHeard in the second scan (race condition).
+                            # Should not normally happen.
+                            info_print_mt(
+                                f"   📅 0 RF-heard nodes found in nodeDB"
+                                f" — radio has never heard any peer via RF"
+                            )
+
+                    # Dump channel + LoRa config to help diagnose mismatch.
+                    # Throttled: only repeat the full config block every 30 min so
+                    # the same 8 lines don't flood the log every 10-min warning cycle.
+                    # The config is always shown at startup via _log_meshtastic_channel_config.
+                    _config_interval = 1800  # 30 minutes
+                    if (now - self._last_mt_config_dump_time) >= _config_interval:
+                        self._log_meshtastic_channel_config(mt_interface)
+                        self._last_mt_config_dump_time = now
+                    else:
+                        _next_in = int(_config_interval - (now - self._last_mt_config_dump_time))
+                        debug_print_mt(
+                            f"[MT-CONFIG] next full config dump in {_next_in}s"
+                            f" (see startup log for channel/LoRa details)"
+                        )
+        except Exception as e:
+            debug_print(f"⚠️ Error in _check_meshtastic_rf_activity: {e}")
 
     def cleanup_cache(self):
         """Nettoyage périodique général"""
@@ -2207,6 +2603,14 @@ class MeshBot:
                 
                 if meshtastic_interface:
                     self.dual_interface.set_meshtastic_interface(meshtastic_interface)
+                    # Subscribe to meshtastic.receive IMMEDIATELY — before MeshCore
+                    # connection — to ensure no RF packets are missed during the
+                    # MeshCore init phase (which can take several seconds).
+                    # setup_message_callbacks() is safe to call multiple times;
+                    # the second call (after MeshCore is set) adds MeshCore callbacks.
+                    # The "✅ Meshtastic pubsub callback registered" log emitted
+                    # inside setup_message_callbacks() confirms the subscription.
+                    self.dual_interface.setup_message_callbacks()
                 
                 # Setup MeshCore interface
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
@@ -2313,8 +2717,13 @@ class MeshBot:
                         
                         info_print_mc(f"✅ DUAL MODE actif: Meshtastic={type(meshtastic_interface).__name__}, MeshCore={type(meshcore_interface).__name__}")
                 
-                # Stabilization
+                # Stabilization — give Meshtastic SerialInterface time to receive
+                # localNode / channel / LoRa config from the radio over serial
+                # before we try to read them for startup diagnostics.
                 time.sleep(3)
+                # Log Meshtastic channel/LoRa config AFTER stabilization so
+                # localNode.channels is already populated.
+                self._log_meshtastic_channel_config(meshtastic_interface)
                 
             elif not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
@@ -2682,9 +3091,22 @@ class MeshBot:
                     error_print("⚠️  DUAL MODE INITIALIZATION FAILED - running in fallback mode")
 
             if meshtastic_enabled:
-                debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
-                pub.subscribe(self.on_message, "meshtastic.receive")
-                info_print_mt("✅ Subscribed to meshtastic.receive")
+                if self._dual_mode_active:
+                    # Dual mode: DualInterfaceManager.setup_message_callbacks() already subscribed
+                    # a listener to "meshtastic.receive" that calls on_message with the correct
+                    # network_source=NetworkSource.MESHTASTIC.
+                    # Subscribing on_message HERE too would cause every Meshtastic packet to be
+                    # processed TWICE: once with network_source set (correct) and once without
+                    # (network_source=None).  The second call double-counts throttle usage,
+                    # effectively halving MAX_COMMANDS_PER_WINDOW and making DMs appear broken
+                    # after only 2-3 commands.
+                    info_print_mt("ℹ️  Dual mode: Meshtastic messages handled by DualInterfaceManager")
+                else:
+                    debug_print_mt("📡 Subscribing to Meshtastic messages via pubsub...")
+                    pub.subscribe(self.on_message, "meshtastic.receive")
+                    info_print_mt("✅ Subscribed to meshtastic.receive")
+                    # Log Meshtastic channel/LoRa config at startup for diagnostics
+                    self._log_meshtastic_channel_config(self.interface)
             else:
                 debug_print_mc("ℹ️  Mode companion: Messages gérés par interface MeshCore")
             
@@ -3041,18 +3463,15 @@ class MeshBot:
                         uptime_str = f"{int(uptime/60)}m {int(uptime%60)}s"
                         
                         # Log packet reception status
-                        info_print("=" * 80)
                         info_print(f"📊 BOT STATUS - Uptime: {uptime_str}")
                         info_print(f"📦 Packets this session: {self._packets_this_session}")
                         info_print(f"🔍 SOURCE-DEBUG: {'Active (logs on packet reception)' if DEBUG_MODE else 'Inactive (DEBUG_MODE=False)'}")
                         
                         if self._packets_this_session == 0:
                             info_print("⚠️  WARNING: No packets received yet!")
-                            info_print("   → Check Meshtastic connection if packets expected")
                         else:
                             info_print(f"✅ Packets flowing normally ({self._packets_this_session} total)")
                         
-                        info_print("=" * 80)
                     
                     if cleanup_counter % 10 == 0:  # Toutes les 5 minutes
                         self.cleanup_cache()
