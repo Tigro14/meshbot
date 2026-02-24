@@ -755,5 +755,178 @@ class TestMTRFActivityCauseMessage(unittest.TestCase):
         self.assertIn('3', cause)
 
 
+# ---------------------------------------------------------------------------
+# 10. _check_meshtastic_rf_activity: empty nodes dict must NOT cause early exit
+# ---------------------------------------------------------------------------
+
+class TestMTRFActivityEmptyNodesDict(unittest.TestCase):
+    """
+    Bug fix: the old guard ``not mt_interface.nodes`` returned silently when
+    the radio had never heard any RF peer (nodes = {}).  The warning must now
+    fire even with an empty nodes dict.
+    """
+
+    def _run_check_with_nodes(self, nodes_dict, session_age_s=400):
+        """
+        Replicate the post-fix logic of _check_meshtastic_rf_activity.
+        Returns (warning_type, known_count) where warning_type is
+        'none', 'never_heard', or 'known_but_silent'.
+        """
+        # Simulate the fixed early-return: only bail when nodes attr missing
+        if nodes_dict is None:
+            return 'no_attr', 0
+
+        # nodes can be empty {} — that is valid, continue processing
+        nodes = nodes_dict or {}
+
+        my_id = 0x16fad3dc
+        now = time.time()
+        window_s = 600
+        recently_heard = []
+        all_other_nodes = []
+
+        for _key, node_info in nodes.items():
+            if not isinstance(node_info, dict):
+                continue
+            node_num = node_info.get('num', 0)
+            if not node_num or node_num == my_id:
+                continue
+            all_other_nodes.append(node_num)
+            last_heard = node_info.get('lastHeard', 0)
+            if last_heard and (now - last_heard) < window_s:
+                recently_heard.append(node_num)
+
+        if recently_heard:
+            return 'none', len(all_other_nodes)
+
+        uptime = session_age_s
+        if uptime <= 300:
+            return 'none', len(all_other_nodes)
+
+        known_count = len(all_other_nodes)
+        if known_count == 0:
+            return 'never_heard', 0
+        return 'known_but_silent', known_count
+
+    def test_empty_nodes_warns_never_heard(self):
+        """Empty {} nodes dict → 'never_heard' (bug fix: was silently returning)."""
+        wtype, known = self._run_check_with_nodes({})
+        self.assertEqual(wtype, 'never_heard')
+        self.assertEqual(known, 0)
+
+    def test_none_nodes_treated_as_no_attr(self):
+        """None (missing attribute) → early return, no warning spam."""
+        wtype, _ = self._run_check_with_nodes(None)
+        self.assertEqual(wtype, 'no_attr')
+
+    def test_only_local_node_warns_never_heard(self):
+        """Only the bot's own entry in nodes (no RF peer) → 'never_heard'."""
+        nodes = {'!16fad3dc': {'num': 0x16fad3dc, 'lastHeard': int(time.time()) - 30}}
+        wtype, known = self._run_check_with_nodes(nodes)
+        self.assertEqual(wtype, 'never_heard')
+        self.assertEqual(known, 0)
+
+    def test_stale_remote_node_warns_known_but_silent(self):
+        """Remote node in DB but heard >10min ago → 'known_but_silent'."""
+        nodes = {
+            '!a3fe27d3': {'num': 0xa3fe27d3, 'lastHeard': int(time.time()) - 700}
+        }
+        wtype, known = self._run_check_with_nodes(nodes)
+        self.assertEqual(wtype, 'known_but_silent')
+        self.assertEqual(known, 1)
+
+    def test_recent_remote_node_no_warning(self):
+        """Remote node heard 90s ago → no warning."""
+        nodes = {
+            '!a3fe27d3': {'num': 0xa3fe27d3, 'lastHeard': int(time.time()) - 90}
+        }
+        wtype, _ = self._run_check_with_nodes(nodes)
+        self.assertEqual(wtype, 'none')
+
+
+# ---------------------------------------------------------------------------
+# 11. Subscription health check: re-subscribe logic
+# ---------------------------------------------------------------------------
+
+class TestMeshtasticSubscriptionHealthCheck(unittest.TestCase):
+    """
+    Validate the subscription health-check logic added to
+    _check_meshtastic_rf_activity: detects a dead subscription and
+    re-subscribes automatically.
+    """
+
+    def _simulate_health_check(self, is_subscribed, is_dual_mode,
+                               has_listener=True):
+        """
+        Replicate the subscription health-check logic.
+        Returns (resubscribed, log_messages) where resubscribed is True if
+        a re-subscription was attempted.
+        """
+        logs = []
+        resubscribed = False
+
+        # Simulate pub.isSubscribed result
+        def fake_is_subscribed(listener, topic):
+            return is_subscribed
+
+        def fake_subscribe(listener, topic):
+            nonlocal resubscribed
+            resubscribed = True
+            logs.append(f"✅ [MT-SUB] Re-subscribed to {topic}")
+
+        listener = object() if has_listener else None
+
+        if is_dual_mode:
+            if listener is not None and not fake_is_subscribed(listener, 'meshtastic.receive'):
+                logs.append("⚠️  [MT-SUB] Subscription silently dropped — re-subscribing...")
+                fake_subscribe(listener, 'meshtastic.receive')
+        else:
+            on_message = object()  # stand-in for self.on_message
+            if not fake_is_subscribed(on_message, 'meshtastic.receive'):
+                logs.append("⚠️  [MT-SUB] Subscription silently dropped — re-subscribing...")
+                fake_subscribe(on_message, 'meshtastic.receive')
+
+        return resubscribed, logs
+
+    def test_alive_subscription_no_action(self):
+        """Subscription alive → no re-subscribe, no warning log."""
+        resubscribed, logs = self._simulate_health_check(
+            is_subscribed=True, is_dual_mode=False
+        )
+        self.assertFalse(resubscribed)
+        self.assertEqual(logs, [])
+
+    def test_dead_subscription_single_mode_resubscribes(self):
+        """Dead subscription in single mode → re-subscribe attempt + warning."""
+        resubscribed, logs = self._simulate_health_check(
+            is_subscribed=False, is_dual_mode=False
+        )
+        self.assertTrue(resubscribed)
+        self.assertTrue(any('⚠️' in m for m in logs))
+        self.assertTrue(any('Re-subscribed' in m for m in logs))
+
+    def test_dead_subscription_dual_mode_with_listener_resubscribes(self):
+        """Dead subscription in dual mode (listener present) → re-subscribe."""
+        resubscribed, logs = self._simulate_health_check(
+            is_subscribed=False, is_dual_mode=True, has_listener=True
+        )
+        self.assertTrue(resubscribed)
+
+    def test_dead_subscription_dual_mode_no_listener_no_crash(self):
+        """Dead subscription in dual mode but listener is None → no crash, no re-subscribe."""
+        resubscribed, logs = self._simulate_health_check(
+            is_subscribed=False, is_dual_mode=True, has_listener=False
+        )
+        self.assertFalse(resubscribed)
+
+    def test_alive_subscription_dual_mode_no_action(self):
+        """Alive subscription in dual mode → no action."""
+        resubscribed, logs = self._simulate_health_check(
+            is_subscribed=True, is_dual_mode=True, has_listener=True
+        )
+        self.assertFalse(resubscribed)
+        self.assertEqual(logs, [])
+
+
 if __name__ == '__main__':
     unittest.main()

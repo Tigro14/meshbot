@@ -1736,7 +1736,10 @@ class MeshBot:
                 return
             local_node = getattr(mt_interface, 'localNode', None)
             if not local_node:
-                debug_print_mt("📻 [MT-CONFIG] localNode not available yet")
+                info_print_mt(
+                    "📻 [MT-CONFIG] localNode not available yet"
+                    " — config will be logged on next diagnostic cycle"
+                )
                 return
 
             # --- Channel 0 ---
@@ -1841,8 +1844,49 @@ class MeshBot:
             elif self.interface and hasattr(self.interface, 'nodes'):
                 mt_interface = self.interface
 
-            if not mt_interface or not hasattr(mt_interface, 'nodes') or not mt_interface.nodes:
+            if not mt_interface or not hasattr(mt_interface, 'nodes'):
                 return
+
+            # --- Subscription health check ---
+            # Verify we are still subscribed to meshtastic.receive.  pypubsub
+            # drops bound-method listeners if the owning object is GC'd.  This
+            # catch-and-renew guard ensures reception is restored automatically.
+            meshtastic_enabled = globals().get('MESHTASTIC_ENABLED', True)
+            if meshtastic_enabled:
+                try:
+                    from pubsub import pub
+                    if self._dual_mode_active and self.dual_interface:
+                        listener = getattr(
+                            self.dual_interface, '_meshtastic_pubsub_listener', None
+                        )
+                        if listener is not None and not pub.isSubscribed(
+                            listener, 'meshtastic.receive'
+                        ):
+                            info_print_mt(
+                                "⚠️  [MT-SUB] Subscription silently dropped"
+                                " — re-subscribing to meshtastic.receive..."
+                            )
+                            pub.subscribe(listener, 'meshtastic.receive')
+                            info_print_mt(
+                                "✅ [MT-SUB] Re-subscribed to meshtastic.receive"
+                            )
+                    else:
+                        if not pub.isSubscribed(self.on_message, 'meshtastic.receive'):
+                            info_print_mt(
+                                "⚠️  [MT-SUB] Subscription silently dropped"
+                                " — re-subscribing to meshtastic.receive..."
+                            )
+                            pub.subscribe(self.on_message, 'meshtastic.receive')
+                            info_print_mt(
+                                "✅ [MT-SUB] Re-subscribed to meshtastic.receive"
+                            )
+                except Exception as _sub_err:
+                    debug_print_mt(f"[MT-SUB] Health check error: {_sub_err}")
+
+            # nodes dict — can be empty {} when radio has never heard any RF peer.
+            # We must NOT return early in that case: the empty-nodes case is exactly
+            # when the "NEVER heard any RF peer" warning must fire.
+            nodes = mt_interface.nodes or {}
 
             # Our local node ID (skip it when scanning for RF peers)
             my_id = None
@@ -1854,7 +1898,7 @@ class MeshBot:
             recently_heard = []
             all_other_nodes = []  # all non-local nodes ever seen in interface.nodes
 
-            for _key, node_info in mt_interface.nodes.items():
+            for _key, node_info in nodes.items():
                 if not isinstance(node_info, dict):
                     continue
                 node_num = node_info.get('num', 0)
@@ -2509,11 +2553,14 @@ class MeshBot:
                         debug_print(f"✅ Primary interface: {type(self.interface).__name__}")
                         
                         info_print_mc(f"✅ DUAL MODE actif: Meshtastic={type(meshtastic_interface).__name__}, MeshCore={type(meshcore_interface).__name__}")
-                        # Log Meshtastic channel/LoRa config at startup for diagnostics
-                        self._log_meshtastic_channel_config(meshtastic_interface)
                 
-                # Stabilization
+                # Stabilization — give Meshtastic SerialInterface time to receive
+                # localNode / channel / LoRa config from the radio over serial
+                # before we try to read them for startup diagnostics.
                 time.sleep(3)
+                # Log Meshtastic channel/LoRa config AFTER stabilization so
+                # localNode.channels is already populated.
+                self._log_meshtastic_channel_config(meshtastic_interface)
                 
             elif not meshtastic_enabled and not meshcore_enabled:
                 # Mode standalone - aucune connexion radio
