@@ -1800,43 +1800,59 @@ class MeshBot:
             if local_config:
                 lora = getattr(local_config, 'lora', None)
                 if lora:
-                    region = getattr(lora, 'region', None)
-                    region_name = (getattr(region, 'name', str(region))
-                                   if region is not None else 'UNSET')
-                    preset = getattr(lora, 'modem_preset', None)
-                    preset_name = (getattr(preset, 'name', str(preset))
-                                   if preset is not None else 'UNKNOWN')
+                    region_int = getattr(lora, 'region', 0)
+                    preset_int = getattr(lora, 'modem_preset', 0)
                     hop_limit = getattr(lora, 'hop_limit', 3)
+                    # Protobuf 5/6.x returns plain int for enum fields — use Name() to
+                    # get the human-readable name (e.g., EU_868, LONG_FAST) instead of '3', '0'
+                    try:
+                        from meshtastic.protobuf import config_pb2 as _cpb2
+                        region_name = _cpb2.Config.LoRaConfig.RegionCode.Name(region_int)
+                        preset_name = _cpb2.Config.LoRaConfig.ModemPreset.Name(preset_int)
+                    except (ValueError, ImportError, AttributeError):
+                        region_name = str(region_int)
+                        preset_name = str(preset_int)
                     info_print_mt(
                         f"📻 [MT-CONFIG] LoRa: region={region_name}"
                         f" | preset={preset_name}"
                         f" | hop_limit={hop_limit}"
                     )
+                    # Prominent warning when region is UNSET (0) — most likely cause of deafness
+                    if region_int == 0:
+                        info_print_mt(
+                            "⚠️ [MT-CONFIG] LoRa REGION IS UNSET (region=0)!"
+                            " Radio may be on wrong frequency → cannot hear other nodes."
+                        )
+                        info_print_mt(
+                            "⚠️ [MT-CONFIG]   → Open Meshtastic app → Device Config → LoRa"
+                            " → set Region (EU_868 for France/Europe, US for North America, etc.)"
+                        )
                 else:
                     info_print_mt("📻 [MT-CONFIG] LoRa config not available")
             else:
                 info_print_mt("📻 [MT-CONFIG] localConfig not available yet")
 
             # --- interface.nodes snapshot (how many non-local nodes the radio knows) ---
+            # NOTE: interface.nodes may be augmented by our sync_pubkeys_to_interface code
+            # which injects bot-known nodes (from node_names.json) to enable DM decryption.
+            # Those injected entries have no 'lastHeard' field.  We therefore count only
+            # nodes with lastHeard > 0 as "actually heard by the radio firmware".
             nodes = getattr(mt_interface, 'nodes', None)
             my_id = getattr(local_node, 'nodeNum', None)
             if nodes is not None:
                 total = len(nodes)
-                other = sum(
+                # Count all non-local entries (includes bot-injected fake entries)
+                other_total = sum(
                     1 for _k, v in nodes.items()
                     if isinstance(v, dict) and v.get('num', 0) != (my_id or 0)
                 )
-                info_print_mt(
-                    f"📡 [MT-NODES] interface.nodes: {total} total"
-                    f" ({other} non-local) — if 0, radio may never have heard any RF peer"
-                )
 
-                # --- lastHeard scan: tells us WHEN the radio last received any RF peer ---
-                # Each entry in interface.nodes has a 'lastHeard' Unix timestamp (0 if never).
-                # This data persists across reboots in the device's nodeDB — unlike
-                # numTotalNodes (which resets on reboot) it shows the historical picture.
+                # --- lastHeard scan: only entries with lastHeard>0 were ACTUALLY heard by RF ---
+                # Injected entries (added by sync_pubkeys_to_interface) have no lastHeard,
+                # so they correctly fall out of this count.
                 now_ts = time.time()
                 last_heard_entries = []
+                injected_count = 0
                 for _k, _v in nodes.items():
                     if not isinstance(_v, dict):
                         continue
@@ -1849,6 +1865,18 @@ class MeshBot:
                         _name = (_user.get('longName') or _user.get('shortName')
                                  or f'0x{_nid:08x}')
                         last_heard_entries.append((_lh, _nid, _name))
+                    else:
+                        injected_count += 1  # no lastHeard → bot-injected or not yet heard via RF
+
+                # Count of nodes that were truly heard by the radio
+                fw_heard = len(last_heard_entries)
+
+                info_print_mt(
+                    f"📡 [MT-NODES] interface.nodes: {total} total"
+                    f" ({fw_heard} heard by radio"
+                    + (f", {injected_count} no-RF-signal-yet" if injected_count else "")
+                    + ")"
+                )
 
                 if last_heard_entries:
                     last_heard_entries.sort(reverse=True)
@@ -1873,16 +1901,12 @@ class MeshBot:
                             f" — radio may not be receiving RF"
                             f" (last heard: {_ago_str})"
                         )
-                elif other > 0:
-                    # Nodes in DB but none have lastHeard set
-                    info_print_mt(
-                        f"⚠️ [MT-LASTHEARD] {other} node(s) in nodeDB but all"
-                        f" lastHeard=0 — radio has likely never heard any RF peer"
-                    )
                 else:
+                    # No nodes with lastHeard>0 — radio has NEVER heard any RF peer
                     info_print_mt(
-                        "⚠️ [MT-LASTHEARD] nodeDB empty (0 non-local nodes)"
-                        " — radio has never heard any Meshtastic peer via RF"
+                        "⚠️ [MT-LASTHEARD] 0 nodes ever heard by radio firmware via RF"
+                        + (f" ({injected_count} entries are bot-injected, not RF-heard)"
+                           if injected_count else "")
                     )
 
             # --- Hardware node count from firmware telemetry ---
@@ -1969,7 +1993,10 @@ class MeshBot:
             now = time.time()
             window_s = 600  # 10-minute look-back
             recently_heard = []
-            all_other_nodes = []  # all non-local nodes ever seen in interface.nodes
+            all_other_nodes = []  # non-local nodes with lastHeard > 0 (actually heard by radio)
+            # NOTE: interface.nodes may include entries injected by sync_pubkeys_to_interface
+            # (they have no lastHeard).  Only count nodes with lastHeard > 0 as
+            # "known to the radio" to avoid inflating known_count with fake entries.
 
             for _key, node_info in nodes.items():
                 if not isinstance(node_info, dict):
@@ -1977,13 +2004,14 @@ class MeshBot:
                 node_num = node_info.get('num', 0)
                 if not node_num or (my_id and node_num == my_id):
                     continue
-                all_other_nodes.append(node_num)
                 last_heard = node_info.get('lastHeard', 0)
-                if last_heard and (now - last_heard) < window_s:
-                    user = node_info.get('user') or {}
-                    name = (user.get('longName') or user.get('shortName')
-                            or f'0x{node_num:08x}')
-                    recently_heard.append((name, node_num, now - last_heard))
+                if last_heard and last_heard > 0:
+                    all_other_nodes.append(node_num)
+                    if (now - last_heard) < window_s:
+                        user = node_info.get('user') or {}
+                        name = (user.get('longName') or user.get('shortName')
+                                or f'0x{node_num:08x}')
+                        recently_heard.append((name, node_num, now - last_heard))
 
             if recently_heard:
                 debug_print_mt(
@@ -2054,10 +2082,12 @@ class MeshBot:
                                 f" — {_ago_str}"
                             )
                         else:
+                            # This branch is only reached if known_count>0 but the
+                            # same nodes lack lastHeard in the second scan (race condition).
+                            # Should not normally happen.
                             info_print_mt(
-                                f"   📅 All {known_count} nodeDB entries have"
-                                f" lastHeard=0 — radio may never have heard any"
-                                f" RF peer (or firmware nodeDB is corrupted)"
+                                f"   📅 0 RF-heard nodes found in nodeDB"
+                                f" — radio has never heard any peer via RF"
                             )
 
                     # When hardware itself reports only 1 node (itself), the radio

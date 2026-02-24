@@ -293,9 +293,16 @@ class _FakeChannel:
 
 
 class _FakeLora:
+    # Use integers for region/modem_preset — mirrors protobuf 5/6.x which returns
+    # plain int for enum fields (not enum objects with .name).
+    # RegionCode: EU_868=3, US=1, UNSET=0
+    # ModemPreset: LONG_FAST=0, LONG_SLOW=1, MEDIUM_FAST=4
+    _REGION_MAP = {'EU_868': 3, 'US': 1, 'UNSET': 0}
+    _PRESET_MAP = {'LONG_FAST': 0, 'LONG_SLOW': 1, 'MEDIUM_FAST': 4}
+
     def __init__(self, region='EU_868', preset='LONG_FAST', hop_limit=3):
-        self.region = _FakeEnum(region)
-        self.modem_preset = _FakeEnum(preset)
+        self.region = self._REGION_MAP.get(region, 0)
+        self.modem_preset = self._PRESET_MAP.get(preset, 0)
         self.hop_limit = hop_limit
 
 
@@ -363,19 +370,23 @@ def _run_channel_config_log(interface):
     region_name = 'UNSET'
     preset_name = 'UNKNOWN'
     hop_limit = 3
+    region_int = 0
     local_config = getattr(local_node, 'localConfig', None)
     if local_config:
         lora = getattr(local_config, 'lora', None)
         if lora:
-            region = getattr(lora, 'region', None)
-            region_name = (getattr(region, 'name', str(region))
-                           if region is not None else 'UNSET')
-            preset = getattr(lora, 'modem_preset', None)
-            preset_name = (getattr(preset, 'name', str(preset))
-                           if preset is not None else 'UNKNOWN')
+            region_int = getattr(lora, 'region', 0)
+            preset_int = getattr(lora, 'modem_preset', 0)
             hop_limit = getattr(lora, 'hop_limit', 3)
+            try:
+                from meshtastic.protobuf import config_pb2 as _cpb2
+                region_name = _cpb2.Config.LoRaConfig.RegionCode.Name(region_int)
+                preset_name = _cpb2.Config.LoRaConfig.ModemPreset.Name(preset_int)
+            except (ValueError, ImportError, AttributeError):
+                region_name = str(region_int)
+                preset_name = str(preset_int)
 
-    return ch_display, psk_status, region_name, preset_name, hop_limit
+    return ch_display, psk_status, region_name, preset_name, hop_limit, region_int
 
 
 class TestMTChannelConfig(unittest.TestCase):
@@ -388,7 +399,7 @@ class TestMTChannelConfig(unittest.TestCase):
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
         self.assertIsNotNone(result)
-        ch_display, psk_status, region, preset, hop = result
+        ch_display, psk_status, region, preset, hop, region_int = result
         self.assertEqual(ch_display, 'LongFast (default)')  # empty name → default display
         self.assertEqual(psk_status, 'default')
 
@@ -399,21 +410,34 @@ class TestMTChannelConfig(unittest.TestCase):
         node = _FakeLocalNode(channels=[ch])
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
-        ch_display, psk_status, _, _, _ = result
+        ch_display, psk_status, _, _, _, _ = result
         self.assertEqual(ch_display, 'MyNet')
         self.assertEqual(psk_status, 'custom')
 
     def test_lora_region_and_preset(self):
-        """LoRa region EU_868 + preset LONG_FAST are extracted correctly."""
+        """LoRa region EU_868 + preset LONG_FAST are extracted correctly (via config_pb2 enum lookup)."""
         ch = _FakeChannel()
         lora = _FakeLora(region='EU_868', preset='LONG_FAST', hop_limit=5)
         node = _FakeLocalNode(channels=[ch], local_config=_FakeLocalConfig(lora=lora))
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
-        _, _, region, preset, hop = result
+        _, _, region, preset, hop, region_int = result
+        # _FakeLora stores EU_868=3, LONG_FAST=0 — config_pb2 should map back to names
         self.assertEqual(region, 'EU_868')
         self.assertEqual(preset, 'LONG_FAST')
         self.assertEqual(hop, 5)
+        self.assertEqual(region_int, 3)  # EU_868 integer
+
+    def test_lora_region_unset_int_zero(self):
+        """region=0 (UNSET) maps to 'UNSET' via config_pb2 — was previously '0' (bug)."""
+        ch = _FakeChannel()
+        lora = _FakeLora(region='UNSET', preset='LONG_FAST', hop_limit=3)
+        node = _FakeLocalNode(channels=[ch], local_config=_FakeLocalConfig(lora=lora))
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        _, _, region, preset, hop, region_int = result
+        self.assertEqual(region, 'UNSET')
+        self.assertEqual(region_int, 0)
 
     def test_no_local_node_returns_none(self):
         """If localNode is None the function returns None gracefully."""
@@ -428,7 +452,7 @@ class TestMTChannelConfig(unittest.TestCase):
         node = _FakeLocalNode(channels={0: ch})
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
-        ch_display, psk_status, _, _, _ = result
+        ch_display, psk_status, _, _, _, _ = result
         self.assertEqual(ch_display, 'DictCh')
         self.assertEqual(psk_status, 'custom')
 
@@ -439,7 +463,7 @@ class TestMTChannelConfig(unittest.TestCase):
         node = _FakeLocalNode(channels=[ch])
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
-        _, psk_status, _, _, _ = result
+        _, psk_status, _, _, _, _ = result
         self.assertEqual(psk_status, 'none/unknown')
 
     def test_secondary_channel_uses_primary(self):
@@ -449,7 +473,7 @@ class TestMTChannelConfig(unittest.TestCase):
         node = _FakeLocalNode(channels=[secondary, primary])
         iface = _FakeMTInterface(local_node=node)
         result = _run_channel_config_log(iface)
-        ch_display, psk_status, _, _, _ = result
+        ch_display, psk_status, _, _, _, _ = result
         self.assertEqual(ch_display, 'Main')
 
 
@@ -1346,6 +1370,206 @@ class TestNumTotalNodesDeviceMetricsFallback(unittest.TestCase):
             }
         }
         self.assertEqual(self._extract_hw_num_total_nodes(pkt), 1)
+
+
+# ---------------------------------------------------------------------------
+# 16. LoRa region/preset enum name lookup via config_pb2 (not .name attribute)
+# ---------------------------------------------------------------------------
+
+class TestLoRaRegionPresetEnumLookup(unittest.TestCase):
+    """
+    Validate that the production code uses config_pb2.Name() to resolve LoRa
+    enum integers to human-readable names (EU_868, LONG_FAST, UNSET…) instead
+    of relying on a .name attribute that doesn't exist on plain Python ints.
+    """
+
+    def _resolve(self, region_int, preset_int):
+        """Run the same resolution logic as _log_meshtastic_channel_config."""
+        try:
+            from meshtastic.protobuf import config_pb2 as _cpb2
+            region_name = _cpb2.Config.LoRaConfig.RegionCode.Name(region_int)
+            preset_name = _cpb2.Config.LoRaConfig.ModemPreset.Name(preset_int)
+        except (ValueError, ImportError, AttributeError):
+            region_name = str(region_int)
+            preset_name = str(preset_int)
+        return region_name, preset_name
+
+    def test_eu868_resolves_to_name(self):
+        """region=3 → EU_868 (not '3')."""
+        region, preset = self._resolve(3, 0)
+        self.assertEqual(region, 'EU_868')
+        self.assertEqual(preset, 'LONG_FAST')
+
+    def test_unset_region_zero_resolves_to_unset(self):
+        """region=0 → 'UNSET' (not '0'). Previously was shown as '0' — was a bug."""
+        region, preset = self._resolve(0, 0)
+        self.assertEqual(region, 'UNSET')
+
+    def test_us_region_resolves(self):
+        """region=1 → US."""
+        region, _ = self._resolve(1, 0)
+        self.assertEqual(region, 'US')
+
+    def test_long_slow_preset_resolves(self):
+        """preset=1 → LONG_SLOW."""
+        _, preset = self._resolve(3, 1)
+        self.assertEqual(preset, 'LONG_SLOW')
+
+    def test_fake_lora_eu868_roundtrip(self):
+        """_FakeLora('EU_868') stores int 3, _run_channel_config_log returns 'EU_868'."""
+        ch = _FakeChannel()
+        lora = _FakeLora(region='EU_868', preset='LONG_FAST', hop_limit=3)
+        node = _FakeLocalNode(channels=[ch], local_config=_FakeLocalConfig(lora=lora))
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        _, _, region, preset, hop, region_int = result
+        self.assertEqual(region, 'EU_868')
+        self.assertEqual(preset, 'LONG_FAST')
+        self.assertEqual(region_int, 3)
+
+    def test_fake_lora_unset_roundtrip(self):
+        """_FakeLora('UNSET') stores int 0, _run_channel_config_log returns 'UNSET'."""
+        ch = _FakeChannel()
+        lora = _FakeLora(region='UNSET', preset='LONG_FAST')
+        node = _FakeLocalNode(channels=[ch], local_config=_FakeLocalConfig(lora=lora))
+        iface = _FakeMTInterface(local_node=node)
+        result = _run_channel_config_log(iface)
+        _, _, region, _, _, region_int = result
+        self.assertEqual(region, 'UNSET')
+        self.assertEqual(region_int, 0)
+
+
+# ---------------------------------------------------------------------------
+# 17. lastHeard diagnostic excludes bot-injected nodes (no lastHeard field)
+# ---------------------------------------------------------------------------
+
+class TestLastHeardExcludesBotInjectedNodes(unittest.TestCase):
+    """
+    Validate that the lastHeard scan correctly distinguishes between:
+    - Nodes actually heard by the radio firmware (have lastHeard > 0)
+    - Nodes injected by sync_pubkeys_to_interface (no lastHeard, or lastHeard=0)
+    The diagnostic should report 'fw_heard' count and 'injected_count' separately.
+    """
+
+    def _run_lastheard_scan(self, nodes, my_id=0x16fad3dc):
+        """
+        Replicate the updated lastHeard scan from _log_meshtastic_channel_config.
+        Returns (fw_heard, injected_count, last_heard_entries).
+        """
+        last_heard_entries = []
+        injected_count = 0
+        for _k, _v in nodes.items():
+            if not isinstance(_v, dict):
+                continue
+            _nid = _v.get('num', 0)
+            if not _nid or _nid == my_id:
+                continue
+            _lh = _v.get('lastHeard', 0)
+            if _lh and _lh > 0:
+                _user = _v.get('user') or {}
+                _name = (_user.get('longName') or _user.get('shortName')
+                         or f'0x{_nid:08x}')
+                last_heard_entries.append((_lh, _nid, _name))
+            else:
+                injected_count += 1
+        return len(last_heard_entries), injected_count, last_heard_entries
+
+    def test_all_bot_injected_no_lastheard(self):
+        """190 injected nodes (no lastHeard) → fw_heard=0, injected_count=190."""
+        nodes = {}
+        for i in range(1, 191):
+            nodes[f'!{i:08x}'] = {
+                'num': i,
+                'user': {'longName': f'Node-{i}', 'publicKey': b'\xab' * 16}
+                # no 'lastHeard' — injected by sync_pubkeys_to_interface
+            }
+        fw_heard, injected_count, entries = self._run_lastheard_scan(nodes)
+        self.assertEqual(fw_heard, 0)
+        self.assertEqual(injected_count, 190)
+        self.assertEqual(entries, [])
+
+    def test_mix_of_heard_and_injected(self):
+        """3 heard + 5 injected → fw_heard=3, injected_count=5."""
+        now = int(time.time())
+        nodes = {}
+        for i in range(1, 4):  # 3 actually heard
+            nodes[f'!aaaa{i:04x}'] = {
+                'num': 0xaaaa0000 + i,
+                'lastHeard': now - i * 100,
+                'user': {'longName': f'RF-Node-{i}'},
+            }
+        for i in range(1, 6):  # 5 injected (no lastHeard)
+            nodes[f'!bbbb{i:04x}'] = {
+                'num': 0xbbbb0000 + i,
+                'user': {'longName': f'Injected-{i}', 'publicKey': b'\xcd' * 16}
+            }
+        fw_heard, injected_count, entries = self._run_lastheard_scan(nodes)
+        self.assertEqual(fw_heard, 3)
+        self.assertEqual(injected_count, 5)
+        self.assertEqual(len(entries), 3)
+
+    def test_only_really_heard_nodes(self):
+        """All nodes have lastHeard → injected_count=0."""
+        now = int(time.time())
+        nodes = {
+            '!a1000001': {'num': 0xa1000001, 'lastHeard': now - 60,
+                          'user': {'longName': 'Peer1'}},
+            '!a1000002': {'num': 0xa1000002, 'lastHeard': now - 120,
+                          'user': {'longName': 'Peer2'}},
+        }
+        fw_heard, injected_count, entries = self._run_lastheard_scan(nodes)
+        self.assertEqual(fw_heard, 2)
+        self.assertEqual(injected_count, 0)
+
+    def test_lastheard_zero_counts_as_injected(self):
+        """lastHeard=0 (explicitly set) is treated the same as missing → injected."""
+        nodes = {
+            '!a1000001': {'num': 0xa1000001, 'lastHeard': 0,
+                          'user': {'longName': 'ZeroHeard'}},
+        }
+        fw_heard, injected_count, _ = self._run_lastheard_scan(nodes)
+        self.assertEqual(fw_heard, 0)
+        self.assertEqual(injected_count, 1)
+
+    def test_known_count_in_rf_activity_check_excludes_injected(self):
+        """
+        _check_meshtastic_rf_activity known_count is now based on lastHeard>0 nodes
+        only — bot-injected entries (no lastHeard) must not inflate known_count.
+        """
+        # Replicate the updated all_other_nodes loop from _check_meshtastic_rf_activity
+        now = time.time()
+        window_s = 600
+        my_id = 0x16fad3dc
+        recently_heard = []
+        all_other_nodes = []
+
+        nodes = {}
+        # 5 bot-injected nodes (no lastHeard)
+        for i in range(1, 6):
+            nodes[f'!{i:08x}'] = {'num': i, 'user': {'publicKey': b'\xab'}}
+        # 2 genuinely heard nodes (outside 10-min window so not "recently heard")
+        nodes['!a0000001'] = {'num': 0xa0000001,
+                               'lastHeard': int(now) - 86400,
+                               'user': {'longName': 'OldPeer1'}}
+        nodes['!a0000002'] = {'num': 0xa0000002,
+                               'lastHeard': int(now) - 7200,
+                               'user': {'longName': 'OldPeer2'}}
+
+        for _key, node_info in nodes.items():
+            if not isinstance(node_info, dict):
+                continue
+            node_num = node_info.get('num', 0)
+            if not node_num or node_num == my_id:
+                continue
+            last_heard = node_info.get('lastHeard', 0)
+            if last_heard and last_heard > 0:
+                all_other_nodes.append(node_num)
+                if (now - last_heard) < window_s:
+                    recently_heard.append(node_num)
+
+        # known_count should be 2 (only genuinely-heard), NOT 7 (all + injected)
+        self.assertEqual(len(all_other_nodes), 2)
+        self.assertEqual(len(recently_heard), 0)
 
 
 if __name__ == '__main__':
