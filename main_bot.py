@@ -1817,16 +1817,6 @@ class MeshBot:
                         f" | preset={preset_name}"
                         f" | hop_limit={hop_limit}"
                     )
-                    # Prominent warning when region is UNSET (0) — most likely cause of deafness
-                    if region_int == 0:
-                        info_print_mt(
-                            "⚠️ [MT-CONFIG] LoRa REGION IS UNSET (region=0)!"
-                            " Radio may be on wrong frequency → cannot hear other nodes."
-                        )
-                        info_print_mt(
-                            "⚠️ [MT-CONFIG]   → Open Meshtastic app → Device Config → LoRa"
-                            " → set Region (EU_868 for France/Europe, US for North America, etc.)"
-                        )
                 else:
                     info_print_mt("📻 [MT-CONFIG] LoRa config not available")
             else:

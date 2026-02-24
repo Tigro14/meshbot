@@ -23,6 +23,14 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Some tests require the meshtastic protobuf library (for enum name resolution).
+# Skip those tests gracefully when meshtastic is not installed.
+try:
+    from meshtastic.protobuf import config_pb2 as _test_config_pb2  # noqa: F401
+    HAS_MESHTASTIC_PROTOBUF = True
+except (ImportError, ModuleNotFoundError):
+    HAS_MESHTASTIC_PROTOBUF = False
+
 
 # ---------------------------------------------------------------------------
 # Helper: replicate the hop calculation from node_manager / traffic_monitor
@@ -414,6 +422,8 @@ class TestMTChannelConfig(unittest.TestCase):
         self.assertEqual(ch_display, 'MyNet')
         self.assertEqual(psk_status, 'custom')
 
+    @unittest.skipUnless(HAS_MESHTASTIC_PROTOBUF,
+                         "requires meshtastic protobuf library")
     def test_lora_region_and_preset(self):
         """LoRa region EU_868 + preset LONG_FAST are extracted correctly (via config_pb2 enum lookup)."""
         ch = _FakeChannel()
@@ -428,6 +438,8 @@ class TestMTChannelConfig(unittest.TestCase):
         self.assertEqual(hop, 5)
         self.assertEqual(region_int, 3)  # EU_868 integer
 
+    @unittest.skipUnless(HAS_MESHTASTIC_PROTOBUF,
+                         "requires meshtastic protobuf library")
     def test_lora_region_unset_int_zero(self):
         """region=0 (UNSET) maps to 'UNSET' via config_pb2 — was previously '0' (bug)."""
         ch = _FakeChannel()
@@ -1376,6 +1388,8 @@ class TestNumTotalNodesDeviceMetricsFallback(unittest.TestCase):
 # 16. LoRa region/preset enum name lookup via config_pb2 (not .name attribute)
 # ---------------------------------------------------------------------------
 
+@unittest.skipUnless(HAS_MESHTASTIC_PROTOBUF,
+                     "requires meshtastic protobuf library")
 class TestLoRaRegionPresetEnumLookup(unittest.TestCase):
     """
     Validate that the production code uses config_pb2.Name() to resolve LoRa
