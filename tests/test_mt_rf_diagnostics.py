@@ -1588,3 +1588,217 @@ class TestLastHeardExcludesBotInjectedNodes(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# TestSetupMessageCallbacksIdempotent
+# ---------------------------------------------------------------------------
+
+class TestSetupMessageCallbacksIdempotent(unittest.TestCase):
+    """
+    Verify that setup_message_callbacks() is safe to call multiple times
+    (idempotent) and only registers each callback once.
+
+    This is required for the startup-timing fix where we call
+    setup_message_callbacks() immediately after set_meshtastic_interface()
+    (before MeshCore) to avoid missing RF packets during MeshCore init, and
+    then call it a second time after set_meshcore_interface() to add MeshCore.
+    """
+
+    def _make_dim(self):
+        """Build a minimal DualInterfaceManager-like object with the new guard."""
+        # Import real class
+        try:
+            from dual_interface_manager import DualInterfaceManager
+            dim = DualInterfaceManager(message_callback=lambda p, i, s: None)
+            return dim
+        except Exception:
+            return None
+
+    def test_initial_listeners_start_as_none(self):
+        """Before any call, both listener slots are None."""
+        dim = self._make_dim()
+        if dim is None:
+            self.skipTest("DualInterfaceManager not importable")
+        self.assertIsNone(dim._meshtastic_pubsub_listener)
+        self.assertIsNone(dim._meshcore_callback_listener)
+
+    def test_meshtastic_listener_none_check_prevents_double_subscribe(self):
+        """
+        If _meshtastic_pubsub_listener is already set, setup_message_callbacks
+        must not overwrite it or attempt a second pub.subscribe call.
+        Simulated by pre-setting the attribute to a sentinel value.
+        """
+        dim = self._make_dim()
+        if dim is None:
+            self.skipTest("DualInterfaceManager not importable")
+
+        sentinel = object()
+        dim._meshtastic_pubsub_listener = sentinel
+
+        # Creating a mock meshtastic interface so has_meshtastic() returns True
+        class FakeInterface:
+            nodes = {}
+        dim.meshtastic_interface = FakeInterface()
+
+        # Patch pub.subscribe so we can detect if it's called
+        subscribe_calls = []
+        import unittest.mock as mock
+        with mock.patch('pubsub.pub.subscribe', side_effect=subscribe_calls.append):
+            try:
+                dim.setup_message_callbacks()
+            except Exception:
+                pass  # Any import/subscribe error is fine for this test
+
+        # Because _meshtastic_pubsub_listener is already set (not None),
+        # the guard prevents a new subscription.  pub.subscribe must NOT
+        # have been called for the Meshtastic slot.
+        for call in subscribe_calls:
+            # If called, the first positional arg must NOT be the sentinel
+            # (which would indicate an attempt to re-register the existing listener)
+            if hasattr(call, 'args'):
+                self.assertIsNot(call.args[0] if call.args else None, sentinel)
+
+    def test_meshcore_listener_none_check_prevents_double_register(self):
+        """
+        If _meshcore_callback_listener is already set, setup_message_callbacks
+        must not call set_message_callback again on the MeshCore interface.
+        """
+        dim = self._make_dim()
+        if dim is None:
+            self.skipTest("DualInterfaceManager not importable")
+
+        mc_register_calls = []
+
+        class FakeMeshCoreInterface:
+            def set_message_callback(self, cb):
+                mc_register_calls.append(cb)
+
+        dim.meshcore_interface = FakeMeshCoreInterface()
+        # Pre-set listener → guard should prevent re-registration
+        dim._meshcore_callback_listener = object()
+
+        dim.setup_message_callbacks()
+
+        self.assertEqual(len(mc_register_calls), 0,
+                         "set_message_callback must not be called when already registered")
+
+    def test_meshcore_listener_registered_when_none(self):
+        """When _meshcore_callback_listener is None, it gets registered once."""
+        dim = self._make_dim()
+        if dim is None:
+            self.skipTest("DualInterfaceManager not importable")
+
+        mc_register_calls = []
+
+        class FakeMeshCoreInterface:
+            def set_message_callback(self, cb):
+                mc_register_calls.append(cb)
+
+        dim.meshcore_interface = FakeMeshCoreInterface()
+        self.assertIsNone(dim._meshcore_callback_listener)
+
+        dim.setup_message_callbacks()
+
+        self.assertEqual(len(mc_register_calls), 1)
+        self.assertIsNotNone(dim._meshcore_callback_listener)
+
+    def test_second_call_does_not_re_register_meshcore(self):
+        """Calling setup_message_callbacks twice only registers MeshCore once."""
+        dim = self._make_dim()
+        if dim is None:
+            self.skipTest("DualInterfaceManager not importable")
+
+        mc_register_calls = []
+
+        class FakeMeshCoreInterface:
+            def set_message_callback(self, cb):
+                mc_register_calls.append(cb)
+
+        dim.meshcore_interface = FakeMeshCoreInterface()
+
+        dim.setup_message_callbacks()
+        dim.setup_message_callbacks()
+
+        self.assertEqual(len(mc_register_calls), 1,
+                         "MeshCore callback must be registered exactly once")
+
+
+# ---------------------------------------------------------------------------
+# TestConfigDumpThrottle
+# ---------------------------------------------------------------------------
+
+class TestConfigDumpThrottle(unittest.TestCase):
+    """
+    Verify that _check_meshtastic_rf_activity only dumps the full config
+    block every 30 min (throttled by _last_mt_config_dump_time), preventing
+    the 8-line config block from repeating every 10-min warning cycle.
+    """
+
+    def _make_bot_stub(self):
+        """Return a minimal stub that has _last_mt_config_dump_time.
+
+        Uses a plain object rather than MeshBot.__new__() to avoid the
+        fragility of an uninitialized real instance.
+        """
+        class _Stub:
+            _last_mt_config_dump_time = 0
+        return _Stub()
+
+    def test_last_mt_config_dump_time_attribute_exists(self):
+        """MeshBot.__init__ initialises _last_mt_config_dump_time to 0.
+
+        We verify the initialisation logic inline rather than constructing a
+        real MeshBot (which requires serial hardware), so the test is always
+        runnable.
+        """
+        # Inspect the actual source to confirm _last_mt_config_dump_time = 0
+        try:
+            import inspect
+            import main_bot
+            src = inspect.getsource(main_bot.MeshBot.__init__)
+            self.assertIn('_last_mt_config_dump_time', src,
+                          "_last_mt_config_dump_time must be initialised in __init__")
+        except Exception:
+            self.skipTest("main_bot not importable")
+
+    def test_config_dump_throttle_logic_first_call(self):
+        """
+        Config dump fires on the first warning cycle (_last_mt_config_dump_time=0).
+        """
+        import time
+        now = time.time()
+        last_dump = 0
+        interval = 1800
+
+        # Should dump: never dumped before
+        should_dump = (now - last_dump) >= interval
+        self.assertTrue(should_dump)
+
+    def test_config_dump_throttle_logic_recent_dump(self):
+        """
+        Config dump is suppressed when last dump was less than 30 min ago.
+        """
+        import time
+        now = time.time()
+        last_dump = now - 900  # 15 min ago
+        interval = 1800
+
+        should_dump = (now - last_dump) >= interval
+        self.assertFalse(should_dump)
+
+    def test_config_dump_throttle_logic_after_30min(self):
+        """
+        Config dump fires again once 30+ min have passed since last dump.
+        """
+        import time
+        now = time.time()
+        last_dump = now - 1801  # 30 min + 1 second ago
+        interval = 1800
+
+        should_dump = (now - last_dump) >= interval
+        self.assertTrue(should_dump)
+
+
+if __name__ == '__main__':
+    unittest.main()

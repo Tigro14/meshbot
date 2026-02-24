@@ -204,7 +204,7 @@ class DualInterfaceManager:
     def setup_message_callbacks(self):
         """
         Setup message callbacks for both interfaces.
-        This must be called after both interfaces are set.
+        Safe to call multiple times: each callback is only registered once.
 
         IMPORTANT: pubsub 4.x stores listeners via weakref.  An anonymous
         lambda passed to pub.subscribe() has no other strong reference, so it
@@ -212,15 +212,20 @@ class DualInterfaceManager:
         dies.  We therefore store each listener as an instance attribute
         (_meshtastic_pubsub_listener / _meshcore_callback_listener) so that it
         stays alive for the full lifetime of this DualInterfaceManager.
+
+        Calling this method as soon as set_meshtastic_interface() has been
+        called (before MeshCore is connected) ensures that no RF packet is
+        missed during the MeshCore connection phase.  A second call after
+        set_meshcore_interface() then registers the MeshCore callback.
         """
-        if self.has_meshtastic():
+        if self.has_meshtastic() and self._meshtastic_pubsub_listener is None:
             from pubsub import pub
             # Store the listener strongly to prevent GC killing the subscription.
             self._meshtastic_pubsub_listener = self._on_meshtastic_pubsub
             pub.subscribe(self._meshtastic_pubsub_listener, "meshtastic.receive")
             info_print("✅ Meshtastic pubsub callback registered")
         
-        if self.has_meshcore():
+        if self.has_meshcore() and self._meshcore_callback_listener is None:
             if hasattr(self.meshcore_interface, 'set_message_callback'):
                 # Store strongly so the MeshCore wrapper keeps the reference alive.
                 self._meshcore_callback_listener = self._on_meshcore_callback

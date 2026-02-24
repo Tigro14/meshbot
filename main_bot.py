@@ -480,6 +480,10 @@ class MeshBot:
         self._last_packet_count = 0  # Track if packets are still arriving
         self._last_packet_time = time.time()  # When last packet arrived
         
+        # Throttle for Meshtastic channel/LoRa config dump in periodic warnings
+        # so the same config block is not repeated every 10 minutes.
+        self._last_mt_config_dump_time = 0
+
         # Scheduled reconnection tracking (for TCP_FORCE_RECONNECT_INTERVAL)
         self._last_forced_reconnect = time.time()  # Track last scheduled reconnection
         
@@ -2080,19 +2084,20 @@ class MeshBot:
                                 f" — radio has never heard any peer via RF"
                             )
 
-                    # When hardware itself reports only 1 node (itself), the radio
-                    # has genuinely not heard any peer since last reboot — this
-                    # rules out a subscription/software issue entirely.
-                    if hw_nodes is not None and hw_nodes <= 1:
-                        info_print_mt(
-                            f"   ⚠️ [MT-HW] Radio firmware numTotalNodes={hw_nodes}"
-                            f" → radio has NOT heard any other node via RF since"
-                            f" last reboot. This is a HARDWARE/CHANNEL issue:"
-                            f" verify channel name, PSK, LoRa region and preset"
-                            f" match the nodes you want to communicate with."
+                    # Dump channel + LoRa config to help diagnose mismatch.
+                    # Throttled: only repeat the full config block every 30 min so
+                    # the same 8 lines don't flood the log every 10-min warning cycle.
+                    # The config is always shown at startup via _log_meshtastic_channel_config.
+                    _config_interval = 1800  # 30 minutes
+                    if (now - self._last_mt_config_dump_time) >= _config_interval:
+                        self._log_meshtastic_channel_config(mt_interface)
+                        self._last_mt_config_dump_time = now
+                    else:
+                        _next_in = int(_config_interval - (now - self._last_mt_config_dump_time))
+                        debug_print_mt(
+                            f"[MT-CONFIG] next full config dump in {_next_in}s"
+                            f" (see startup log for channel/LoRa details)"
                         )
-                    # Dump channel + LoRa config to help diagnose mismatch
-                    self._log_meshtastic_channel_config(mt_interface)
         except Exception as e:
             debug_print(f"⚠️ Error in _check_meshtastic_rf_activity: {e}")
 
@@ -2598,6 +2603,14 @@ class MeshBot:
                 
                 if meshtastic_interface:
                     self.dual_interface.set_meshtastic_interface(meshtastic_interface)
+                    # Subscribe to meshtastic.receive IMMEDIATELY — before MeshCore
+                    # connection — to ensure no RF packets are missed during the
+                    # MeshCore init phase (which can take several seconds).
+                    # setup_message_callbacks() is safe to call multiple times;
+                    # the second call (after MeshCore is set) adds MeshCore callbacks.
+                    # The "✅ Meshtastic pubsub callback registered" log emitted
+                    # inside setup_message_callbacks() confirms the subscription.
+                    self.dual_interface.setup_message_callbacks()
                 
                 # Setup MeshCore interface
                 meshcore_port = globals().get('MESHCORE_SERIAL_PORT', '/dev/ttyUSB0')
