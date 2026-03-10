@@ -3127,11 +3127,26 @@ class MeshCoreCLIWrapper:
                 if hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
                     contact = self.meshcore.contacts.get(hex_id)
             
-            # If not found, use the destinationId directly
-            # The send_msg API should accept either contact dict or node_id
+            # If not found by pubkey_prefix from DB, scan contacts by node_id or public_key prefix.
+            # This handles stale/wrong DB entries (e.g. publicKey corrupted by base64 mis-decode).
+            if not contact and hasattr(self.meshcore, 'contacts') and self.meshcore.contacts:
+                hex_nodeid = f"{destinationId:08x}"
+                for pk_prefix, candidate in self.meshcore.contacts.items():
+                    # Match by explicit node_id field
+                    if candidate.get('node_id') == destinationId:
+                        contact = candidate
+                        debug_print_mc(f"✅ [DM] Contact trouvé par node_id scan: {candidate.get('adv_name', 'unknown')}")
+                        break
+                    # Match by public_key hex starting with the node_id bytes
+                    pk = candidate.get('public_key', '')
+                    if isinstance(pk, str) and pk.startswith(hex_nodeid):
+                        contact = candidate
+                        debug_print_mc(f"✅ [DM] Contact trouvé par public_key prefix scan: {candidate.get('adv_name', 'unknown')}")
+                        break
+
             if not contact:
-                debug_print_mc(f"⚠️ [DM] Contact non trouvé, utilisation de l'ID directement")
-                contact = destinationId
+                debug_print_mc(f"⚠️ [DM] Contact non trouvé dans tous les fallbacks pour 0x{destinationId:08x}")
+                return False
             
             # Send via commands.send_msg
             # Use run_coroutine_threadsafe since the event loop is already running
