@@ -243,6 +243,22 @@ class UtilityCommands:
                 # Get which network the sender came from
                 network_source = current_sender.get_sender_network(sender_id)
                 
+                # Fallback: use packet source stamp when no explicit network mapping exists.
+                # This ensures MeshCore channel commands (/echo on public channel) are echoed
+                # back on MeshCore instead of silently falling through to the Meshtastic interface.
+                if not network_source and packet:
+                    try:
+                        from dual_interface_manager import NetworkSource
+                        packet_source = packet.get('source', '')
+                        if packet_source == 'meshcore':
+                            network_source = NetworkSource.MESHCORE
+                            info_print(f"📍 [ECHO] Fallback: Using packet source 'meshcore' for echo routing")
+                        elif packet_source in ('meshtastic', 'local', 'tcp', 'tigrog2'):
+                            network_source = NetworkSource.MESHTASTIC
+                            info_print(f"📍 [ECHO] Fallback: Using packet source '{packet_source}' → MESHTASTIC for echo routing")
+                    except ImportError:
+                        pass
+                
                 if network_source:
                     info_print(f"🔍 [DUAL MODE] Routing echo broadcast to {network_source} network")
                     # Send broadcast (destination=0xFFFFFFFF) to the correct network on public channel
@@ -265,7 +281,7 @@ class UtilityCommands:
                     current_sender.log_conversation(sender_id, sender_info, message, echo_response)
                     return
                 else:
-                    info_print("⚠️ [DUAL MODE] No network mapping, using primary interface")
+                    info_print("⚠️ [DUAL MODE] No network mapping and no packet source, using primary interface")
             
             # ========================================
             # SINGLE MODE: Use direct interface

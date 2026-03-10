@@ -32,6 +32,7 @@ class MessageRouter:
         
         # Commandes supportées en mode companion (non-Meshtastic)
         self.companion_commands = [
+            '/echo',     # Broadcast message (fonctionne avec MeshCore)
             '/bot',      # AI
             '/ia',       # AI (alias français)
             '/weather',  # Météo
