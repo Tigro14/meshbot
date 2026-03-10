@@ -65,6 +65,14 @@ class DualInterfaceManager:
         self._last_meshtastic_packet_time = 0
         self._last_meshcore_packet_time = 0
         
+        # Strong references to pubsub listeners so they are not garbage-collected.
+        # pypubsub 4.x stores bound methods via weakref: if the listener object is
+        # not kept alive by a strong reference elsewhere the subscription silently
+        # becomes dead after the next GC cycle.  Storing them here on 'self' keeps
+        # them alive for the lifetime of this manager instance.
+        self._meshtastic_pubsub_listener = None
+        self._meshcore_callback_listener = None
+        
         debug_print("🔄 DualInterfaceManager initialized")
     
     def set_meshtastic_interface(self, interface):
@@ -145,7 +153,13 @@ class DualInterfaceManager:
                 self._meshtastic_packet_count += 1
                 self._last_meshtastic_packet_time = time.time()
             
-            debug_print(f"📡 [MESHTASTIC] Packet #{self._meshtastic_packet_count} received")
+            _portnum = (packet.get('decoded', {}).get('portnum', 'UNKNOWN')
+                        if packet else 'NONE')
+            _from_id = packet.get('from', 0) if packet else 0
+            debug_print(
+                f"📡 [MESHTASTIC] Packet #{self._meshtastic_packet_count} received:"
+                f" {_portnum} from 0x{_from_id:08x}"
+            )
             
             # Forward to main callback with network source tag
             if self.message_callback:
@@ -189,30 +203,56 @@ class DualInterfaceManager:
     
     def setup_message_callbacks(self):
         """
-        Setup message callbacks for both interfaces
-        This must be called after both interfaces are set
+        Setup message callbacks for both interfaces.
+        Safe to call multiple times: each callback is only registered once.
+
+        IMPORTANT: pubsub 4.x stores listeners via weakref.  An anonymous
+        lambda passed to pub.subscribe() has no other strong reference, so it
+        is garbage-collected almost immediately and the subscription silently
+        dies.  We therefore store each listener as an instance attribute
+        (_meshtastic_pubsub_listener / _meshcore_callback_listener) so that it
+        stays alive for the full lifetime of this DualInterfaceManager.
+
+        Calling this method as soon as set_meshtastic_interface() has been
+        called (before MeshCore is connected) ensures that no RF packet is
+        missed during the MeshCore connection phase.  A second call after
+        set_meshcore_interface() then registers the MeshCore callback.
         """
-        if self.has_meshtastic():
-            # For Meshtastic, we use pubsub subscription
+        if self.has_meshtastic() and self._meshtastic_pubsub_listener is None:
             from pubsub import pub
-            pub.subscribe(
-                lambda packet, interface=None: self.on_meshtastic_message(
-                    packet, 
-                    interface if interface else self.meshtastic_interface
-                ),
-                "meshtastic.receive"
-            )
+            # Store the listener strongly to prevent GC killing the subscription.
+            self._meshtastic_pubsub_listener = self._on_meshtastic_pubsub
+            pub.subscribe(self._meshtastic_pubsub_listener, "meshtastic.receive")
             info_print("✅ Meshtastic pubsub callback registered")
         
-        if self.has_meshcore():
-            # For MeshCore, we set the callback directly
+        if self.has_meshcore() and self._meshcore_callback_listener is None:
             if hasattr(self.meshcore_interface, 'set_message_callback'):
-                # FIX: Lambda must accept 2 parameters (packet, interface) 
-                # meshcore_cli_wrapper calls callback with 2 args: callback(packet, None)
+                # Store strongly so the MeshCore wrapper keeps the reference alive.
+                self._meshcore_callback_listener = self._on_meshcore_callback
                 self.meshcore_interface.set_message_callback(
-                    lambda packet, interface=None: self.on_meshcore_message(packet, self.meshcore_interface)
+                    self._meshcore_callback_listener
                 )
                 info_print("✅ MeshCore message callback registered")
+
+    def _on_meshtastic_pubsub(self, packet, interface=None):
+        """Bound method used as pubsub listener for 'meshtastic.receive'.
+
+        Using a bound method (instead of an anonymous lambda) means pypubsub
+        can keep a live weak-reference to it as long as *self* is alive.  The
+        strong reference stored in self._meshtastic_pubsub_listener ensures it
+        is never prematurely GC-collected.
+        """
+        self.on_meshtastic_message(
+            packet,
+            interface if interface else self.meshtastic_interface
+        )
+
+    def _on_meshcore_callback(self, packet, interface=None):
+        """Bound method used as MeshCore message callback.
+
+        Kept alive via self._meshcore_callback_listener.
+        """
+        self.on_meshcore_message(packet, self.meshcore_interface)
     
     def send_message(self, text, destination_id, network_source=None, channelIndex=0):
         """

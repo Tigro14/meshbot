@@ -676,11 +676,30 @@ class TrafficMonitor:
                 decoded = packet['decoded']
                 packet_type = decoded.get('portnum', 'UNKNOWN')
 
+                # === VISIBILITY: Log Meshtastic packet type before any filtering ===
+                # This mirrors the MeshCore "📦 MeshCore packet:" debug line so that
+                # every Meshtastic packet appears in the debug log with its type,
+                # even local TELEMETRY_APP packets that will be filtered below.
+                if source in ('meshtastic', 'local', 'tcp', 'tigrog2'):
+                    _hop_start_v = packet.get('hopStart', packet.get('hopLimit', 0))
+                    _hop_limit_v = packet.get('hopLimit', 0)
+                    _hops_v = _hop_start_v - _hop_limit_v
+                    _snr_v = packet.get('snr', packet.get('rxSnr', 0.0))
+                    _name_v = self.node_manager.get_node_name(from_id) if self.node_manager else f"0x{from_id:08x}"
+                    # [local] = locally generated (serial echo, snr=0.0)
+                    # [RF]    = received over the air from another node
+                    _origin = "[local]" if _snr_v == 0.0 else "[RF]"
+                    debug_print_mt(
+                        f"📦 [MT] {packet_type} from 0x{from_id:08x} ({_name_v}) {_origin}"
+                        f" | snr={_snr_v:.1f}dB | hops={_hops_v}"
+                    )
+
                 # === FILTRE: Exclure les paquets TELEMETRY_APP AUTO-GÉNÉRÉS ===
                 # Seuls les paquets télémétrie du nœud LOCAL sont filtrés (auto-générés)
                 # Les paquets télémétrie des AUTRES nœuds reçus par radio sont conservés
                 if packet_type == 'TELEMETRY_APP' and my_node_id and from_id == my_node_id:
-                    # Paquet auto-généré par le nœud local - silently ignored
+                    # Local self-generated telemetry — not RF traffic, skip silently.
+                    # The type was already logged above for visibility.
                     return
 
                 if packet_type == 'TEXT_MESSAGE_APP':
