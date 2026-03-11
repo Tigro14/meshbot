@@ -1604,12 +1604,19 @@ class TrafficPersistence:
             # Convert publicKey to bytes if needed
             public_key = contact_data.get('publicKey')
             if isinstance(public_key, str):
+                import re
                 import base64
-                try:
-                    public_key = base64.b64decode(public_key)
-                except:
-                    # If not base64, treat as hex
-                    public_key = bytes.fromhex(public_key.replace(' ', ''))
+                # meshcore-cli API returns public keys as hex strings (e.g. '889fa138c712...')
+                # IMPORTANT: hex strings are also valid base64, so we must check for hex FIRST.
+                # Using base64.b64decode() on a hex string silently produces wrong bytes.
+                hex_str = public_key.replace(' ', '')
+                if re.fullmatch(r'[0-9a-fA-F]+', hex_str) and len(hex_str) % 2 == 0:
+                    public_key = bytes.fromhex(hex_str)
+                else:
+                    try:
+                        public_key = base64.b64decode(public_key)
+                    except Exception:
+                        public_key = bytes.fromhex(hex_str)
 
             new_name = contact_data.get('name')
             new_short = contact_data.get('shortName')
