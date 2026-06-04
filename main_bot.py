@@ -3471,13 +3471,34 @@ class MeshBot:
             # ========================================
             cleanup_counter = 0
             status_log_counter = 0  # Counter for periodic status logging
-            
+            meshcore_clock_sync_counter = 0  # Counter for periodic MeshCore clock sync
+             
             while self.running:
                 try:
                     time.sleep(30)
                     cleanup_counter += 1
                     status_log_counter += 1
-                    
+                    meshcore_clock_sync_counter += 1
+                     
+                    # Periodic MeshCore device clock resync (every 12 iterations = 6 minutes)
+                    if meshcore_clock_sync_counter % 12 == 0:
+                        try:
+                            # Check if we have a MeshCore interface to sync
+                            meshcore_interface = None
+                             
+                            # In dual mode
+                            if self._dual_mode_active and self.dual_interface:
+                                meshcore_interface = self.dual_interface.meshcore_interface
+                            # In standalone MeshCore mode
+                            elif hasattr(self.interface, 'sync_device_time'):
+                                meshcore_interface = self.interface
+                             
+                            if meshcore_interface and hasattr(meshcore_interface, 'sync_device_time'):
+                                debug_print("🕐 [PERIODIC] Resyncing MeshCore device clock...")
+                                meshcore_interface.sync_device_time()
+                        except Exception as sync_error:
+                            debug_print(f"⚠️ [PERIODIC] MeshCore clock resync error: {sync_error}")
+                     
                     # Periodic status logging (every 2 minutes = 4 x 30s)
                     if status_log_counter % 4 == 0:
                         uptime = time.time() - self.start_time
