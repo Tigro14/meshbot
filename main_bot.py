@@ -2702,6 +2702,16 @@ class MeshBot:
                     else:
                         info_print_mc("✅ MeshCore reading thread started")
                         
+                        # Synchronize MeshCore device clock with system time
+                        info_print_mc("🕐 Synchronizing MeshCore device clock...")
+                        try:
+                            if meshcore_interface.sync_device_time():
+                                info_print_mc("✅ MeshCore device clock synchronized")
+                            else:
+                                error_print("⚠️ MeshCore device clock sync failed - continuing anyway")
+                        except Exception as e:
+                            error_print(f"⚠️ Error during MeshCore clock sync: {e}")
+                        
                         debug_print("🔍 Configuring dual interface manager...")
                         self.dual_interface.set_meshcore_interface(meshcore_interface)
                         debug_print_mc("✅ MeshCore interface set in dual manager")
@@ -3017,6 +3027,17 @@ class MeshBot:
                 info_print_mc(f"✅ Callback MeshCore configuré: {self.on_message}")
                 info_print_mc(f"   Interface type: {type(self.interface).__name__}")
                 info_print_mc(f"   Callback set to: on_message method")
+                
+                # Synchronize MeshCore device clock with system time
+                info_print_mc("🕐 Synchronizing MeshCore device clock...")
+                try:
+                    if self.interface.sync_device_time():
+                        info_print_mc("✅ MeshCore device clock synchronized")
+                    else:
+                        error_print("⚠️ MeshCore device clock sync failed - continuing anyway")
+                except Exception as e:
+                    error_print(f"⚠️ Error during MeshCore clock sync: {e}")
+                
                 info_print_mc("✅ Connexion MeshCore établie")
             
             # ========================================
