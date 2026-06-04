@@ -561,6 +561,191 @@ class MeshCoreSerialInterface:
                 error_print(f"❌ [MESHCORE] Erreur envoi message: {e}")
                 return False
     
+    def get_device_time(self, timeout=3.0):
+        """
+        Récupère l'heure actuelle du dispositif MeshCore
+        
+        Args:
+            timeout: Délai d'attente maximum en secondes (défaut: 3.0)
+        
+        Returns:
+            int: Unix timestamp du dispositif, ou None si erreur/timeout
+        """
+        if not self.serial or not self.serial.is_open:
+            error_print("❌ [MESHCORE] Port série non ouvert, impossible de récupérer l'heure")
+            return None
+        
+        try:
+            # Construire la commande: CMD_GET_DEVICE_TIME (5)
+            payload = bytes([CMD_GET_DEVICE_TIME])
+            length = len(payload)
+            packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+            
+            # Effacer le buffer d'entrée avant d'envoyer
+            if self.serial.in_waiting > 0:
+                self.serial.read(self.serial.in_waiting)
+            
+            # Envoyer la commande
+            with self._write_lock:
+                self.serial.write(packet)
+            debug_print("[MESHCORE-TIME] Commande GET_DEVICE_TIME envoyée")
+            
+            # Attendre la réponse avec timeout
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if self.serial.in_waiting > 0:
+                    # Lire la réponse
+                    response_data = self.serial.read(self.serial.in_waiting)
+                    debug_print(f"[MESHCORE-TIME] Réponse reçue: {len(response_data)} octets")
+                    
+                    # Parser la réponse: 0x3E ('>') + length (2 bytes) + response_code + time (4 bytes)
+                    if len(response_data) >= 8:
+                        if response_data[0] == 0x3E:
+                            resp_length = struct.unpack('<H', response_data[1:3])[0]
+                            resp_code = response_data[3]
+                            
+                            # Check for RESP_CODE_CURR_TIME (9)
+                            if resp_code == RESP_CODE_CURR_TIME and resp_length >= 5:
+                                device_time = struct.unpack('<I', response_data[4:8])[0]
+                                debug_print(f"[MESHCORE-TIME] ✅ Heure du dispositif: {device_time} (epoch)")
+                                return device_time
+                            else:
+                                error_print(f"❌ [MESHCORE-TIME] Réponse invalide: code={resp_code}, length={resp_length}")
+                                return None
+                
+                time.sleep(0.1)
+            
+            error_print(f"❌ [MESHCORE-TIME] Timeout après {timeout}s")
+            return None
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-TIME] Erreur récupération heure: {e}")
+            error_print(traceback.format_exc())
+            return None
+    
+    def set_device_time(self, unix_timestamp=None, timeout=3.0):
+        """
+        Définit l'heure du dispositif MeshCore
+        
+        Args:
+            unix_timestamp: Unix timestamp à définir (None = heure système actuelle)
+            timeout: Délai d'attente maximum en secondes (défaut: 3.0)
+        
+        Returns:
+            bool: True si succès, False si erreur
+        """
+        if not self.serial or not self.serial.is_open:
+            error_print("❌ [MESHCORE] Port série non ouvert, impossible de définir l'heure")
+            return False
+        
+        if unix_timestamp is None:
+            unix_timestamp = int(time.time())
+        
+        try:
+            # Construire la commande: CMD_SET_DEVICE_TIME (6) + timestamp (4 bytes, little-endian)
+            payload = bytes([CMD_SET_DEVICE_TIME]) + struct.pack('<I', unix_timestamp)
+            length = len(payload)
+            packet = bytes([0x3C]) + struct.pack('<H', length) + payload
+            
+            # Effacer le buffer d'entrée avant d'envoyer
+            if self.serial.in_waiting > 0:
+                self.serial.read(self.serial.in_waiting)
+            
+            # Envoyer la commande
+            with self._write_lock:
+                self.serial.write(packet)
+            debug_print(f"[MESHCORE-TIME] Commande SET_DEVICE_TIME envoyée avec timestamp={unix_timestamp}")
+            
+            # Attendre la réponse avec timeout
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if self.serial.in_waiting > 0:
+                    # Lire la réponse
+                    response_data = self.serial.read(self.serial.in_waiting)
+                    debug_print(f"[MESHCORE-TIME] Réponse reçue: {len(response_data)} octets")
+                    
+                    # Parser la réponse: 0x3E ('>') + length (2 bytes) + response_code
+                    if len(response_data) >= 4:
+                        if response_data[0] == 0x3E:
+                            resp_length = struct.unpack('<H', response_data[1:3])[0]
+                            resp_code = response_data[3]
+                            
+                            # Check for RESP_CODE_OK (0)
+                            if resp_code == RESP_CODE_OK:
+                                info_print(f"✅ [MESHCORE-TIME] Heure du dispositif synchronisée: {unix_timestamp}")
+                                return True
+                            else:
+                                error_print(f"❌ [MESHCORE-TIME] Erreur du dispositif: code={resp_code}")
+                                return False
+                
+                time.sleep(0.1)
+            
+            error_print(f"❌ [MESHCORE-TIME] Timeout après {timeout}s")
+            return False
+            
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-TIME] Erreur définition heure: {e}")
+            error_print(traceback.format_exc())
+            return False
+    
+    def sync_device_time(self, timeout=3.0):
+        """
+        Synchronise l'heure du dispositif MeshCore avec l'heure système
+        
+        Effectue:
+        1. Récupération de l'heure actuelle du dispositif
+        2. Comparaison avec l'heure système
+        3. Définition de l'heure système sur le dispositif si décalage détecté
+        
+        Args:
+            timeout: Délai d'attente maximum pour chaque commande (défaut: 3.0)
+        
+        Returns:
+            bool: True si synchronisation réussie, False sinon
+        """
+        try:
+            info_print("🕐 [MESHCORE-SYNC] Synchronisation de l'heure du dispositif MeshCore...")
+            
+            # Récupérer l'heure actuelle du dispositif
+            device_time = self.get_device_time(timeout=timeout)
+            if device_time is None:
+                error_print("❌ [MESHCORE-SYNC] Impossible de récupérer l'heure du dispositif")
+                return False
+            
+            # Obtenir l'heure système actuelle
+            system_time = int(time.time())
+            time_offset = abs(system_time - device_time)
+            
+            # Log l'offset détecté
+            device_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(device_time))
+            system_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(system_time))
+            
+            info_print(f"   Heure système:    {system_time_str}")
+            info_print(f"   Heure dispositif: {device_time_str}")
+            info_print(f"   Décalage:         {time_offset} secondes")
+            
+            # Si décalage > 2 secondes, synchroniser
+            if time_offset > 2:
+                info_print(f"   ⚠️  Décalage significatif détecté, synchronisation en cours...")
+                
+                # Définir l'heure système sur le dispositif
+                success = self.set_device_time(system_time, timeout=timeout)
+                
+                if success:
+                    info_print("✅ [MESHCORE-SYNC] ✅ Heure du dispositif synchronisée avec succès")
+                    return True
+                else:
+                    error_print("❌ [MESHCORE-SYNC] Erreur lors de la synchronisation de l'heure")
+                    return False
+            else:
+                info_print(f"✅ [MESHCORE-SYNC] Heure du dispositif déjà synchronisée (décalage: {time_offset}s)")
+                return True
+                
+        except Exception as e:
+            error_print(f"❌ [MESHCORE-SYNC] Erreur synchronisation: {e}")
+            error_print(traceback.format_exc())
+            return False
+     
     def set_message_callback(self, callback):
         """Définit le callback pour les messages reçus"""
         info_print(f"📝 [MESHCORE-SERIAL] Setting message_callback to {callback}")
