@@ -153,6 +153,135 @@ def _curl_with_retry(url, timeout=CURL_TIMEOUT, max_retries=CURL_MAX_RETRIES):
         raise Exception(f"All {max_retries} curl attempts failed") from last_exception
 
 
+def get_weather_openmeteo(lat=None, lon=None, persistence=None):
+    """
+    Récupérer les données météo depuis Open-Meteo API (modèle France HD)
+    
+    Args:
+        lat: Latitude (float). Si None, utilise WEATHER_LATITUDE de config.py
+        lon: Longitude (float). Si None, utilise WEATHER_LONGITUDE de config.py
+        persistence: Instance TrafficPersistence pour le cache SQLite (optionnel)
+    
+    Returns:
+        str: Données météo formatées ou message d'erreur
+    
+    Exemple:
+        >>> weather = get_weather_openmeteo(48.8566, 2.3522)  # Paris
+        >>> print(weather)
+        Now: ☀️ 12°C 15km/h 0mm
+    """
+    import requests
+    import json
+    from config import WEATHER_LATITUDE, WEATHER_LONGITUDE, WEATHER_MODEL, WEATHER_FORECAST_HOURS
+    
+    try:
+        # Utiliser les coordonnées fournies ou celles de config
+        if lat is None or lon is None:
+            lat = WEATHER_LATITUDE
+            lon = WEATHER_LONGITUDE
+        
+        # Clé de cache
+        cache_key = f"openmeteo_{lat}_{lon}"
+        
+        # Vérifier le cache SQLite si disponible
+        if persistence:
+            try:
+                cached_data, age_hours = persistence.get_weather_cache_with_age(
+                    cache_key, 'weather', max_age_seconds=CACHE_MAX_AGE
+                )
+                if cached_data:
+                    cache_age_seconds = age_hours * 3600
+                    
+                    # Fresh cache (<5 min)
+                    if cache_age_seconds < CACHE_DURATION:
+                        info_print(f"✅ Cache OpenMeteo FRESH (age: {cache_age_seconds}s)")
+                        return cached_data
+                    
+                    # Stale but valid (<1h)
+                    elif cache_age_seconds < CACHE_STALE_DURATION:
+                        info_print(f"⚡ Cache OpenMeteo STALE mais valide (age: {cache_age_seconds}s)")
+                        return cached_data
+                    
+                    else:
+                        info_print(f"⏰ Cache OpenMeteo expiré (age: {age_hours}h)")
+            except Exception as e:
+                error_print(f"⚠️ Erreur lecture cache: {e}")
+        
+        # Construire l'URL Open-Meteo
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": ",".join([
+                "temperature_2m",
+                "precipitation",
+                "precipitation_probability",
+                "wind_speed_10m",
+                "weather_code",
+            ]),
+            "timezone": "Europe/Paris",
+            "forecast_hours": WEATHER_FORECAST_HOURS,
+            "models": WEATHER_MODEL,  # meteofrance_arome_france_hd
+        }
+        
+        info_print(f"🌤️ Récupération météo Open-Meteo ({WEATHER_MODEL})...")
+        
+        # Requête HTTP avec timeout
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Extraire les données actuelles (première heure)
+        if 'hourly' in data:
+            hourly = data['hourly']
+            
+            # Température actuelle (°C)
+            temp = hourly.get('temperature_2m', [0])[0]
+            
+            # Vent (km/h)
+            wind = hourly.get('wind_speed_10m', [0])[0]
+            
+            # Précipitation (mm)
+            precip = hourly.get('precipitation', [0])[0]
+            
+            # Code météo
+            weather_code = hourly.get('weather_code', [0])[0]
+            
+            # Emoji basé sur le code météo
+            emoji = get_weather_icon(str(weather_code))
+            
+            # Formater la sortie
+            result = f"Now: {emoji} {temp:.0f}°C {wind:.0f}km/h {precip:.1f}mm"
+            
+            # Sauvegarder en cache si persistence disponible
+            if persistence:
+                try:
+                    persistence.set_weather_cache(cache_key, 'weather', result)
+                    info_print(f"💾 Cache OpenMeteo sauvegardé")
+                except Exception as e:
+                    error_print(f"⚠️ Erreur sauvegarde cache: {e}")
+            
+            return result
+        else:
+            error_print("❌ Format de réponse Open-Meteo inattendu")
+            return "❌ Erreur format réponse météo"
+    
+    except requests.exceptions.Timeout:
+        error_print("❌ Timeout Open-Meteo")
+        return "❌ Timeout météo"
+    
+    except requests.exceptions.RequestException as e:
+        error_print(f"❌ Erreur requête Open-Meteo: {e}")
+        return "❌ Erreur récupération météo"
+    
+    except Exception as e:
+        error_print(f"❌ Erreur Open-Meteo: {e}")
+        import traceback
+        error_print(traceback.format_exc())
+        return "❌ Erreur météo"
+
+
 def get_weather_icon(weather_code):
     """
     Convertir un code météo wttr.in en émoji
@@ -366,6 +495,17 @@ def get_weather_data(location=None, persistence=None):
         >>> print(weather)
         Now: 🌧️ 8°C 20km/h 2mm 80%
     """
+    # Vérifier si on doit utiliser Open-Meteo
+    try:
+        from config import WEATHER_USE_OPENMETEO
+        if WEATHER_USE_OPENMETEO and not location:
+            # Pour la géolocalisation (pas de ville spécifiée), utiliser Open-Meteo
+            info_print("🌍 Utilisation de Open-Meteo API (France HD)")
+            return get_weather_openmeteo(persistence=persistence)
+    except ImportError:
+        # WEATHER_USE_OPENMETEO non défini, continuer avec wttr.in
+        pass
+    
     # Variables pour fallback dans les exceptions
     cache_key = None
     cache_file = None
