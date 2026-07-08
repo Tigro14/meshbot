@@ -426,6 +426,20 @@ BLITZ_WINDOW_MINUTES = 15  # Fenêtre temporelle pour comptage éclairs (15min)
 # Dépendances: pip install paho-mqtt pygeohash
 
 # ========================================
+# CONFIGURATION MÉTÉO OPEN-METEO
+# ========================================
+
+# Configuration pour Open-Meteo API (météo France haute définition)
+WEATHER_LATITUDE = 48.8566   # Latitude Paris par défaut (0.0 = auto-détection depuis GPS)
+WEATHER_LONGITUDE = 2.3522   # Longitude Paris par défaut (0.0 = auto-détection depuis GPS)
+WEATHER_USE_OPENMETEO = True  # Utiliser Open-Meteo au lieu de wttr.in
+WEATHER_MODEL = "meteofrance_arome_france_hd"  # Modèle météo France haute définition
+WEATHER_FORECAST_HOURS = 48  # Nombre d'heures de prévision (défaut: 48h)
+# Note: Le modèle meteofrance_arome_france_hd est spécifique à la France
+#       Pour d'autres régions, utiliser: "best_match" (auto), "gfs_seamless", etc.
+#       Position GPS auto-détectée depuis le node Meshtastic si WEATHER_LATITUDE/LONGITUDE = 0.0
+
+# ========================================
 # CONFIGURATION ALERTES MESH (DM)
 # ========================================
 

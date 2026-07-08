@@ -730,9 +730,9 @@ Le serveur CLI fonctionne en parallèle du bot principal :
 ### Commandes MESH
 - `/bot <question>` - Chat avec l'IA
 - `/power` - Données ESPHome (batterie, solaire, météo)
-- `/weather [rain|astro] [ville] [days]` - Météo (par https://wttr.in)
-  - `/weather` - Météo locale (géolocalisée)
-  - `/weather Paris` - Météo d'une ville spécifique
+- `/weather [rain|astro] [ville] [days]` - Météo (via Open-Meteo API ou wttr.in)
+  - `/weather` - Météo locale (géolocalisée, Open-Meteo France HD)
+  - `/weather Paris` - Météo d'une ville spécifique (wttr.in)
   - `/weather rain` - Graphe précipitations aujourd'hui (sparklines haute résolution)
   - `/weather rain 3` - Graphe précipitations 3 jours
   - `/weather rain Paris` - Précipitations Paris (aujourd'hui)
@@ -740,6 +740,7 @@ Le serveur CLI fonctionne en parallèle du bot principal :
   - `/weather astro` - Infos astronomiques (sunrise, sunset, moon 🌑🌕)
   - `/weather astro Paris` - Infos astronomiques Paris
   - `/weather help` - Afficher l'aide
+  - **Nouveau**: Support Open-Meteo avec modèle Météo-France AROME HD (config `WEATHER_USE_OPENMETEO`)
 - `/nodes [page]` - Liste des nœuds directs vus par votre node (paginé, trié par SNR)
 - `/my` - Vos signaux vus par votre node (lookinglass)
 - `/trace` - Traceroute de votre message vers le bot (hops, RSSI, SNR)
@@ -1429,6 +1430,9 @@ Le fichier `config.py` contient tous les paramètres configurables :
 ### Quick Start
 - **This file (README.md)**: Setup and user guide
 - **[CLAUDE.md](CLAUDE.md)**: Comprehensive developer guide (for AI assistants and contributors)
+
+### Feature Documentation
+- **[OPENMETEO_INTEGRATION.md](OPENMETEO_INTEGRATION.md)**: Open-Meteo API integration with France HD weather model
 
 ### Historical Documentation
 Over **412 archived documentation files** are available in `docs/archive/` for historical reference. See **[docs/archive/README.md](docs/archive/README.md)** for details.
